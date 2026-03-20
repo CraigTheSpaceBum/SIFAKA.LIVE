@@ -47,6 +47,47 @@ function roleLabel(profile, member) {
   return `${name} - ${role}`;
 }
 
+function highestRole(roleIds = []) {
+  const roles = Array.isArray(roleIds) ? roleIds : [];
+  if (roles.includes('owner')) return 'owner';
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('moderator')) return 'moderator';
+  if (roles.includes('member')) return 'member';
+  return 'guest';
+}
+
+function settingsRoleSummary(role = 'guest') {
+  const key = String(role || 'guest').toLowerCase();
+  if (key === 'owner') {
+    return {
+      label: 'Owner',
+      hint: 'Full community control, including server settings and delete group.'
+    };
+  }
+  if (key === 'admin') {
+    return {
+      label: 'Admin',
+      hint: 'Can manage channels and roles, but owner-only server settings are locked.'
+    };
+  }
+  if (key === 'moderator') {
+    return {
+      label: 'Moderator',
+      hint: 'Can moderate members and channels, but server settings are read-only.'
+    };
+  }
+  if (key === 'member') {
+    return {
+      label: 'Member',
+      hint: 'Can read community details and leave the group.'
+    };
+  }
+  return {
+    label: 'Guest',
+    hint: 'Join this community to participate.'
+  };
+}
+
 function parseLines(value) {
   return String(value || '')
     .split('\n')
@@ -252,6 +293,43 @@ export function createCommunitiesUI(input) {
       allowedRelays: (root.querySelector('#scSettingsRelays') || {}).value || ''
     };
     return ui.settingsDraft;
+  }
+
+  function resolveCommunitySettingsAccess(community, stateSnapshot = null) {
+    if (!community) {
+      return {
+        role: 'guest',
+        roleLabel: 'Guest',
+        roleHint: 'Join this community to participate.',
+        isOwner: false,
+        canManageServer: false,
+        canManageRoles: false,
+        canManageChannels: false,
+        canLeave: false
+      };
+    }
+
+    const state = stateSnapshot || store.getState();
+    const roleIds = store.getMemberRoles(community.id, state.currentUserPubkey) || [];
+    const role = highestRole(roleIds);
+    const roleInfo = settingsRoleSummary(role);
+    const ownerPubkey = normalizePubkey(community.ownerPubkey || '');
+    const currentPubkey = normalizePubkey(state.currentUserPubkey || '');
+    const isOwner = role === 'owner' || (!!ownerPubkey && !!currentPubkey && ownerPubkey === currentPubkey);
+    const canManageServer = isOwner || store.can('manage_server', null, community);
+    const canManageRoles = store.can('manage_roles', null, community);
+    const canManageChannels = store.can('manage_channels', null, community);
+    const joinedCommunityIds = new Set(state.joinedCommunityIds || []);
+    return {
+      role,
+      roleLabel: roleInfo.label,
+      roleHint: roleInfo.hint,
+      isOwner,
+      canManageServer,
+      canManageRoles,
+      canManageChannels,
+      canLeave: joinedCommunityIds.has(community.id)
+    };
   }
 
   function closeTransient() {
@@ -1071,41 +1149,49 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
   }
 function renderCommunitySettingsModal(community) {
     const draft = ensureCommunitySettingsDraft(community) || defaultCommunitySettingsDraft(community);
-    const state = store.getState();
-    const joined = state.joinedCommunityIds.has(community.id);
-    const roleIds = store.getMemberRoles(community.id, state.currentUserPubkey) || [];
-    const ownerPubkey = normalizePubkey(community.ownerPubkey);
-    const currentPubkey = normalizePubkey(state.currentUserPubkey);
-    const isOwner = roleIds.includes('owner') || (!!ownerPubkey && !!currentPubkey && ownerPubkey === currentPubkey);
+    const access = resolveCommunitySettingsAccess(community, store.getState());
+    const readOnly = !access.canManageServer;
+    const disableAttr = readOnly ? 'disabled' : '';
+    const saveButton = access.canManageServer
+      ? '<button id="scSaveCommunitySettingsBtn">Save Settings</button>'
+      : '<button class="sc-settings-owner-only" type="button" disabled>Owner Settings Only</button>';
+    const footerCopy = access.canManageServer
+      ? 'Changes are published to relays after saving.'
+      : 'Server settings are read-only for your role.';
+
     return `
       <div class="sc-modal-ov" data-close="modal">
         <div class="sc-modal sc-modal-wide sc-community-settings-modal">
           <h4>Community Settings</h4>
           <p>Update identity, branding, moderation, and discovery settings.</p>
+          <div class="sc-settings-access sc-role-${esc(access.role)}">
+            <strong>${esc(access.roleLabel)} Access</strong>
+            <small>${esc(access.roleHint)}${readOnly ? ' Ask the community owner to apply server-level changes.' : ''}</small>
+          </div>
 
           <section class="sc-create-section">
             <h5>Basics</h5>
             <div class="sc-form-grid sc-form-grid-2">
               <label>Community name
-                <input id="scSettingsName" value="${esc(draft.name || '')}" placeholder="Community name">
+                <input id="scSettingsName" value="${esc(draft.name || '')}" placeholder="Community name" ${disableAttr}>
               </label>
               <label>How people join
-                <select id="scSettingsJoinMode">
+                <select id="scSettingsJoinMode" ${disableAttr}>
                   <option value="open" ${draft.joinMode === 'open' ? 'selected' : ''}>Anyone can join</option>
                   <option value="approval" ${draft.joinMode === 'approval' ? 'selected' : ''}>Request + approval</option>
                   <option value="invite_only" ${draft.joinMode === 'invite_only' ? 'selected' : ''}>Invite only</option>
                 </select>
               </label>
               <label>Who can post
-                <select id="scSettingsPostingPolicy">
+                <select id="scSettingsPostingPolicy" ${disableAttr}>
                   <option value="members" ${draft.postingPolicy === 'members' ? 'selected' : ''}>Members</option>
                   <option value="moderators" ${draft.postingPolicy === 'moderators' ? 'selected' : ''}>Moderators only</option>
                   <option value="admins" ${draft.postingPolicy === 'admins' ? 'selected' : ''}>Admins only</option>
                 </select>
               </label>
-              <label class="sc-inline-check"><input type="checkbox" id="scSettingsDiscoverable" ${draft.discoverable ? 'checked' : ''}> Show community in public discovery</label>
+              <label class="sc-inline-check"><input type="checkbox" id="scSettingsDiscoverable" ${draft.discoverable ? 'checked' : ''} ${disableAttr}> Show community in public discovery</label>
               <label class="full">Description
-                <textarea id="scSettingsDescription" placeholder="What is this community about?">${esc(draft.description || '')}</textarea>
+                <textarea id="scSettingsDescription" placeholder="What is this community about?" ${disableAttr}>${esc(draft.description || '')}</textarea>
               </label>
             </div>
           </section>
@@ -1114,12 +1200,12 @@ function renderCommunitySettingsModal(community) {
             <h5>Branding</h5>
             <div class="sc-form-grid sc-form-grid-2">
               <label>Image URL
-                <input id="scSettingsImage" value="${esc(draft.image || '')}" placeholder="https://example.com/community-image.jpg">
+                <input id="scSettingsImage" value="${esc(draft.image || '')}" placeholder="https://example.com/community-image.jpg" ${disableAttr}>
                 <small>Square image recommended.</small>
               </label>
               <div id="scSettingsImagePreview" class="sc-url-preview">${renderCreateImagePreview(draft.image || '', 'Community image')}</div>
               <label>Banner URL
-                <input id="scSettingsBanner" value="${esc(draft.banner || '')}" placeholder="https://example.com/community-banner.jpg">
+                <input id="scSettingsBanner" value="${esc(draft.banner || '')}" placeholder="https://example.com/community-banner.jpg" ${disableAttr}>
                 <small>Wide image works best for banners.</small>
               </label>
               <div id="scSettingsBannerPreview" class="sc-url-preview">${renderCreateImagePreview(draft.banner || '', 'Banner image', true)}</div>
@@ -1130,10 +1216,10 @@ function renderCommunitySettingsModal(community) {
             <h5>Team</h5>
             <div class="sc-form-grid sc-form-grid-2">
               <label class="full">Moderators (comma separated npub or hex)
-                <input id="scSettingsModerators" value="${esc(draft.moderators || '')}" placeholder="npub1..., npub1...">
+                <input id="scSettingsModerators" value="${esc(draft.moderators || '')}" placeholder="npub1..., npub1..." ${disableAttr}>
               </label>
               <label class="full">Admins (comma separated npub or hex)
-                <input id="scSettingsAdmins" value="${esc(draft.admins || '')}" placeholder="npub1..., npub1...">
+                <input id="scSettingsAdmins" value="${esc(draft.admins || '')}" placeholder="npub1..., npub1..." ${disableAttr}>
               </label>
             </div>
           </section>
@@ -1142,13 +1228,13 @@ function renderCommunitySettingsModal(community) {
             <h5>Rules and Relays</h5>
             <div class="sc-form-grid sc-form-grid-2">
               <label class="full">Community rules (one per line)
-                <textarea id="scSettingsRules" placeholder="Be respectful\nNo spam\nKeep discussion on-topic">${esc(draft.rules || '')}</textarea>
+                <textarea id="scSettingsRules" placeholder="Be respectful\nNo spam\nKeep discussion on-topic" ${disableAttr}>${esc(draft.rules || '')}</textarea>
               </label>
               <label>Topics (comma separated)
-                <input id="scSettingsTopics" value="${esc(draft.topics || '')}" placeholder="nostr, livestream, support">
+                <input id="scSettingsTopics" value="${esc(draft.topics || '')}" placeholder="nostr, livestream, support" ${disableAttr}>
               </label>
               <label>Allowed relays (comma separated)
-                <input id="scSettingsRelays" value="${esc(draft.allowedRelays || '')}" placeholder="wss://relay.example.com, wss://relay2.example.com">
+                <input id="scSettingsRelays" value="${esc(draft.allowedRelays || '')}" placeholder="wss://relay.example.com, wss://relay2.example.com" ${disableAttr}>
               </label>
             </div>
           </section>
@@ -1157,14 +1243,15 @@ function renderCommunitySettingsModal(community) {
             <summary>Advanced Permission Matrix</summary>
             ${permissionsSummary()}
           </details>
+          <div class="sc-modal-foot-note">${esc(footerCopy)}</div>
           <div class="sc-modal-foot sc-modal-foot-split">
             <div class="sc-modal-foot-danger">
-              ${joined ? '<button id="scLeaveCommunitySettingsBtn" class="sc-btn-danger" type="button">Leave Community</button>' : ''}
-              ${isOwner ? '<button id="scDeleteCommunityBtn" class="sc-btn-danger sc-btn-danger-strong" type="button">Delete Group</button>' : ''}
+              ${access.canLeave ? '<button id="scLeaveCommunitySettingsBtn" class="sc-btn-danger" type="button">Leave Community</button>' : ''}
+              ${access.isOwner ? '<button id="scDeleteCommunityBtn" class="sc-btn-danger sc-btn-danger-strong" type="button">Delete Group</button>' : ''}
             </div>
             <div class="sc-modal-foot-main">
-              <button data-close="modal">Cancel</button>
-              <button id="scSaveCommunitySettingsBtn">Save Settings</button>
+              <button data-close="modal">Close</button>
+              ${saveButton}
             </div>
           </div>
         </div>
@@ -2209,6 +2296,11 @@ function renderCommunitySettingsModal(community) {
         const state = store.getState();
         const community = store.getCommunity(state.activeCommunityId);
         if (!community) return;
+        const access = resolveCommunitySettingsAccess(community, state);
+        if (!access.canManageServer) {
+          setStatus('Only community owners can edit server settings.');
+          return;
+        }
         const draft = syncCommunitySettingsDraftFromDom() || ensureCommunitySettingsDraft(community) || defaultCommunitySettingsDraft(community);
 
         const patch = {
@@ -2275,7 +2367,8 @@ function renderCommunitySettingsModal(community) {
         const state = store.getState();
         const community = store.getCommunity(state.activeCommunityId);
         if (!community) return;
-        if (!state.joinedCommunityIds.has(community.id)) return;
+        const joinedCommunityIds = new Set(state.joinedCommunityIds || []);
+        if (!joinedCommunityIds.has(community.id)) return;
         if (!window.confirm(`Leave "${community.title}"?`)) return;
         store.leaveCommunity(community.id);
         const membershipPublish = await publishMembershipList();

@@ -804,6 +804,49 @@
   font-size: .76rem;
 }
 
+.sc-settings-access {
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  background: rgba(255,255,255,.03);
+  padding: .5rem .62rem;
+  display: flex;
+  flex-direction: column;
+  gap: .14rem;
+  margin-bottom: .52rem;
+}
+
+.sc-settings-access strong {
+  font-size: .74rem;
+  color: var(--text);
+}
+
+.sc-settings-access small {
+  color: var(--muted);
+  font-size: .65rem;
+  line-height: 1.4;
+}
+
+.sc-settings-access.sc-role-owner {
+  border-color: rgba(247,183,49,.42);
+  background: rgba(247,183,49,.08);
+}
+
+.sc-settings-access.sc-role-admin {
+  border-color: rgba(232,70,10,.42);
+  background: rgba(232,70,10,.1);
+}
+
+.sc-settings-access.sc-role-moderator {
+  border-color: rgba(155,114,255,.45);
+  background: rgba(155,114,255,.1);
+}
+
+.sc-settings-access.sc-role-member,
+.sc-settings-access.sc-role-guest {
+  border-color: rgba(120,214,173,.28);
+  background: rgba(0,212,138,.08);
+}
+
 .sc-form-grid {
   display: grid;
   gap: .45rem;
@@ -852,6 +895,13 @@
   gap: .4rem;
 }
 
+.sc-modal-foot-note {
+  margin-top: .52rem;
+  color: var(--muted);
+  font-size: .64rem;
+  font-family: 'DM Mono', monospace;
+}
+
 .sc-modal-foot-split {
   justify-content: space-between;
   align-items: flex-start;
@@ -882,6 +932,11 @@
   border-color: rgba(255,97,132,.72);
   background: rgba(197,37,72,.28);
   color: #fff;
+}
+
+.sc-settings-owner-only {
+  opacity: .7;
+  cursor: not-allowed;
 }
 
 .sc-table-wrap {
@@ -2287,6 +2342,36 @@
 #communitiesPage .sc-community-card-main small,
 #communitiesPage .sc-community-card-main i {
   color: var(--sc-text-soft);
+}
+
+#communitiesPage .sc-settings-access {
+  border-color: rgba(255,255,255,.14);
+  background: rgba(255,255,255,.04);
+}
+
+#communitiesPage .sc-settings-access.sc-role-owner {
+  border-color: rgba(247,183,49,.55);
+  background: rgba(247,183,49,.16);
+}
+
+#communitiesPage .sc-settings-access.sc-role-admin {
+  border-color: rgba(232,70,10,.56);
+  background: rgba(232,70,10,.16);
+}
+
+#communitiesPage .sc-settings-access.sc-role-moderator {
+  border-color: rgba(155,114,255,.58);
+  background: rgba(155,114,255,.18);
+}
+
+#communitiesPage .sc-settings-access.sc-role-member,
+#communitiesPage .sc-settings-access.sc-role-guest {
+  border-color: rgba(52,214,146,.46);
+  background: rgba(52,214,146,.14);
+}
+
+#communitiesPage .sc-modal-foot-note {
+  color: var(--sc-text-muted);
 }
 
 #communitiesPage .sc-table-wrap {
