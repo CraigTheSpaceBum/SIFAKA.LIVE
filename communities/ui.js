@@ -40,7 +40,11 @@ function groupedChannels(channels) {
 
 function roleLabel(profile, member) {
   const role = (member && member.roles && member.roles[0]) || 'guest';
-  return `${profile.displayName || profile.name} - ${role}`;
+  const fallbackPubkey = member && member.pubkey ? member.pubkey : '';
+  const name = String((profile && (profile.displayName || profile.name)) || '').trim()
+    || shortPubkey(fallbackPubkey, 10, 8)
+    || 'Member';
+  return `${name} - ${role}`;
 }
 
 function parseLines(value) {
@@ -249,6 +253,51 @@ export function createCommunitiesUI(input) {
       if (encoded) return encoded;
     }
     return key;
+  }
+
+  function normalizeProfileLookupKey(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^[0-9a-f]{64}$/i.test(raw)) return raw.toLowerCase();
+    if (/^npub1/i.test(raw) && nostrBridge && typeof nostrBridge.nip19Decode === 'function') {
+      const decoded = nostrBridge.nip19Decode(raw);
+      if (decoded && decoded.type === 'npub' && typeof decoded.data === 'string') {
+        const hex = String(decoded.data || '').trim();
+        if (/^[0-9a-f]{64}$/i.test(hex)) return hex.toLowerCase();
+      }
+    }
+    return raw;
+  }
+
+  function normalizeAvatarUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (/^\/\//.test(raw)) return `https:${raw}`;
+    if (/^[a-z0-9.-]+\.[a-z]{2,}(?:\/|$)/i.test(raw)) return `https://${raw}`;
+    return '';
+  }
+
+  function displayNameForProfile(profile, pubkey = '') {
+    const name = String((profile && (profile.displayName || profile.name)) || '').trim();
+    if (name) return name;
+    const key = normalizeProfileLookupKey(pubkey) || String(pubkey || '').trim();
+    return shortPubkey(key, 12, 8) || 'Nostr User';
+  }
+
+  function resolveProfileRecord(profiles, pubkey, storeRef = store) {
+    const raw = String(pubkey || '').trim();
+    const normalized = normalizeProfileLookupKey(raw);
+    const npub = (/^[0-9a-f]{64}$/i.test(normalized) ? toNpub(normalized) : (/^npub1/i.test(raw) ? raw : ''));
+    const candidates = uniqueValues([raw, raw.toLowerCase(), normalized, npub]);
+    for (let i = 0; i < candidates.length; i += 1) {
+      const key = String(candidates[i] || '').trim();
+      if (!key) continue;
+      if (profiles && profiles[key]) return profiles[key];
+    }
+    return (storeRef && typeof storeRef.profile === 'function')
+      ? storeRef.profile(normalized || raw)
+      : { pubkey: normalized || raw };
   }
 
   function resolveMemberCount(state, community) {
@@ -491,15 +540,16 @@ export function createCommunitiesUI(input) {
     `).join('');
 
     const memberHtml = members.map((member) => {
-      const profileData = profiles[member.pubkey] || store.profile(member.pubkey);
+      const profileData = resolveProfileRecord(profiles, member.pubkey, store);
       const timedOut = member.timeoutUntil && Number(member.timeoutUntil) > Date.now();
-      const memberAvatar = String((profileData && profileData.avatar) || '').trim();
-      const hasMemberAvatar = /^https?:\/\//i.test(memberAvatar);
+      const memberName = displayNameForProfile(profileData, member.pubkey);
+      const memberAvatar = normalizeAvatarUrl(profileData && profileData.avatar);
+      const hasMemberAvatar = !!memberAvatar;
       return `
         <button class="sc-member-row" data-member="${esc(member.pubkey)}">
-          <span class="sc-avatar${hasMemberAvatar ? ' has-image' : ''}"${hasMemberAvatar ? ` style="background-image:url('${esc(memberAvatar)}')"` : ''}>${hasMemberAvatar ? '' : esc(initials(profileData.displayName || profileData.name))}</span>
+          <span class="sc-avatar${hasMemberAvatar ? ' has-image' : ''}"${hasMemberAvatar ? ` style="background-image:url('${esc(memberAvatar)}')"` : ''}>${hasMemberAvatar ? '' : esc(initials(memberName))}</span>
           <span class="sc-member-main">
-            <strong>${esc(profileData.displayName || profileData.name)}</strong>
+            <strong>${esc(memberName)}</strong>
             <small>${esc((member.roles || ['guest']).join(', '))}${member.muted ? ' | muted' : ''}${timedOut ? ' | timeout' : ''}${member.banned ? ' | banned' : ''}</small>
           </span>
         </button>
@@ -507,9 +557,10 @@ export function createCommunitiesUI(input) {
     }).join('');
 
     const messageHtml = messages.map((message) => {
-      const author = profiles[message.authorPubkey] || store.profile(message.authorPubkey);
-      const authorAvatar = String((author && author.avatar) || '').trim();
-      const hasAuthorAvatar = /^https?:\/\//i.test(authorAvatar);
+      const author = resolveProfileRecord(profiles, message.authorPubkey, store);
+      const authorName = displayNameForProfile(author, message.authorPubkey);
+      const authorAvatar = normalizeAvatarUrl(author && author.avatar);
+      const hasAuthorAvatar = !!authorAvatar;
       const reactions = Object.entries(message.reactions || {}).map(([key, who]) => {
         const active = (who || []).includes(state.currentUserPubkey);
         return `<button class="sc-react-chip${active ? ' active' : ''}" data-react-key="${esc(key)}" data-message="${esc(message.id)}">${esc(key)} ${Number((who || []).length)}</button>`;
@@ -524,11 +575,11 @@ export function createCommunitiesUI(input) {
 
       return `
         <article class="sc-message" data-message-id="${esc(message.id)}">
-          <button class="sc-avatar${hasAuthorAvatar ? ' has-image' : ''}" data-member="${esc(message.authorPubkey)}"${hasAuthorAvatar ? ` style="background-image:url('${esc(authorAvatar)}')"` : ''}>${hasAuthorAvatar ? '' : esc(initials(author.displayName || author.name))}</button>
+          <button class="sc-avatar${hasAuthorAvatar ? ' has-image' : ''}" data-member="${esc(message.authorPubkey)}"${hasAuthorAvatar ? ` style="background-image:url('${esc(authorAvatar)}')"` : ''}>${hasAuthorAvatar ? '' : esc(initials(authorName))}</button>
           <div class="sc-message-main">
             <header class="sc-message-head">
               <div class="sc-message-head-meta">
-                <button class="sc-author" data-member="${esc(message.authorPubkey)}">${esc(author.displayName || author.name)}</button>
+                <button class="sc-author" data-member="${esc(message.authorPubkey)}">${esc(authorName)}</button>
                 <time>${esc(fmtTime(message.createdAt))}</time>
                 ${(author.nip05 && author.verifiedNip05) ? `<span class="sc-nip05">${esc(author.nip05)}</span>` : ''}
               </div>
@@ -660,18 +711,19 @@ export function createCommunitiesUI(input) {
     }
   }
 function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
-    const profile = profiles[pubkey] || storeRef.profile(pubkey);
+    const profile = resolveProfileRecord(profiles, pubkey, storeRef);
     const member = (members || []).find((entry) => entry.pubkey === pubkey) || { roles: ['guest'] };
-    const avatar = String((profile && profile.avatar) || '').trim();
-    const hasAvatar = /^https?:\/\//i.test(avatar);
+    const avatar = normalizeAvatarUrl(profile && profile.avatar);
+    const hasAvatar = !!avatar;
+    const name = displayNameForProfile(profile, pubkey);
 
     return `
       <div class="sc-popout" id="scProfilePopout">
         <button class="sc-popout-close" data-close="member">x</button>
         <div class="sc-pop-head">
-          <span class="sc-avatar big${hasAvatar ? ' has-image' : ''}"${hasAvatar ? ` style="background-image:url('${esc(avatar)}')"` : ''}>${hasAvatar ? '' : esc(initials(profile.displayName || profile.name))}</span>
+          <span class="sc-avatar big${hasAvatar ? ' has-image' : ''}"${hasAvatar ? ` style="background-image:url('${esc(avatar)}')"` : ''}>${hasAvatar ? '' : esc(initials(name))}</span>
           <div>
-            <h5>${esc(profile.displayName || profile.name)}</h5>
+            <h5>${esc(name)}</h5>
             <small>${esc(roleLabel(profile, member))}</small>
           </div>
         </div>
@@ -714,13 +766,14 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
 
     const results = keys
       .map((pubkey) => {
-        const profile = profiles[pubkey] || store.profile(pubkey);
+        const profile = resolveProfileRecord(profiles, pubkey, store);
         const npub = toNpub(pubkey);
-        const name = profile.displayName || profile.name || shortPubkey(pubkey, 12, 8);
+        const name = displayNameForProfile(profile, pubkey);
+        const avatar = normalizeAvatarUrl(profile && profile.avatar);
         const haystack = [
           name,
-          profile.name || '',
-          profile.displayName || '',
+          (profile && profile.name) || '',
+          (profile && profile.displayName) || '',
           npub,
           pubkey
         ].join(' ').toLowerCase();
@@ -728,7 +781,7 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
           pubkey,
           npub,
           name,
-          avatar: String(profile.avatar || '').trim(),
+          avatar,
           haystack
         };
       })
@@ -863,45 +916,88 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
     `;
   }
 function renderCommunitySettingsModal(community) {
+    const image = normalizeAvatarUrl(community.image || '');
+    const banner = normalizeAvatarUrl(community.banner || '');
     return `
       <div class="sc-modal-ov" data-close="modal">
-        <div class="sc-modal sc-modal-wide">
+        <div class="sc-modal sc-modal-wide sc-community-settings-modal">
           <h4>Community Settings</h4>
-          <p>Edit metadata, moderators/admins, posting policy, and discovery controls.</p>
-          <div class="sc-form-grid sc-form-grid-2">
-            <label>Name<input id="scSettingsName" value="${esc(community.title || '')}"></label>
-            <label>Join Mode
-              <select id="scSettingsJoinMode">
-                <option value="open" ${community.joinMode === 'open' ? 'selected' : ''}>Open</option>
-                <option value="approval" ${community.joinMode === 'approval' ? 'selected' : ''}>Approval</option>
-                <option value="invite_only" ${community.joinMode === 'invite_only' ? 'selected' : ''}>Invite only</option>
-              </select>
-            </label>
-            <label>Image URL<input id="scSettingsImage" value="${esc(community.image || '')}"></label>
-            <label>Banner URL<input id="scSettingsBanner" value="${esc(community.banner || '')}"></label>
-            <label>Moderators (comma pubkeys)
-              <input id="scSettingsModerators" value="${esc((community.moderatorPubkeys || []).join(', '))}">
-            </label>
-            <label>Admins (comma pubkeys)
-              <input id="scSettingsAdmins" value="${esc((community.adminPubkeys || []).join(', '))}">
-            </label>
-            <label>Posting Rules
-              <select id="scSettingsPostingPolicy">
-                <option value="members" ${community.postingPolicy === 'members' ? 'selected' : ''}>Members</option>
-                <option value="moderators" ${community.postingPolicy === 'moderators' ? 'selected' : ''}>Moderators</option>
-                <option value="admins" ${community.postingPolicy === 'admins' ? 'selected' : ''}>Admins</option>
-              </select>
-            </label>
-            <label class="full">Description<textarea id="scSettingsDescription">${esc(community.description || '')}</textarea></label>
-            <label class="full">Rules (one per line)<textarea id="scSettingsRules">${esc((community.rules || []).join('\n'))}</textarea></label>
-            <label class="full">Topics (comma)<input id="scSettingsTopics" value="${esc((community.topics || []).join(', '))}"></label>
-            <label class="full">Allowed Relays (comma)<input id="scSettingsRelays" value="${esc((community.allowedRelays || []).join(', '))}"></label>
-          </div>
-          <div class="sc-check-grid">
-            <label><input type="checkbox" id="scSettingsDiscoverable" ${community.discoverable ? 'checked' : ''}> Discoverable in public lists</label>
-          </div>
-          <h5>Permission Matrix</h5>
-          ${permissionsSummary()}
+          <p>Update identity, branding, moderation, and discovery settings.</p>
+
+          <section class="sc-create-section">
+            <h5>Basics</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label>Community name
+                <input id="scSettingsName" value="${esc(community.title || '')}" placeholder="Community name">
+              </label>
+              <label>How people join
+                <select id="scSettingsJoinMode">
+                  <option value="open" ${community.joinMode === 'open' ? 'selected' : ''}>Anyone can join</option>
+                  <option value="approval" ${community.joinMode === 'approval' ? 'selected' : ''}>Request + approval</option>
+                  <option value="invite_only" ${community.joinMode === 'invite_only' ? 'selected' : ''}>Invite only</option>
+                </select>
+              </label>
+              <label>Who can post
+                <select id="scSettingsPostingPolicy">
+                  <option value="members" ${community.postingPolicy === 'members' ? 'selected' : ''}>Members</option>
+                  <option value="moderators" ${community.postingPolicy === 'moderators' ? 'selected' : ''}>Moderators only</option>
+                  <option value="admins" ${community.postingPolicy === 'admins' ? 'selected' : ''}>Admins only</option>
+                </select>
+              </label>
+              <label class="sc-inline-check"><input type="checkbox" id="scSettingsDiscoverable" ${community.discoverable ? 'checked' : ''}> Show community in public discovery</label>
+              <label class="full">Description
+                <textarea id="scSettingsDescription" placeholder="What is this community about?">${esc(community.description || '')}</textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="sc-create-section">
+            <h5>Branding</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label>Image URL
+                <input id="scSettingsImage" value="${esc(image)}" placeholder="https://example.com/community-image.jpg">
+                <small>Square image recommended.</small>
+              </label>
+              <div id="scSettingsImagePreview" class="sc-url-preview">${renderCreateImagePreview(image, 'Community image')}</div>
+              <label>Banner URL
+                <input id="scSettingsBanner" value="${esc(banner)}" placeholder="https://example.com/community-banner.jpg">
+                <small>Wide image works best for banners.</small>
+              </label>
+              <div id="scSettingsBannerPreview" class="sc-url-preview">${renderCreateImagePreview(banner, 'Banner image', true)}</div>
+            </div>
+          </section>
+
+          <section class="sc-create-section">
+            <h5>Team</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label class="full">Moderators (comma separated npub or hex)
+                <input id="scSettingsModerators" value="${esc((community.moderatorPubkeys || []).join(', '))}" placeholder="npub1..., npub1...">
+              </label>
+              <label class="full">Admins (comma separated npub or hex)
+                <input id="scSettingsAdmins" value="${esc((community.adminPubkeys || []).join(', '))}" placeholder="npub1..., npub1...">
+              </label>
+            </div>
+          </section>
+
+          <section class="sc-create-section">
+            <h5>Rules and Relays</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label class="full">Community rules (one per line)
+                <textarea id="scSettingsRules" placeholder="Be respectful\nNo spam\nKeep discussion on-topic">${esc((community.rules || []).join('\n'))}</textarea>
+              </label>
+              <label>Topics (comma separated)
+                <input id="scSettingsTopics" value="${esc((community.topics || []).join(', '))}" placeholder="nostr, livestream, support">
+              </label>
+              <label>Allowed relays (comma separated)
+                <input id="scSettingsRelays" value="${esc((community.allowedRelays || []).join(', '))}" placeholder="wss://relay.example.com, wss://relay2.example.com">
+              </label>
+            </div>
+          </section>
+
+          <details class="sc-settings-advanced">
+            <summary>Advanced Permission Matrix</summary>
+            ${permissionsSummary()}
+          </details>
           <div class="sc-modal-foot">
             <button data-close="modal">Cancel</button>
             <button id="scSaveCommunitySettingsBtn">Save Settings</button>
@@ -979,7 +1075,7 @@ function renderCommunitySettingsModal(community) {
     const cards = visible.map((entry) => {
       const members = resolveMemberCount(state, entry);
       const joined = joinedCommunityIds.has(entry.id);
-      const media = String(entry.banner || entry.image || '').trim();
+      const media = normalizeAvatarUrl(entry.banner || entry.image || '');
       const mediaHtml = media
         ? `<span class="sc-community-card-banner has-image"><img src="${esc(media)}" alt="${esc(entry.title)} banner" loading="lazy" referrerpolicy="no-referrer"></span>`
         : `<span class="sc-community-card-banner">${esc(entry.icon || initials(entry.title))}</span>`;
@@ -1030,6 +1126,11 @@ function renderCommunitySettingsModal(community) {
     }
 
     if (key === 'channelSettings' && channel) {
+      const categoryOptions = uniqueValues(
+        (storeRef.getChannels(channel.communityId) || [])
+          .map((entry) => String(entry.category || 'Channels').trim() || 'Channels')
+      )
+        .sort((a, b) => String(a).localeCompare(String(b)));
       return `
         <div class="sc-modal-ov" data-close="modal">
           <div class="sc-modal">
@@ -1037,7 +1138,12 @@ function renderCommunitySettingsModal(community) {
             <p>#${esc(channel.name)}</p>
             <div class="sc-form-grid">
               <label>Name<input id="scChannelName" value="${esc(channel.name)}"></label>
-              <label>Category<input id="scChannelCategory" value="${esc(channel.category || 'Channels')}"></label>
+              <label>Category
+                <input id="scChannelCategory" list="scChannelCategoryList" value="${esc(channel.category || 'Channels')}">
+                <small>Edit channel grouping. Choose existing or type a new category.</small>
+              </label>
+              <datalist id="scChannelCategoryList">${categoryOptions.map((item) => `<option value="${esc(item)}"></option>`).join('')}</datalist>
+              <label class="sc-inline-check full"><input id="scChannelRenameCategoryAll" type="checkbox">Rename this category for all channels in this community</label>
               <label>Topic<textarea id="scChannelTopic">${esc(channel.topic || '')}</textarea></label>
               <label>Privacy
                 <select id="scChannelPrivacy">
@@ -1102,13 +1208,13 @@ function renderCommunitySettingsModal(community) {
 
     if (key === 'roleEditor' && community) {
       const member = members.find((entry) => entry.pubkey === ui.roleEditorMember);
-      const profileData = profiles[ui.roleEditorMember] || storeRef.profile(ui.roleEditorMember);
+      const profileData = resolveProfileRecord(profiles, ui.roleEditorMember, storeRef);
       const roleOptions = ['owner', 'admin', 'moderator', 'member', 'guest'];
       return `
         <div class="sc-modal-ov" data-close="modal">
           <div class="sc-modal">
             <h4>Role Editor</h4>
-            <p>${esc((profileData && (profileData.displayName || profileData.name)) || 'Member')}</p>
+            <p>${esc(displayNameForProfile(profileData, ui.roleEditorMember))}</p>
             <div class="sc-role-picker">
               ${roleOptions.map((role) => `<button class="sc-role-btn${member && member.roles.includes(role) ? ' active' : ''}" data-role="${esc(role)}">${esc(role)}</button>`).join('')}
             </div>
@@ -1895,6 +2001,18 @@ function renderCommunitySettingsModal(community) {
     }
 
     const saveSettingsBtn = root.querySelector('#scSaveCommunitySettingsBtn');
+    const settingsImageInput = root.querySelector('#scSettingsImage');
+    if (settingsImageInput) {
+      settingsImageInput.addEventListener('input', () => {
+        updateCreateImagePreview('#scSettingsImagePreview', settingsImageInput.value || '', 'Community image');
+      });
+    }
+    const settingsBannerInput = root.querySelector('#scSettingsBanner');
+    if (settingsBannerInput) {
+      settingsBannerInput.addEventListener('input', () => {
+        updateCreateImagePreview('#scSettingsBannerPreview', settingsBannerInput.value || '', 'Banner image', true);
+      });
+    }
     if (saveSettingsBtn) {
       saveSettingsBtn.addEventListener('click', async () => {
         const state = store.getState();
@@ -2005,6 +2123,8 @@ function renderCommunitySettingsModal(community) {
       saveChannelBtn.addEventListener('click', async () => {
         const channel = store.getChannel();
         if (!channel) return;
+        const previousCategory = String(channel.category || 'Channels').trim() || 'Channels';
+        const renameCategoryAll = !!((root.querySelector('#scChannelRenameCategoryAll') || {}).checked);
 
         const patch = {
           name: (root.querySelector('#scChannelName') || {}).value || channel.name,
@@ -2021,24 +2141,48 @@ function renderCommunitySettingsModal(community) {
           return;
         }
 
+        const nextCategory = String((patch && patch.category) || updated.channel.category || 'Channels').trim() || 'Channels';
+        let categoryRenameResult = null;
+        if (renameCategoryAll && previousCategory.toLowerCase() !== nextCategory.toLowerCase() && typeof store.renameChannelCategory === 'function') {
+          categoryRenameResult = store.renameChannelCategory(updated.channel.communityId, previousCategory, nextCategory);
+        }
+
         if (nostrBridge) {
           try {
-            await nostrBridge.publishChannelCreate({
-              communityId: updated.channel.communityId,
-              channelId: updated.channel.id,
-              name: updated.channel.name,
-              category: updated.channel.category,
-              topic: updated.channel.topic,
-              channelType: updated.channel.channelType,
-              privacyLevel: updated.channel.privacyLevel,
-              slowModeSec: updated.channel.slowModeSec
-            });
+            const publishQueue = [];
+            const seen = new Set();
+            const pushChannel = (entry) => {
+              if (!entry || !entry.id || seen.has(entry.id)) return;
+              seen.add(entry.id);
+              publishQueue.push(entry);
+            };
+            pushChannel(updated.channel);
+            if (categoryRenameResult && categoryRenameResult.ok && Array.isArray(categoryRenameResult.channels)) {
+              categoryRenameResult.channels.forEach(pushChannel);
+            }
+            for (let i = 0; i < publishQueue.length; i += 1) {
+              const entry = publishQueue[i];
+              await nostrBridge.publishChannelCreate({
+                communityId: entry.communityId,
+                channelId: entry.id,
+                name: entry.name,
+                category: entry.category,
+                topic: entry.topic,
+                channelType: entry.channelType,
+                privacyLevel: entry.privacyLevel,
+                slowModeSec: entry.slowModeSec
+              });
+            }
           } catch (_) {}
         }
 
         ui.openModal = '';
         render();
-        setStatus('Channel updated.');
+        if (categoryRenameResult && categoryRenameResult.ok && Number(categoryRenameResult.count || 0) > 1) {
+          setStatus(`Channel updated. Category renamed for ${categoryRenameResult.count} channels.`);
+        } else {
+          setStatus('Channel updated.');
+        }
       });
     }
 
@@ -2106,6 +2250,7 @@ function renderCommunitySettingsModal(community) {
     setSession
   };
 }
+
 
 
 

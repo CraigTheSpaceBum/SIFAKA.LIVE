@@ -743,6 +743,36 @@ export function createCommunityStore(options = {}) {
     return { ok: true, channel };
   }
 
+  function renameChannelCategory(communityId, fromCategory, toCategory) {
+    const id = String(communityId || '').trim();
+    const community = getCommunity(id);
+    if (!community) return { ok: false, reason: 'missing_community' };
+    if (!can('manage_channels', null, community)) return { ok: false, reason: 'permission_denied' };
+
+    const from = String(fromCategory || '').trim() || 'Channels';
+    const to = String(toCategory || '').trim() || from;
+    const fromLower = from.toLowerCase();
+    const list = state.data.channelsByCommunity[id] || [];
+    const changed = [];
+
+    list.forEach((channel) => {
+      const current = String(channel.category || 'Channels').trim() || 'Channels';
+      if (current.toLowerCase() !== fromLower) return;
+      channel.category = to;
+      changed.push(channel);
+    });
+
+    if (!changed.length) return { ok: false, reason: 'no_matching_channels' };
+    emitter.emit({
+      type: 'channel_category_renamed',
+      communityId: id,
+      fromCategory: from,
+      toCategory: to,
+      count: changed.length
+    });
+    return { ok: true, count: changed.length, channels: changed.slice() };
+  }
+
   function createCommunity(payload = {}) {
     if (!state.currentUserPubkey) return { ok: false, reason: 'auth_required' };
 
@@ -1295,6 +1325,7 @@ export function createCommunityStore(options = {}) {
     updateCommunity,
     createChannel,
     updateChannel,
+    renameChannelCategory,
     ingestProfile,
     ingestCommunity,
     ingestChannel,

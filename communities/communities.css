@@ -755,6 +755,18 @@
   font-size: .68rem;
 }
 
+.sc-form-grid label.sc-inline-check {
+  flex-direction: row;
+  align-items: center;
+  gap: .45rem;
+  font-size: .72rem;
+}
+
+.sc-form-grid label.sc-inline-check input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
 .sc-form-grid input,
 .sc-form-grid textarea,
 .sc-form-grid select,
@@ -1168,6 +1180,36 @@
 
 .sc-modal.sc-modal-wide {
   width: min(900px, 96vw);
+}
+
+.sc-modal.sc-community-settings-modal {
+  width: min(1120px, 97vw);
+  max-height: calc(100vh - 68px);
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+.sc-settings-advanced {
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  background: rgba(255,255,255,.02);
+  padding: .45rem .58rem;
+}
+
+.sc-settings-advanced summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.sc-settings-advanced[open] summary {
+  margin-bottom: .45rem;
+}
+
+.sc-community-settings-modal .sc-table-wrap {
+  max-height: 280px;
 }
 
 .sc-form-grid.sc-form-grid-2 {
@@ -1765,11 +1807,11 @@
 }
 
 #communitiesPage .sc-main-head {
-  padding: .84rem 1rem;
+  padding: .62rem 1rem .58rem;
   backdrop-filter: blur(8px);
-  position: sticky;
-  top: 56px;
-  z-index: 41;
+  position: relative;
+  top: 0;
+  z-index: 2;
   background: linear-gradient(180deg, rgba(49,51,56,.95), rgba(49,51,56,.88));
 }
 
@@ -1911,7 +1953,7 @@
 }
 
 #communitiesPage .sc-feed {
-  padding: .76rem .96rem 1.18rem;
+  padding: .52rem .96rem 1.18rem;
   gap: .32rem;
   background:
     linear-gradient(180deg, rgba(255,255,255,.01) 0%, rgba(255,255,255,0) 16%),
@@ -2305,6 +2347,15 @@
   border-color: rgba(255,255,255,.13);
 }
 
+#communitiesPage .sc-settings-advanced {
+  border-color: rgba(255,255,255,.14);
+  background: rgba(255,255,255,.03);
+}
+
+#communitiesPage .sc-settings-advanced summary {
+  color: var(--sc-text-main);
+}
+
 #communitiesPage .sc-check-grid label,
 #communitiesPage .sc-role-btn,
 #communitiesPage .sc-create-owner small {
@@ -2378,7 +2429,7 @@
   }
 
   #communitiesPage .sc-main-head {
-    top: 56px;
+    top: 0;
   }
 
   #communitiesPage .sc-wrap-empty {
