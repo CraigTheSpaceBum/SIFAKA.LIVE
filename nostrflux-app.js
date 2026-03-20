@@ -55,6 +55,7 @@
   const NIP05_UNVERIFIED_CACHE_TTL_MS = 1000 * 60 * 2;
   const NIP05_LIVE_UI_MAX_AGE_MS = 1000 * 60 * 5;
   const BLOSSOM_UPLOAD_ENDPOINTS = [
+    'https://blossom.nostr.build/upload',
     'https://blossom.primal.net/upload'
   ];
   const BLOSSOM_MEDIA_ACCEPT = 'image/*,video/*,audio/*';
@@ -65,6 +66,8 @@
     'mp4', 'webm', 'mov', 'm4v', 'mkv',
     'mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac'
   ]);
+  const GIF_PICKER_LIMIT = 24;
+  const GIF_PICKER_SEARCH_DEBOUNCE_MS = 260;
   const LIVE_STREAMS_CACHE_STORAGE_KEY = 'nostrflux_live_streams_cache_v1';
   const LIVE_STREAMS_CACHE_TTL_MS = 1000 * 60 * 2;
   const LIVE_STREAMS_CACHE_MAX_ITEMS = 160;
@@ -109,6 +112,7 @@
     profileNotesByPubkey: new Map(),
     profileStatsByPubkey: new Map(),
     liveSubId: null,
+    liveGridRenderTimer: null,
     profileSubId: null,
     chatSubId: null,
     profileFeedSubId: null,
@@ -219,6 +223,13 @@
     composeUploadSource: 'blossom',
     composeUploadPending: false,
     composeUploadTarget: 'profile',
+    gifPickerTarget: 'profile',
+    gifPickerPending: false,
+    gifPickerQuery: '',
+    gifPickerCursor: '',
+    gifPickerResults: [],
+    gifPickerRequestId: 0,
+    gifPickerSearchTimer: null,
     nip96DiscoveryByHost: new Map(),
     activeViewerAddress: '',
     activeHeroViewerAddress: '',
@@ -1674,6 +1685,7 @@
 
   function rebuildRelayPool() {
     state.oneShotQueryInflightByKey = new Map();
+    stopLiveSubscription();
     if (state.pool) {
       try {
         state.pool.destroy();
@@ -1684,7 +1696,7 @@
 
     state.pool = new RelayPool(state.relays, () => updateRelayBar());
     updateRelayBar();
-    subscribeLive();
+    if (isHomeViewActive()) ensureHomeLiveSubscription();
 
     if (state.selectedStreamAddress) {
       const current = state.streamsByAddress.get(state.selectedStreamAddress);
@@ -2135,10 +2147,152 @@
     return 'note';
   }
 
-  function appendTextToActiveComposeTarget(textToAppend) {
-    if (state.composeUploadTarget === 'dm') return appendTextToDmCompose(textToAppend);
-    if (state.composeUploadTarget === 'chat') return appendTextToChatCompose(textToAppend);
+  function appendTextToComposeTarget(target, textToAppend) {
+    const clean = String(target || '').trim().toLowerCase();
+    if (clean === 'dm') return appendTextToDmCompose(textToAppend);
+    if (clean === 'chat') return appendTextToChatCompose(textToAppend);
     return appendTextToProfileCompose(textToAppend);
+  }
+
+  function appendTextToActiveComposeTarget(textToAppend) {
+    return appendTextToComposeTarget(state.composeUploadTarget, textToAppend);
+  }
+
+  function getGifProvider() {
+    const provider = (typeof window !== 'undefined') ? window.SifakaGifProvider : null;
+    if (!provider || typeof provider.search !== 'function' || typeof provider.trending !== 'function') return null;
+    return provider;
+  }
+
+  function setGifPickerStatus(message, mode = 'info') {
+    const statusEl = qs('#gifPickerStatus');
+    if (!statusEl) return;
+    statusEl.textContent = String(message || '').trim();
+    statusEl.dataset.mode = mode;
+    const palette = {
+      info: 'var(--text2)',
+      success: 'var(--green)',
+      error: 'var(--live)'
+    };
+    statusEl.style.color = palette[mode] || palette.info;
+  }
+
+  function setGifPickerLoading(isLoading) {
+    state.gifPickerPending = !!isLoading;
+    const searchInput = qs('#gifPickerSearchInput');
+    const searchBtn = qs('#gifPickerSearchBtn');
+    const loadMoreBtn = qs('#gifPickerLoadMoreBtn');
+    if (searchInput) searchInput.disabled = !!isLoading;
+    if (searchBtn) searchBtn.disabled = !!isLoading;
+    if (loadMoreBtn) loadMoreBtn.disabled = !!isLoading;
+  }
+
+  function renderGifPickerResults(items = []) {
+    const grid = qs('#gifPickerResults');
+    if (!grid) return;
+    grid.innerHTML = '';
+    if (!Array.isArray(items) || !items.length) {
+      grid.innerHTML = '<div class="gif-picker-empty">No GIFs found. Try another search.</div>';
+      return;
+    }
+
+    items.forEach((item) => {
+      const url = sanitizeMediaUrl(item && item.url);
+      const previewUrl = sanitizeMediaUrl((item && item.previewUrl) || url);
+      if (!isLikelyUrl(url) || !isLikelyUrl(previewUrl)) return;
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'gif-picker-item';
+      btn.title = String(item && item.title || 'GIF');
+      btn.dataset.gifUrl = url;
+
+      const img = document.createElement('img');
+      img.src = previewUrl;
+      img.alt = String(item && item.title || 'GIF');
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.referrerPolicy = 'no-referrer';
+      btn.appendChild(img);
+
+      btn.addEventListener('click', () => {
+        if (typeof window.selectGifFromPicker === 'function') {
+          window.selectGifFromPicker(url);
+        }
+      });
+      grid.appendChild(btn);
+    });
+
+    if (!grid.children.length) {
+      grid.innerHTML = '<div class="gif-picker-empty">No compatible GIF URLs were returned by the provider.</div>';
+    }
+  }
+
+  function updateGifPickerLoadMoreUi() {
+    const loadMoreBtn = qs('#gifPickerLoadMoreBtn');
+    if (!loadMoreBtn) return;
+    loadMoreBtn.style.display = state.gifPickerCursor ? 'inline-flex' : 'none';
+  }
+
+  function clearGifPickerSearchTimer() {
+    if (!state.gifPickerSearchTimer) return;
+    clearTimeout(state.gifPickerSearchTimer);
+    state.gifPickerSearchTimer = null;
+  }
+
+  async function fetchGifPickerResults(opts = {}) {
+    const provider = getGifProvider();
+    if (!provider) {
+      setGifPickerStatus('GIF provider is not loaded. Check scripts/gif-provider.js.', 'error');
+      renderGifPickerResults([]);
+      updateGifPickerLoadMoreUi();
+      return;
+    }
+    if (state.gifPickerPending) return;
+
+    const append = !!opts.append;
+    const query = String(opts.query != null ? opts.query : state.gifPickerQuery || '').trim();
+    const requestId = state.gifPickerRequestId + 1;
+    state.gifPickerRequestId = requestId;
+
+    setGifPickerLoading(true);
+    setGifPickerStatus(query ? `Searching GIFs for "${query}"...` : 'Loading trending GIFs...', 'info');
+    try {
+      const cursor = append ? state.gifPickerCursor : '';
+      const response = query
+        ? await provider.search({ query, limit: GIF_PICKER_LIMIT, cursor })
+        : await provider.trending({ limit: GIF_PICKER_LIMIT, cursor });
+
+      if (requestId !== state.gifPickerRequestId) return;
+
+      const incoming = Array.isArray(response && response.items) ? response.items : [];
+      state.gifPickerQuery = query;
+      state.gifPickerCursor = String((response && response.cursor) || '').trim();
+      state.gifPickerResults = append
+        ? [...state.gifPickerResults, ...incoming]
+        : incoming.slice();
+
+      renderGifPickerResults(state.gifPickerResults);
+      updateGifPickerLoadMoreUi();
+      setGifPickerStatus(
+        state.gifPickerResults.length
+          ? `${state.gifPickerResults.length} GIF${state.gifPickerResults.length === 1 ? '' : 's'} loaded`
+          : 'No GIFs found for that search.',
+        state.gifPickerResults.length ? 'success' : 'info'
+      );
+    } catch (err) {
+      if (requestId !== state.gifPickerRequestId) return;
+      const message = (err && err.message) ? err.message : 'Failed to load GIFs.';
+      state.gifPickerCursor = '';
+      if (!append) state.gifPickerResults = [];
+      renderGifPickerResults(state.gifPickerResults);
+      updateGifPickerLoadMoreUi();
+      setGifPickerStatus(message, 'error');
+    } finally {
+      if (requestId === state.gifPickerRequestId) {
+        setGifPickerLoading(false);
+      }
+    }
   }
 
   function buildBlossomUploadTargets() {
@@ -2150,11 +2304,11 @@
       seen.add(clean);
       out.push(clean);
     };
+    BLOSSOM_UPLOAD_ENDPOINTS.forEach(push);
     const fromSettings = Array.isArray(state.settings && state.settings.blossomUploadEndpoints)
       ? state.settings.blossomUploadEndpoints
       : [];
     fromSettings.forEach(push);
-    BLOSSOM_UPLOAD_ENDPOINTS.forEach(push);
     return out;
   }
 
@@ -2305,7 +2459,7 @@
 
     const rawMessage = lastError && lastError.message ? String(lastError.message) : 'Upload failed.';
     if (/network error|failed to fetch|cors/i.test(rawMessage)) {
-      throw new Error('Blossom upload endpoint is temporarily unavailable. Please try again.');
+      throw new Error('Blossom upload endpoint is temporarily unavailable. Please use nostr.build Blossom API.');
     }
     throw new Error(rawMessage);
   }
@@ -5583,8 +5737,7 @@
         || isVideoPageVisible();
 
       if (status === 'ended' && !isOwnStream && isWatchingSelected) {
-        setActiveViewerAddress('');
-        if (window.showPage) window.showPage('home');
+        renderVideo(selected);
       } else if (isWatchingSelected) {
         renderVideo(selected);
       }
@@ -6658,11 +6811,22 @@
     }
   }
 
+  function syncTheaterVideoFit(video, playerBg = null) {
+    if (!video) return;
+    const host = playerBg || qs('.player-bg');
+    const width = Number(video.videoWidth || 0);
+    const height = Number(video.videoHeight || 0);
+    const isPortraitSource = width > 0 && height > 0 && (height / Math.max(width, 1)) > 1.05;
+    video.style.objectFit = isPortraitSource ? 'contain' : 'cover';
+    if (host && host.classList) host.classList.toggle('player-bg-portrait-source', isPortraitSource);
+  }
+
   function renderPlaybackFallback(message, url) {
     const playerBg = qs('.player-bg');
     const playerUi = qs('.player-ui');
     if (!playerBg) return;
 
+    playerBg.classList.remove('player-bg-portrait-source');
     if (playerUi) playerUi.style.display = '';
     playerBg.innerHTML = '';
 
@@ -6786,6 +6950,7 @@
     const playerBg = qs('.player-bg');
     const playerUi = qs('.player-ui');
     if (!playerBg) return;
+    playerBg.classList.remove('player-bg-portrait-source');
     if (normalizeStreamStatus(stream.status) === 'ended') {
       const endedSummary = String(stream.summary || '').trim();
       const message = endedSummary ? `Stream ended. ${endedSummary}` : 'Stream ended.';
@@ -6796,6 +6961,7 @@
     const url = sanitizeMediaUrl((stream.streaming || '').trim());
     if (!url) {
       if (playerUi) playerUi.style.display = '';
+      playerBg.classList.remove('player-bg-portrait-source');
       playerBg.textContent = 'LIVE';
       return;
     }
@@ -6813,9 +6979,13 @@
     video.playsInline = true;
     video.preload = 'metadata';
     video.style.cssText = 'width:100%;height:100%;object-fit:cover;background:#000;';
+    const syncFit = () => syncTheaterVideoFit(video, playerBg);
+    video.addEventListener('loadedmetadata', syncFit);
+    video.addEventListener('resize', syncFit);
 
     playerBg.innerHTML = '';
     playerBg.appendChild(video);
+    syncFit();
     if (playerUi) playerUi.style.display = 'none';
 
     const isStale = () => token !== state.playbackToken;
@@ -8946,13 +9116,41 @@
     }).catch(() => {});
   }
 
-  function subscribeLive() {
-    if (state.liveSubId) state.pool.unsubscribe(state.liveSubId);
+  function clearLiveGridRenderTimer() {
+    if (!state.liveGridRenderTimer) return;
+    clearTimeout(state.liveGridRenderTimer);
+    state.liveGridRenderTimer = null;
+  }
 
-    let liveGridTimer = null;
+  function stopLiveSubscription() {
+    clearLiveGridRenderTimer();
+    if (!state.liveSubId || !state.pool) {
+      state.liveSubId = null;
+      return;
+    }
+    try {
+      state.pool.unsubscribe(state.liveSubId);
+    } catch (_) {}
+    state.liveSubId = null;
+  }
+
+  function ensureHomeLiveSubscription() {
+    if (!state.pool) return;
+    if (state.liveSubId) return;
+    subscribeLive();
+  }
+
+  function subscribeLive() {
+    stopLiveSubscription();
+    if (!state.pool) return;
+
     const debouncedRenderGrid = () => {
-      clearTimeout(liveGridTimer);
-      liveGridTimer = setTimeout(renderLiveGrid, 300);
+      clearLiveGridRenderTimer();
+      state.liveGridRenderTimer = setTimeout(() => {
+        state.liveGridRenderTimer = null;
+        if (!isHomeViewActive()) return;
+        renderLiveGrid();
+      }, 300);
     };
 
     state.liveSubId = state.pool.subscribe(
@@ -8964,19 +9162,19 @@
           if (state.pendingRouteAddress && stream.address === state.pendingRouteAddress) {
             tryOpenPendingRouteStream();
           }
-          debouncedRenderGrid();
+          if (isHomeViewActive()) debouncedRenderGrid();
         },
         eose: () => {
-          renderLiveGrid();
+          if (isHomeViewActive()) renderLiveGrid();
           persistLiveStreamsCache();
           tryOpenPendingRouteStream();
-          if (shouldRunHeroCycle() && !state.featuredCycleTimer) startHeroCycle();
+          if (isHomeViewActive() && shouldRunHeroCycle() && !state.featuredCycleTimer) startHeroCycle();
           const streams = sortedLiveStreams();
           // Fetch profiles for both the event publisher AND actual streamer
           const pubSet = new Set();
           streams.forEach((s) => { pubSet.add(s.pubkey); if (s.hostPubkey) pubSet.add(s.hostPubkey); });
           subscribeProfiles(Array.from(pubSet));
-          if (state.selectedProfilePubkey) renderProfilePage(state.selectedProfilePubkey);
+          if (isHomeViewActive() && state.selectedProfilePubkey) renderProfilePage(state.selectedProfilePubkey);
         }
       }
     );
@@ -11962,12 +12160,14 @@
       // - home keeps hero playback and cycling
       // - all other top-level pages fully stop hero playback
       if (p === 'home') {
+        ensureHomeLiveSubscription();
         stopAllAudio('hero');
         stopHeroCycle(); // clear any stale timer first
         const streams = heroFeaturedStreams();
         if (streams.length) startHeroCycle();
         renderLiveGrid();
       } else {
+        stopLiveSubscription();
         stopHeroCycle();
         stopAllAudio(null);
       }
@@ -12003,6 +12203,7 @@
       if (messages) messages.style.display = 'none';
       if (faq) faq.style.display = 'none';
       teardownDmSubscription();
+      stopLiveSubscription();
       // Kill the hero cycle timer completely ? prevents it firing and starting audio behind theater
       stopHeroCycle();
       stopAllAudio('theater');
@@ -12028,6 +12229,7 @@
       if (messages) messages.style.display = 'none';
       if (faq) faq.style.display = 'none';
       teardownDmSubscription();
+      stopLiveSubscription();
       // Kill the hero cycle timer completely ? prevents audio starting behind profile
       stopHeroCycle();
       stopAllAudio('profile');
@@ -13097,14 +13299,93 @@
       // Kept for backward-compatible inline handlers. Counter UI was removed.
     };
 
+    function normalizeComposeTarget(target) {
+      const clean = String(target || '').trim().toLowerCase();
+      if (clean === 'dm') return 'dm';
+      if (clean === 'chat') return 'chat';
+      return 'profile';
+    }
+
+    window.openGifPicker = function (target = 'profile') {
+      if (!state.user) { window.openLogin(); return; }
+      const ov = qs('#gifPickerModal');
+      if (!ov) return;
+
+      state.gifPickerTarget = normalizeComposeTarget(target);
+      ov.classList.add('open');
+
+      const input = qs('#gifPickerSearchInput');
+      if (input) {
+        input.value = state.gifPickerQuery || '';
+        try { input.focus(); } catch (_) {}
+      }
+
+      if (input && !input.dataset.boundGifSearch) {
+        input.dataset.boundGifSearch = '1';
+        input.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          if (typeof window.searchGifsFromPicker === 'function') window.searchGifsFromPicker();
+        });
+        input.addEventListener('input', () => {
+          clearGifPickerSearchTimer();
+          state.gifPickerSearchTimer = setTimeout(() => {
+            state.gifPickerSearchTimer = null;
+            if (typeof window.searchGifsFromPicker === 'function') window.searchGifsFromPicker();
+          }, GIF_PICKER_SEARCH_DEBOUNCE_MS);
+        });
+      }
+
+      if (state.gifPickerResults.length) {
+        renderGifPickerResults(state.gifPickerResults);
+        updateGifPickerLoadMoreUi();
+        setGifPickerStatus('Pick a GIF to insert into your note.', 'info');
+      } else {
+        fetchGifPickerResults({ query: '', append: false }).catch(() => {});
+      }
+    };
+
+    window.closeGifPicker = function (e) {
+      const ov = qs('#gifPickerModal');
+      if (!ov) return;
+      if (e && e.target !== ov) return;
+      ov.classList.remove('open');
+      clearGifPickerSearchTimer();
+    };
+
+    window.searchGifsFromPicker = function () {
+      const input = qs('#gifPickerSearchInput');
+      const query = String(input && input.value || '').trim();
+      fetchGifPickerResults({ query, append: false }).catch(() => {});
+    };
+
+    window.loadMoreGifsFromPicker = function () {
+      if (!state.gifPickerCursor || state.gifPickerPending) return;
+      fetchGifPickerResults({ query: state.gifPickerQuery || '', append: true }).catch(() => {});
+    };
+
+    window.selectGifFromPicker = function (gifUrl) {
+      const url = sanitizeMediaUrl(gifUrl);
+      if (!isLikelyUrl(url)) {
+        setGifPickerStatus('That GIF URL is invalid.', 'error');
+        return;
+      }
+      const target = normalizeComposeTarget(state.gifPickerTarget || 'profile');
+      const inserted = appendTextToComposeTarget(target, url);
+      if (!inserted) {
+        setGifPickerStatus('Could not insert GIF into the current composer.', 'error');
+        return;
+      }
+      const targetLabel = composeTargetLabel(target);
+      setGifPickerStatus(`GIF inserted into your ${targetLabel}.`, 'success');
+      window.closeGifPicker();
+    };
+
     window.openComposeUploadModal = function (target = 'profile') {
       if (!state.user) { window.openLogin(); return; }
       const ov = qs('#composeUploadModal');
       if (!ov) return;
-      const cleanTarget = String(target || '').trim().toLowerCase();
-      if (cleanTarget === 'dm') state.composeUploadTarget = 'dm';
-      else if (cleanTarget === 'chat') state.composeUploadTarget = 'chat';
-      else state.composeUploadTarget = 'profile';
+      state.composeUploadTarget = normalizeComposeTarget(target);
 
       state.composeUploadSource = 'blossom';
       const targetLabel = composeTargetLabel(state.composeUploadTarget);
@@ -13526,6 +13807,16 @@
       state.composeUploadSource = 'blossom';
       state.composeUploadPending = false;
       state.composeUploadTarget = 'profile';
+      state.gifPickerTarget = 'profile';
+      state.gifPickerPending = false;
+      state.gifPickerQuery = '';
+      state.gifPickerCursor = '';
+      state.gifPickerResults = [];
+      state.gifPickerRequestId = 0;
+      if (state.gifPickerSearchTimer) {
+        clearTimeout(state.gifPickerSearchTimer);
+        state.gifPickerSearchTimer = null;
+      }
       state.nip96DiscoveryByHost = new Map();
       state.goLiveSelectedAddress = '';
       state.goLiveHiddenEndedAddresses = new Set();
@@ -13545,7 +13836,7 @@
         state.liveStreamCachePersistTimer = null;
       }
       window.closeAllDD();
-      ['goLiveModal','endModal','loginModal','settingsModal','faqModal','shareModal','reactionPickerModal','composeUploadModal'].forEach((id) => {
+      ['goLiveModal','endModal','loginModal','settingsModal','faqModal','shareModal','reactionPickerModal','composeUploadModal','gifPickerModal'].forEach((id) => {
         const el = qs('#' + id); if (el) el.classList.remove('open');
       });
       setUserUi();
@@ -13666,6 +13957,8 @@
     initEmojiPicker();
     wireEvents();
     document.addEventListener('visibilitychange', () => {
+      if (isHomeViewActive()) ensureHomeLiveSubscription();
+      else stopLiveSubscription();
       if (shouldRunHeroCycle()) {
         if (!state.featuredCycleTimer) startHeroCycle();
       } else {

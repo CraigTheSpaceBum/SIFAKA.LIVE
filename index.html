@@ -568,6 +568,25 @@
   </div>
 </div>
 
+<!-- ========= GIF PICKER ========= -->
+<div class="modal-ov" id="gifPickerModal" onclick="closeGifPicker(event)">
+  <div class="settings-modal share-modal gif-picker-modal">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeGifPicker()">x</button>
+    <div class="sm-hd"><div class="sm-title">Choose a GIF</div></div>
+    <div class="share-modal-body">
+      <div class="gif-picker-controls">
+        <input id="gifPickerSearchInput" class="gif-picker-search" type="text" placeholder="Search GIFs">
+        <button id="gifPickerSearchBtn" class="btn btn-ghost" type="button" onclick="searchGifsFromPicker()">Search</button>
+      </div>
+      <div class="gif-picker-status" id="gifPickerStatus" aria-live="polite"></div>
+      <div class="gif-picker-results" id="gifPickerResults"></div>
+      <div class="gif-picker-foot">
+        <button id="gifPickerLoadMoreBtn" class="btn btn-ghost" type="button" onclick="loadMoreGifsFromPicker()" style="display:none;">Load More</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ========= HOME PAGE ========= -->
 <div class="page active" id="homePage">
   <div class="hero-stream" id="heroStream">
@@ -1057,6 +1076,7 @@
                 <button type="button" onclick="applyNostrMarkup('profileComposeText','quote')">"</button>
                 <button type="button" onclick="applyNostrMarkup('profileComposeText','code')">&lt;/&gt;</button>
               </div>
+              <button class="profile-compose-gif-btn" id="profileComposeGifBtn" onclick="openGifPicker('profile')">GIF</button>
               <button class="profile-compose-upload-btn" id="profileComposeUploadBtn" onclick="openComposeUploadModal('profile')">Attach</button>
               <button class="profile-compose-btn" id="profileComposeBtn" onclick="publishProfileNote()">Post Note</button>
             </div>
@@ -1148,6 +1168,7 @@
 <script src="./scripts/communities-view.js"></script>
 <script src="./scripts/theater-view.js"></script>
 <script src="./scripts/profile-view.js"></script>
+<script src="./scripts/gif-provider.js"></script>
 <script type="module" src="./communities/boot.js"></script>
 <script src="./nostrflux-app.js"></script>
 </body>
