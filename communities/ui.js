@@ -493,9 +493,11 @@ export function createCommunitiesUI(input) {
     const memberHtml = members.map((member) => {
       const profileData = profiles[member.pubkey] || store.profile(member.pubkey);
       const timedOut = member.timeoutUntil && Number(member.timeoutUntil) > Date.now();
+      const memberAvatar = String((profileData && profileData.avatar) || '').trim();
+      const hasMemberAvatar = /^https?:\/\//i.test(memberAvatar);
       return `
         <button class="sc-member-row" data-member="${esc(member.pubkey)}">
-          <span class="sc-avatar">${esc(initials(profileData.displayName || profileData.name))}</span>
+          <span class="sc-avatar${hasMemberAvatar ? ' has-image' : ''}"${hasMemberAvatar ? ` style="background-image:url('${esc(memberAvatar)}')"` : ''}>${hasMemberAvatar ? '' : esc(initials(profileData.displayName || profileData.name))}</span>
           <span class="sc-member-main">
             <strong>${esc(profileData.displayName || profileData.name)}</strong>
             <small>${esc((member.roles || ['guest']).join(', '))}${member.muted ? ' | muted' : ''}${timedOut ? ' | timeout' : ''}${member.banned ? ' | banned' : ''}</small>
@@ -506,31 +508,36 @@ export function createCommunitiesUI(input) {
 
     const messageHtml = messages.map((message) => {
       const author = profiles[message.authorPubkey] || store.profile(message.authorPubkey);
+      const authorAvatar = String((author && author.avatar) || '').trim();
+      const hasAuthorAvatar = /^https?:\/\//i.test(authorAvatar);
       const reactions = Object.entries(message.reactions || {}).map(([key, who]) => {
         const active = (who || []).includes(state.currentUserPubkey);
         return `<button class="sc-react-chip${active ? ' active' : ''}" data-react-key="${esc(key)}" data-message="${esc(message.id)}">${esc(key)} ${Number((who || []).length)}</button>`;
       }).join('');
+      const actions = `
+        <div class="sc-actions sc-actions-inline">
+          <button data-action="reply" data-message="${esc(message.id)}">Reply</button>
+          <button data-action="pin" data-message="${esc(message.id)}">${message.pinned ? 'Unpin' : 'Pin'}</button>
+          <button data-action="menu" data-message="${esc(message.id)}">Menu</button>
+        </div>
+      `;
 
       return `
         <article class="sc-message" data-message-id="${esc(message.id)}">
-          <button class="sc-avatar" data-member="${esc(message.authorPubkey)}">${esc(initials(author.displayName || author.name))}</button>
+          <button class="sc-avatar${hasAuthorAvatar ? ' has-image' : ''}" data-member="${esc(message.authorPubkey)}"${hasAuthorAvatar ? ` style="background-image:url('${esc(authorAvatar)}')"` : ''}>${hasAuthorAvatar ? '' : esc(initials(author.displayName || author.name))}</button>
           <div class="sc-message-main">
-            <header>
-              <button class="sc-author" data-member="${esc(message.authorPubkey)}">${esc(author.displayName || author.name)}</button>
-              <time>${esc(fmtTime(message.createdAt))}</time>
-              ${(author.nip05 && author.verifiedNip05) ? `<span class="sc-nip05">${esc(author.nip05)}</span>` : ''}
+            <header class="sc-message-head">
+              <div class="sc-message-head-meta">
+                <button class="sc-author" data-member="${esc(message.authorPubkey)}">${esc(author.displayName || author.name)}</button>
+                <time>${esc(fmtTime(message.createdAt))}</time>
+                ${(author.nip05 && author.verifiedNip05) ? `<span class="sc-nip05">${esc(author.nip05)}</span>` : ''}
+              </div>
+              ${actions}
             </header>
             ${message.replyTo ? `<div class="sc-reply-tag">Replying to ${esc(message.replyTo)}</div>` : ''}
             <div class="sc-content" data-raw-content="${esc(message.content)}">${esc(message.content)}</div>
             ${(message.attachments || []).length ? `<div class="sc-attachments">${(message.attachments || []).map((attachment) => `<span>${esc(attachment.name)}</span>`).join('')}</div>` : ''}
-            <footer>
-              <div class="sc-reactions">${reactions}</div>
-              <div class="sc-actions">
-                <button data-action="reply" data-message="${esc(message.id)}">Reply</button>
-                <button data-action="pin" data-message="${esc(message.id)}">${message.pinned ? 'Unpin' : 'Pin'}</button>
-                <button data-action="menu" data-message="${esc(message.id)}">Menu</button>
-              </div>
-            </footer>
+            ${reactions ? `<div class="sc-reactions sc-reactions-row">${reactions}</div>` : ''}
           </div>
         </article>
       `;
@@ -655,12 +662,14 @@ export function createCommunitiesUI(input) {
 function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
     const profile = profiles[pubkey] || storeRef.profile(pubkey);
     const member = (members || []).find((entry) => entry.pubkey === pubkey) || { roles: ['guest'] };
+    const avatar = String((profile && profile.avatar) || '').trim();
+    const hasAvatar = /^https?:\/\//i.test(avatar);
 
     return `
       <div class="sc-popout" id="scProfilePopout">
         <button class="sc-popout-close" data-close="member">x</button>
         <div class="sc-pop-head">
-          <span class="sc-avatar big">${esc(initials(profile.displayName || profile.name))}</span>
+          <span class="sc-avatar big${hasAvatar ? ' has-image' : ''}"${hasAvatar ? ` style="background-image:url('${esc(avatar)}')"` : ''}>${hasAvatar ? '' : esc(initials(profile.displayName || profile.name))}</span>
           <div>
             <h5>${esc(profile.displayName || profile.name)}</h5>
             <small>${esc(roleLabel(profile, member))}</small>
@@ -972,7 +981,7 @@ function renderCommunitySettingsModal(community) {
       const joined = joinedCommunityIds.has(entry.id);
       const media = String(entry.banner || entry.image || '').trim();
       const mediaHtml = media
-        ? `<span class="sc-community-card-banner has-image" style="background-image:url('${esc(media)}')"></span>`
+        ? `<span class="sc-community-card-banner has-image"><img src="${esc(media)}" alt="${esc(entry.title)} banner" loading="lazy" referrerpolicy="no-referrer"></span>`
         : `<span class="sc-community-card-banner">${esc(entry.icon || initials(entry.title))}</span>`;
 
       return `
@@ -1496,8 +1505,13 @@ function renderCommunitySettingsModal(community) {
             const draft = snapshot.draftsByChannel.get(activeChannelId) || '';
             const joiner = draft && !draft.endsWith('\n') ? '\n' : '';
             const urls = uploaded.map((item) => item.url).join('\n');
-            store.setDraft(activeChannelId, `${draft}${joiner}${urls}`);
+            const nextDraft = `${draft}${joiner}${urls}`;
+            store.setDraft(activeChannelId, nextDraft);
             if (snapshot.activeChannelId === activeChannelId) {
+              const composerEl = root.querySelector('#scComposer');
+              if (composerEl) {
+                composerEl.value = nextDraft;
+              }
               ui.composerAttachments = [...ui.composerAttachments, ...uploaded];
             }
           }

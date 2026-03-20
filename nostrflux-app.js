@@ -1245,6 +1245,9 @@
       const img = document.createElement('img');
       img.src = raw;
       img.alt = 'avatar';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.referrerPolicy = 'no-referrer';
       img.style.width = '100%';
       img.style.height = '100%';
       img.style.objectFit = 'cover';
@@ -5576,14 +5579,13 @@
       const ownPubkey = state.user ? normalizePubkeyHex(state.user.pubkey) : '';
       const streamPubkey = normalizePubkeyHex(selected.pubkey);
       const isOwnStream = !!ownPubkey && ownPubkey === streamPubkey;
-      const videoPage = qs('#videoPage');
       const isWatchingSelected = state.activeViewerAddress === selected.address
-        || !!(videoPage && videoPage.style.display !== 'none');
+        || isVideoPageVisible();
 
       if (status === 'ended' && !isOwnStream && isWatchingSelected) {
         setActiveViewerAddress('');
         if (window.showPage) window.showPage('home');
-      } else if (isWatchingSelected || isOwnStream) {
+      } else if (isWatchingSelected) {
         renderVideo(selected);
       }
     }
@@ -11012,11 +11014,14 @@
     const bottomBioLinks = qs('#profBioLinksBottom');
     if (bottomBioLinks) bottomBioLinks.style.display = (websiteVisible || lud16Visible) ? 'flex' : 'none';
 
-    const bannerImg = qs('#profBannerImg');
-    if (bannerImg && p.banner && isLikelyUrl(p.banner)) {
-      bannerImg.src = p.banner;
-      bannerImg.style.display = 'block';
-    } else if (bannerImg) {
+      const bannerImg = qs('#profBannerImg');
+      if (bannerImg && p.banner && isLikelyUrl(p.banner)) {
+        bannerImg.src = p.banner;
+        bannerImg.loading = 'lazy';
+        bannerImg.decoding = 'async';
+        bannerImg.referrerPolicy = 'no-referrer';
+        bannerImg.style.display = 'block';
+      } else if (bannerImg) {
       bannerImg.removeAttribute('src');
       bannerImg.style.display = 'none';
     }

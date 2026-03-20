@@ -337,6 +337,51 @@ export function createCommunityStore(options = {}) {
     emitter.emit({ type: eventType, message, channelId });
   }
 
+  function findPendingMessageMatch(channelId, incoming = {}) {
+    const list = state.data.messagesByChannel[channelId] || [];
+    if (!list.length) return null;
+
+    const authorPubkey = String(incoming.authorPubkey || '').trim();
+    const content = String(incoming.content || '');
+    const replyTo = String(incoming.replyTo || '').trim();
+    const threadRoot = String(incoming.threadRoot || '').trim();
+    const createdAt = Number(incoming.createdAt || 0);
+    const MATCH_WINDOW_MS = 2 * 60 * 1000;
+
+    return list.find((entry) => {
+      if (!entry || !entry.pending) return false;
+      if (String(entry.authorPubkey || '').trim() !== authorPubkey) return false;
+      if (String(entry.content || '') !== content) return false;
+      if (String(entry.replyTo || '').trim() !== replyTo) return false;
+      if (String(entry.threadRoot || '').trim() !== threadRoot) return false;
+      const entryCreatedAt = Number(entry.createdAt || 0);
+      if (!createdAt || !entryCreatedAt) return true;
+      return Math.abs(entryCreatedAt - createdAt) <= MATCH_WINDOW_MS;
+    }) || null;
+  }
+
+  function reconcilePendingMessage(channelId, incoming = {}) {
+    const pending = findPendingMessageMatch(channelId, incoming);
+    if (!pending) return false;
+
+    const oldId = String(pending.id || '').trim();
+    const newId = String(incoming.id || '').trim();
+    if (oldId && newId && oldId !== newId) {
+      state.messageChannelById.delete(oldId);
+    }
+
+    Object.assign(pending, incoming, { id: newId || oldId, pending: false });
+    const list = state.data.messagesByChannel[channelId] || [];
+    list.sort(byCreatedAt);
+    indexMessage(channelId, pending);
+
+    const community = getCommunityForChannel(channelId);
+    if (community) touchCommunity(community.id, pending.createdAt);
+
+    emitter.emit({ type: 'message_ingested', message: pending, channelId });
+    return true;
+  }
+
   function findMessage(messageId, channelId = '') {
     const resolvedChannelId = channelId || state.messageChannelById.get(messageId) || '';
     if (!resolvedChannelId) return { message: null, channelId: '' };
@@ -1031,7 +1076,7 @@ export function createCommunityStore(options = {}) {
     }
 
     ensureProfile(payload.authorPubkey || '');
-    appendMessage(channelId, {
+    const incoming = {
       id,
       channelId,
       communityId: payload.communityId || (getCommunityForChannel(channelId) && getCommunityForChannel(channelId).id) || '',
@@ -1046,7 +1091,13 @@ export function createCommunityStore(options = {}) {
       reactions: payload.reactions || {},
       attachments: Array.isArray(payload.attachments) ? clone(payload.attachments) : [],
       source: payload.source || 'nostr'
-    }, 'message_ingested');
+    };
+
+    if (reconcilePendingMessage(channelId, incoming)) {
+      return true;
+    }
+
+    appendMessage(channelId, incoming, 'message_ingested');
 
     return true;
   }
