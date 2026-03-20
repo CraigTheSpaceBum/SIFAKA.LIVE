@@ -154,28 +154,54 @@
       <div class="lm-sub">Sign in with your Nostr identity - you own your keys.</div>
     </div>
     <div class="lm-body">
-      <div class="lm-sec">Recommended</div>
-      <div class="lo" onclick="loginDemo('wavesound','','npub1abc...xyz','wave@bitcoin-cats.ca')">
-        <div class="lo-ico ext"></div>
-        <div><div class="lo-t">Signer App or Extension</div><div class="lo-d">Alby, nos2x, Amber (Android), any NIP-07 extension.</div></div>
-        <div class="lo-arr"></div>
-      </div>
-      <div class="lo" onclick="loginDemo('hardwareuser','','npub1hw1...abc','')">
-        <div class="lo-ico hw"></div>
-        <div><div class="lo-t">Hardware Signer</div><div class="lo-d">Coldcard, Keystone, or any NIP-46 bunker device.</div></div>
-        <div class="lo-arr"></div>
-      </div>
-      <div class="lm-div"><span>or enter keys manually</span></div>
-      <div class="key-wrap">
-        <input class="key-inp" type="password" placeholder="nsec1... (stored locally only)">
-        <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="loginDemo('keyuser','','npub1key...xyz','')">Sign In with nsec key</button>
-      </div>
-      <div class="lm-warn">Entering your private key is less secure. Sifaka Live never sends your key to any server.</div>
-      <div class="lm-div"><span>or</span></div>
-      <div class="lo" onclick="loginDemo('newnostr')" style="border-color:rgba(0,212,138,.2);">
-        <div class="lo-ico new"></div>
-        <div><div class="lo-t">Create New Identity</div><div class="lo-d">Generate a fresh keypair. No email, no phone - just cryptography.</div></div>
-        <div class="lo-arr"></div>
+      <div class="login-grid">
+        <div class="login-col">
+          <div class="lm-col-title">Create Identity</div>
+          <div class="lo lo-col-btn" onclick="loginDemo('newnostr')" style="border-color:rgba(0,212,138,.2);">
+            <div class="lo-ico new"></div>
+            <div><div class="lo-t">Create New Identity</div><div class="lo-d">Generate a fresh keypair. No email, no phone - just cryptography.</div></div>
+            <div class="lo-arr"></div>
+          </div>
+        </div>
+
+        <div class="login-col">
+          <div class="lm-col-title">Signer Options</div>
+          <div class="lo lo-col-btn" onclick="loginDemo('wavesound','','npub1abc...xyz','wave@bitcoin-cats.ca')">
+            <div class="lo-ico ext"></div>
+            <div><div class="lo-t">Signer App or Extension</div><div class="lo-d">Alby, nos2x, Amber (Android), any NIP-07 extension.</div></div>
+            <div class="lo-arr"></div>
+          </div>
+          <div class="lo lo-col-btn" onclick="loginDemo('hardwareuser','','npub1hw1...abc','')">
+            <div class="lo-ico hw"></div>
+            <div><div class="lo-t">Hardware Signer</div><div class="lo-d">Coldcard, Keystone, or any NIP-46 bunker device.</div></div>
+            <div class="lo-arr"></div>
+          </div>
+          <div class="lo lo-col-btn" id="remoteLoginLaunchBtn" onclick="loginDemo('remote')">
+            <div class="lo-ico remote"></div>
+            <div><div class="lo-t">Remote Nostr Login</div><div class="lo-d">Scan a QR code with your signer app to connect.</div></div>
+            <div class="lo-arr"></div>
+          </div>
+          <div class="remote-login-wrap" id="remoteLoginWrap">
+            <div class="remote-qr-card" id="remoteQrCard" style="display:none;">
+              <img id="remoteLoginQrImg" class="remote-qr-img" src="" alt="Remote Nostr Login QR code">
+              <div class="remote-qr-text">Scan this QR code in your remote signer app.</div>
+              <div class="remote-login-actions">
+                <button id="remoteLoginCopyBtn" class="btn btn-ghost" type="button" onclick="copyRemoteLoginUri()">Copy Link</button>
+                <button id="remoteLoginCancelBtn" class="btn btn-ghost" type="button" onclick="cancelRemoteLogin()">Cancel</button>
+              </div>
+            </div>
+            <div id="remoteLoginStatus" class="remote-login-status" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div class="login-col">
+          <div class="lm-col-title">Enter Keys Manually</div>
+          <div class="key-wrap">
+            <input id="nsecLoginInput" class="key-inp" type="password" placeholder="nsec1... (stored locally only)">
+            <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="loginDemo('keyuser','','npub1key...xyz','')">Sign In with nsec key</button>
+          </div>
+          <div class="lm-warn">Entering your private key is less secure. Sifaka Live never sends your key to any server.</div>
+        </div>
       </div>
     </div>
   </div>

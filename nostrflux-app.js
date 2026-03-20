@@ -24,8 +24,14 @@
   const KIND_GENERIC_LIST = 30001;  // NIP-51 generic list (bookmark-style)
 
   const LOCAL_NSEC_STORAGE_KEY = 'nostrflux_local_nsec';
+  const REMOTE_SIGNER_STORAGE_KEY = 'nostrflux_remote_signer_v1';
   const NOSTR_TOOLS_SRC = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
   const HLS_JS_SRC = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
+  const NOSTR_CONNECT_KIND = 24133;
+  const REMOTE_SIGNER_REQUEST_TIMEOUT_MS = 18000;
+  const REMOTE_SIGNER_CONNECT_TIMEOUT_MS = 28000;
+  const REMOTE_SIGNER_SCAN_TIMEOUT_MS = 180000;
+  const REMOTE_SIGNER_REQUESTED_PERMS = 'sign_event,nip04_encrypt,nip04_decrypt';
   const SETTINGS_STORAGE_KEY = 'nostrflux_settings_v1';
   const FOLLOWING_STORAGE_KEY = 'nostrflux_following_pubkeys_v1';
   const DM_LAST_READ_STORAGE_KEY = 'nostrflux_dm_last_read_v1';
@@ -86,6 +92,10 @@
     user: null,
     authMode: 'readonly',
     localSecretKey: null,
+    remoteSignerSession: null,
+    remoteLoginPending: false,
+    remoteLoginAbortController: null,
+    remoteLoginUri: '',
     pendingOnboardingNsec: '',
     streamsByAddress: new Map(),
     profilesByPubkey: new Map(),
@@ -442,6 +452,727 @@
     if (Array.isArray(secret)) return Uint8Array.from(secret);
     if (typeof secret === 'string') return hexToBytes(secret);
     throw new Error('Unsupported secret key format');
+  }
+
+  function isAbortLikeError(err) {
+    if (!err) return false;
+    if (err.name === 'AbortError') return true;
+    const msg = String(err.message || err || '').toLowerCase();
+    return msg.includes('aborted') || msg.includes('cancelled') || msg.includes('canceled');
+  }
+
+  function throwIfAborted(signal, message = 'Remote login cancelled.') {
+    if (signal && signal.aborted) {
+      const err = new Error(message);
+      err.name = 'AbortError';
+      throw err;
+    }
+  }
+
+  function uniqueRelayUrls(values) {
+    const out = [];
+    const seen = new Set();
+    (Array.isArray(values) ? values : []).forEach((raw) => {
+      const clean = String(raw || '').trim();
+      if (!/^wss?:\/\//i.test(clean)) return;
+      if (seen.has(clean)) return;
+      seen.add(clean);
+      out.push(clean);
+    });
+    return out;
+  }
+
+  function parseBunkerConnectionToken(tokenInput) {
+    const raw = String(tokenInput || '').trim();
+    if (!raw) throw new Error('Paste your bunker:// token from Primal first.');
+
+    let parsed;
+    try {
+      parsed = new URL(raw);
+    } catch (_) {
+      throw new Error('Invalid bunker token. It should start with bunker://');
+    }
+    if (parsed.protocol !== 'bunker:') {
+      throw new Error('Invalid remote login token. Expected bunker://');
+    }
+
+    const hostOrPath = (parsed.hostname || parsed.pathname || '').replace(/^\/+/, '');
+    const remoteSignerPubkey = normalizePubkeyHex(hostOrPath);
+    if (!remoteSignerPubkey) {
+      throw new Error('Bunker token is missing a valid remote signer pubkey.');
+    }
+
+    const relays = uniqueRelayUrls(parsed.searchParams.getAll('relay'));
+    if (!relays.length) relays.push('wss://relay.primal.net');
+
+    return {
+      remoteSignerPubkey,
+      relays,
+      connectSecret: String(parsed.searchParams.get('secret') || '').trim()
+    };
+  }
+
+  function finalizeEventWithSecret(tools, unsigned, secretKey) {
+    const normalized = normalizeSecretKey(secretKey);
+    if (typeof tools.finalizeEvent === 'function') {
+      return tools.finalizeEvent(unsigned, normalized);
+    }
+    const legacy = { ...unsigned, pubkey: tools.getPublicKey(normalized) };
+    if (typeof tools.getEventHash === 'function') legacy.id = tools.getEventHash(legacy);
+    if (typeof tools.signEvent === 'function') {
+      legacy.sig = tools.signEvent(legacy, bytesToHex(normalized));
+    }
+    return legacy;
+  }
+
+  function clearPersistedRemoteSignerSession() {
+    try {
+      localStorage.removeItem(REMOTE_SIGNER_STORAGE_KEY);
+    } catch (_) {}
+  }
+
+  function persistRemoteSignerSession(session, connectSecretOverride = '') {
+    if (!session || !session.clientSecret) return;
+    const payload = {
+      remoteSignerPubkey: String(session.remoteSignerPubkey || ''),
+      relays: uniqueRelayUrls(session.relays || []),
+      clientSecretHex: bytesToHex(normalizeSecretKey(session.clientSecret)),
+      connectSecret: String(connectSecretOverride || session.connectSecret || '').trim(),
+      encryption: session.encryption === 'nip04' ? 'nip04' : 'nip44',
+      savedAt: Date.now()
+    };
+    try {
+      localStorage.setItem(REMOTE_SIGNER_STORAGE_KEY, JSON.stringify(payload));
+    } catch (_) {}
+  }
+
+  function loadPersistedRemoteSignerSession() {
+    const raw = (localStorage.getItem(REMOTE_SIGNER_STORAGE_KEY) || '').trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      const remoteSignerPubkey = normalizePubkeyHex(parsed.remoteSignerPubkey || '');
+      const clientSecretHex = String(parsed.clientSecretHex || '').trim().toLowerCase();
+      if (!remoteSignerPubkey || !/^[0-9a-f]{64}$/.test(clientSecretHex)) return null;
+      const relays = uniqueRelayUrls(parsed.relays || []);
+      if (!relays.length) relays.push('wss://relay.primal.net');
+      return {
+        remoteSignerPubkey,
+        relays,
+        clientSecretHex,
+        connectSecret: String(parsed.connectSecret || '').trim(),
+        encryption: parsed.encryption === 'nip04' ? 'nip04' : 'nip44'
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function teardownRemoteSignerSessionObject(session, reason = 'Remote signer session closed.') {
+    if (!session) return;
+    session.closed = true;
+    if (session.pendingRequests instanceof Map) {
+      session.pendingRequests.forEach((pending) => {
+        if (!pending) return;
+        if (pending.timeoutId) clearTimeout(pending.timeoutId);
+        if (pending.abortSignal && pending.abortHandler) {
+          try { pending.abortSignal.removeEventListener('abort', pending.abortHandler); } catch (_) {}
+        }
+        try {
+          pending.reject(new Error(reason));
+        } catch (_) {}
+      });
+      session.pendingRequests.clear();
+    }
+    if (session.responseSub && typeof session.responseSub.close === 'function') {
+      try { session.responseSub.close(reason); } catch (_) {}
+    }
+    session.responseSub = null;
+    if (session.pool && typeof session.pool.destroy === 'function') {
+      try { session.pool.destroy(); } catch (_) {}
+    }
+    session.pool = null;
+  }
+
+  function teardownRemoteSignerSession(reason = 'Remote signer session closed.') {
+    const current = state.remoteSignerSession;
+    if (!current) return;
+    state.remoteSignerSession = null;
+    teardownRemoteSignerSessionObject(current, reason);
+  }
+
+  function setRemoteLoginStatus(message, mode = 'info') {
+    const statusEl = qs('#remoteLoginStatus');
+    if (!statusEl) return;
+    const clean = String(message || '').trim();
+    statusEl.textContent = clean;
+    statusEl.classList.remove('is-loading', 'is-success', 'is-error', 'is-info', 'is-visible');
+    if (!clean) return;
+    statusEl.classList.add('is-visible');
+    statusEl.classList.add(mode === 'loading' || mode === 'success' || mode === 'error' ? `is-${mode}` : 'is-info');
+  }
+
+  function buildRemoteQrImageUrl(value) {
+    const payload = String(value || '').trim();
+    if (!payload) return '';
+    return `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=3&data=${encodeURIComponent(payload)}`;
+  }
+
+  function setRemoteLoginUri(uri = '') {
+    const clean = String(uri || '').trim();
+    state.remoteLoginUri = clean;
+    const card = qs('#remoteQrCard');
+    const img = qs('#remoteLoginQrImg');
+    const copyBtn = qs('#remoteLoginCopyBtn');
+    if (copyBtn) copyBtn.disabled = !clean;
+    if (!card || !img) return;
+    if (!clean) {
+      img.removeAttribute('src');
+      card.style.display = 'none';
+      return;
+    }
+    img.src = buildRemoteQrImageUrl(clean);
+    card.style.display = 'flex';
+  }
+
+  function setRemoteLoginUiBusy(on) {
+    const busy = !!on;
+    state.remoteLoginPending = busy;
+    const launchBtn = qs('#remoteLoginLaunchBtn');
+    const copyBtn = qs('#remoteLoginCopyBtn');
+    const cancelBtn = qs('#remoteLoginCancelBtn');
+    if (launchBtn) {
+      launchBtn.classList.toggle('is-disabled', busy);
+      launchBtn.style.pointerEvents = busy ? 'none' : '';
+      launchBtn.style.opacity = busy ? '.72' : '';
+    }
+    if (copyBtn) copyBtn.disabled = !state.remoteLoginUri;
+    if (cancelBtn) {
+      cancelBtn.disabled = !busy;
+    }
+  }
+
+  function cancelRemoteLoginAttempt(opts = {}) {
+    if (state.remoteLoginAbortController) {
+      try { state.remoteLoginAbortController.abort(); } catch (_) {}
+      state.remoteLoginAbortController = null;
+    }
+    setRemoteLoginUiBusy(false);
+    if (!opts.keepQr) setRemoteLoginUri('');
+    if (!opts.silent) setRemoteLoginStatus('Remote login cancelled.', 'info');
+  }
+
+  async function decryptRemoteSignerPayloadFromSender(session, senderPubkey, ciphertext, preferredMode = '') {
+    const tools = await ensureNostrTools();
+    const remotePubkey = normalizePubkeyHex(senderPubkey);
+    if (!remotePubkey) throw new Error('Missing remote signer pubkey for decrypt.');
+    const modes = [];
+    const pushMode = (mode) => {
+      const normalized = mode === 'nip04' ? 'nip04' : 'nip44';
+      if (!modes.includes(normalized)) modes.push(normalized);
+    };
+    if (preferredMode) pushMode(preferredMode);
+    if (session && session.encryption) pushMode(session.encryption);
+    pushMode('nip44');
+    pushMode('nip04');
+
+    let lastErr = null;
+    for (const mode of modes) {
+      try {
+        let plaintext = '';
+        if (mode === 'nip44') {
+          if (!tools.nip44 || typeof tools.nip44.decrypt !== 'function' || typeof tools.nip44.getConversationKey !== 'function') {
+            continue;
+          }
+          const useCached = normalizePubkeyHex(session.remoteSignerPubkey || '') === remotePubkey;
+          if (useCached && session.nip44ConversationKey) {
+            plaintext = tools.nip44.decrypt(ciphertext, session.nip44ConversationKey);
+          } else {
+            const conversationKey = tools.nip44.getConversationKey(session.clientSecret, remotePubkey);
+            plaintext = tools.nip44.decrypt(ciphertext, conversationKey);
+            if (useCached) session.nip44ConversationKey = conversationKey;
+          }
+        } else {
+          if (!tools.nip04 || typeof tools.nip04.decrypt !== 'function') continue;
+          plaintext = await tools.nip04.decrypt(session.clientSecret, remotePubkey, ciphertext);
+        }
+        const payload = JSON.parse(String(plaintext || '{}'));
+        if (!payload || typeof payload !== 'object') throw new Error('Malformed remote signer payload.');
+        return { payload, encryption: mode };
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error('Could not decrypt remote signer response.');
+  }
+
+  async function decryptRemoteSignerPayload(session, ciphertext, preferredMode = '') {
+    return decryptRemoteSignerPayloadFromSender(session, session && session.remoteSignerPubkey || '', ciphertext, preferredMode);
+  }
+
+  async function encryptRemoteSignerPayload(session, payload, mode) {
+    const tools = await ensureNostrTools();
+    const rawPayload = JSON.stringify(payload);
+    const targetMode = mode === 'nip04' ? 'nip04' : 'nip44';
+
+    if (targetMode === 'nip44') {
+      if (!tools.nip44 || typeof tools.nip44.encrypt !== 'function' || typeof tools.nip44.getConversationKey !== 'function') {
+        throw new Error('NIP-44 encryption is not available.');
+      }
+      if (!session.nip44ConversationKey) {
+        session.nip44ConversationKey = tools.nip44.getConversationKey(session.clientSecret, session.remoteSignerPubkey);
+      }
+      return tools.nip44.encrypt(rawPayload, session.nip44ConversationKey);
+    }
+
+    if (!tools.nip04 || typeof tools.nip04.encrypt !== 'function') {
+      throw new Error('NIP-04 encryption is not available.');
+    }
+    return await tools.nip04.encrypt(session.clientSecret, session.remoteSignerPubkey, rawPayload);
+  }
+
+  async function handleRemoteSignerResponseEvent(session, ev) {
+    if (!session || session.closed || !ev || !ev.content) return;
+    let decoded;
+    try {
+      decoded = await decryptRemoteSignerPayload(session, ev.content);
+    } catch (_) {
+      return;
+    }
+    if (!decoded || !decoded.payload) return;
+    const response = decoded.payload;
+    const requestId = String(response.id || '').trim();
+    if (!requestId || !session.pendingRequests || !session.pendingRequests.has(requestId)) return;
+
+    const pending = session.pendingRequests.get(requestId);
+    session.pendingRequests.delete(requestId);
+    if (pending.timeoutId) clearTimeout(pending.timeoutId);
+    if (pending.abortSignal && pending.abortHandler) {
+      try { pending.abortSignal.removeEventListener('abort', pending.abortHandler); } catch (_) {}
+    }
+
+    if (response && typeof response.error !== 'undefined' && response.error !== null && response.error !== '') {
+      const err = new Error(String(response.error));
+      err.remoteSignerResponse = true;
+      pending.reject(err);
+      return;
+    }
+    pending.resolve({
+      result: response.result,
+      payload: response,
+      encryption: decoded.encryption
+    });
+  }
+
+  function startRemoteSignerResponseSubscription(session) {
+    if (!session || session.responseSub || !session.pool) return;
+    const since = Math.floor(Date.now() / 1000) - 10;
+    const filter = {
+      kinds: [NOSTR_CONNECT_KIND],
+      '#p': [session.clientPubkey],
+      since
+    };
+    if (session.remoteSignerPubkey) {
+      filter.authors = [session.remoteSignerPubkey];
+    }
+    session.responseSub = session.pool.subscribe(
+      session.relays,
+      filter,
+      {
+        onevent: (ev) => {
+          handleRemoteSignerResponseEvent(session, ev).catch(() => {});
+        }
+      }
+    );
+  }
+
+  function generateRemoteConnectSecret() {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function buildNostrConnectUri(session) {
+    const params = new URLSearchParams();
+    uniqueRelayUrls(session.relays || []).forEach((relay) => params.append('relay', relay));
+    params.set('secret', String(session.connectSecret || '').trim());
+    params.set('perms', REMOTE_SIGNER_REQUESTED_PERMS);
+    const metadata = {
+      name: 'Sifaka Live',
+      url: (window.location && window.location.origin) ? window.location.origin : 'https://sifaka.live'
+    };
+    params.set('metadata', JSON.stringify(metadata));
+    return `nostrconnect://${session.clientPubkey}?${params.toString()}`;
+  }
+
+  function remotePayloadIncludesSecret(payload, secret) {
+    const expected = String(secret || '').trim();
+    if (!expected) return true;
+    const seen = [];
+    const collect = (value) => {
+      if (value === null || typeof value === 'undefined') return;
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        seen.push(String(value).trim());
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach((item) => collect(item));
+        return;
+      }
+      if (typeof value === 'object') {
+        Object.keys(value).forEach((key) => collect(value[key]));
+      }
+    };
+    collect(payload && payload.result);
+    collect(payload && payload.params);
+    collect(payload && payload.secret);
+    return seen.includes(expected);
+  }
+
+  async function waitForRemoteSignerConnect(session, opts = {}) {
+    if (!session || !session.pool) throw new Error('Remote signer session is not initialized.');
+    const signal = opts.signal || null;
+    const timeoutMs = Math.max(8000, Number(opts.timeoutMs || REMOTE_SIGNER_SCAN_TIMEOUT_MS));
+    throwIfAborted(signal, 'Remote login cancelled.');
+
+    if (session.responseSub && typeof session.responseSub.close === 'function') {
+      try { session.responseSub.close('waiting for connect'); } catch (_) {}
+      session.responseSub = null;
+    }
+
+    const since = Math.floor(Date.now() / 1000) - 10;
+    return await new Promise((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => {
+        if (signal && abortHandler) {
+          try { signal.removeEventListener('abort', abortHandler); } catch (_) {}
+        }
+        if (timer) clearTimeout(timer);
+      };
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (session.responseSub && typeof session.responseSub.close === 'function') {
+          try { session.responseSub.close('connect settled'); } catch (_) {}
+        }
+        session.responseSub = null;
+        fn(value);
+      };
+
+      const timer = setTimeout(() => {
+        finish(reject, new Error('Timed out waiting for QR scan approval.'));
+      }, timeoutMs);
+
+      const abortHandler = () => {
+        finish(reject, new Error('Remote login cancelled.'));
+      };
+      if (signal) signal.addEventListener('abort', abortHandler, { once: true });
+
+      session.responseSub = session.pool.subscribe(
+        session.relays,
+        {
+          kinds: [NOSTR_CONNECT_KIND],
+          '#p': [session.clientPubkey],
+          since
+        },
+        {
+          onevent: (ev) => {
+            (async () => {
+              if (!ev || !ev.pubkey || !ev.content) return;
+              const sender = normalizePubkeyHex(ev.pubkey);
+              if (!sender || sender === session.clientPubkey) return;
+              let decoded;
+              try {
+                decoded = await decryptRemoteSignerPayloadFromSender(session, sender, ev.content);
+              } catch (_) {
+                return;
+              }
+              if (!decoded || !decoded.payload) return;
+              if (!remotePayloadIncludesSecret(decoded.payload, session.connectSecret)) return;
+              finish(resolve, { remoteSignerPubkey: sender, encryption: decoded.encryption });
+            })().catch(() => {});
+          }
+        }
+      );
+    });
+  }
+
+  function buildRemoteSignerRequestId(session) {
+    session.requestCounter = Number(session.requestCounter || 0) + 1;
+    return `r${Date.now().toString(36)}${session.requestCounter.toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  async function sendRemoteSignerRequestOnce(session, method, params, mode, opts = {}) {
+    if (!session || session.closed || !session.pool) {
+      throw new Error('Remote signer session is not connected.');
+    }
+    const signal = opts.signal || null;
+    const timeoutMs = Math.max(3000, Number(opts.timeoutMs || REMOTE_SIGNER_REQUEST_TIMEOUT_MS));
+    throwIfAborted(signal, 'Remote login cancelled.');
+    startRemoteSignerResponseSubscription(session);
+
+    const requestId = buildRemoteSignerRequestId(session);
+    const payload = {
+      id: requestId,
+      method: String(method || '').trim(),
+      params: Array.isArray(params) ? params : []
+    };
+    const encryptedContent = await encryptRemoteSignerPayload(session, payload, mode);
+    const tools = await ensureNostrTools();
+    const unsigned = {
+      kind: NOSTR_CONNECT_KIND,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [['p', session.remoteSignerPubkey]],
+      content: encryptedContent
+    };
+    const signed = finalizeEventWithSecret(tools, unsigned, session.clientSecret);
+
+    let abortHandler = null;
+    const responsePromise = new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        session.pendingRequests.delete(requestId);
+        if (signal && abortHandler) {
+          try { signal.removeEventListener('abort', abortHandler); } catch (_) {}
+        }
+        reject(new Error(`Remote signer timed out while waiting for ${payload.method}.`));
+      }, timeoutMs);
+
+      abortHandler = () => {
+        session.pendingRequests.delete(requestId);
+        clearTimeout(timeoutId);
+        reject(new Error('Remote login cancelled.'));
+      };
+
+      session.pendingRequests.set(requestId, {
+        resolve,
+        reject,
+        timeoutId,
+        abortSignal: signal,
+        abortHandler
+      });
+      if (signal) {
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
+    });
+
+    try {
+      const publishes = session.pool.publish(session.relays, signed, { maxWait: Math.max(3000, timeoutMs - 1000), abort: signal });
+      if (!Array.isArray(publishes) || !publishes.length) {
+        throw new Error('No relays configured for remote signer requests.');
+      }
+      await Promise.allSettled(publishes);
+    } catch (err) {
+      const pending = session.pendingRequests.get(requestId);
+      if (pending) {
+        session.pendingRequests.delete(requestId);
+        if (pending.timeoutId) clearTimeout(pending.timeoutId);
+        if (pending.abortSignal && pending.abortHandler) {
+          try { pending.abortSignal.removeEventListener('abort', pending.abortHandler); } catch (_) {}
+        }
+        pending.reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    }
+
+    const response = await responsePromise;
+    if (response && response.encryption && response.encryption !== session.encryption) {
+      session.encryption = response.encryption;
+      session.nip44ConversationKey = null;
+    }
+    return response.result;
+  }
+
+  async function sendRemoteSignerRequest(session, method, params = [], opts = {}) {
+    const preferred = opts.preferredEncryption === 'nip04' ? 'nip04' : (session.encryption === 'nip04' ? 'nip04' : 'nip44');
+    const modes = opts.fallbackEncrypt === false
+      ? [preferred]
+      : (preferred === 'nip04' ? ['nip04', 'nip44'] : ['nip44', 'nip04']);
+    let lastErr = null;
+    for (const mode of modes) {
+      try {
+        return await sendRemoteSignerRequestOnce(session, method, params, mode, opts);
+      } catch (err) {
+        if (isAbortLikeError(err)) throw err;
+        if (err && err.remoteSignerResponse) throw err;
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error(`Remote signer request failed: ${method}`);
+  }
+
+  async function requestRemoteSigner(method, params = [], opts = {}) {
+    if (!state.remoteSignerSession) throw new Error('Remote signer is not connected.');
+    return await sendRemoteSignerRequest(state.remoteSignerSession, method, params, opts);
+  }
+
+  async function establishRemoteSignerSession(config, opts = {}) {
+    const onStatus = typeof opts.onStatus === 'function' ? opts.onStatus : () => {};
+    const signal = opts.signal || null;
+    throwIfAborted(signal, 'Remote login cancelled.');
+
+    const tools = await ensureNostrTools();
+    if (!tools || typeof tools.SimplePool !== 'function' || typeof tools.getPublicKey !== 'function') {
+      throw new Error('Remote signer tools are unavailable.');
+    }
+
+    const initialRemoteSignerPubkey = normalizePubkeyHex(config && config.remoteSignerPubkey || '');
+    if (!initialRemoteSignerPubkey && !opts.waitForConnect) {
+      throw new Error('Remote signer pubkey is missing or invalid.');
+    }
+
+    const relays = uniqueRelayUrls(config && config.relays || []);
+    if (!relays.length) relays.push('wss://relay.primal.net');
+
+    let clientSecret = null;
+    if (config && config.clientSecret) {
+      clientSecret = normalizeSecretKey(config.clientSecret);
+    } else if (config && config.clientSecretHex) {
+      clientSecret = normalizeSecretKey(config.clientSecretHex);
+    } else if (typeof tools.generateSecretKey === 'function') {
+      clientSecret = normalizeSecretKey(tools.generateSecretKey());
+    } else {
+      clientSecret = normalizeSecretKey(crypto.getRandomValues(new Uint8Array(32)));
+    }
+
+    const session = {
+      pool: new tools.SimplePool(),
+      relays,
+      remoteSignerPubkey: initialRemoteSignerPubkey,
+      connectSecret: String(config && config.connectSecret || '').trim(),
+      clientSecret,
+      clientPubkey: tools.getPublicKey(clientSecret),
+      encryption: config && config.encryption === 'nip04' ? 'nip04' : 'nip44',
+      nip44ConversationKey: null,
+      responseSub: null,
+      pendingRequests: new Map(),
+      requestCounter: 0,
+      closed: false
+    };
+    if (!session.connectSecret && opts.waitForConnect) {
+      session.connectSecret = generateRemoteConnectSecret();
+    }
+
+    try {
+      throwIfAborted(signal, 'Remote login cancelled.');
+      const connectedByScan = !session.remoteSignerPubkey && !!opts.waitForConnect;
+      if (connectedByScan) {
+        const connectUri = buildNostrConnectUri(session);
+        if (typeof opts.onUri === 'function') opts.onUri(connectUri);
+        onStatus('Scan the QR code and approve in your signer app...');
+        const connectInfo = await waitForRemoteSignerConnect(session, {
+          timeoutMs: Math.max(REMOTE_SIGNER_SCAN_TIMEOUT_MS, Number(opts.scanTimeoutMs || 0)),
+          signal
+        });
+        session.remoteSignerPubkey = normalizePubkeyHex(connectInfo && connectInfo.remoteSignerPubkey || '');
+        if (!session.remoteSignerPubkey) {
+          throw new Error('Remote signer approval did not include a valid pubkey.');
+        }
+        if (connectInfo && connectInfo.encryption) {
+          session.encryption = connectInfo.encryption === 'nip04' ? 'nip04' : 'nip44';
+        }
+        session.nip44ConversationKey = null;
+      }
+
+      startRemoteSignerResponseSubscription(session);
+
+      const shouldConnect = !opts.skipConnect && !connectedByScan;
+      if (shouldConnect) {
+        onStatus('Authorizing with remote signer...');
+        const connectParams = [session.remoteSignerPubkey];
+        if (session.connectSecret) {
+          connectParams.push(session.connectSecret, REMOTE_SIGNER_REQUESTED_PERMS);
+        } else {
+          connectParams.push('', REMOTE_SIGNER_REQUESTED_PERMS);
+        }
+        const connectResult = await sendRemoteSignerRequest(session, 'connect', connectParams, {
+          timeoutMs: REMOTE_SIGNER_CONNECT_TIMEOUT_MS,
+          signal,
+          fallbackEncrypt: true
+        });
+        const expectedSecret = session.connectSecret;
+        const resultText = String(connectResult || '').trim();
+        if (expectedSecret && resultText && resultText !== 'ack' && resultText !== expectedSecret) {
+          throw new Error('Remote signer returned an unexpected connect response.');
+        }
+      }
+
+      onStatus('Fetching your public key...');
+      const pubkeyResult = await sendRemoteSignerRequest(session, 'get_public_key', [], {
+        timeoutMs: REMOTE_SIGNER_CONNECT_TIMEOUT_MS,
+        signal,
+        fallbackEncrypt: true
+      });
+      const userPubkey = normalizePubkeyHex(typeof pubkeyResult === 'string' ? pubkeyResult : '');
+      if (!userPubkey) {
+        throw new Error('Remote signer returned an invalid public key.');
+      }
+
+      teardownRemoteSignerSession('Replacing remote signer session.');
+      state.remoteSignerSession = session;
+      state.localSecretKey = null;
+      localStorage.removeItem(LOCAL_NSEC_STORAGE_KEY);
+      if (opts.persist !== false) {
+        persistRemoteSignerSession(session, session.connectSecret);
+      }
+      setAuthenticatedUser(userPubkey, 'remote');
+      return userPubkey;
+    } catch (err) {
+      teardownRemoteSignerSessionObject(session, 'Remote signer connection failed.');
+      throw err;
+    }
+  }
+
+  async function loginWithRemoteSignerToken(connectionToken, persist = true, opts = {}) {
+    const parsed = parseBunkerConnectionToken(connectionToken);
+    return establishRemoteSignerSession(parsed, { ...opts, persist });
+  }
+
+  function preferredRemoteQrRelays() {
+    const configured = uniqueRelayUrls(state.relays || []);
+    if (configured.includes('wss://relay.primal.net')) return ['wss://relay.primal.net'];
+    if (configured.length) return [configured[0]];
+    return ['wss://relay.primal.net'];
+  }
+
+  async function loginWithRemoteSignerQr(persist = true, opts = {}) {
+    const relays = uniqueRelayUrls(opts.relays || preferredRemoteQrRelays());
+    return establishRemoteSignerSession(
+      {
+        relays: relays.length ? relays : ['wss://relay.primal.net'],
+        connectSecret: '',
+        remoteSignerPubkey: '',
+        clientSecretHex: opts.clientSecretHex || ''
+      },
+      {
+        ...opts,
+        persist,
+        waitForConnect: true
+      }
+    );
+  }
+
+  async function tryRestoreRemoteLogin() {
+    const saved = loadPersistedRemoteSignerSession();
+    if (!saved) return false;
+    try {
+      await establishRemoteSignerSession(saved, { persist: false, skipConnect: true });
+      if (state.remoteSignerSession) {
+        persistRemoteSignerSession(state.remoteSignerSession, state.remoteSignerSession.connectSecret || '');
+      }
+      return true;
+    } catch (_) {
+      teardownRemoteSignerSession('Retrying remote restore.');
+      try {
+        await establishRemoteSignerSession(saved, { persist: false });
+        if (state.remoteSignerSession) {
+          persistRemoteSignerSession(state.remoteSignerSession, state.remoteSignerSession.connectSecret || '');
+        }
+        return true;
+      } catch (_) {}
+      clearPersistedRemoteSignerSession();
+      teardownRemoteSignerSession('Remote restore failed.');
+      return false;
+    }
   }
 
   function sanitizeMediaUrl(v) {
@@ -3550,6 +4281,17 @@
       }
     }
 
+    if (state.authMode === 'remote') {
+      const plaintext = await requestRemoteSigner('nip04_decrypt', [peer, payload], {
+        timeoutMs: REMOTE_SIGNER_REQUEST_TIMEOUT_MS,
+        fallbackEncrypt: true
+      });
+      if (typeof plaintext !== 'string') {
+        throw new Error('Remote signer returned an invalid decrypt response.');
+      }
+      return plaintext;
+    }
+
     throw new Error('Login required for DM decryption.');
   }
 
@@ -3576,6 +4318,17 @@
       } catch (_) {
         return await tools.nip04.encrypt(bytesToHex(secret), peer, clean);
       }
+    }
+
+    if (state.authMode === 'remote') {
+      const ciphertext = await requestRemoteSigner('nip04_encrypt', [peer, clean], {
+        timeoutMs: REMOTE_SIGNER_REQUEST_TIMEOUT_MS,
+        fallbackEncrypt: true
+      });
+      if (typeof ciphertext !== 'string') {
+        throw new Error('Remote signer returned an invalid encrypt response.');
+      }
+      return ciphertext;
     }
 
     throw new Error('Login required for encrypted DM sending.');
@@ -4575,6 +5328,34 @@
       } else {
         throw new Error('Signer does not support signEvent/finalizeEvent.');
       }
+    } else if (state.authMode === 'remote') {
+      const remotePayload = { ...unsigned, pubkey: state.user.pubkey };
+      const response = await requestRemoteSigner('sign_event', [remotePayload], {
+        timeoutMs: REMOTE_SIGNER_REQUEST_TIMEOUT_MS,
+        fallbackEncrypt: true
+      });
+      let parsed = null;
+      if (typeof response === 'string') {
+        try {
+          parsed = JSON.parse(response);
+        } catch (_) {
+          parsed = null;
+        }
+      } else if (response && typeof response === 'object') {
+        parsed = response;
+      }
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Remote signer returned an invalid signature payload.');
+      }
+      const expectedPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+      const signedPubkey = normalizePubkeyHex(parsed.pubkey || '');
+      if (signedPubkey && expectedPubkey && signedPubkey !== expectedPubkey) {
+        throw new Error('Remote signer returned a signature for a different pubkey.');
+      }
+      if (!parsed.id || !parsed.sig) {
+        throw new Error('Remote signer returned an incomplete signed event.');
+      }
+      signed = parsed;
     } else if (state.authMode === 'local') {
       const tools = await ensureNostrTools();
       const secret = normalizeSecretKey(state.localSecretKey);
@@ -4589,7 +5370,7 @@
         signed = legacy;
       }
     } else {
-      throw new Error('You are in read-only mode. Login with extension or nsec key first.');
+      throw new Error('You are in read-only mode. Login with extension, remote signer, or nsec key first.');
     }
 
     return signed;
@@ -7877,7 +8658,10 @@
     if (pdName) pdName.childNodes[0].textContent = `${p.name} `;
     if (pdSub) {
       const base = verifiedNip05 || (claimedNip05 ? `${claimedNip05} (unverified)` : shortHex(state.user.pubkey));
-      pdSub.textContent = state.authMode === 'local' ? `${base} (local key)` : base;
+      const authLabel = state.authMode === 'local'
+        ? 'local key'
+        : (state.authMode === 'remote' ? 'remote signer' : '');
+      pdSub.textContent = authLabel ? `${base} (${authLabel})` : base;
     }
     if (navBadge) navBadge.style.display = verifiedNip05 ? 'inline' : 'none';
     if (pdBadge) pdBadge.style.display = verifiedNip05 ? 'inline' : 'none';
@@ -10186,6 +10970,7 @@
   function setAuthenticatedUser(pubkey, authMode) {
     const previousUser = normalizePubkeyHex(state.user && state.user.pubkey || '');
     const nextUser = normalizePubkeyHex(pubkey);
+    cancelRemoteLoginAttempt({ silent: true });
     state.authMode = authMode;
     state.followPublishPending = false;
     state.streamLikePublishPending = false;
@@ -10223,6 +11008,8 @@
       throw new Error('No NIP-07 signer found. You can still use nsec login.');
     }
     const pubkey = await window.nostr.getPublicKey();
+    teardownRemoteSignerSession('Switched to extension login.');
+    clearPersistedRemoteSignerSession();
     state.localSecretKey = null;
     localStorage.removeItem(LOCAL_NSEC_STORAGE_KEY);
     setAuthenticatedUser(pubkey, 'nip07');
@@ -10261,6 +11048,8 @@
     }
 
     const pubkey = tools.getPublicKey(secret);
+    teardownRemoteSignerSession('Switched to local key login.');
+    clearPersistedRemoteSignerSession();
     state.localSecretKey = secret;
     if (persist) localStorage.setItem(LOCAL_NSEC_STORAGE_KEY, input);
     setAuthenticatedUser(pubkey, 'local');
@@ -10520,6 +11309,8 @@
       : bytesToHex(secret);
 
     const pubkey = tools.getPublicKey(secret);
+    teardownRemoteSignerSession('Switched to local key login.');
+    clearPersistedRemoteSignerSession();
     state.localSecretKey = normalizeSecretKey(secret);
     state.pendingOnboardingNsec = nsec;
     localStorage.setItem(LOCAL_NSEC_STORAGE_KEY, nsec);
@@ -10552,7 +11343,7 @@
   async function publishCurrentStream(statusOverride) {
     if (!state.user) {
       window.openLogin();
-      throw new Error('Please login first. Signer is optional: you can use nsec mode.');
+      throw new Error('Please login first. You can use extension, remote signer, or nsec mode.');
     }
 
     const dTagInput = qs('#goLiveDTag');
@@ -10811,6 +11602,16 @@
         c.classList.add('sl');
       });
     });
+
+    const nsecLoginInput = qs('#nsecLoginInput');
+    if (nsecLoginInput) {
+      nsecLoginInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        window.loginDemo('keyuser');
+      });
+    }
+
   }
 
   function bindLegacyGlobals() {
@@ -11471,13 +12272,73 @@
       }
     };
 
-    window.openLogin = function () { qs('#loginModal').classList.add('open'); };
-    window.closeLogin = function () { qs('#loginModal').classList.remove('open'); };
+    window.openLogin = function () {
+      cancelRemoteLoginAttempt({ silent: true });
+      setRemoteLoginStatus('', 'info');
+      qs('#loginModal').classList.add('open');
+    };
+    window.closeLogin = function () {
+      cancelRemoteLoginAttempt({ silent: true });
+      setRemoteLoginStatus('', 'info');
+      qs('#loginModal').classList.remove('open');
+    };
+
+    window.loginRemote = async function () {
+      if (state.remoteLoginPending) return;
+
+      const abortController = typeof AbortController === 'function' ? new AbortController() : null;
+      state.remoteLoginAbortController = abortController;
+      setRemoteLoginUri('');
+      setRemoteLoginUiBusy(true);
+      setRemoteLoginStatus('Preparing remote login QR code...', 'loading');
+
+      try {
+        await loginWithRemoteSignerQr(true, {
+          signal: abortController ? abortController.signal : null,
+          onUri: (uri) => {
+            setRemoteLoginUri(uri);
+            setRemoteLoginStatus('Scan the QR code with your signer app, then approve.', 'loading');
+          },
+          onStatus: (msg) => setRemoteLoginStatus(msg, 'loading')
+        });
+        setRemoteLoginStatus('Remote signer connected.', 'success');
+      } catch (err) {
+        if (isAbortLikeError(err)) {
+          setRemoteLoginStatus('Remote login cancelled.', 'info');
+        } else {
+          setRemoteLoginStatus(err && err.message ? err.message : 'Remote login failed.', 'error');
+        }
+      } finally {
+        state.remoteLoginAbortController = null;
+        setRemoteLoginUiBusy(false);
+      }
+    };
+
+    window.copyRemoteLoginUri = async function () {
+      const uri = String(state.remoteLoginUri || '').trim();
+      if (!uri) {
+        setRemoteLoginStatus('Start Remote Nostr Login first to generate a link.', 'info');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(uri);
+        setRemoteLoginStatus('Remote login link copied.', 'success');
+      } catch (_) {
+        setRemoteLoginStatus('Could not copy link to clipboard on this browser.', 'error');
+      }
+    };
+
+    window.cancelRemoteLogin = function () {
+      cancelRemoteLoginAttempt({ silent: false });
+    };
 
     window.loginDemo = async function (name) {
       try {
+        if (state.remoteLoginPending && name !== 'remote' && name !== 'remoteprimal') {
+          cancelRemoteLoginAttempt({ silent: true });
+        }
         if (name === 'keyuser') {
-          const nsecInput = qs('.key-inp');
+          const nsecInput = qs('#nsecLoginInput');
           const nsec = (nsecInput && nsecInput.value.trim()) || '';
           if (!nsec) throw new Error('Enter your nsec key first.');
           await loginWithNsec(nsec, true);
@@ -11487,6 +12348,11 @@
 
         if (name === 'newnostr') {
           await createLocalIdentity();
+          return;
+        }
+
+        if (name === 'remote' || name === 'remoteprimal') {
+          await window.loginRemote();
           return;
         }
 
@@ -12339,8 +13205,12 @@
 
     // ---- Sign out: clear all data, go home ----
     window.signOut = function () {
+      cancelRemoteLoginAttempt({ silent: true });
+      teardownRemoteSignerSession('Signed out.');
+      clearPersistedRemoteSignerSession();
       try { localStorage.clear(); } catch (_) {}
       state.user = null; state.authMode = 'readonly'; state.localSecretKey = null;
+      state.remoteSignerSession = null; state.remoteLoginPending = false; state.remoteLoginAbortController = null; state.remoteLoginUri = '';
       state.pendingOnboardingNsec = ''; state.selectedStreamAddress = null;
       state.selectedProfilePubkey = null; state.selectedProfileLiveAddress = null;
       state.profilePlaybackAddress = ''; state.profilePlaybackUrl = '';
@@ -12576,7 +13446,8 @@
 
     if (state.streamsByAddress.size) renderLiveGrid();
     initRelay();
-    await tryRestoreLocalLogin();
+    const restoredRemote = await tryRestoreRemoteLogin();
+    if (!restoredRemote) await tryRestoreLocalLogin();
     setUserUi();
     syncViewFromLocation({ fallbackMode: 'replace' });
 
