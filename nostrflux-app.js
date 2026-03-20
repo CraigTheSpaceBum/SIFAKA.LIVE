@@ -12077,6 +12077,42 @@
       getSettings: () => ({ ...state.settings }),
       openLogin: () => window.openLogin(),
       showProfileByPubkey: (pubkey) => showProfileByPubkey(pubkey),
+      getProfileByPubkey: (pubkeyInput) => {
+        const raw = String(pubkeyInput || '').trim();
+        const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
+        if (!decoded) return null;
+        const profile = profileFor(decoded);
+        const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
+        const verifiedNip05 = getVerifiedNip05ForPubkey(decoded, claimedNip05);
+        return {
+          pubkey: decoded,
+          name: String(profile.display_name || profile.name || '').trim(),
+          displayName: String(profile.display_name || profile.name || '').trim(),
+          avatar: String(profile.picture || '').trim(),
+          nip05: claimedNip05,
+          verifiedNip05: !!verifiedNip05,
+          verifiedNip05Value: verifiedNip05 || '',
+          bio: String(profile.about || '').trim()
+        };
+      },
+      getVerifiedNip05ForPubkey: (pubkeyInput, nip05Input = '') => {
+        const raw = String(pubkeyInput || '').trim();
+        const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
+        if (!decoded) return '';
+        const fallbackNip05 = normalizeNip05Value(nip05Input || '');
+        const profile = profileFor(decoded);
+        return getVerifiedNip05ForPubkey(decoded, fallbackNip05 || profile.nip05 || '');
+      },
+      ensureNip05ForPubkey: (pubkeyInput, nip05Input = '') => {
+        const raw = String(pubkeyInput || '').trim();
+        const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
+        if (!decoded) return Promise.resolve(false);
+        const fallbackNip05 = normalizeNip05Value(nip05Input || '');
+        const profile = profileFor(decoded);
+        const candidate = fallbackNip05 || normalizeNip05Value(profile.nip05 || '');
+        if (!candidate) return Promise.resolve(false);
+        return ensureNip05Verification(decoded, candidate);
+      },
       getUploadAccept: () => BLOSSOM_MEDIA_ACCEPT,
       uploadMediaFile: (file, opts = {}) => uploadFileToBlossom(file, opts)
     };

@@ -886,6 +886,15 @@ export function createCommunityStore(options = {}) {
     if (!id) return { ok: false, reason: 'missing_community' };
     const index = state.data.communities.findIndex((community) => community.id === id);
     if (index < 0) return { ok: false, reason: 'missing_community' };
+    const targetCommunity = state.data.communities[index];
+    const ownerPubkey = String((targetCommunity && targetCommunity.ownerPubkey) || '').trim().toLowerCase();
+    const currentPubkey = String(state.currentUserPubkey || '').trim().toLowerCase();
+    const roleIds = getMemberRoles(id, state.currentUserPubkey) || [];
+    const hasOwnerRole = Array.isArray(roleIds) && roleIds.includes('owner');
+    const isOwner = hasOwnerRole || (!!ownerPubkey && !!currentPubkey && ownerPubkey === currentPubkey);
+    if (!options.bypassPermission && !isOwner) {
+      return { ok: false, reason: 'permission_denied' };
+    }
 
     const removed = state.data.communities.splice(index, 1)[0];
     const channels = (state.data.channelsByCommunity[id] || []).slice();
@@ -953,12 +962,14 @@ export function createCommunityStore(options = {}) {
   function ingestProfile(payload = {}) {
     const pubkey = String(payload.pubkey || '').trim();
     if (!pubkey) return false;
+    const resolvedDisplayName = payload.displayName != null ? payload.displayName : payload.display_name;
+    const resolvedAvatar = payload.avatar != null ? payload.avatar : (payload.picture != null ? payload.picture : payload.image);
     ensureProfile(pubkey, {
-      name: payload.name != null ? String(payload.name) : undefined,
-      displayName: payload.displayName != null ? String(payload.displayName) : undefined,
+      name: payload.name != null ? String(payload.name) : (resolvedDisplayName != null ? String(resolvedDisplayName) : undefined),
+      displayName: resolvedDisplayName != null ? String(resolvedDisplayName) : undefined,
       nip05: payload.nip05 != null ? String(payload.nip05) : undefined,
       verifiedNip05: payload.verifiedNip05 != null ? !!payload.verifiedNip05 : undefined,
-      avatar: payload.avatar != null ? String(payload.avatar) : undefined,
+      avatar: resolvedAvatar != null ? String(resolvedAvatar) : undefined,
       bio: payload.bio != null ? String(payload.bio) : undefined
     });
     emitter.emit({ type: 'profile_ingested', pubkey });
