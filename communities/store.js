@@ -806,6 +806,44 @@ export function createCommunityStore(options = {}) {
     return { ok: true, community, channels: createdChannels };
   }
 
+  function removeCommunity(communityId, options = {}) {
+    const id = String(communityId || '').trim();
+    if (!id) return { ok: false, reason: 'missing_community' };
+    const index = state.data.communities.findIndex((community) => community.id === id);
+    if (index < 0) return { ok: false, reason: 'missing_community' };
+
+    const removed = state.data.communities.splice(index, 1)[0];
+    const channels = (state.data.channelsByCommunity[id] || []).slice();
+    const channelIds = new Set(channels.map((channel) => channel.id));
+
+    delete state.data.channelsByCommunity[id];
+    delete state.data.membersByCommunity[id];
+
+    channelIds.forEach((channelId) => {
+      delete state.data.messagesByChannel[channelId];
+      state.unreadByChannel.delete(channelId);
+      state.draftsByChannel.delete(channelId);
+      state.pinnedByChannel.delete(channelId);
+    });
+
+    Array.from(state.messageChannelById.entries()).forEach(([messageId, channelId]) => {
+      if (channelIds.has(channelId)) state.messageChannelById.delete(messageId);
+    });
+
+    Array.from(state.reactionByEventId.entries()).forEach(([eventId, reaction]) => {
+      if (reaction && channelIds.has(reaction.channelId)) state.reactionByEventId.delete(eventId);
+    });
+
+    state.lastActiveByCommunity.delete(id);
+    state.inviteCodesByCommunity.delete(id);
+    state.joinedCommunityIds.delete(id);
+    persistJoined();
+    ensureActiveSelection();
+
+    emitter.emit({ type: 'community_removed', communityId: id, source: options.source || 'local' });
+    return { ok: true, community: removed, channels };
+  }
+
   function updateCommunity(communityId, patch = {}) {
     const community = getCommunity(communityId);
     if (!community) return { ok: false, reason: 'missing_community' };
@@ -1202,6 +1240,7 @@ export function createCommunityStore(options = {}) {
     setMemberRole,
     moderateMember,
     createCommunity,
+    removeCommunity,
     updateCommunity,
     createChannel,
     updateChannel,

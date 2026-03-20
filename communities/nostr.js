@@ -658,7 +658,8 @@ export function createNostrBridge(options = {}) {
     };
 
     const signed = await signEvent(unsigned);
-    await publish(signed);
+    const sent = await publish(signed);
+    signed._sent = sent;
     return signed;
   }
 
@@ -677,7 +678,8 @@ export function createNostrBridge(options = {}) {
     };
 
     const signed = await signEvent(unsigned);
-    await publish(signed);
+    const sent = await publish(signed);
+    signed._sent = sent;
     return signed;
   }
 
@@ -727,11 +729,12 @@ export function createNostrBridge(options = {}) {
     };
 
     const signed = await signEvent(unsigned);
-    await publish(signed);
+    const sent = await publish(signed);
     return {
       event: signed,
       communityId,
-      slug
+      slug,
+      sent
     };
   }
 
@@ -768,7 +771,8 @@ export function createNostrBridge(options = {}) {
     };
 
     const signed = await signEvent(unsigned);
-    await publish(signed);
+    const sent = await publish(signed);
+    signed._sent = sent;
     return signed;
   }
 
@@ -797,7 +801,8 @@ export function createNostrBridge(options = {}) {
     };
 
     const signed = await signEvent(unsigned);
-    await publish(signed);
+    const sent = await publish(signed);
+    signed._sent = sent;
     return signed;
   }
 
@@ -838,10 +843,11 @@ export function createNostrBridge(options = {}) {
     };
 
     const signed = await signEvent(unsigned);
-    await publish(signed);
+    const sent = await publish(signed);
     return {
       event: signed,
-      channelId
+      channelId,
+      sent
     };
   }
 
@@ -860,7 +866,8 @@ export function createNostrBridge(options = {}) {
     };
 
     const signed = await signEvent(unsigned);
-    await publish(signed);
+    const sent = await publish(signed);
+    signed._sent = sent;
     return signed;
   }
 

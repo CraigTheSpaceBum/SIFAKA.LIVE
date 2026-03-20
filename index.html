@@ -559,11 +559,11 @@
     <div class="sm-hd"><div class="sm-title">Upload Media</div></div>
     <div class="share-modal-body">
       <div class="compose-upload-grid">
-        <button class="share-choice-btn" onclick="selectComposeUploadSource('nostr_build')"><span>Nostr.build</span><span class="sub">NIP-96 upload from this device</span></button>
-        <button class="share-choice-btn" onclick="promptComposeMediaUrl()"><span>Paste URL</span><span class="sub">Use an existing image/video link</span></button>
+        <button class="share-choice-btn" onclick="selectComposeUploadSource('blossom')"><span>Blossom Upload</span><span class="sub">Upload from this device</span></button>
+        <button class="share-choice-btn" onclick="promptComposeMediaUrl()"><span>Paste URL</span><span class="sub">Use an existing image, video, or audio link</span></button>
       </div>
       <div class="compose-upload-status" id="composeUploadStatus"></div>
-      <input id="composeUploadFileInput" type="file" accept="image/*,video/*" style="display:none;" onchange="uploadComposeFile(event)">
+      <input id="composeUploadFileInput" type="file" accept="image/*,video/*,audio/*" style="display:none;" onchange="uploadComposeFile(event)">
     </div>
   </div>
 </div>
@@ -938,6 +938,7 @@
             <button type="button" onclick="applyNostrMarkup('chatInputText','quote')">"</button>
             <button type="button" onclick="applyNostrMarkup('chatInputText','code')">&lt;/&gt;</button>
           </div>
+          <button class="ca-btn" id="chatAttachBtn" type="button" onclick="openComposeUploadModal('chat')">Attach</button>
           <button class="chat-send-btn">Send</button>
         </div>
       </div>
@@ -1056,7 +1057,7 @@
                 <button type="button" onclick="applyNostrMarkup('profileComposeText','quote')">"</button>
                 <button type="button" onclick="applyNostrMarkup('profileComposeText','code')">&lt;/&gt;</button>
               </div>
-              <button class="profile-compose-upload-btn" id="profileComposeUploadBtn" onclick="openComposeUploadModal()">Upload</button>
+              <button class="profile-compose-upload-btn" id="profileComposeUploadBtn" onclick="openComposeUploadModal('profile')">Attach</button>
               <button class="profile-compose-btn" id="profileComposeBtn" onclick="publishProfileNote()">Post Note</button>
             </div>
           </div>

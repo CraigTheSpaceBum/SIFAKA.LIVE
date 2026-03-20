@@ -57,12 +57,30 @@ function parseCsv(value) {
     .filter(Boolean);
 }
 
+function uniqueValues(values) {
+  return Array.from(new Set((values || []).filter(Boolean)));
+}
+
+function splitCsvTokens(value) {
+  return String(value || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function trailingCsvToken(value) {
+  const parts = String(value || '').split(',');
+  return String(parts[parts.length - 1] || '').trim();
+}
+
 export function createCommunitiesUI(input) {
   const { root, store, nostrBridge, appContext } = input;
 
   let mounted = false;
   let dispose = null;
   let outsideClickListenerBound = false;
+  let renderQueued = false;
+  let toastTimer = null;
 
   const ui = {
     session: {
@@ -84,7 +102,12 @@ export function createCommunitiesUI(input) {
     discoveryLimit: 18,
     discoveryChunk: 18,
     discoveryObserver: null,
-    createDraft: null
+    createDraft: null,
+    createRoleSearch: { moderators: '', admins: '' },
+    replyTargetByChannel: new Map(),
+    discoveryLoading: false,
+    attachUploadPending: false,
+    attachUploadProgress: 0
   };
 
   function defaultCreateCommunityDraft(state) {
@@ -130,11 +153,16 @@ export function createCommunitiesUI(input) {
     return ui.createDraft;
   }
 
-  function captureCreateCommunityDraft() {
-    if (ui.openModal !== 'createCommunity') return;
+  function setCreateDraftField(field, value) {
+    const state = store.getState();
+    const draft = ensureCreateCommunityDraft(state);
+    draft[field] = value;
+  }
 
+  function syncCreateCommunityDraftFromDom() {
+    if (ui.openModal !== 'createCommunity') return ensureCreateCommunityDraft(store.getState());
     const nameField = root.querySelector('#scCreateName');
-    if (!nameField) return;
+    if (!nameField) return ensureCreateCommunityDraft(store.getState());
 
     ui.createDraft = {
       type: (root.querySelector('#scCreateType') || {}).value || 'public',
@@ -156,6 +184,8 @@ export function createCommunitiesUI(input) {
       includeForum: !!((root.querySelector('#scCreateIncludeForum') || {}).checked),
       includeStaff: !!((root.querySelector('#scCreateIncludeStaff') || {}).checked)
     };
+
+    return ui.createDraft;
   }
 
   function closeTransient() {
@@ -164,14 +194,26 @@ export function createCommunitiesUI(input) {
     ui.emojiOpen = false;
   }
 
+  function getReplyTarget(channelId) {
+    if (!channelId) return '';
+    return String(ui.replyTargetByChannel.get(channelId) || '').trim();
+  }
+
+  function clearReplyTarget(channelId) {
+    if (!channelId) return;
+    ui.replyTargetByChannel.delete(channelId);
+  }
+
   function resetDiscoveryWindow() {
     ui.discoveryLimit = ui.discoveryChunk;
+    ui.discoveryLoading = false;
   }
 
   function disconnectDiscoveryObserver() {
     if (!ui.discoveryObserver) return;
     ui.discoveryObserver.disconnect();
     ui.discoveryObserver = null;
+    ui.discoveryLoading = false;
   }
 
   function setSession(next = {}) {
@@ -179,6 +221,126 @@ export function createCommunitiesUI(input) {
       user: next.user || null,
       isAuthenticated: !!next.isAuthenticated
     };
+  }
+
+  function normalizePubkey(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^[0-9a-f]{64}$/i.test(raw)) return raw.toLowerCase();
+    if (/^npub1/i.test(raw) && nostrBridge && typeof nostrBridge.nip19Decode === 'function') {
+      const decoded = nostrBridge.nip19Decode(raw);
+      if (decoded && decoded.type === 'npub' && typeof decoded.data === 'string') {
+        return String(decoded.data || '').trim().toLowerCase();
+      }
+    }
+    return raw;
+  }
+
+  function parsePubkeyCsv(value) {
+    return uniqueValues(parseCsv(value).map(normalizePubkey).filter(Boolean));
+  }
+
+  function toNpub(pubkey) {
+    const key = String(pubkey || '').trim();
+    if (!key) return '';
+    if (/^npub1/i.test(key)) return key;
+    if (nostrBridge && typeof nostrBridge.nip19Encode === 'function') {
+      const encoded = nostrBridge.nip19Encode('npub', key);
+      if (encoded) return encoded;
+    }
+    return key;
+  }
+
+  function resolveMemberCount(state, community) {
+    if (!community || !state) return 0;
+    const seen = new Set();
+    const members = ((state.data && state.data.membersByCommunity) ? state.data.membersByCommunity[community.id] : []) || [];
+    members.forEach((member) => {
+      if (member && member.pubkey && !member.banned) seen.add(member.pubkey);
+    });
+    if (community.ownerPubkey) seen.add(community.ownerPubkey);
+    (community.moderatorPubkeys || []).forEach((pubkey) => seen.add(pubkey));
+    (community.adminPubkeys || []).forEach((pubkey) => seen.add(pubkey));
+    return seen.size;
+  }
+
+  function sentCountFromPublishResult(result) {
+    if (!result || typeof result !== 'object') return 0;
+    if (Number.isFinite(Number(result.sent))) return Number(result.sent);
+    if (Number.isFinite(Number(result._sent))) return Number(result._sent);
+    if (result.event && Number.isFinite(Number(result.event.sent))) return Number(result.event.sent);
+    if (result.event && Number.isFinite(Number(result.event._sent))) return Number(result.event._sent);
+    return 0;
+  }
+
+  function assertPublished(result, label) {
+    const sent = sentCountFromPublishResult(result);
+    if (sent > 0) return;
+    throw new Error(`Could not publish ${label}. Check relay connection and try again.`);
+  }
+
+  function captureFocusSnapshot() {
+    if (typeof document === 'undefined') return null;
+    const active = document.activeElement;
+    if (!active || !root.contains(active)) return null;
+    if (!active.id) return null;
+    const snapshot = { id: active.id };
+    if (typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number') {
+      snapshot.start = active.selectionStart;
+      snapshot.end = active.selectionEnd;
+      snapshot.direction = active.selectionDirection || 'none';
+    }
+    return snapshot;
+  }
+
+  function restoreFocusSnapshot(snapshot) {
+    if (!snapshot || !snapshot.id) return;
+    const next = root.querySelector(`#${snapshot.id}`);
+    if (!next || typeof next.focus !== 'function') return;
+    try { next.focus({ preventScroll: true }); } catch (_) { next.focus(); }
+    if (typeof snapshot.start === 'number' && typeof next.setSelectionRange === 'function') {
+      try { next.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction); } catch (_) {}
+    }
+  }
+
+  function requestRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    const hasWindow = typeof window !== 'undefined';
+    const raf = (hasWindow && typeof window.requestAnimationFrame === 'function')
+      ? window.requestAnimationFrame.bind(window)
+      : (cb) => setTimeout(cb, 16);
+    raf(() => {
+      renderQueued = false;
+      render();
+    });
+  }
+
+  function shouldRenderForStoreEvent(evt = {}) {
+    const type = String((evt && evt.type) || '').trim();
+    if (!type) return true;
+
+    if (ui.openModal === 'createCommunity') {
+      const alwaysRender = new Set(['user_changed', 'community_created', 'community_removed', 'community_joined', 'community_left', 'joined_set']);
+      if (!alwaysRender.has(type)) return false;
+    }
+
+    if (ui.openModal === 'joinCommunity' || ui.openModal === 'discovery' || ui.openModal === 'communityHub') {
+      const noisyTypes = new Set([
+        'message_ingested',
+        'message_sent',
+        'reaction_ingested',
+        'reaction_toggled',
+        'deletion_ingested',
+        'draft_changed',
+        'read',
+        'search_changed',
+        'relay_status'
+      ]);
+      if (noisyTypes.has(type)) return false;
+    }
+
+    return true;
   }
 
   function permissionsSummary() {
@@ -254,6 +416,7 @@ export function createCommunitiesUI(input) {
   }
   function render() {
     try {
+    const focusSnapshot = captureFocusSnapshot();
     if (!ui.session.isAuthenticated) {
       renderLoginGate();
       return;
@@ -290,8 +453,10 @@ export function createCommunitiesUI(input) {
     const messages = channel ? store.filteredMessages(channel.id) : [];
     const pins = channel ? store.getPinnedMessages(channel.id) : [];
     const draft = channel ? (draftsByChannel.get(channel.id) || '') : '';
+    const replyTarget = channel ? getReplyTarget(channel.id) : '';
     const profiles = store.getProfiles();
     const members = community ? (state.data.membersByCommunity[community.id] || []) : [];
+    const memberCount = community ? resolveMemberCount(state, community) : 0;
 
     const relayStatuses = Array.from(relayStatusByUrl.values());
     const connectedRelays = relayStatuses.filter((value) => value === 'open').length;
@@ -372,6 +537,13 @@ export function createCommunitiesUI(input) {
     }).join('');
 
     const notificationUnread = (state.data.notifications || []).filter((n) => n.unread).length;
+    const attachAccept = (appContext && typeof appContext.getUploadAccept === 'function')
+      ? String(appContext.getUploadAccept() || '').trim()
+      : '';
+    const effectiveAttachAccept = attachAccept || 'image/*,video/*,audio/*';
+    const attachLabel = ui.attachUploadPending
+      ? `Uploading${ui.attachUploadProgress > 0 ? ` ${ui.attachUploadProgress}%` : '...'}`
+      : 'Attach';
 
     root.innerHTML = `
       <div class="sc-wrap${hasJoinedCommunities ? '' : ' sc-wrap-empty'}" id="scWrap">
@@ -413,16 +585,15 @@ export function createCommunitiesUI(input) {
         <main class="sc-main">
           <header class="sc-main-head">
             <div>
-              <h3>${hasJoinedCommunities ? (channel ? `# ${esc(channel.name)}` : 'No channel selected') : 'Get Started'}</h3>
-              <p>${hasJoinedCommunities ? (channel ? esc(channel.topic || '') : 'Choose a channel to start chatting.') : 'Create your own community or browse public communities to join.'}</p>
+              <h3>${hasJoinedCommunities ? (channel ? `# ${esc(channel.name)}` : 'No channel selected') : 'Communities'}</h3>
+              <p>${hasJoinedCommunities ? (channel ? esc(channel.topic || '') : 'Choose a channel to start chatting.') : 'Discover public spaces or create your own.'}</p>
             </div>
             <div class="sc-main-actions">
               ${hasJoinedCommunities
                 ? `<button id="scPinnedBtn" ${channel ? '' : 'disabled'}>Pinned (${pins.length})</button>
                    <button id="scChannelSettingsBtn" ${(channel && store.can('manage_channels', channel, community)) ? '' : 'disabled'}>Channel Settings</button>
                    <button id="scNotifBtn">Notifications${notificationUnread ? ` (${notificationUnread})` : ''}</button>`
-                : `<button id="scOpenCommunityHubBtn">Create or Join</button>
-                   <button id="scOpenJoinModalBtn">Browse Public Communities</button>`}
+                : ``}
             </div>
           </header>
 
@@ -432,10 +603,11 @@ export function createCommunitiesUI(input) {
                <section class="sc-composer">
                  <div class="sc-draft-tools">
                    <button id="scEmojiBtn">Emoji</button>
-                   <label class="sc-attach-label">Attach<input type="file" id="scAttachInput" multiple hidden></label>
+                   <label class="sc-attach-label${ui.attachUploadPending ? ' is-busy' : ''}">${esc(attachLabel)}<input type="file" id="scAttachInput" accept="${esc(effectiveAttachAccept)}" multiple hidden ${ui.attachUploadPending ? 'disabled' : ''}></label>
                    <button id="scDmHintBtn">Encrypted DM</button>
                  </div>
                  ${(ui.composerAttachments || []).length ? `<div class="sc-attachment-preview">${ui.composerAttachments.map((file) => `<span>${esc(file.name)}</span>`).join('')}</div>` : ''}
+                 ${replyTarget ? `<div class="sc-replying">Replying to <code>${esc(shortPubkey(replyTarget, 10, 8))}</code><button id="scClearReplyBtn" type="button">Clear</button></div>` : ''}
                  <textarea id="scComposer" placeholder="${channel ? `Message #${esc(channel.name)}` : 'Select a channel'}" ${channel ? '' : 'disabled'}>${esc(draft)}</textarea>
                  <div class="sc-compose-foot">
                    <small>${channel ? (store.can('post_messages', channel, community) ? 'Ready to publish via Nostr relays' : 'You do not have permission to post in this channel') : 'Pick a channel to start typing'}</small>
@@ -446,7 +618,11 @@ export function createCommunitiesUI(input) {
             : `<section class="sc-feed">
                  <div class="sc-empty sc-empty-onboard">
                    <strong>Ready to start your community space?</strong>
-                   <div style="margin-top:.5rem">Use Create or Join to launch your own community, or browse public communities and jump in.</div>
+                   <p>Set up your own community in minutes, or explore public communities and jump into live conversations.</p>
+                   <div class="sc-empty-onboard-actions">
+                     <button id="scOpenCommunityHubBtn" class="sc-onboard-btn">Create or Join</button>
+                     <button id="scOpenJoinModalBtn" class="sc-onboard-btn">Browse Public Communities</button>
+                   </div>
                  </div>
                </section>`}
         </main>
@@ -454,7 +630,7 @@ export function createCommunitiesUI(input) {
         ${hasActiveCommunity ? `
           <aside class="sc-member-col${ui.memberPanelOpen ? '' : ' collapsed'}">
             <header>
-              <h4>Members (${members.length})</h4>
+              <h4>Members (${memberCount})</h4>
               <button id="scToggleMembersBtn">${ui.memberPanelOpen ? 'Hide' : 'Show'}</button>
             </header>
             <div class="sc-member-list">${memberHtml}</div>
@@ -470,6 +646,7 @@ export function createCommunitiesUI(input) {
 
     enhanceRenderedCommunityContent();
     bindHandlers();
+    restoreFocusSnapshot(focusSnapshot);
     } catch (err) {
       console.error('Sifaka Communities render error', err);
       root.innerHTML = '<section class="sc-auth-gate"><div class="sc-auth-card"><h2>Communities Temporarily Unavailable</h2><p>Reload this page to try again.</p></div></section>';
@@ -504,66 +681,173 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
     `;
   }
 
+  function renderCreateImagePreview(url, label, wide = false) {
+    const clean = String(url || '').trim();
+    if (!clean) {
+      return `<div class="sc-url-preview-empty">${esc(label)} preview appears here</div>`;
+    }
+    return `
+      <div class="sc-url-preview-frame${wide ? ' wide' : ''}">
+        <img src="${esc(clean)}" alt="${esc(label)} preview" loading="lazy" />
+      </div>
+    `;
+  }
+
+  function buildRoleSearchResults(role, value, state) {
+    const query = String(ui.createRoleSearch[role] || trailingCsvToken(value || '')).trim().toLowerCase();
+    if (query.length < 2) return '';
+
+    const selected = new Set(parsePubkeyCsv(value || ''));
+    const profiles = (state && state.data && state.data.profiles) ? state.data.profiles : {};
+    const keys = uniqueValues([...(Object.keys(profiles || {})), state.currentUserPubkey || ''])
+      .map((pubkey) => String(pubkey || '').trim())
+      .filter((pubkey) => pubkey && !selected.has(normalizePubkey(pubkey)));
+
+    const results = keys
+      .map((pubkey) => {
+        const profile = profiles[pubkey] || store.profile(pubkey);
+        const npub = toNpub(pubkey);
+        const name = profile.displayName || profile.name || shortPubkey(pubkey, 12, 8);
+        const haystack = [
+          name,
+          profile.name || '',
+          profile.displayName || '',
+          npub,
+          pubkey
+        ].join(' ').toLowerCase();
+        return {
+          pubkey,
+          npub,
+          name,
+          avatar: String(profile.avatar || '').trim(),
+          haystack
+        };
+      })
+      .filter((entry) => entry.haystack.includes(query))
+      .slice(0, 6);
+
+    return results.map((entry) => `
+      <button class="sc-role-result" type="button" data-role-target="${esc(role)}" data-role-pubkey="${esc(entry.pubkey)}" data-role-label="${esc(entry.npub || entry.pubkey)}">
+        <span class="sc-role-result-avatar">
+          ${entry.avatar
+            ? `<img src="${esc(entry.avatar)}" alt="${esc(entry.name)} avatar" loading="lazy" />`
+            : `<i>${esc(initials(entry.name))}</i>`}
+        </span>
+        <span class="sc-role-result-main">
+          <strong>${esc(entry.name)}</strong>
+          <small>${esc(entry.npub || entry.pubkey)}</small>
+        </span>
+      </button>
+    `).join('');
+  }
+
   function renderCreateCommunityModal(state) {
     const draft = ensureCreateCommunityDraft(state);
     const ownerProfile = state.currentUserPubkey ? store.profile(state.currentUserPubkey) : null;
     const ownerName = ownerProfile ? (ownerProfile.displayName || ownerProfile.name || shortPubkey(state.currentUserPubkey)) : shortPubkey(state.currentUserPubkey);
     const ownerNip05 = ownerProfile && ownerProfile.nip05 ? `${ownerProfile.nip05}${ownerProfile.verifiedNip05 ? '' : ' (unverified)'}` : 'No NIP-05 set';
+    const moderatorResults = buildRoleSearchResults('moderators', draft.moderators || '', state);
+    const adminResults = buildRoleSearchResults('admins', draft.admins || '', state);
 
     return `
       <div class="sc-modal-ov" data-close="modal">
-        <div class="sc-modal sc-modal-wide">
+        <div class="sc-modal sc-modal-wide sc-create-modal">
           <h4>Create Community</h4>
-          <p>Build a Nostr-native server with membership, moderation, and posting rules.</p>
+          <p>Create a space for your audience. You can change these settings later.</p>
           <div class="sc-create-owner">Owner: <strong>${esc(ownerName || 'Nostr User')}</strong><small>${esc(ownerNip05)} | ${esc(shortPubkey(state.currentUserPubkey, 12, 10))}</small></div>
-          <div class="sc-form-grid sc-form-grid-2">
-            <label>Type
-              <select id="scCreateType">
-                <option value="public" ${draft.type === 'public' ? 'selected' : ''}>Public Community (NIP-72 style)</option>
-                <option value="private" ${draft.type === 'private' ? 'selected' : ''}>Private Group (NIP-29 style)</option>
-              </select>
-            </label>
-            <label>Name<input id="scCreateName" value="${esc(draft.name)}" placeholder="Sifaka Builders"></label>
-            <label>Slug / ID<input id="scCreateSlug" value="${esc(draft.slug)}" placeholder="sifaka-builders"></label>
-            <label>Default Channel Name<input id="scCreateDefaultChannel" value="${esc(draft.defaultChannelName)}"></label>
-            <label class="full">Description<textarea id="scCreateDescription" placeholder="What is this community about?">${esc(draft.description)}</textarea></label>
-            <label>Image URL<input id="scCreateImage" value="${esc(draft.image)}" placeholder="https://.../group.jpg"></label>
-            <label>Banner URL<input id="scCreateBanner" value="${esc(draft.banner)}" placeholder="https://.../banner.jpg"></label>
-            <label>Moderators (comma pubkeys)<input id="scCreateModerators" value="${esc(draft.moderators)}" placeholder="npub/hex pubkeys separated by commas"></label>
-            <label>Admins (comma pubkeys)<input id="scCreateAdmins" value="${esc(draft.admins)}" placeholder="npub/hex pubkeys separated by commas"></label>
-            <label>Topics (comma)
-              <input id="scCreateTopics" value="${esc(draft.topics)}" placeholder="nostr, livestream, dev">
-            </label>
-            <label>Membership Mode
-              <select id="scCreateJoinMode">
-                <option value="open" ${draft.joinMode === 'open' ? 'selected' : ''}>Open join</option>
-                <option value="approval" ${draft.joinMode === 'approval' ? 'selected' : ''}>Approval required</option>
-                <option value="invite_only" ${draft.joinMode === 'invite_only' ? 'selected' : ''}>Invite only</option>
-              </select>
-            </label>
-            <label>Posting Rules
-              <select id="scCreatePostingPolicy">
-                <option value="members" ${draft.postingPolicy === 'members' ? 'selected' : ''}>Members can post</option>
-                <option value="moderators" ${draft.postingPolicy === 'moderators' ? 'selected' : ''}>Moderators only</option>
-                <option value="admins" ${draft.postingPolicy === 'admins' ? 'selected' : ''}>Admins only</option>
-              </select>
-            </label>
-            <label class="full">Community Rules (one per line)
-              <textarea id="scCreateRules" placeholder="Be respectful\nNo spam\nKeep discussion on-topic">${esc(draft.rules)}</textarea>
-            </label>
-            <label class="full">Allowed Relays (comma)
-              <input id="scCreateAllowedRelays" value="${esc(draft.allowedRelays)}" placeholder="wss://relay.example.com, wss://relay2.example.com">
-            </label>
-          </div>
+
+          <section class="sc-create-section">
+            <h5>Basics</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label>Visibility
+                <select id="scCreateType">
+                  <option value="public" ${draft.type === 'public' ? 'selected' : ''}>Public (discoverable)</option>
+                  <option value="private" ${draft.type === 'private' ? 'selected' : ''}>Private (invite/approval)</option>
+                </select>
+                <small>Public communities can be listed in Join Communities.</small>
+              </label>
+              <label>Community name
+                <input id="scCreateName" value="${esc(draft.name)}" placeholder="Sifaka Builders">
+                <small>This is what people will see first.</small>
+              </label>
+              <label>Community link slug (optional)
+                <input id="scCreateSlug" value="${esc(draft.slug)}" placeholder="sifaka-builders">
+                <small>Letters, numbers, and dashes only.</small>
+              </label>
+              <label>First channel name
+                <input id="scCreateDefaultChannel" value="${esc(draft.defaultChannelName)}" placeholder="general">
+              </label>
+              <label class="full">What is this community about?
+                <textarea id="scCreateDescription" placeholder="Example: A friendly place to discuss livestream gear and tips.">${esc(draft.description)}</textarea>
+              </label>
+              <label>Topics (comma separated)
+                <input id="scCreateTopics" value="${esc(draft.topics)}" placeholder="livestream, nostr, support">
+              </label>
+              <label>How people join
+                <select id="scCreateJoinMode">
+                  <option value="open" ${draft.joinMode === 'open' ? 'selected' : ''}>Anyone can join</option>
+                  <option value="approval" ${draft.joinMode === 'approval' ? 'selected' : ''}>Request + approval</option>
+                  <option value="invite_only" ${draft.joinMode === 'invite_only' ? 'selected' : ''}>Invite only</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="sc-create-section">
+            <h5>Look and Feel</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label>Community image URL
+                <input id="scCreateImage" value="${esc(draft.image)}" placeholder="https://example.com/community-image.jpg">
+                <small>Square image recommended.</small>
+              </label>
+              <div id="scCreateImagePreview" class="sc-url-preview">${renderCreateImagePreview(draft.image, 'Community image')}</div>
+              <label>Banner image URL
+                <input id="scCreateBanner" value="${esc(draft.banner)}" placeholder="https://example.com/community-banner.jpg">
+                <small>Wide image works best for banners.</small>
+              </label>
+              <div id="scCreateBannerPreview" class="sc-url-preview">${renderCreateImagePreview(draft.banner, 'Banner image', true)}</div>
+            </div>
+          </section>
+
+          <section class="sc-create-section">
+            <h5>Team and Posting</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label class="full">Moderators
+                <input id="scCreateModerators" value="${esc(draft.moderators)}" placeholder="Type a name, npub, or hex pubkey">
+                <small>Start typing to search known profiles, then click to add.</small>
+                <div id="scCreateModeratorsSearch" class="sc-role-search" ${moderatorResults ? '' : 'hidden'}>${moderatorResults}</div>
+              </label>
+              <label class="full">Admins
+                <input id="scCreateAdmins" value="${esc(draft.admins)}" placeholder="Type a name, npub, or hex pubkey">
+                <small>Admins can manage settings and moderation tools.</small>
+                <div id="scCreateAdminsSearch" class="sc-role-search" ${adminResults ? '' : 'hidden'}>${adminResults}</div>
+              </label>
+              <label>Who can post
+                <select id="scCreatePostingPolicy">
+                  <option value="members" ${draft.postingPolicy === 'members' ? 'selected' : ''}>Members</option>
+                  <option value="moderators" ${draft.postingPolicy === 'moderators' ? 'selected' : ''}>Moderators only</option>
+                  <option value="admins" ${draft.postingPolicy === 'admins' ? 'selected' : ''}>Admins only</option>
+                </select>
+              </label>
+              <label>Allowed relay URLs (comma separated)
+                <input id="scCreateAllowedRelays" value="${esc(draft.allowedRelays)}" placeholder="wss://relay.example.com, wss://relay2.example.com">
+              </label>
+              <label class="full">Community rules (one per line)
+                <textarea id="scCreateRules" placeholder="Be respectful\nNo spam\nKeep discussion on-topic">${esc(draft.rules)}</textarea>
+              </label>
+            </div>
+          </section>
+
           <div class="sc-check-grid">
-            <label><input type="checkbox" id="scCreateDiscoverable" ${draft.discoverable ? 'checked' : ''}> Public discovery</label>
-            <label><input type="checkbox" id="scCreateIncludeAnnouncements" ${draft.includeAnnouncements ? 'checked' : ''}> Include #announcements</label>
-            <label><input type="checkbox" id="scCreateIncludeForum" ${draft.includeForum ? 'checked' : ''}> Include #forum</label>
-            <label><input type="checkbox" id="scCreateIncludeStaff" ${draft.includeStaff ? 'checked' : ''}> Include private #staff channel</label>
+            <label><input type="checkbox" id="scCreateDiscoverable" ${draft.discoverable ? 'checked' : ''}> Show in public discovery</label>
+            <label><input type="checkbox" id="scCreateIncludeAnnouncements" ${draft.includeAnnouncements ? 'checked' : ''}> Add #announcements channel</label>
+            <label><input type="checkbox" id="scCreateIncludeForum" ${draft.includeForum ? 'checked' : ''}> Add #forum channel</label>
+            <label><input type="checkbox" id="scCreateIncludeStaff" ${draft.includeStaff ? 'checked' : ''}> Add private #staff channel</label>
           </div>
+
           <div class="sc-modal-foot">
             <button data-close="modal">Cancel</button>
-            <button id="scCreateCommunitySubmit">Create Community</button>
+            <button id="scCreateCommunitySubmit">${ui.createBusy ? 'Creating...' : 'Create Community'}</button>
           </div>
         </div>
       </div>
@@ -684,7 +968,7 @@ function renderCommunitySettingsModal(community) {
     const hasMore = visible.length < (discoveryCommunities || []).length;
 
     const cards = visible.map((entry) => {
-      const members = ((state.data.membersByCommunity || {})[entry.id] || []).length;
+      const members = resolveMemberCount(state, entry);
       const joined = joinedCommunityIds.has(entry.id);
       const media = String(entry.banner || entry.image || '').trim();
       const mediaHtml = media
@@ -856,30 +1140,173 @@ function renderCommunitySettingsModal(community) {
 
   function setStatus(message) {
     ui.statusMsg = String(message || '');
-    render();
-    if (ui.statusMsg) {
-      window.setTimeout(() => {
-        ui.statusMsg = '';
-        render();
-      }, 2400);
+    requestRender();
+    if (toastTimer) {
+      window.clearTimeout(toastTimer);
+      toastTimer = null;
     }
+    if (!ui.statusMsg) return;
+    toastTimer = window.setTimeout(() => {
+      ui.statusMsg = '';
+      toastTimer = null;
+      requestRender();
+    }, 2600);
   }
 
   async function publishMembershipList() {
-    if (!nostrBridge || !ui.session.isAuthenticated) return;
+    if (!nostrBridge || !ui.session.isAuthenticated) return { ok: true, skipped: true };
     const joined = store.getState().joinedCommunityIds || [];
     try {
-      await nostrBridge.publishMembershipList({
+      const result = await nostrBridge.publishMembershipList({
         pubkey: store.getState().currentUserPubkey,
         communityIds: joined
       });
-    } catch (_) {}
+      if (sentCountFromPublishResult(result) <= 0) {
+        return { ok: false, reason: 'no_relays' };
+      }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, reason: 'publish_failed', error: err };
+    }
   }
 
   function closeModalAndRerender() {
-    if (ui.openModal === 'createCommunity') ui.createDraft = null;
+    if (ui.openModal === 'createCommunity') {
+      ui.createDraft = null;
+      ui.createRoleSearch = { moderators: '', admins: '' };
+    }
     ui.openModal = '';
     render();
+  }
+
+  function updateCreateImagePreview(previewId, value, label, wide = false) {
+    const host = root.querySelector(previewId);
+    if (!host) return;
+    host.innerHTML = renderCreateImagePreview(value, label, wide);
+  }
+
+  function updateRoleSearchBox(role, value) {
+    const isModerators = role === 'moderators';
+    const searchId = isModerators ? '#scCreateModeratorsSearch' : '#scCreateAdminsSearch';
+    const searchBox = root.querySelector(searchId);
+    if (!searchBox) return;
+    ui.createRoleSearch[role] = trailingCsvToken(value || '');
+    const html = buildRoleSearchResults(role, value, store.getState());
+    if (!html) {
+      searchBox.hidden = true;
+      searchBox.innerHTML = '';
+      return;
+    }
+    searchBox.hidden = false;
+    searchBox.innerHTML = html;
+  }
+
+  function addRoleFieldValue(role, pubkey, label) {
+    const isModerators = role === 'moderators';
+    const inputId = isModerators ? '#scCreateModerators' : '#scCreateAdmins';
+    const input = root.querySelector(inputId);
+    if (!input) return;
+
+    const token = String(label || toNpub(pubkey) || pubkey).trim();
+    if (!token) return;
+
+    const tokens = splitCsvTokens(input.value);
+    const normalized = new Set(tokens.map(normalizePubkey));
+    const normalizedToken = normalizePubkey(token);
+    if (!normalized.has(normalizedToken)) {
+      tokens.push(token);
+    }
+    input.value = `${tokens.join(', ')}${tokens.length ? ', ' : ''}`;
+    setCreateDraftField(role, input.value);
+    updateRoleSearchBox(role, input.value);
+  }
+
+  function bindCreateCommunityForm() {
+    const bindInputField = (selector, field, mode = 'input') => {
+      const el = root.querySelector(selector);
+      if (!el) return;
+      const evt = (mode === 'change' || mode === 'checkbox') ? 'change' : 'input';
+      el.addEventListener(evt, () => {
+        if (mode === 'checkbox') setCreateDraftField(field, !!el.checked);
+        else setCreateDraftField(field, el.value || '');
+      });
+    };
+
+    bindInputField('#scCreateType', 'type', 'change');
+    bindInputField('#scCreateName', 'name');
+    bindInputField('#scCreateSlug', 'slug');
+    bindInputField('#scCreateDefaultChannel', 'defaultChannelName');
+    bindInputField('#scCreateDescription', 'description');
+    bindInputField('#scCreateTopics', 'topics');
+    bindInputField('#scCreateJoinMode', 'joinMode', 'change');
+    bindInputField('#scCreatePostingPolicy', 'postingPolicy', 'change');
+    bindInputField('#scCreateRules', 'rules');
+    bindInputField('#scCreateAllowedRelays', 'allowedRelays');
+    bindInputField('#scCreateDiscoverable', 'discoverable', 'checkbox');
+    bindInputField('#scCreateIncludeAnnouncements', 'includeAnnouncements', 'checkbox');
+    bindInputField('#scCreateIncludeForum', 'includeForum', 'checkbox');
+    bindInputField('#scCreateIncludeStaff', 'includeStaff', 'checkbox');
+
+    const imageInput = root.querySelector('#scCreateImage');
+    if (imageInput) {
+      const syncImage = () => {
+        setCreateDraftField('image', imageInput.value || '');
+        updateCreateImagePreview('#scCreateImagePreview', imageInput.value || '', 'Community image');
+      };
+      imageInput.addEventListener('input', syncImage);
+      imageInput.addEventListener('change', syncImage);
+    }
+
+    const bannerInput = root.querySelector('#scCreateBanner');
+    if (bannerInput) {
+      const syncBanner = () => {
+        setCreateDraftField('banner', bannerInput.value || '');
+        updateCreateImagePreview('#scCreateBannerPreview', bannerInput.value || '', 'Banner image', true);
+      };
+      bannerInput.addEventListener('input', syncBanner);
+      bannerInput.addEventListener('change', syncBanner);
+    }
+
+    const bindRoleSearchField = (selector, field) => {
+      const input = root.querySelector(selector);
+      if (!input) return;
+      input.addEventListener('input', () => {
+        setCreateDraftField(field, input.value || '');
+        updateRoleSearchBox(field, input.value || '');
+      });
+      input.addEventListener('focus', () => updateRoleSearchBox(field, input.value || ''));
+      input.addEventListener('blur', () => {
+        window.setTimeout(() => {
+          const searchId = field === 'moderators' ? '#scCreateModeratorsSearch' : '#scCreateAdminsSearch';
+          const searchBox = root.querySelector(searchId);
+          if (searchBox) searchBox.hidden = true;
+        }, 90);
+      });
+    };
+
+    bindRoleSearchField('#scCreateModerators', 'moderators');
+    bindRoleSearchField('#scCreateAdmins', 'admins');
+
+    const bindRoleContainer = (selector) => {
+      const box = root.querySelector(selector);
+      if (!box) return;
+      box.addEventListener('mousedown', (event) => {
+        if (event.target && event.target.closest && event.target.closest('.sc-role-result')) {
+          event.preventDefault();
+        }
+      });
+      box.addEventListener('click', (event) => {
+        const btn = event.target && event.target.closest ? event.target.closest('.sc-role-result') : null;
+        if (!btn) return;
+        const role = btn.getAttribute('data-role-target') || '';
+        const pubkey = btn.getAttribute('data-role-pubkey') || '';
+        const label = btn.getAttribute('data-role-label') || '';
+        addRoleFieldValue(role, pubkey, label);
+      });
+    };
+
+    bindRoleContainer('#scCreateModeratorsSearch');
+    bindRoleContainer('#scCreateAdminsSearch');
   }
 
   function bindHandlers() {
@@ -917,11 +1344,18 @@ function renderCommunitySettingsModal(community) {
     root.querySelectorAll('[data-close="modal"]').forEach((el) => {
       el.addEventListener('click', (event) => {
         if (event.target !== el) return;
-        if (ui.openModal === 'createCommunity') ui.createDraft = null;
+        if (ui.openModal === 'createCommunity') {
+          ui.createDraft = null;
+          ui.createRoleSearch = { moderators: '', admins: '' };
+        }
         ui.openModal = '';
         render();
       });
     });
+
+    if (ui.openModal === 'createCommunity') {
+      bindCreateCommunityForm();
+    }
 
     const search = root.querySelector('#scSearchInput');
     if (search) search.addEventListener('input', () => store.setSearch(search.value));
@@ -932,9 +1366,12 @@ function renderCommunitySettingsModal(community) {
       composer.addEventListener('keydown', async (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
           event.preventDefault();
-          const res = store.sendMessage({ content: composer.value, attachments: ui.composerAttachments });
+          const snapshot = store.getState();
+          const replyTo = getReplyTarget(snapshot.activeChannelId);
+          const res = store.sendMessage({ content: composer.value, attachments: ui.composerAttachments, replyTo });
           if (!res.ok) return;
-          store.setDraft(store.getState().activeChannelId, '');
+          store.setDraft(snapshot.activeChannelId, '');
+          clearReplyTarget(snapshot.activeChannelId);
           ui.composerAttachments = [];
 
           if (nostrBridge) {
@@ -959,11 +1396,14 @@ function renderCommunitySettingsModal(community) {
     const sendBtn = root.querySelector('#scSendBtn');
     if (sendBtn) {
       sendBtn.addEventListener('click', async () => {
+        const stateBeforeSend = store.getState();
         const text = (composer && composer.value) || '';
-        const res = store.sendMessage({ content: text, attachments: ui.composerAttachments });
+        const replyTo = getReplyTarget(stateBeforeSend.activeChannelId);
+        const res = store.sendMessage({ content: text, attachments: ui.composerAttachments, replyTo });
         if (!res.ok) return;
 
-        store.setDraft(store.getState().activeChannelId, '');
+        store.setDraft(stateBeforeSend.activeChannelId, '');
+        clearReplyTarget(stateBeforeSend.activeChannelId);
         ui.composerAttachments = [];
 
         if (nostrBridge) {
@@ -984,11 +1424,102 @@ function renderCommunitySettingsModal(community) {
       });
     }
 
+    const clearReplyBtn = root.querySelector('#scClearReplyBtn');
+    if (clearReplyBtn) {
+      clearReplyBtn.addEventListener('click', () => {
+        clearReplyTarget(store.getState().activeChannelId);
+        requestRender();
+      });
+    }
+
     const attachInput = root.querySelector('#scAttachInput');
     if (attachInput) {
-      attachInput.addEventListener('change', () => {
-        ui.composerAttachments = Array.from(attachInput.files || []).map((file) => ({ name: file.name, kind: 'file', url: '#' }));
-        render();
+      attachInput.addEventListener('change', async () => {
+        const files = Array.from(attachInput.files || []);
+        attachInput.value = '';
+        if (!files.length || ui.attachUploadPending) return;
+
+        if (!ui.session.isAuthenticated) {
+          setStatus('Login required to upload attachments.');
+          return;
+        }
+        if (!appContext || typeof appContext.uploadMediaFile !== 'function') {
+          setStatus('Media upload is unavailable right now.');
+          return;
+        }
+        const activeChannelId = store.getState().activeChannelId;
+        if (!activeChannelId) {
+          setStatus('Pick a channel before attaching files.');
+          return;
+        }
+
+        ui.attachUploadPending = true;
+        ui.attachUploadProgress = 0;
+        requestRender();
+
+        const uploaded = [];
+        const failed = [];
+        const totalFiles = files.length;
+        let lastProgress = -1;
+
+        try {
+          for (let index = 0; index < files.length; index += 1) {
+            const file = files[index];
+            try {
+              const result = await appContext.uploadMediaFile(file, {
+                onProgress(progress = {}) {
+                  const percent = Number(progress.percent);
+                  if (!Number.isFinite(percent)) return;
+                  const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+                  const overall = Math.max(0, Math.min(100, Math.round(((index + (clamped / 100)) / totalFiles) * 100)));
+                  if (overall === lastProgress) return;
+                  lastProgress = overall;
+                  ui.attachUploadProgress = overall;
+                  requestRender();
+                }
+              });
+              const url = String(result && result.url || '').trim();
+              if (!url) throw new Error('Upload finished but no media URL was returned.');
+              uploaded.push({
+                id: `upload:${Date.now().toString(36)}:${index}`,
+                name: file.name || 'attachment',
+                kind: 'file',
+                url
+              });
+            } catch (err) {
+              failed.push({ file, error: err });
+            }
+          }
+
+          if (uploaded.length) {
+            const snapshot = store.getState();
+            const draft = snapshot.draftsByChannel.get(activeChannelId) || '';
+            const joiner = draft && !draft.endsWith('\n') ? '\n' : '';
+            const urls = uploaded.map((item) => item.url).join('\n');
+            store.setDraft(activeChannelId, `${draft}${joiner}${urls}`);
+            if (snapshot.activeChannelId === activeChannelId) {
+              ui.composerAttachments = [...ui.composerAttachments, ...uploaded];
+            }
+          }
+
+          if (uploaded.length && failed.length) {
+            const firstError = failed[0] && failed[0].error && failed[0].error.message
+              ? failed[0].error.message
+              : 'Some files failed to upload.';
+            setStatus(`Uploaded ${uploaded.length}/${files.length} files. ${firstError}`);
+          } else if (uploaded.length) {
+            setStatus(`Uploaded ${uploaded.length} file${uploaded.length === 1 ? '' : 's'} and inserted into your message.`);
+          } else if (failed.length) {
+            const firstError = failed[0] && failed[0].error && failed[0].error.message
+              ? failed[0].error.message
+              : 'Upload failed.';
+            setStatus(firstError);
+          }
+        } finally {
+          ui.attachUploadPending = false;
+          ui.attachUploadProgress = 0;
+          render();
+        }
       });
     }
 
@@ -1032,7 +1563,10 @@ function renderCommunitySettingsModal(community) {
 
     root.querySelectorAll('[data-action="pin"]').forEach((el) => {
       el.addEventListener('click', () => {
-        store.togglePin(store.getState().activeChannelId, el.getAttribute('data-message'));
+        const res = store.togglePin(store.getState().activeChannelId, el.getAttribute('data-message'));
+        if (!res.ok) {
+          setStatus(res.reason === 'permission_denied' ? 'You do not have permission to pin messages.' : 'Could not pin this message.');
+        }
       });
     });
 
@@ -1040,13 +1574,14 @@ function renderCommunitySettingsModal(community) {
       el.addEventListener('click', () => {
         const id = el.getAttribute('data-message');
         const state = store.getState();
-        const draft = state.draftsByChannel.get(state.activeChannelId) || '';
-        store.setDraft(state.activeChannelId, `> ${id}\n${draft}`);
+        ui.replyTargetByChannel.set(state.activeChannelId, id || '');
+        requestRender();
       });
     });
 
     root.querySelectorAll('[data-action="menu"]').forEach((el) => {
       el.addEventListener('click', (event) => {
+        event.stopPropagation();
         ui.contextMessageId = el.getAttribute('data-message') || '';
         ui.contextX = event.clientX;
         ui.contextY = event.clientY;
@@ -1059,12 +1594,17 @@ function renderCommunitySettingsModal(community) {
         const action = el.getAttribute('data-context-action');
         const messageId = el.getAttribute('data-message');
         const channelId = store.getState().activeChannelId;
-        if (action === 'pin') store.togglePin(channelId, messageId);
-        if (action === 'reply') {
-          const draft = store.getState().draftsByChannel.get(channelId) || '';
-          store.setDraft(channelId, `> ${messageId}\n${draft}`);
+        if (action === 'pin') {
+          const res = store.togglePin(channelId, messageId);
+          if (!res.ok) {
+            setStatus(res.reason === 'permission_denied' ? 'You do not have permission to pin messages.' : 'Could not pin this message.');
+          }
         }
-        if (action === 'report') window.alert('Report flow queued (NIP-56).');
+        if (action === 'reply') {
+          ui.replyTargetByChannel.set(channelId, messageId || '');
+          requestRender();
+        }
+        if (action === 'report') setStatus('Report flow queued (NIP-56).');
         ui.contextMessageId = '';
         render();
       });
@@ -1122,7 +1662,12 @@ function renderCommunitySettingsModal(community) {
     });
 
     const hubCreateBtn = root.querySelector('#scHubCreateBtn');
-    if (hubCreateBtn) hubCreateBtn.addEventListener('click', () => { ui.createDraft = null; ui.openModal = 'createCommunity'; render(); });
+    if (hubCreateBtn) hubCreateBtn.addEventListener('click', () => {
+      ui.createDraft = null;
+      ui.createRoleSearch = { moderators: '', admins: '' };
+      ui.openModal = 'createCommunity';
+      render();
+    });
 
     const hubJoinBtn = root.querySelector('#scHubJoinBtn');
     if (hubJoinBtn) hubJoinBtn.addEventListener('click', () => {
@@ -1165,7 +1710,10 @@ function renderCommunitySettingsModal(community) {
         const joined = new Set(state.joinedCommunityIds);
         if (joined.has(state.activeCommunityId)) store.leaveCommunity(state.activeCommunityId);
         else store.joinCommunity(state.activeCommunityId);
-        await publishMembershipList();
+        const membershipPublish = await publishMembershipList();
+        if (!membershipPublish.ok) {
+          setStatus('Joined locally, but could not sync membership list to relays.');
+        }
       });
     }
 
@@ -1177,7 +1725,10 @@ function renderCommunitySettingsModal(community) {
         store.setActiveCommunity(communityId);
         if (!alreadyJoined) {
           store.joinCommunity(communityId);
-          await publishMembershipList();
+          const membershipPublish = await publishMembershipList();
+          if (!membershipPublish.ok) {
+            setStatus('Joined locally, but could not sync membership list to relays.');
+          }
         }
         ui.openModal = '';
         render();
@@ -1199,12 +1750,17 @@ function renderCommunitySettingsModal(community) {
       const discoverySentinel = root.querySelector('#scDiscoverySentinel');
       if (discoverySentinel && typeof window.IntersectionObserver === 'function') {
         ui.discoveryObserver = new window.IntersectionObserver((entries) => {
+          if (ui.discoveryLoading) return;
           const seen = entries.some((entry) => entry.isIntersecting);
           if (!seen) return;
           const total = Number(discoveryScroll.getAttribute('data-total') || 0);
           if (!total || ui.discoveryLimit >= total) return;
+          ui.discoveryLoading = true;
           ui.discoveryLimit = Math.min(total, ui.discoveryLimit + ui.discoveryChunk);
-          render();
+          window.requestAnimationFrame(() => {
+            ui.discoveryLoading = false;
+            render();
+          });
         }, {
           root: discoveryScroll,
           rootMargin: '120px 0px',
@@ -1219,8 +1775,8 @@ function renderCommunitySettingsModal(community) {
       createCommunitySubmit.addEventListener('click', async () => {
         if (ui.createBusy) return;
         ui.createBusy = true;
-
-        captureCreateCommunityDraft();
+        createCommunitySubmit.disabled = true;
+        syncCreateCommunityDraftFromDom();
         const form = ui.createDraft || defaultCreateCommunityDraft(store.getState());
 
         const payload = {
@@ -1231,8 +1787,8 @@ function renderCommunitySettingsModal(community) {
           description: form.description || '',
           image: form.image || '',
           banner: form.banner || '',
-          moderators: parseCsv(form.moderators || ''),
-          admins: parseCsv(form.admins || ''),
+          moderators: parsePubkeyCsv(form.moderators || ''),
+          admins: parsePubkeyCsv(form.admins || ''),
           topics: parseCsv(form.topics || ''),
           joinMode: form.joinMode || 'open',
           postingPolicy: form.postingPolicy || 'members',
@@ -1247,39 +1803,45 @@ function renderCommunitySettingsModal(community) {
         const created = store.createCommunity(payload);
         if (!created.ok) {
           ui.createBusy = false;
+          createCommunitySubmit.disabled = false;
           setStatus(created.reason === 'auth_required' ? 'Login required.' : 'Unable to create community.');
           return;
         }
 
+        let finalStatus = 'Community created and published.';
+
         if (nostrBridge) {
           try {
-            await nostrBridge.publishCommunityCreate({
+            const publishedCommunity = await nostrBridge.publishCommunityCreate({
               ...payload,
               communityId: created.community.id,
               defaultChannelId: created.community.defaultChannelId
             });
+            assertPublished(publishedCommunity, 'community metadata');
 
             if (created.community.type === 'private') {
               const members = (store.getState().data.membersByCommunity[created.community.id] || []).map((m) => m.pubkey);
               const rolesByPubkey = {};
               (store.getState().data.membersByCommunity[created.community.id] || []).forEach((m) => { rolesByPubkey[m.pubkey] = m.roles || ['member']; });
-              await nostrBridge.publishCommunityMembers39002({
+              const publishedMembers = await nostrBridge.publishCommunityMembers39002({
                 communityId: created.community.id,
                 members,
                 rolesByPubkey,
                 joinMode: created.community.joinMode
               });
-              await nostrBridge.publishCommunityModerators39003({
+              assertPublished(publishedMembers, 'private group members (39002)');
+              const publishedMods = await nostrBridge.publishCommunityModerators39003({
                 communityId: created.community.id,
                 moderators: created.community.moderatorPubkeys || [],
                 admins: created.community.adminPubkeys || [],
                 postingPolicy: created.community.postingPolicy
               });
+              assertPublished(publishedMods, 'private group moderators (39003)');
             }
 
             for (let i = 0; i < created.channels.length; i += 1) {
               const channel = created.channels[i];
-              await nostrBridge.publishChannelCreate({
+              const publishedChannel = await nostrBridge.publishChannelCreate({
                 communityId: created.community.id,
                 channelId: channel.id,
                 name: channel.name,
@@ -1289,16 +1851,32 @@ function renderCommunitySettingsModal(community) {
                 privacyLevel: channel.privacyLevel,
                 slowModeSec: channel.slowModeSec
               });
+              assertPublished(publishedChannel, `channel "${channel.name}"`);
             }
 
-            await publishMembershipList();
-          } catch (_) {}
+            const membershipPublish = await publishMembershipList();
+            if (!membershipPublish.ok) {
+              finalStatus = 'Community created, but membership sync to relays failed.';
+            }
+          } catch (err) {
+            store.removeCommunity(created.community.id, { source: 'rollback' });
+            ui.createBusy = false;
+            createCommunitySubmit.disabled = false;
+            ui.createRoleSearch = { moderators: '', admins: '' };
+            setStatus((err && err.message) ? err.message : 'Community was not published to relays.');
+            return;
+          }
+        } else {
+          finalStatus = 'Community created locally only.';
         }
 
         ui.createBusy = false;
+        createCommunitySubmit.disabled = false;
         ui.createDraft = null;
+        ui.createRoleSearch = { moderators: '', admins: '' };
         ui.openModal = '';
-        setStatus('Community created.');
+        render();
+        setStatus(finalStatus);
       });
     }
 
@@ -1314,8 +1892,8 @@ function renderCommunitySettingsModal(community) {
           description: (root.querySelector('#scSettingsDescription') || {}).value || '',
           image: (root.querySelector('#scSettingsImage') || {}).value || '',
           banner: (root.querySelector('#scSettingsBanner') || {}).value || '',
-          moderatorPubkeys: parseCsv((root.querySelector('#scSettingsModerators') || {}).value || ''),
-          adminPubkeys: parseCsv((root.querySelector('#scSettingsAdmins') || {}).value || ''),
+          moderatorPubkeys: parsePubkeyCsv((root.querySelector('#scSettingsModerators') || {}).value || ''),
+          adminPubkeys: parsePubkeyCsv((root.querySelector('#scSettingsAdmins') || {}).value || ''),
           joinMode: (root.querySelector('#scSettingsJoinMode') || {}).value || community.joinMode,
           postingPolicy: (root.querySelector('#scSettingsPostingPolicy') || {}).value || community.postingPolicy,
           discoverable: !!((root.querySelector('#scSettingsDiscoverable') || {}).checked),
@@ -1483,9 +2061,9 @@ function renderCommunitySettingsModal(community) {
     if (mounted) return;
     mounted = true;
     render();
-    dispose = store.subscribe(() => {
-      captureCreateCommunityDraft();
-      render();
+    dispose = store.subscribe((evt) => {
+      if (!shouldRenderForStoreEvent(evt)) return;
+      requestRender();
     });
   }
 
@@ -1493,6 +2071,11 @@ function renderCommunitySettingsModal(community) {
     if (!mounted) return;
     mounted = false;
     disconnectDiscoveryObserver();
+    if (toastTimer) {
+      window.clearTimeout(toastTimer);
+      toastTimer = null;
+    }
+    renderQueued = false;
     if (outsideClickListenerBound) {
       document.removeEventListener('click', onOutsideClick);
       outsideClickListenerBound = false;

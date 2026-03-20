@@ -54,11 +54,17 @@
   const NIP05_LOOKUP_ERROR_CACHE_TTL_MS = 1000 * 45;
   const NIP05_UNVERIFIED_CACHE_TTL_MS = 1000 * 60 * 2;
   const NIP05_LIVE_UI_MAX_AGE_MS = 1000 * 60 * 5;
-  const NOSTR_BUILD_NIP96_DISCOVERY_URL = 'https://nostr.build/.well-known/nostr/nip96.json';
-  const NOSTR_BUILD_NIP96_UPLOAD_FALLBACK_URLS = [
-    'https://nostr.build/api/v2/nip96/upload',
-    'https://nostr.build/api/v2/upload/files'
+  const BLOSSOM_UPLOAD_ENDPOINTS = [
+    'https://blossom.primal.net/upload'
   ];
+  const BLOSSOM_MEDIA_ACCEPT = 'image/*,video/*,audio/*';
+  const BLOSSOM_MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+  const SUPPORTED_UPLOAD_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
+  const SUPPORTED_UPLOAD_EXTENSIONS = new Set([
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif',
+    'mp4', 'webm', 'mov', 'm4v', 'mkv',
+    'mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac'
+  ]);
   const LIVE_STREAMS_CACHE_STORAGE_KEY = 'nostrflux_live_streams_cache_v1';
   const LIVE_STREAMS_CACHE_TTL_MS = 1000 * 60 * 2;
   const LIVE_STREAMS_CACHE_MAX_ITEMS = 160;
@@ -68,6 +74,7 @@
 
   const DEFAULT_SETTINGS = {
     relays: [...DEFAULT_RELAYS],
+    blossomUploadEndpoints: [...BLOSSOM_UPLOAD_ENDPOINTS],
     autoPublish: true,
     miniPlayer: true,
     showZapNotifications: true,
@@ -209,7 +216,7 @@
     postBoostPublishPendingByNoteId: new Set(),
     reactionPickerTarget: null,
     shareModalStreamAddress: '',
-    composeUploadSource: 'nostr_build',
+    composeUploadSource: 'blossom',
     composeUploadPending: false,
     composeUploadTarget: 'profile',
     nip96DiscoveryByHost: new Map(),
@@ -1305,6 +1312,15 @@
     }
     merged.relays = [...new Set(merged.relays.map((r) => (r || '').trim()).filter((r) => /^wss:\/\//i.test(r)))];
     if (!merged.relays.length) merged.relays = [...DEFAULT_RELAYS];
+    if (!Array.isArray(merged.blossomUploadEndpoints) || !merged.blossomUploadEndpoints.length) {
+      merged.blossomUploadEndpoints = [...BLOSSOM_UPLOAD_ENDPOINTS];
+    }
+    merged.blossomUploadEndpoints = [...new Set(
+      merged.blossomUploadEndpoints
+        .map((value) => String(value || '').trim())
+        .filter((value) => isLikelyUrl(value))
+    )];
+    if (!merged.blossomUploadEndpoints.length) merged.blossomUploadEndpoints = [...BLOSSOM_UPLOAD_ENDPOINTS];
     merged.theme = normalizeThemeSetting(merged.theme);
     Object.assign(merged, sanitizeCacheSettings(merged));
 
@@ -1950,45 +1966,95 @@
     return bytesToHex(new Uint8Array(digest));
   }
 
-  async function discoverNip96Provider(discoveryUrl = NOSTR_BUILD_NIP96_DISCOVERY_URL) {
-    const url = String(discoveryUrl || '').trim();
-    if (!isLikelyUrl(url)) throw new Error('Invalid NIP-96 discovery URL.');
-    const now = Date.now();
-    const cached = state.nip96DiscoveryByHost.get(url);
-    if (cached && (now - Number(cached.fetchedAt || 0)) < 1000 * 60 * 10) return cached;
-
-    const resp = await fetch(url, { cache: 'no-store' });
-    if (!resp.ok) throw new Error(`NIP-96 discovery failed (${resp.status}).`);
-    const data = await resp.json().catch(() => ({}));
-    const apiUrl = String(data.api_url || data.upload_url || '').trim();
-    if (!isLikelyUrl(apiUrl)) throw new Error('NIP-96 discovery did not return api_url.');
-    const provider = {
-      discoveryUrl: url,
-      apiUrl,
-      supportsNip98: data && data.plans ? true : true,
-      fetchedAt: now
-    };
-    state.nip96DiscoveryByHost.set(url, provider);
-    return provider;
+  function extensionFromFilename(filename = '') {
+    const raw = String(filename || '').trim().toLowerCase();
+    if (!raw.includes('.')) return '';
+    return raw.split('.').pop() || '';
   }
 
-  function extractNip96UploadedUrl(data) {
-    if (!data || typeof data !== 'object') return '';
-    if (typeof data.url === 'string' && isLikelyUrl(data.url)) return data.url.trim();
-    if (typeof data.download_url === 'string' && isLikelyUrl(data.download_url)) return data.download_url.trim();
-    if (Array.isArray(data.files) && data.files.length) {
-      const fromFiles = data.files
-        .map((f) => (f && (f.url || f.download_url || f.source_url || '')) || '')
-        .find((v) => isLikelyUrl(v));
-      if (fromFiles) return String(fromFiles).trim();
+  function isSupportedUploadFile(file) {
+    if (!file) return { ok: false, reason: 'No file selected.' };
+
+    const size = Number(file.size || 0);
+    if (size <= 0) return { ok: false, reason: 'Selected file is empty.' };
+    if (size > BLOSSOM_MAX_UPLOAD_BYTES) {
+      const maxMb = Math.floor(BLOSSOM_MAX_UPLOAD_BYTES / (1024 * 1024));
+      return { ok: false, reason: `File is too large. Maximum upload size is ${maxMb}MB.` };
     }
-    const nip94 = data.nip94_event;
-    if (nip94 && Array.isArray(nip94.tags)) {
-      const tag = nip94.tags.find((t) => Array.isArray(t) && String(t[0] || '').toLowerCase() === 'url' && isLikelyUrl(t[1]));
-      if (tag && tag[1]) return String(tag[1]).trim();
-      const altTag = nip94.tags.find((t) => Array.isArray(t) && String(t[0] || '').toLowerCase() === 'x' && isLikelyUrl(t[1]));
-      if (altTag && altTag[1]) return String(altTag[1]).trim();
+
+    const mime = String(file.type || '').toLowerCase();
+    const byMime = !!SUPPORTED_UPLOAD_MIME_PREFIXES.find((prefix) => mime.startsWith(prefix));
+    const byExt = SUPPORTED_UPLOAD_EXTENSIONS.has(extensionFromFilename(file.name || ''));
+
+    if (!byMime && !byExt) {
+      return { ok: false, reason: 'Unsupported file type. Please upload common image, video, or audio files.' };
     }
+
+    return { ok: true };
+  }
+
+  function parseJsonSafe(rawText) {
+    const text = String(rawText || '').trim();
+    if (!text) return null;
+    try { return JSON.parse(text); } catch (_) { return null; }
+  }
+
+  function headerValue(rawHeaders, headerName) {
+    const lower = String(headerName || '').trim().toLowerCase();
+    if (!lower) return '';
+    const lines = String(rawHeaders || '').split(/\r?\n/);
+    for (const line of lines) {
+      const idx = line.indexOf(':');
+      if (idx < 0) continue;
+      const key = line.slice(0, idx).trim().toLowerCase();
+      if (key !== lower) continue;
+      return line.slice(idx + 1).trim();
+    }
+    return '';
+  }
+
+  function extractBlossomUploadedUrl(data, rawText = '', rawHeaders = '', fallbackUrl = '') {
+    if (data && typeof data === 'object') {
+      const direct = [
+        data.url,
+        data.download_url,
+        data.media_url,
+        data.file && data.file.url,
+        data.file && data.file.download_url
+      ].find((candidate) => isLikelyUrl(candidate));
+      if (direct) return String(direct).trim();
+
+      if (Array.isArray(data.files) && data.files.length) {
+        const fromFiles = data.files
+          .map((file) => (file && (file.url || file.download_url || file.source_url || '')) || '')
+          .find((candidate) => isLikelyUrl(candidate));
+        if (fromFiles) return String(fromFiles).trim();
+      }
+
+      const nip94 = data.nip94_event;
+      if (nip94 && Array.isArray(nip94.tags)) {
+        const urlTag = nip94.tags.find((tag) => Array.isArray(tag) && String(tag[0] || '').toLowerCase() === 'url' && isLikelyUrl(tag[1]));
+        if (urlTag && urlTag[1]) return String(urlTag[1]).trim();
+      }
+    }
+
+    const text = String(rawText || '').trim();
+    if (isLikelyUrl(text)) return text;
+
+    const location = headerValue(rawHeaders, 'location');
+    if (isLikelyUrl(location)) return String(location).trim();
+
+    const origin = (() => {
+      try { return fallbackUrl ? new URL(fallbackUrl).origin : ''; } catch (_) { return ''; }
+    })();
+
+    if (data && typeof data === 'object') {
+      const hashCandidate = String(data.sha256 || data.sha || data.hash || '').trim();
+      if (/^[0-9a-f]{64}$/i.test(hashCandidate) && origin) {
+        return `${origin}/${hashCandidate.toLowerCase()}`;
+      }
+    }
+
     return '';
   }
 
@@ -2050,13 +2116,29 @@
     return applied;
   }
 
-  function appendTextToActiveComposeTarget(textToAppend) {
-    return state.composeUploadTarget === 'dm'
-      ? appendTextToDmCompose(textToAppend)
-      : appendTextToProfileCompose(textToAppend);
+  function appendTextToChatCompose(textToAppend) {
+    const textarea = qs('#chatInputText') || qs('.chat-inp');
+    const applied = appendTextToTextareaWithLimit(textarea, textToAppend, {
+      maxLength: 4096,
+      limitMessage: 'That upload URL would exceed the chat message limit.'
+    });
+    return applied;
   }
 
-  function buildNip96UploadTargets(provider) {
+  function composeTargetLabel(target = state.composeUploadTarget) {
+    const clean = String(target || '').trim().toLowerCase();
+    if (clean === 'dm') return 'message';
+    if (clean === 'chat') return 'chat';
+    return 'note';
+  }
+
+  function appendTextToActiveComposeTarget(textToAppend) {
+    if (state.composeUploadTarget === 'dm') return appendTextToDmCompose(textToAppend);
+    if (state.composeUploadTarget === 'chat') return appendTextToChatCompose(textToAppend);
+    return appendTextToProfileCompose(textToAppend);
+  }
+
+  function buildBlossomUploadTargets() {
     const out = [];
     const seen = new Set();
     const push = (candidate) => {
@@ -2065,8 +2147,11 @@
       seen.add(clean);
       out.push(clean);
     };
-    push(provider && provider.apiUrl ? provider.apiUrl : '');
-    NOSTR_BUILD_NIP96_UPLOAD_FALLBACK_URLS.forEach(push);
+    const fromSettings = Array.isArray(state.settings && state.settings.blossomUploadEndpoints)
+      ? state.settings.blossomUploadEndpoints
+      : [];
+    fromSettings.forEach(push);
+    BLOSSOM_UPLOAD_ENDPOINTS.forEach(push);
     return out;
   }
 
@@ -2087,51 +2172,137 @@
     return `Nostr ${utf8ToBase64(JSON.stringify(authEvent))}`;
   }
 
-  async function uploadFileToNostrBuildNip96(file) {
-    if (!file) throw new Error('No file selected.');
+  function uploadWithXhr(opts = {}) {
+    const {
+      url = '',
+      method = 'POST',
+      headers = {},
+      body = null,
+      onProgress = null
+    } = opts || {};
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(String(method || 'POST').toUpperCase(), String(url || ''), true);
+      Object.entries(headers || {}).forEach(([key, value]) => {
+        if (!key || value == null || value === '') return;
+        try { xhr.setRequestHeader(key, value); } catch (_) {}
+      });
+
+      if (xhr.upload) {
+        xhr.upload.onprogress = (event) => {
+          if (typeof onProgress !== 'function') return;
+          const total = Number(event && event.total || 0);
+          const loaded = Number(event && event.loaded || 0);
+          const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((loaded / total) * 100))) : 0;
+          try { onProgress({ loaded, total, percent }); } catch (_) {}
+        };
+      }
+
+      xhr.onerror = () => reject(new Error('Upload failed due to a network error.'));
+      xhr.onabort = () => reject(new Error('Upload cancelled.'));
+      xhr.onload = () => {
+        resolve({
+          status: Number(xhr.status || 0),
+          ok: Number(xhr.status || 0) >= 200 && Number(xhr.status || 0) < 300,
+          text: String(xhr.responseText || ''),
+          headers: xhr.getAllResponseHeaders() || ''
+        });
+      };
+
+      try {
+        xhr.send(body);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async function uploadFileToBlossom(file, opts = {}) {
+    const check = isSupportedUploadFile(file);
+    if (!check.ok) throw new Error(check.reason || 'Unsupported file.');
     if (!state.user) throw new Error('Please login first.');
 
-    let provider = null;
-    try {
-      provider = await discoverNip96Provider(NOSTR_BUILD_NIP96_DISCOVERY_URL);
-    } catch (_) {
-      // Continue with known fallback upload endpoints.
+    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+    if (onProgress) {
+      try { onProgress({ loaded: 0, total: Number(file.size || 0), percent: 0 }); } catch (_) {}
     }
 
-    const targets = buildNip96UploadTargets(provider);
-    if (!targets.length) throw new Error('No valid NIP-96 upload endpoint is configured.');
+    const targets = buildBlossomUploadTargets();
+    if (!targets.length) throw new Error('No Blossom upload endpoint is configured.');
+
+    let payloadHashHex = '';
+    try {
+      const fileBuffer = await file.arrayBuffer();
+      payloadHashHex = await sha256HexFromArrayBuffer(fileBuffer);
+    } catch (_) {
+      payloadHashHex = '';
+    }
 
     let lastError = null;
-    for (const targetUrl of targets) {
-      try {
-        const formData = new FormData();
-        formData.append('file', file, file.name || 'upload.bin');
-        const authorization = await buildNip98AuthorizationHeader(targetUrl, 'POST');
-
-        const resp = await fetch(targetUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: authorization
-          },
-          body: formData
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) {
-          const message = (data && (data.message || data.error || data.status)) || `Upload failed (${resp.status})`;
-          throw new Error(String(message));
+    const variants = [
+      {
+        method: 'POST',
+        makeBody() {
+          const formData = new FormData();
+          formData.append('file', file, file.name || 'upload.bin');
+          return { body: formData, payloadHash: '' };
         }
+      },
+      {
+        method: 'PUT',
+        makeBody() {
+          return { body: file, payloadHash: payloadHashHex || '' };
+        }
+      }
+    ];
 
-        const mediaUrl = extractNip96UploadedUrl(data);
-        if (!mediaUrl) throw new Error('Upload succeeded but no media URL was returned.');
-        return { url: mediaUrl, response: data, endpoint: targetUrl };
-      } catch (err) {
-        lastError = err;
+    for (const targetUrl of targets) {
+      for (const variant of variants) {
+        try {
+          const payload = variant.makeBody();
+          const authorization = await buildNip98AuthorizationHeader(targetUrl, variant.method, payload.payloadHash || '');
+          const headers = {
+            Authorization: authorization
+          };
+          if (variant.method === 'PUT') {
+            headers['Content-Type'] = String(file.type || 'application/octet-stream');
+          }
+
+          const response = await uploadWithXhr({
+            url: targetUrl,
+            method: variant.method,
+            headers,
+            body: payload.body,
+            onProgress
+          });
+
+          const parsed = parseJsonSafe(response.text);
+          if (!response.ok) {
+            const message = (parsed && (parsed.message || parsed.error || parsed.status)) || `Upload failed (${response.status})`;
+            throw new Error(String(message));
+          }
+
+          const mediaUrl = extractBlossomUploadedUrl(parsed, response.text, response.headers, targetUrl);
+          if (!mediaUrl) throw new Error('Upload succeeded but no media URL was returned.');
+          if (onProgress) {
+            try { onProgress({ loaded: Number(file.size || 0), total: Number(file.size || 0), percent: 100 }); } catch (_) {}
+          }
+          return {
+            url: mediaUrl,
+            response: parsed || response.text,
+            endpoint: targetUrl,
+            method: variant.method
+          };
+        } catch (err) {
+          lastError = err;
+        }
       }
     }
 
     const rawMessage = lastError && lastError.message ? String(lastError.message) : 'Upload failed.';
-    if (/failed to fetch/i.test(rawMessage)) {
-      throw new Error('Upload endpoint is temporarily unavailable. Please try again shortly or use Paste URL.');
+    if (/network error|failed to fetch|cors/i.test(rawMessage)) {
+      throw new Error('Blossom upload endpoint is temporarily unavailable. Please try again.');
     }
     throw new Error(rawMessage);
   }
@@ -4139,7 +4310,7 @@
           ));
           const mediaItems = allUrls
             .map((url) => ({ url, kind: classifyMediaUrl(url) }))
-            .filter((item) => item.kind === 'photo' || item.kind === 'video');
+            .filter((item) => item.kind === 'photo' || item.kind === 'video' || item.kind === 'audio');
           const mediaUrls = mediaItems.map((item) => item.url);
           const spotifyItems = extractSpotifyPreviewItems(allUrls);
           const spotifyUrls = spotifyItems.map((item) => item.sourceUrl);
@@ -8476,6 +8647,7 @@
   function renderChatInlineMedia(container, mediaUrls, opts = {}) {
     if (!container || !Array.isArray(mediaUrls) || !mediaUrls.length) return;
     const allowVideo = !!opts.allowVideo;
+    const allowAudio = opts.allowAudio !== false;
     const classPrefix = String(opts.classPrefix || 'chat').trim() || 'chat';
     const maxItems = Math.max(1, Number(opts.maxItems || 4));
     const normalized = mediaUrls
@@ -8488,7 +8660,11 @@
         const kind = String((entry && entry.kind) || classifyMediaUrl(url) || '').toLowerCase();
         return { url, kind };
       })
-      .filter((item) => item.url && (item.kind === 'photo' || (allowVideo && item.kind === 'video')));
+      .filter((item) => item.url && (
+        item.kind === 'photo'
+        || (allowVideo && item.kind === 'video')
+        || (allowAudio && item.kind === 'audio')
+      ));
     if (!normalized.length) return;
 
     const wrap = document.createElement('div');
@@ -8513,6 +8689,23 @@
           if (!wrap.children.length) wrap.remove();
         });
         box.appendChild(video);
+        wrap.appendChild(box);
+        return;
+      }
+
+      if (item.kind === 'audio') {
+        const box = document.createElement('div');
+        box.className = `${classPrefix}-media-item${normalized.length === 1 ? ' single' : ''} media-audio`;
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.preload = 'metadata';
+        audio.src = item.url;
+        audio.style.cssText = 'width:100%;display:block;min-width:0;';
+        audio.addEventListener('error', () => {
+          box.remove();
+          if (!wrap.children.length) wrap.remove();
+        });
+        box.appendChild(audio);
         wrap.appendChild(box);
         return;
       }
@@ -8576,7 +8769,7 @@
     ));
     const mediaItems = allUrls
       .map((url) => ({ url, kind: classifyMediaUrl(url) }))
-      .filter((item) => item.kind === 'photo' || item.kind === 'video');
+      .filter((item) => item.kind === 'photo' || item.kind === 'video' || item.kind === 'audio');
     const mediaUrls = mediaItems.map((item) => item.url);
     const spotifyItems = extractSpotifyPreviewItems(allUrls);
     const spotifyUrls = spotifyItems.map((item) => item.sourceUrl);
@@ -9386,9 +9579,10 @@
 
     const photos = mediaItems.filter((m) => m.kind === 'photo');
     const videos = mediaItems.filter((m) => m.kind === 'video');
+    const audios = mediaItems.filter((m) => m.kind === 'audio');
 
     // Single photo: span full width; multiple: 3-col square grid (CSS handles it)
-    if (photos.length === 1 && videos.length === 0) container.classList.add('one');
+    if (photos.length === 1 && videos.length === 0 && audios.length === 0) container.classList.add('one');
 
     // Photos ? square aspect-ratio 1:1 via CSS .profile-feed-photo
     photos.slice(0, 6).forEach((m) => {
@@ -9407,6 +9601,28 @@
       });
       link.appendChild(img);
       container.appendChild(link);
+    });
+
+    audios.slice(0, 2).forEach((m) => {
+      const frame = document.createElement('div');
+      frame.className = 'profile-feed-audio';
+      frame.style.cssText = 'grid-column:1/-1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.55rem .65rem;';
+      const audio = document.createElement('audio');
+      audio.controls = true;
+      audio.preload = 'metadata';
+      audio.src = m.url;
+      audio.style.cssText = 'width:100%;display:block;';
+      audio.addEventListener('error', () => {
+        const fallback = document.createElement('a');
+        fallback.href = m.url;
+        fallback.target = '_blank';
+        fallback.rel = 'noopener noreferrer';
+        fallback.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;color:var(--zap);font-size:.74rem;font-weight:600;text-decoration:none;padding:.35rem;';
+        fallback.textContent = 'Open Audio';
+        if (audio.parentNode) audio.parentNode.replaceChild(fallback, audio);
+      });
+      frame.appendChild(audio);
+      container.appendChild(frame);
     });
 
     // Videos ? 16:9 YouTube-style, spans full grid row via CSS grid-column:1/-1
@@ -9794,7 +10010,7 @@
                 .filter(Boolean)
             ))
               .map((url) => ({ url, kind: classifyMediaUrl(url) }))
-              .filter((entry) => entry.kind === 'photo' || entry.kind === 'video');
+              .filter((entry) => entry.kind === 'photo' || entry.kind === 'video' || entry.kind === 'audio');
             const mediaUrls = mediaItems.map((entry) => entry.url);
             const commentText = mediaUrls.length ? stripMediaUrlsFromText(rawComment, mediaUrls) : rawComment;
             ct.innerHTML = '';
@@ -9987,6 +10203,7 @@
     const base = (url || '').split('#')[0].split('?')[0].toLowerCase();
     if (/\.(mp4|webm|mov|m4v|mkv|m3u8)$/.test(base)) return 'video';
     if (/\.(jpg|jpeg|png|gif|webp|avif)$/.test(base)) return 'photo';
+    if (/\.(mp3|m4a|wav|ogg|flac|aac|opus)$/.test(base)) return 'audio';
     return '';
   }
 
@@ -11656,7 +11873,9 @@
       getRelays: () => [...state.relays],
       getSettings: () => ({ ...state.settings }),
       openLogin: () => window.openLogin(),
-      showProfileByPubkey: (pubkey) => showProfileByPubkey(pubkey)
+      showProfileByPubkey: (pubkey) => showProfileByPubkey(pubkey),
+      getUploadAccept: () => BLOSSOM_MEDIA_ACCEPT,
+      uploadMediaFile: (file, opts = {}) => uploadFileToBlossom(file, opts)
     };
 
     window.showCommunities = function () {
@@ -12877,11 +13096,18 @@
       if (!state.user) { window.openLogin(); return; }
       const ov = qs('#composeUploadModal');
       if (!ov) return;
-      state.composeUploadTarget = String(target || '').trim().toLowerCase() === 'dm' ? 'dm' : 'profile';
-      state.composeUploadSource = 'nostr_build';
-      const targetLabel = state.composeUploadTarget === 'dm' ? 'message' : 'note';
-      setComposeUploadStatus(`Choose where to upload from for your ${targetLabel}.`, 'info');
+      const cleanTarget = String(target || '').trim().toLowerCase();
+      if (cleanTarget === 'dm') state.composeUploadTarget = 'dm';
+      else if (cleanTarget === 'chat') state.composeUploadTarget = 'chat';
+      else state.composeUploadTarget = 'profile';
+
+      state.composeUploadSource = 'blossom';
+      const targetLabel = composeTargetLabel(state.composeUploadTarget);
+      setComposeUploadStatus(`Choose a media file for your ${targetLabel}.`, 'info');
       ov.classList.add('open');
+      if (typeof window.selectComposeUploadSource === 'function') {
+        window.selectComposeUploadSource('blossom');
+      }
     };
 
     window.closeComposeUploadModal = function (e) {
@@ -12893,8 +13119,8 @@
       if (fileInput) fileInput.value = '';
     };
 
-    window.promptComposeMediaUrl = function () {
-      const raw = window.prompt('Paste an image or video URL:');
+  window.promptComposeMediaUrl = function () {
+      const raw = window.prompt('Paste an image, video, or audio URL:');
       const url = String(raw || '').trim();
       if (!url) return;
       if (!isLikelyUrl(url)) {
@@ -12902,7 +13128,7 @@
         return;
       }
       if (!appendTextToActiveComposeTarget(url)) return;
-      const targetLabel = state.composeUploadTarget === 'dm' ? 'message' : 'note';
+      const targetLabel = composeTargetLabel(state.composeUploadTarget);
       setComposeUploadStatus(`URL inserted into your ${targetLabel}.`, 'success');
       setTimeout(() => {
         const ov = qs('#composeUploadModal');
@@ -12913,12 +13139,13 @@
     window.selectComposeUploadSource = function (source) {
       if (state.composeUploadPending) return;
       const normalized = String(source || '').trim().toLowerCase();
-      state.composeUploadSource = normalized || 'nostr_build';
-      if (state.composeUploadSource === 'nostr_build') {
+      state.composeUploadSource = normalized || 'blossom';
+      if (state.composeUploadSource === 'blossom') {
         const fileInput = qs('#composeUploadFileInput');
         if (!fileInput) return;
+        fileInput.setAttribute('accept', BLOSSOM_MEDIA_ACCEPT);
         fileInput.value = '';
-        setComposeUploadStatus('Pick a photo or video file from your device.', 'info');
+        setComposeUploadStatus('Pick an image, video, or audio file from your device.', 'info');
         try { fileInput.click(); } catch (_) {}
         return;
       }
@@ -12935,15 +13162,20 @@
       setComposeUploadStatus(`Uploading ${file.name}...`, 'info');
 
       try {
-        if (state.composeUploadSource !== 'nostr_build') {
+        if (state.composeUploadSource !== 'blossom') {
           throw new Error('Unsupported upload source selected.');
         }
-        const result = await uploadFileToNostrBuildNip96(file);
+        const result = await uploadFileToBlossom(file, {
+          onProgress: ({ percent }) => {
+            if (!Number.isFinite(Number(percent))) return;
+            setComposeUploadStatus(`Uploading ${file.name}... ${Number(percent)}%`, 'info');
+          }
+        });
         if (!appendTextToActiveComposeTarget(result.url)) {
           throw new Error('Could not insert uploaded URL into the active composer.');
         }
-        const targetLabel = state.composeUploadTarget === 'dm' ? 'message' : 'note';
-        setComposeUploadStatus(`Upload complete. URL inserted into your ${targetLabel}.`, 'success');
+        const targetLabel = composeTargetLabel(state.composeUploadTarget);
+        setComposeUploadStatus(`Upload complete. Media link inserted into your ${targetLabel}.`, 'success');
         setTimeout(() => {
           const ov = qs('#composeUploadModal');
           if (ov) ov.classList.remove('open');
@@ -13286,7 +13518,7 @@
       state.postBoostPublishPendingByNoteId = new Set();
       state.reactionPickerTarget = null;
       state.shareModalStreamAddress = '';
-      state.composeUploadSource = 'nostr_build';
+      state.composeUploadSource = 'blossom';
       state.composeUploadPending = false;
       state.composeUploadTarget = 'profile';
       state.nip96DiscoveryByHost = new Map();
