@@ -2,8 +2,9 @@
    Uses existing Sifaka CSS variables for visual consistency. */
 
 #communitiesPage {
+  --sc-nav-offset: 76px;
   display: none;
-  padding-top: 56px;
+  padding-top: var(--sc-nav-offset);
   min-height: 100vh;
   background: radial-gradient(1200px 600px at 0% 0%, rgba(232,70,10,.06), transparent 45%), var(--bg);
 }
@@ -11,15 +12,16 @@
 .sc-wrap {
   display: grid;
   grid-template-columns: 74px 280px minmax(0, 1fr) 290px;
-  min-height: calc(100vh - 56px);
+  min-height: calc(100vh - var(--sc-nav-offset));
   color: var(--text);
+  border-top: 1px solid var(--border);
 }
 
 .sc-server-rail,
 .sc-channel-col,
 .sc-main,
 .sc-member-col {
-  min-height: calc(100vh - 56px);
+  min-height: calc(100vh - var(--sc-nav-offset));
 }
 
 .sc-server-rail {
@@ -773,7 +775,7 @@
 
 .sc-modal-ov {
   position: fixed;
-  inset: 56px 0 0;
+  inset: var(--sc-nav-offset) 0 0;
   z-index: 95;
   background: rgba(6,8,12,.74);
   display: flex;
@@ -784,7 +786,7 @@
 
 .sc-modal {
   width: min(760px, 94vw);
-  max-height: calc(100vh - 56px - 1.85rem);
+  max-height: calc(100vh - var(--sc-nav-offset) - 1.85rem);
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border2);
@@ -1239,7 +1241,7 @@
   .sc-member-col {
     position: fixed;
     right: 0;
-    top: 56px;
+    top: var(--sc-nav-offset);
     bottom: 0;
     width: 260px;
     z-index: 65;
@@ -1259,7 +1261,7 @@
   .sc-channel-col {
     position: fixed;
     left: 56px;
-    top: 56px;
+    top: var(--sc-nav-offset);
     bottom: 0;
     width: 248px;
     z-index: 70;
@@ -1274,7 +1276,7 @@
   }
   .sc-main-head {
     position: sticky;
-    top: 56px;
+    top: var(--sc-nav-offset);
     background: var(--surface);
     z-index: 40;
   }
@@ -1282,7 +1284,7 @@
 
 .sc-auth-gate {
   display: flex;
-  min-height: calc(100vh - 56px);
+  min-height: calc(100vh - var(--sc-nav-offset));
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
@@ -1333,7 +1335,7 @@
 
 .sc-modal.sc-community-settings-modal {
   width: min(1120px, 97vw);
-  max-height: calc(100vh - 56px - 2rem);
+  max-height: calc(100vh - var(--sc-nav-offset) - 2rem);
   display: flex;
   flex-direction: column;
   gap: .6rem;
@@ -1798,17 +1800,19 @@
 
 #communitiesPage .sc-wrap {
   grid-template-columns: 74px 286px minmax(0, 1fr) 300px;
-  min-height: calc(100vh - 56px);
-  max-height: calc(100vh - 56px);
+  min-height: calc(100vh - var(--sc-nav-offset));
+  max-height: calc(100vh - var(--sc-nav-offset));
   overflow: hidden;
+  border-top: 1px solid var(--sc-border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03), inset 0 14px 16px -16px rgba(255,255,255,.22);
 }
 
 #communitiesPage .sc-server-rail,
 #communitiesPage .sc-channel-col,
 #communitiesPage .sc-main,
 #communitiesPage .sc-member-col {
-  min-height: calc(100vh - 56px);
-  max-height: calc(100vh - 56px);
+  min-height: calc(100vh - var(--sc-nav-offset));
+  max-height: calc(100vh - var(--sc-nav-offset));
 }
 
 #communitiesPage .sc-server-rail {
@@ -2635,6 +2639,12 @@
 
   #communitiesPage .sc-wrap-empty {
     grid-template-columns: 56px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  #communitiesPage {
+    --sc-nav-offset: 72px;
   }
 }
 

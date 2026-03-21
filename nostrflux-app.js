@@ -169,9 +169,12 @@
     videoPostModalEventId: '',
     videoPostModalHostPubkey: '',
     videoPostModalStream: null,
+    videoPostModalIsWatchParty: false,
     videoPostModalPlayerCleanup: null,
     videoPostCommentsCacheByEventId: new Map(),
     videoPostCommentsSubId: null,
+    videoPostLiveChatCacheByAddress: new Map(),
+    videoPostLiveChatSubId: null,
     nostrFeedFilter: 'following',          // 'following' | 'contacts' | listId | naddr | 'global'
     nostrFeedSubId: null,
     nostrFeedRenderTimer: null,
@@ -282,7 +285,16 @@
     nip96DiscoveryByHost: new Map(),
     activeViewerAddress: '',
     activeHeroViewerAddress: '',
+    relayPingMsByUrl: new Map(),
     goLiveSelectedAddress: '',
+    goLiveTemplateAddress: '',
+    goLiveForceNew: false,
+    goLiveHostMode: 'self',
+    goLiveRelaysOpen: false,
+    goLiveThirdPartyProvider: '',
+    goLivePreviewHls: null,
+    goLivePreviewTimer: null,
+    goLivePreviewToken: 0,
     goLiveHiddenEndedAddresses: new Set(),
     profileStatusByPubkey: new Map(),
     profileStatusSavePending: false,
@@ -311,6 +323,7 @@
 
     connect(url) {
       let ws;
+      const connectStartedAt = Date.now();
       try {
         ws = new WebSocket(url);
       } catch (_) {
@@ -319,6 +332,10 @@
       }
 
       ws.addEventListener('open', () => {
+        const latencyMs = Date.now() - connectStartedAt;
+        if (Number.isFinite(latencyMs) && latencyMs >= 0) {
+          state.relayPingMsByUrl.set(url, Math.max(1, Math.round(latencyMs)));
+        }
         this.onStatus(url, 'open');
         this.subscriptions.forEach((sub, id) => {
           this.send(url, ['REQ', id, ...sub.filters]);
@@ -1770,6 +1787,7 @@
 
   function rebuildRelayPool() {
     state.oneShotQueryInflightByKey = new Map();
+    state.relayPingMsByUrl = new Map();
     stopLiveSubscription();
     stopNostrFeedSubscription();
     if (state.pool) {
@@ -2775,6 +2793,12 @@
     return normalized.toLowerCase() === '/messages';
   }
 
+  function isMyStreamsPath(pathname) {
+    const raw = (pathname || '/').trim();
+    const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
+    return normalized.toLowerCase() === '/my-streams';
+  }
+
   function isFeedPath(pathname) {
     const raw = (pathname || '/').trim();
     const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
@@ -3198,6 +3222,17 @@
     }
   }
 
+  function syncMyStreamsRoute(mode = 'push') {
+    if (!window.history || !window.history.pushState) return;
+    if (isMyStreamsPath(window.location.pathname)) return;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try {
+      window.history[method]({ view: 'myStreams' }, '', '/my-streams');
+    } catch (_) {
+      // ignore
+    }
+  }
+
   function syncFeedRoute(mode = 'push') {
     if (!window.history || !window.history.pushState) return;
     if (isFeedPath(window.location.pathname)) return;
@@ -3322,6 +3357,14 @@
     if (window.showPage) window.showPage('messages', { routeMode: 'skip' });
   }
 
+  function showMyStreamsFromRoute() {
+    if (typeof window.openMyStreams === 'function') {
+      const opened = window.openMyStreams({ routeMode: 'skip', allowLoginPrompt: false });
+      if (opened) return;
+    }
+    if (window.showPage) window.showPage('home', { routeMode: 'replace' });
+  }
+
   function showFeedFromRoute() {
     if (window.showPage) window.showPage('feed', { routeMode: 'skip' });
   }
@@ -3342,6 +3385,10 @@
     }
     if (isMessagesPath(window.location.pathname)) {
       showMessagesFromRoute();
+      return;
+    }
+    if (isMyStreamsPath(window.location.pathname)) {
+      showMyStreamsFromRoute();
       return;
     }
     if (isFeedPath(window.location.pathname)) {
@@ -6108,14 +6155,84 @@
     return merged;
   }
 
-  function updateRelayBar() {
-    const bar = qs('#relayBar');
-    if (!bar || !state.pool) return;
-    let open = 0;
-    state.pool.sockets.forEach((ws) => {
-      if (ws.readyState === WebSocket.OPEN) open += 1;
+  function relayHostLabel(url) {
+    try {
+      const parsed = new URL(String(url || '').trim());
+      return parsed.host || String(url || '').trim();
+    } catch (_) {
+      return String(url || '').trim();
+    }
+  }
+
+  function renderGoLiveRelayDetails() {
+    const list = qs('#goLiveRelayDetailList');
+    if (!list) return;
+    list.innerHTML = '';
+
+    const pool = state.pool;
+    const relays = Array.isArray(state.relays) ? state.relays : [];
+    if (!relays.length) {
+      list.innerHTML = '<div class="go-live-relay-row"><span class="go-live-relay-dot"></span><span class="go-live-relay-url">No relays configured</span><span class="go-live-relay-ping">n/a</span></div>';
+      return;
+    }
+
+    relays.forEach((url) => {
+      const row = document.createElement('div');
+      row.className = 'go-live-relay-row';
+
+      const dot = document.createElement('span');
+      dot.className = 'go-live-relay-dot';
+
+      const relay = document.createElement('span');
+      relay.className = 'go-live-relay-url';
+      relay.textContent = relayHostLabel(url);
+      relay.title = url;
+
+      const ping = document.createElement('span');
+      ping.className = 'go-live-relay-ping';
+
+      const ws = pool ? pool.sockets.get(url) : null;
+      const isOpen = !!(ws && ws.readyState === WebSocket.OPEN);
+      if (isOpen) row.classList.add('open');
+
+      const pingMs = Number(state.relayPingMsByUrl.get(url));
+      if (isOpen && Number.isFinite(pingMs) && pingMs > 0) {
+        ping.textContent = `${Math.round(pingMs)}ms`;
+      } else if (isOpen) {
+        ping.textContent = 'n/a';
+      } else {
+        ping.textContent = '--';
+      }
+
+      row.appendChild(dot);
+      row.appendChild(relay);
+      row.appendChild(ping);
+      list.appendChild(row);
     });
-    bar.textContent = `Connected relays: ${open}/${state.relays.length} (${state.relays.join(' | ')})`;
+  }
+
+  function updateRelayBar() {
+    const bars = [qs('#relayBar'), qs('#myStreamsRelayBar')].filter(Boolean);
+    if (!bars.length) return;
+    let open = 0;
+    let pingSum = 0;
+    let pingCount = 0;
+    state.relays.forEach((url) => {
+      const ws = state.pool ? state.pool.sockets.get(url) : null;
+      const isOpen = !!(ws && ws.readyState === WebSocket.OPEN);
+      if (isOpen) open += 1;
+      const pingMs = Number(state.relayPingMsByUrl.get(url));
+      if (isOpen && Number.isFinite(pingMs) && pingMs > 0) {
+        pingSum += pingMs;
+        pingCount += 1;
+      }
+    });
+    const avgPing = pingCount ? Math.round(pingSum / pingCount) : null;
+    const text = `Connected relays: ${open}/${state.relays.length} (${state.relays.join(' | ')})${avgPing != null ? ` | Avg ping: ${avgPing}ms` : ''}`;
+    bars.forEach((bar) => {
+      bar.textContent = text;
+    });
+    renderGoLiveRelayDetails();
   }
 
   function upsertStream(stream) {
@@ -6199,12 +6316,13 @@
 
   function setGoLiveStatusSelection(statusValue) {
     const normalized = normalizeStreamStatus(statusValue);
-    const row = qs('.srow');
+    const row = qs('#goLiveStatusRow') || qs('#goLiveModal .srow') || qs('.srow');
     if (!row) return;
     const buttons = qsa('.sc', row);
     buttons.forEach((btn) => btn.classList.remove('sl'));
     const target = buttons.find((btn) => normalizeStreamStatus(btn.textContent) === normalized) || buttons[0];
     if (target) target.classList.add('sl');
+    updateGoLiveStartsVisibility();
   }
 
   function populateGoLiveFormFromStream(stream) {
@@ -6224,6 +6342,8 @@
     if (startsInput) startsInput.value = stream && stream.starts ? fromUnixSeconds(stream.starts) : '';
     if (eventIdInput) eventIdInput.value = stream && stream.id ? stream.id : '';
     setGoLiveStatusSelection(stream ? stream.status : 'live');
+    updateGoLiveThumbPreview();
+    scheduleGoLiveStreamPreview(120);
   }
 
   function resetGoLiveFormDefaults() {
@@ -6236,14 +6356,467 @@
     if (title && !title.value.trim()) title.value = 'Untitled stream';
   }
 
+  function generateGoLiveDTag() {
+    return `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function setGoLiveCreateModeFieldVisibility(isCreateMode) {
+    const dTagWrap = qs('#goLiveDTagWrap');
+    const eventIdWrap = qs('#goLiveEventIdWrap');
+    if (dTagWrap) dTagWrap.style.display = isCreateMode ? 'none' : 'flex';
+    if (eventIdWrap) eventIdWrap.style.display = isCreateMode ? 'none' : 'flex';
+  }
+
+  function updateGoLiveStartsVisibility() {
+    const startsWrap = qs('#goLiveStartsWrap');
+    if (!startsWrap) return;
+    const selected = qs('#goLiveStatusRow .sc.sl') || qs('#goLiveModal .srow .sc.sl');
+    const status = normalizeStreamStatus(selected ? selected.textContent : 'live');
+    startsWrap.style.display = status === 'planned' ? 'flex' : 'none';
+  }
+
+  function updateGoLiveThumbPreview() {
+    const wrap = qs('#goLiveThumbPreviewWrap');
+    const img = qs('#goLiveThumbPreviewImg');
+    const empty = qs('#goLiveThumbPreviewEmpty');
+    if (!wrap || !img || !empty) return;
+
+    const raw = sanitizeMediaUrl((qs('#goLiveThumb') && qs('#goLiveThumb').value) || '');
+    if (raw && isLikelyUrl(raw)) {
+      img.style.display = 'block';
+      empty.style.display = 'none';
+      img.src = raw;
+    } else {
+      img.style.display = 'none';
+      empty.style.display = 'block';
+      img.removeAttribute('src');
+    }
+  }
+
+  function clearGoLiveStreamPreview() {
+    if (state.goLivePreviewTimer) {
+      clearTimeout(state.goLivePreviewTimer);
+      state.goLivePreviewTimer = null;
+    }
+    if (state.goLivePreviewHls) {
+      try { state.goLivePreviewHls.destroy(); } catch (_) {}
+      state.goLivePreviewHls = null;
+    }
+    const video = qs('#goLiveStreamPreviewVideo');
+    if (video) {
+      try { video.pause(); } catch (_) {}
+      try {
+        video.removeAttribute('src');
+        video.load();
+      } catch (_) {}
+    }
+  }
+
+  async function updateGoLiveStreamPreview(token) {
+    const video = qs('#goLiveStreamPreviewVideo');
+    const status = qs('#goLiveStreamPreviewStatus');
+    if (!video || !status) return;
+
+    const modal = qs('#goLiveModal');
+    const isModalOpen = !!(modal && modal.classList.contains('open'));
+    if (!isModalOpen || state.goLiveHostMode !== 'self') {
+      clearGoLiveStreamPreview();
+      status.textContent = 'Enter a streaming URL to preview.';
+      return;
+    }
+
+    if (token !== state.goLivePreviewToken) return;
+    clearGoLiveStreamPreview();
+    if (token !== state.goLivePreviewToken) return;
+
+    const raw = sanitizeMediaUrl((qs('#goLiveStreamUrl') && qs('#goLiveStreamUrl').value) || '');
+    if (!raw || !isLikelyUrl(raw)) {
+      status.textContent = 'Enter a streaming URL to preview.';
+      return;
+    }
+    status.textContent = 'Loading preview...';
+
+    try {
+      if (isLikelyHlsStreamUrl(raw) && !video.canPlayType('application/vnd.apple.mpegurl')) {
+        const Hls = await ensureHlsJs();
+        if (token !== state.goLivePreviewToken) return;
+        if (!Hls || typeof Hls.isSupported !== 'function' || !Hls.isSupported()) {
+          status.textContent = 'This browser cannot preview this HLS URL.';
+          return;
+        }
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 6,
+          liveSyncDurationCount: 2
+        });
+        state.goLivePreviewHls = hls;
+        hls.loadSource(raw);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (token !== state.goLivePreviewToken) return;
+          status.textContent = 'Live preview';
+          video.play().catch(() => {});
+        });
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (token !== state.goLivePreviewToken) return;
+          if (data && data.fatal) status.textContent = 'Preview error. Check stream URL.';
+        });
+        return;
+      }
+
+      video.src = raw;
+      video.addEventListener('loadedmetadata', () => {
+        if (token !== state.goLivePreviewToken) return;
+        status.textContent = 'Live preview';
+      }, { once: true });
+      video.addEventListener('error', () => {
+        if (token !== state.goLivePreviewToken) return;
+        status.textContent = 'Could not load preview from this URL.';
+      }, { once: true });
+      await video.play().catch(() => {});
+    } catch (_) {
+      if (token !== state.goLivePreviewToken) return;
+      status.textContent = 'Could not load preview from this URL.';
+    }
+  }
+
+  function scheduleGoLiveStreamPreview(delayMs = 260) {
+    if (state.goLivePreviewTimer) {
+      clearTimeout(state.goLivePreviewTimer);
+      state.goLivePreviewTimer = null;
+    }
+    state.goLivePreviewToken += 1;
+    const token = state.goLivePreviewToken;
+    state.goLivePreviewTimer = setTimeout(() => {
+      updateGoLiveStreamPreview(token).catch(() => {});
+    }, Math.max(0, Number(delayMs) || 0));
+  }
+
+  function setGoLiveRelaysPanelOpen(open) {
+    state.goLiveRelaysOpen = !!open;
+    const col = qs('#goLiveRelayCol');
+    const btn = qs('#goLiveRelaysToggleBtn');
+    const grid = qs('#goLiveCreateGrid');
+    if (col) col.style.display = state.goLiveRelaysOpen ? 'flex' : 'none';
+    if (btn) btn.classList.toggle('on', state.goLiveRelaysOpen);
+    if (grid) grid.classList.toggle('relays-open', state.goLiveRelaysOpen);
+    if (state.goLiveRelaysOpen) updateRelayBar();
+  }
+
+  function clearGoLiveFormForNewStream() {
+    const dtag = qs('#goLiveDTag');
+    const title = qs('#goLiveTitle');
+    const summary = qs('#goLiveSummary');
+    const streamUrl = qs('#goLiveStreamUrl');
+    const thumb = qs('#goLiveThumb');
+    const starts = qs('#goLiveStarts');
+    const eventId = qs('#goLiveEventId');
+    if (dtag) dtag.value = generateGoLiveDTag();
+    if (title) title.value = '';
+    if (summary) summary.value = '';
+    if (streamUrl) streamUrl.value = '';
+    if (thumb) thumb.value = '';
+    if (starts) starts.value = '';
+    if (eventId) eventId.value = '';
+    setGoLiveStatusSelection('live');
+    updateGoLiveThumbPreview();
+    scheduleGoLiveStreamPreview(120);
+  }
+
+  function setGoLiveSelfHostControlsEnabled(enabled) {
+    const fieldSelectors = [
+      '#goLiveStreamSelect',
+      '#goLiveLoadTemplateBtn',
+      '#goLiveDTag',
+      '#goLiveTitle',
+      '#goLiveSummary',
+      '#goLiveStreamUrl',
+      '#goLiveThumb',
+      '#goLiveStarts',
+      '#goLiveRelaysToggleBtn'
+    ];
+    fieldSelectors.forEach((sel) => {
+      const el = qs(sel);
+      if (!el) return;
+      if ('disabled' in el) el.disabled = !enabled;
+    });
+
+    qsa('#goLiveModal .srow .sc').forEach((btn) => {
+      btn.disabled = !enabled;
+    });
+
+    const publishBtn = qs('#goLivePublishBtn');
+    if (publishBtn) publishBtn.disabled = !enabled;
+    const removeBtn = qs('#goLiveRemoveBtn');
+    if (removeBtn) removeBtn.disabled = !enabled;
+  }
+
+  function applyGoLiveHostModeUi(mode) {
+    const normalized = mode === 'third-party' ? 'third-party' : 'self';
+    state.goLiveHostMode = normalized;
+    state.goLiveThirdPartyProvider = '';
+    const selfBtn = qs('#goLiveHostSelfBtn');
+    const thirdBtn = qs('#goLiveHostThirdPartyBtn');
+    const selfWrap = qs('#goLiveSelfWrap');
+    const thirdWrap = qs('#goLiveThirdPartyWrap');
+    const relaysBtn = qs('#goLiveRelaysToggleBtn');
+    if (selfBtn) selfBtn.classList.toggle('on', normalized === 'self');
+    if (thirdBtn) thirdBtn.classList.toggle('on', normalized === 'third-party');
+
+    const note = qs('#goLiveHostNote');
+    const publishBtn = qs('#goLivePublishBtn');
+    const thirdPartyHelp = qs('#goLiveThirdPartyHelp');
+    qsa('#goLiveThirdPartyWrap .go-live-third-party-btn').forEach((btn) => btn.classList.remove('on'));
+    if (normalized === 'third-party') {
+      if (note) note.textContent = 'Host via 3rd party is coming soon.';
+      if (selfWrap) selfWrap.style.display = 'none';
+      if (thirdWrap) thirdWrap.style.display = 'block';
+      if (thirdPartyHelp) thirdPartyHelp.textContent = 'Choose a provider. Direct launch integration is coming soon.';
+      setGoLiveSelfHostControlsEnabled(false);
+      setGoLiveRelaysPanelOpen(false);
+      if (relaysBtn) relaysBtn.style.display = 'none';
+      if (publishBtn) publishBtn.textContent = 'Coming Soon';
+      clearGoLiveStreamPreview();
+      return;
+    }
+
+    if (note) note.textContent = 'Self host uses your own HLS/RTMP streaming URL.';
+    if (selfWrap) selfWrap.style.display = 'block';
+    if (thirdWrap) thirdWrap.style.display = 'none';
+    if (relaysBtn) relaysBtn.style.display = 'inline-flex';
+    setGoLiveSelfHostControlsEnabled(true);
+    if (publishBtn) {
+      if (state.goLiveForceNew) {
+        publishBtn.textContent = 'Go Live Now';
+      } else {
+        const selected = (state.goLiveSelectedAddress || '').trim();
+        const stream = selected ? state.streamsByAddress.get(selected) : null;
+        const status = normalizeStreamStatus(stream && stream.status || 'planned');
+        publishBtn.textContent = stream ? (status === 'live' ? 'Save Live Update' : 'Save Stream Update') : 'Go Live Now';
+      }
+    }
+    updateGoLiveStartsVisibility();
+    updateGoLiveThumbPreview();
+    scheduleGoLiveStreamPreview(120);
+  }
+
+  function refreshGoLiveTemplateSelector() {
+    const selector = qs('#goLiveStreamSelect');
+    const streams = ownStreamsForTemplate();
+    if (!selector) return streams;
+
+    selector.innerHTML = '';
+    if (!streams.length) {
+      const emptyOpt = document.createElement('option');
+      emptyOpt.value = '';
+      emptyOpt.textContent = 'No previous streams yet';
+      selector.appendChild(emptyOpt);
+      selector.disabled = true;
+      state.goLiveTemplateAddress = '';
+      return streams;
+    }
+
+    streams.forEach((stream) => {
+      const opt = document.createElement('option');
+      const statusLabel = normalizeStreamStatus(stream.status).toUpperCase();
+      const title = (stream.title || 'Untitled stream').slice(0, 64);
+      opt.value = stream.address;
+      opt.textContent = `${statusLabel} - ${title}`;
+      selector.appendChild(opt);
+    });
+
+    const preferred = streams.some((stream) => stream.address === state.goLiveTemplateAddress)
+      ? state.goLiveTemplateAddress
+      : streams[0].address;
+    selector.value = preferred;
+    selector.disabled = false;
+    state.goLiveTemplateAddress = preferred;
+    return streams;
+  }
+
+  function configureGoLiveModalForNewStream() {
+    state.goLiveForceNew = true;
+    state.goLiveSelectedAddress = '';
+    state.goLiveTemplateAddress = '';
+    state.goLiveRelaysOpen = false;
+
+    const modalTitle = qs('#goLiveModalTitle');
+    const modalSub = qs('#goLiveModalSub');
+    const manageWrap = qs('#goLiveManageWrap');
+    const manageLabel = qs('#goLiveManageLabel');
+    const manageHint = qs('#goLiveManageHint');
+    const loadTemplateBtn = qs('#goLiveLoadTemplateBtn');
+    const publishBtn = qs('#goLivePublishBtn');
+    const removeBtn = qs('#goLiveRemoveBtn');
+
+    if (modalTitle) modalTitle.innerHTML = '<span class="mi"></span>Create Stream';
+    if (modalSub) modalSub.textContent = 'Create a new stream event. Start from a blank template or load details from a previous stream.';
+
+    clearGoLiveFormForNewStream();
+    const streams = refreshGoLiveTemplateSelector();
+
+    if (manageLabel) manageLabel.textContent = 'Grab Old Stream Details';
+    if (manageWrap) manageWrap.classList.toggle('on', streams.length > 0);
+    if (manageHint) {
+      manageHint.textContent = streams.length
+        ? 'Pick a previous stream and click Use Old Details.'
+        : 'No previous streams found yet. Fill in details below.';
+    }
+    if (loadTemplateBtn) loadTemplateBtn.style.display = streams.length ? 'inline-flex' : 'none';
+
+    if (publishBtn) {
+      publishBtn.textContent = 'Go Live Now';
+      publishBtn.disabled = false;
+    }
+    if (removeBtn) {
+      removeBtn.style.display = 'none';
+      removeBtn.disabled = false;
+    }
+
+    setGoLiveCreateModeFieldVisibility(true);
+    applyGoLiveHostModeUi('self');
+    setGoLiveRelaysPanelOpen(false);
+    updateGoLiveStartsVisibility();
+    updateGoLiveThumbPreview();
+    scheduleGoLiveStreamPreview(120);
+    updateRelayBar();
+  }
+
+  const GO_LIVE_FIELD_PAIRS = [
+    ['#goLiveDTag', '#myStreamsDTag'],
+    ['#goLiveTitle', '#myStreamsTitleInput'],
+    ['#goLiveSummary', '#myStreamsSummary'],
+    ['#goLiveStreamUrl', '#myStreamsStreamUrl'],
+    ['#goLiveThumb', '#myStreamsThumb'],
+    ['#goLiveStarts', '#myStreamsStarts'],
+    ['#goLiveEventId', '#myStreamsEventId']
+  ];
+
+  function syncStatusRowSelection(fromSel, toSel) {
+    const fromRow = qs(fromSel);
+    const toRow = qs(toSel);
+    if (!fromRow || !toRow) return;
+    const fromButtons = qsa('.sc', fromRow);
+    const toButtons = qsa('.sc', toRow);
+    if (!fromButtons.length || !toButtons.length) return;
+
+    const selected = fromButtons.find((btn) => btn.classList.contains('sl')) || fromButtons[0];
+    const normalized = normalizeStreamStatus(selected ? selected.textContent : 'live');
+    toButtons.forEach((btn) => btn.classList.remove('sl'));
+    const match = toButtons.find((btn) => normalizeStreamStatus(btn.textContent) === normalized) || toButtons[0];
+    if (match) match.classList.add('sl');
+  }
+
+  function setMyStreamsStatus(message = '', tone = 'info') {
+    const el = qs('#myStreamsStatus');
+    if (!el) return;
+    el.textContent = String(message || '');
+    el.classList.remove('ok', 'err');
+    if (tone === 'success') el.classList.add('ok');
+    if (tone === 'error') el.classList.add('err');
+  }
+
+  function syncMyStreamsPageFromGoLiveModal() {
+    const page = qs('#myStreamsPage');
+    if (!page) return;
+
+    GO_LIVE_FIELD_PAIRS.forEach(([goSel, pageSel]) => {
+      const from = qs(goSel);
+      const to = qs(pageSel);
+      if (!from || !to) return;
+      to.value = from.value;
+    });
+
+    const goTitle = qs('#goLiveModalTitle');
+    const pageTitle = qs('#myStreamsTitle');
+    if (pageTitle && goTitle) pageTitle.textContent = String(goTitle.textContent || 'Edit Stream').trim() || 'Edit Stream';
+
+    const goSub = qs('#goLiveModalSub');
+    const pageSub = qs('#myStreamsSub');
+    if (pageSub && goSub) pageSub.textContent = String(goSub.textContent || '').trim();
+
+    const goManageWrap = qs('#goLiveManageWrap');
+    const pageManageWrap = qs('#myStreamsManageWrap');
+    if (pageManageWrap) {
+      const showManage = !!(goManageWrap && goManageWrap.classList.contains('on'));
+      pageManageWrap.classList.toggle('on', showManage);
+    }
+
+    const goHint = qs('#goLiveManageHint');
+    const pageHint = qs('#myStreamsManageHint');
+    if (pageHint && goHint) pageHint.textContent = goHint.textContent || '';
+
+    const goSelect = qs('#goLiveStreamSelect');
+    const pageSelect = qs('#myStreamsStreamSelect');
+    if (pageSelect) {
+      pageSelect.innerHTML = '';
+      if (goSelect) {
+        qsa('option', goSelect).forEach((opt) => {
+          const clone = document.createElement('option');
+          clone.value = opt.value;
+          clone.textContent = opt.textContent;
+          pageSelect.appendChild(clone);
+        });
+        if (goSelect.value) pageSelect.value = goSelect.value;
+        pageSelect.disabled = goSelect.options.length === 0;
+      }
+    }
+
+    const goPublish = qs('#goLivePublishBtn');
+    const pagePublish = qs('#myStreamsPublishBtn');
+    if (goPublish && pagePublish) pagePublish.textContent = goPublish.textContent || 'Save Stream Update';
+
+    const goRemove = qs('#goLiveRemoveBtn');
+    const pageRemove = qs('#myStreamsRemoveBtn');
+    if (goRemove && pageRemove) pageRemove.style.display = goRemove.style.display || 'none';
+
+    const relayBar = qs('#relayBar');
+    const pageRelayBar = qs('#myStreamsRelayBar');
+    if (relayBar && pageRelayBar) pageRelayBar.textContent = relayBar.textContent || '';
+
+    syncStatusRowSelection('#goLiveModal .srow', '#myStreamsStatusRow');
+  }
+
+  function syncGoLiveModalFromMyStreamsPage() {
+    state.goLiveForceNew = false;
+    state.goLiveRelaysOpen = false;
+    setGoLiveCreateModeFieldVisibility(false);
+    applyGoLiveHostModeUi('self');
+    setGoLiveRelaysPanelOpen(false);
+    const pageSelect = qs('#myStreamsStreamSelect');
+    if (pageSelect && pageSelect.value) state.goLiveSelectedAddress = pageSelect.value;
+
+    GO_LIVE_FIELD_PAIRS.forEach(([goSel, pageSel]) => {
+      const to = qs(goSel);
+      const from = qs(pageSel);
+      if (!from || !to) return;
+      to.value = from.value;
+    });
+
+    syncStatusRowSelection('#myStreamsStatusRow', '#goLiveModal .srow');
+  }
+
   function updateGoLiveModalState() {
     const manageWrap = qs('#goLiveManageWrap');
+    const manageLabel = qs('#goLiveManageLabel');
     const manageHint = qs('#goLiveManageHint');
+    const loadTemplateBtn = qs('#goLiveLoadTemplateBtn');
     const selector = qs('#goLiveStreamSelect');
     const publishBtn = qs('#goLivePublishBtn');
     const removeBtn = qs('#goLiveRemoveBtn');
     const modalTitle = qs('#goLiveModalTitle');
     const modalSub = qs('#goLiveModalSub');
+
+    state.goLiveForceNew = false;
+    state.goLiveHostMode = 'self';
+    state.goLiveTemplateAddress = '';
+    state.goLiveRelaysOpen = false;
+    if (manageLabel) manageLabel.textContent = 'Your Streams';
+    if (loadTemplateBtn) loadTemplateBtn.style.display = 'none';
+    setGoLiveCreateModeFieldVisibility(false);
+    applyGoLiveHostModeUi('self');
+    setGoLiveRelaysPanelOpen(false);
 
     const streams = ownManageableStreams();
     let selected = streams.find((s) => s.address === state.goLiveSelectedAddress) || null;
@@ -6261,6 +6834,7 @@
         opt.textContent = `${statusLabel} - ${title}`;
         selector.appendChild(opt);
       });
+      selector.disabled = streams.length === 0;
       if (state.goLiveSelectedAddress) selector.value = state.goLiveSelectedAddress;
     }
 
@@ -6282,6 +6856,10 @@
       if (removeBtn) removeBtn.style.display = 'none';
       if (manageHint) manageHint.textContent = 'Create your first stream event, then it will appear here for editing.';
     }
+    updateGoLiveStartsVisibility();
+    updateGoLiveThumbPreview();
+    scheduleGoLiveStreamPreview(120);
+    syncMyStreamsPageFromGoLiveModal();
   }
 
   function updateGoLiveButtonState() {
@@ -6388,6 +6966,15 @@
         // Within same tier: higher viewers first
         return effectiveParticipants(b) - effectiveParticipants(a);
       });
+  }
+
+  function ownStreamsForTemplate() {
+    if (!state.user) return [];
+    const own = normalizePubkeyHex(state.user.pubkey);
+    if (!own) return [];
+    return Array.from(state.streamsByAddress.values())
+      .filter((s) => normalizePubkeyHex(s.pubkey) === own)
+      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
   }
 
   function normalizeVideosFilter(filterId) {
@@ -7046,7 +7633,7 @@
     video.muted = false;
     video.defaultMuted = false;
     video.playsInline = true;
-    video.preload = 'metadata';
+    video.preload = 'auto';
 
     const showFailure = (message) => {
       if (isStale()) return;
@@ -7356,14 +7943,240 @@
     );
   }
 
+  function resolveVideoPostLiveChatAddress(stream) {
+    return String((stream && stream.address) || '').trim();
+  }
+
+  function resolveVideoPostLiveChatEventId(stream) {
+    const id = String((stream && (stream.id || (stream.raw && stream.raw.id))) || '').trim().toLowerCase();
+    return /^[0-9a-f]{64}$/i.test(id) ? id : '';
+  }
+
+  function buildVideoPostLiveChatFilters(stream) {
+    const streamAddress = resolveVideoPostLiveChatAddress(stream);
+    if (!streamAddress) return [];
+    const nowSec = Math.floor(Date.now() / 1000);
+    const streamStart = Number(stream && (stream.starts || stream.created_at) || 0) || 0;
+    const chatSince = streamStart
+      ? Math.max(0, streamStart - 60 * 60 * 2)
+      : (nowSec - 60 * 60 * 24);
+    const historyLimit = 420;
+    const filters = [{
+      kinds: [KIND_LIVE_CHAT],
+      '#a': [streamAddress],
+      limit: historyLimit,
+      since: chatSince
+    }];
+    const streamEventId = resolveVideoPostLiveChatEventId(stream);
+    if (streamEventId) {
+      filters.push({
+        kinds: [KIND_LIVE_CHAT],
+        '#e': [streamEventId],
+        limit: historyLimit,
+        since: chatSince
+      });
+    }
+    return filters;
+  }
+
+  function videoPostLiveChatTargetsStream(ev, stream) {
+    if (!ev) return false;
+    const streamAddress = resolveVideoPostLiveChatAddress(stream);
+    const streamEventId = resolveVideoPostLiveChatEventId(stream);
+    const aRefs = allTagValues(ev.tags, 'a').map((ref) => String(ref || '').trim());
+    const eRefs = allTagValues(ev.tags, 'e')
+      .map((ref) => String(ref || '').trim().toLowerCase())
+      .filter((ref) => /^[0-9a-f]{64}$/.test(ref));
+    if (streamAddress && aRefs.includes(streamAddress)) return true;
+    if (streamEventId && eRefs.includes(streamEventId)) return true;
+    return false;
+  }
+
+  function stopVideoPostLiveChatSubscription() {
+    if (!state.videoPostLiveChatSubId || !state.pool) {
+      state.videoPostLiveChatSubId = null;
+      return;
+    }
+    try {
+      state.pool.unsubscribe(state.videoPostLiveChatSubId);
+    } catch (_) {}
+    state.videoPostLiveChatSubId = null;
+  }
+
+  function upsertVideoPostLiveChatCache(stream, incoming, opts = {}) {
+    const streamAddress = resolveVideoPostLiveChatAddress(stream);
+    if (!streamAddress) return [];
+    const reset = !!opts.reset;
+    const existingEntry = state.videoPostLiveChatCacheByAddress.get(streamAddress);
+    const current = !reset && existingEntry && Array.isArray(existingEntry.messages) ? existingEntry.messages : [];
+    const merged = new Map();
+    [...current, ...((Array.isArray(incoming) ? incoming : [incoming]).filter(Boolean))].forEach((ev) => {
+      if (!ev || ev.kind !== KIND_LIVE_CHAT || !ev.id) return;
+      if (!videoPostLiveChatTargetsStream(ev, stream)) return;
+      const prev = merged.get(ev.id);
+      if (!prev || Number(prev.created_at || 0) <= Number(ev.created_at || 0)) {
+        merged.set(ev.id, ev);
+      }
+    });
+    const messages = Array.from(merged.values())
+      .sort((a, b) => Number(a && a.created_at || 0) - Number(b && b.created_at || 0));
+    state.videoPostLiveChatCacheByAddress.set(streamAddress, {
+      savedAt: Date.now(),
+      messages
+    });
+    return messages;
+  }
+
+  function renderVideoPostLiveChat(messages, opts = {}) {
+    const listEl = qs('#videoPostCommentsList');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    listEl.classList.add('video-post-live-chat-list');
+
+    const normalizedMessages = Array.isArray(messages) ? messages : [];
+    if (!normalizedMessages.length) {
+      listEl.innerHTML = '<div class="video-post-empty">No live chat yet.</div>';
+      return;
+    }
+
+    const token = Number(opts.token || 0);
+    const skipProfileHydrate = !!opts.skipProfileHydrate;
+    const missingPubkeys = new Set();
+    const frag = document.createDocumentFragment();
+
+    normalizedMessages.forEach((ev) => {
+      if (!ev || !ev.id) return;
+      const messagePubkey = normalizePubkeyHex(ev.pubkey || '') || String(ev.pubkey || '').trim().toLowerCase();
+      const profile = profileFor(messagePubkey);
+      const displayName = profile.display_name || profile.name || shortHex(messagePubkey);
+      const verifiedNip05 = getVerifiedNip05ForPubkey(messagePubkey, profile.nip05 || '');
+
+      const row = document.createElement('div');
+      row.className = 'cmsg video-post-live-chat-item';
+      row.dataset.pubkey = messagePubkey;
+      row.innerHTML = '<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="c-time"></span></div><div class="c-text"></div></div>';
+
+      const avatarEl = qs('.c-av', row);
+      if (avatarEl) {
+        setAvatarEl(avatarEl, profile.picture || '', pickAvatar(messagePubkey));
+        avatarEl.classList.toggle('nip05-square', !!verifiedNip05);
+        avatarEl.onclick = () => showProfileByPubkey(messagePubkey);
+      }
+
+      const nameEl = qs('.c-name', row);
+      if (nameEl) {
+        nameEl.textContent = displayName;
+        nameEl.onclick = () => showProfileByPubkey(messagePubkey);
+      }
+
+      const timeEl = qs('.c-time', row);
+      if (timeEl) {
+        timeEl.textContent = formatChatTimestamp(ev.created_at);
+        try { timeEl.title = new Date(Number(ev.created_at || 0) * 1000).toLocaleString(); } catch (_) {}
+      }
+
+      const textEl = qs('.c-text', row);
+      if (textEl) {
+        const rawText = String(ev.content || '');
+        const allUrls = Array.from(new Set(
+          extractHttpUrls(rawText)
+            .map((url) => sanitizeMediaUrl(url))
+            .filter(Boolean)
+        ));
+        const mediaItems = allUrls
+          .map((url) => ({ url, kind: classifyMediaUrl(url) }))
+          .filter((item) => item.kind === 'photo' || item.kind === 'video' || item.kind === 'audio');
+        const mediaUrls = mediaItems.map((item) => item.url);
+        const renderText = mediaUrls.length ? stripMediaUrlsFromText(rawText, mediaUrls) : rawText;
+        textEl.innerHTML = '';
+        if (renderText) textEl.appendChild(renderNostrContent(renderText));
+        renderChatInlineMedia(textEl, mediaItems, {
+          allowVideo: true,
+          classPrefix: 'chat',
+          maxItems: 4,
+          videoAutoplay: false,
+          videoMuted: false,
+          videoLoop: false
+        });
+      }
+
+      if (!skipProfileHydrate && messagePubkey && !state.profilesByPubkey.has(messagePubkey)) {
+        missingPubkeys.add(messagePubkey);
+      }
+      frag.appendChild(row);
+    });
+    listEl.appendChild(frag);
+    listEl.scrollTop = listEl.scrollHeight;
+
+    if (!skipProfileHydrate && missingPubkeys.size) {
+      Promise.allSettled(Array.from(missingPubkeys).map((pubkey) => fetchProfileIfNeeded(pubkey))).then(() => {
+        if (token !== state.videoPostModalToken) return;
+        renderVideoPostLiveChat(normalizedMessages, { token, skipProfileHydrate: true });
+      });
+    }
+  }
+
+  function fetchVideoPostLiveChat(stream, opts = {}) {
+    const streamAddress = resolveVideoPostLiveChatAddress(stream);
+    if (!streamAddress) return Promise.resolve([]);
+    const force = !!opts.force;
+    const cacheEntry = state.videoPostLiveChatCacheByAddress.get(streamAddress);
+    if (!force && cacheEntry && (Date.now() - Number(cacheEntry.savedAt || 0)) < 25000) {
+      return Promise.resolve(Array.isArray(cacheEntry.messages) ? cacheEntry.messages : []);
+    }
+    const filters = buildVideoPostLiveChatFilters(stream);
+    if (!filters.length) return Promise.resolve([]);
+
+    return fetchEventsCached(
+      filters,
+      {
+        scope: 'video-post-live-chat',
+        cacheKey: `video-post-live-chat:${streamAddress}`,
+        timeoutMs: 4200,
+        maxEvents: 900
+      }
+    ).then((events) => upsertVideoPostLiveChatCache(stream, events, { reset: false }))
+      .catch(() => (cacheEntry && Array.isArray(cacheEntry.messages) ? cacheEntry.messages : []));
+  }
+
+  function subscribeVideoPostLiveChat(stream, token) {
+    stopVideoPostLiveChatSubscription();
+    if (!state.pool) return;
+    const streamAddress = resolveVideoPostLiveChatAddress(stream);
+    if (!streamAddress) return;
+    const filters = buildVideoPostLiveChatFilters(stream);
+    if (!filters.length) return;
+
+    state.videoPostLiveChatSubId = state.pool.subscribe(
+      filters,
+      {
+        event: (ev) => {
+          if (!ev || ev.kind !== KIND_LIVE_CHAT || !ev.id) return;
+          if (!videoPostLiveChatTargetsStream(ev, stream)) return;
+          const messages = upsertVideoPostLiveChatCache(stream, [ev], { reset: false });
+          if (token !== state.videoPostModalToken) return;
+          if (!state.videoPostModalIsWatchParty) return;
+          const statusEl = qs('#videoPostCommentsStatus');
+          if (statusEl) statusEl.textContent = messages.length ? `${formatCount(messages.length)} messages` : 'No live chat yet';
+          renderVideoPostLiveChat(messages, { token });
+        }
+      }
+    );
+  }
+
   function refreshVideoPostCommentComposerState() {
     const input = qs('#videoPostCommentInput');
     const commentBtn = qs('#videoPostCommentBtn');
     const attachBtn = qs('#videoPostCommentAttachBtn');
-    const hasTarget = !!String(state.videoPostModalEventId || resolveVideoPostEventId(state.videoPostModalStream) || '').trim();
+    const isWatchParty = !!state.videoPostModalIsWatchParty;
+    const hasTarget = isWatchParty
+      ? !!resolveVideoPostLiveChatAddress(state.videoPostModalStream)
+      : !!String(state.videoPostModalEventId || resolveVideoPostEventId(state.videoPostModalStream) || '').trim();
     if (input) {
       input.disabled = !hasTarget;
-      input.placeholder = hasTarget ? 'Write a comment...' : 'Comments unavailable for this item.';
+      input.placeholder = hasTarget
+        ? (isWatchParty ? 'Send a message...' : 'Write a comment...')
+        : (isWatchParty ? 'Live chat unavailable for this stream.' : 'Comments unavailable for this item.');
       if (!hasTarget) input.value = '';
     }
     if (commentBtn) commentBtn.disabled = !hasTarget;
@@ -7379,7 +8192,10 @@
     if (!input.id) input.id = 'videoPostCommentInput';
     if (attachBtn) {
       attachBtn.onclick = () => {
-        if (!String(state.videoPostModalEventId || '').trim()) return;
+        const hasTarget = state.videoPostModalIsWatchParty
+          ? !!resolveVideoPostLiveChatAddress(state.videoPostModalStream)
+          : !!String(state.videoPostModalEventId || '').trim();
+        if (!hasTarget) return;
         window.openComposeUploadModal(`textarea:${input.id}`);
       };
     }
@@ -7401,9 +8217,6 @@
     };
 
     commentBtn.onclick = async () => {
-      const eventId = String(state.videoPostModalEventId || resolveVideoPostEventId(state.videoPostModalStream) || '').trim();
-      const targetPubkey = String(state.videoPostModalHostPubkey || '').trim();
-      if (!eventId) return;
       const content = String(input.value || '').trim();
       if (!content) return;
       if (!state.user) {
@@ -7411,6 +8224,37 @@
         return;
       }
 
+      if (state.videoPostModalIsWatchParty) {
+        const stream = state.videoPostModalStream;
+        const streamAddress = resolveVideoPostLiveChatAddress(stream);
+        if (!streamAddress) return;
+        commentBtn.disabled = true;
+        const originalText = commentBtn.textContent;
+        commentBtn.textContent = 'Sending...';
+        try {
+          const tags = [['a', streamAddress]];
+          const streamEventId = resolveVideoPostLiveChatEventId(stream);
+          if (streamEventId) tags.push(['e', streamEventId]);
+          const targetPubkey = normalizePubkeyHex((stream && (stream.pubkey || stream.hostPubkey)) || '') || String((stream && (stream.pubkey || stream.hostPubkey)) || '').trim().toLowerCase();
+          if (targetPubkey) tags.push(['p', targetPubkey]);
+          const signed = await signAndPublish(KIND_LIVE_CHAT, content, tags);
+          input.value = '';
+          const messages = upsertVideoPostLiveChatCache(stream, [signed], { reset: false });
+          const statusEl = qs('#videoPostCommentsStatus');
+          if (statusEl) statusEl.textContent = messages.length ? `${formatCount(messages.length)} messages` : 'No live chat yet';
+          renderVideoPostLiveChat(messages, { token: state.videoPostModalToken });
+        } catch (err) {
+          alert(err && err.message ? err.message : 'Could not send chat message. Please try again.');
+        } finally {
+          commentBtn.disabled = false;
+          commentBtn.textContent = originalText;
+        }
+        return;
+      }
+
+      const eventId = String(state.videoPostModalEventId || resolveVideoPostEventId(state.videoPostModalStream) || '').trim();
+      const targetPubkey = String(state.videoPostModalHostPubkey || '').trim();
+      if (!eventId) return;
       commentBtn.disabled = true;
       const originalText = commentBtn.textContent;
       commentBtn.textContent = 'Posting...';
@@ -7466,11 +8310,16 @@
     if (!stream) return;
     const ov = qs('#videoPostModal');
     if (!ov) return;
+    const modalCardEl = qs('#videoPostModal .video-post-modal');
 
     state.videoPostModalToken += 1;
     const token = state.videoPostModalToken;
+    stopVideoPostCommentsSubscription();
+    stopVideoPostLiveChatSubscription();
     state.videoPostModalStream = stream;
     state.videoPostModalEventId = resolveVideoPostEventId(stream);
+    state.videoPostModalIsWatchParty = isWatchPartyStream(stream);
+    if (modalCardEl) modalCardEl.classList.toggle('video-post-watch-party', !!state.videoPostModalIsWatchParty);
 
     const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || String(stream.hostPubkey || stream.pubkey || '').trim().toLowerCase();
     state.videoPostModalHostPubkey = hostPubkey;
@@ -7505,10 +8354,20 @@
 
     const commentsStatusEl = qs('#videoPostCommentsStatus');
     const commentsListEl = qs('#videoPostCommentsList');
-    if (commentsStatusEl) commentsStatusEl.textContent = state.videoPostModalEventId ? 'Loading comments...' : 'Comments unavailable for this item';
-    if (commentsListEl) commentsListEl.innerHTML = state.videoPostModalEventId
-      ? '<div class="video-post-empty">Loading comments...</div>'
-      : '<div class="video-post-empty">Comments unavailable for this item.</div>';
+    const commentsHeadEl = qs('#videoPostCommentsHead');
+    if (commentsHeadEl) commentsHeadEl.textContent = state.videoPostModalIsWatchParty ? 'Live Chat' : 'Comments';
+    const commentBtnEl = qs('#videoPostCommentBtn');
+    if (commentBtnEl) commentBtnEl.textContent = state.videoPostModalIsWatchParty ? 'Send' : 'Comment';
+    if (commentsListEl) commentsListEl.classList.toggle('video-post-live-chat-list', !!state.videoPostModalIsWatchParty);
+    if (state.videoPostModalIsWatchParty) {
+      if (commentsStatusEl) commentsStatusEl.textContent = 'Loading live chat...';
+      if (commentsListEl) commentsListEl.innerHTML = '<div class="video-post-empty">Loading live chat...</div>';
+    } else {
+      if (commentsStatusEl) commentsStatusEl.textContent = state.videoPostModalEventId ? 'Loading comments...' : 'Comments unavailable for this item';
+      if (commentsListEl) commentsListEl.innerHTML = state.videoPostModalEventId
+        ? '<div class="video-post-empty">Loading comments...</div>'
+        : '<div class="video-post-empty">Comments unavailable for this item.</div>';
+    }
     bindVideoPostCommentComposer();
     refreshVideoPostCommentComposerState();
     const commentInputEl = qs('#videoPostCommentInput');
@@ -7516,7 +8375,18 @@
 
     mountVideoPostModalPlayer(stream.streaming || '', token).catch(() => {});
 
-    if (state.videoPostModalEventId) {
+    if (state.videoPostModalIsWatchParty) {
+      fetchVideoPostLiveChat(stream, { force: true }).then((messages) => {
+        if (token !== state.videoPostModalToken) return;
+        if (commentsStatusEl) commentsStatusEl.textContent = messages.length ? `${formatCount(messages.length)} messages` : 'No live chat yet';
+        renderVideoPostLiveChat(messages, { token });
+      }).catch(() => {
+        if (token !== state.videoPostModalToken) return;
+        if (commentsStatusEl) commentsStatusEl.textContent = 'Could not load live chat right now';
+        if (commentsListEl) commentsListEl.innerHTML = '<div class="video-post-empty">Could not load live chat right now.</div>';
+      });
+      subscribeVideoPostLiveChat(stream, token);
+    } else if (state.videoPostModalEventId) {
       fetchVideoPostComments(stream, { force: true }).then((comments) => {
         if (token !== state.videoPostModalToken) return;
         if (commentsStatusEl) commentsStatusEl.textContent = comments.length ? `${formatCount(comments.length)} comments` : 'No comments yet';
@@ -9169,10 +10039,15 @@
     card.className = 'stream-card' + (!hasViewers && !hasVideo ? ' stream-card-dim' : '');
 
     const gradients = ['t1','t2','t3','t4','t5','t6','t7','t8'];
+    const streamThumb = sanitizeMediaUrl(stream.image || '');
+    const profileThumb = sanitizeMediaUrl(p.picture || '');
     let thumbHtml;
-    if (stream.image) {
+    if (streamThumb) {
       const fb = gradients[idx % gradients.length];
-      thumbHtml = `<div class="ct-thumb-wrap"><img class="ct-thumb" src="${stream.image}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fb}\\'></div>'"></div>`;
+      thumbHtml = `<div class="ct-thumb-wrap"><img class="ct-thumb" src="${streamThumb}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fb}\\'></div>'"></div>`;
+    } else if (profileThumb) {
+      const fb = gradients[idx % gradients.length];
+      thumbHtml = `<div class="ct-thumb-wrap"><img class="ct-thumb" src="${profileThumb}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fb}\\'></div>'"></div>`;
     } else {
       thumbHtml = `<div class="tc ${gradients[idx % gradients.length]}"></div>`;
     }
@@ -9464,7 +10339,8 @@
     if (!playerEl || !bgEl) return;
 
     const url = sanitizeMediaUrl(stream.streaming || '');
-    const image = sanitizeMediaUrl(stream.image || '');
+    const heroProfile = profileFor(stream.hostPubkey);
+    const image = sanitizeMediaUrl(stream.image || '') || sanitizeMediaUrl(heroProfile.picture || '');
 
     // Set background: thumbnail or gradient
     if (image) {
@@ -9494,6 +10370,8 @@
 
     const isHls = /\.m3u8($|\?)/i.test(url);
     let hlsObj = null;
+    let heroNetworkRecoveries = 0;
+    let heroMediaRecoveries = 0;
 
     // On media loaded / playing -> unmute for audio
     const onCanPlay = () => {
@@ -9525,7 +10403,15 @@
           const Hls = await ensureHlsJs();
           if (token !== state.heroPlaybackToken) return;
           if (Hls.isSupported()) {
-            hlsObj = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 10 });
+            hlsObj = new Hls({
+              enableWorker: true,
+              lowLatencyMode: true,
+              liveSyncDurationCount: 3,
+              liveMaxLatencyDurationCount: 9,
+              maxBufferLength: 45,
+              maxMaxBufferLength: 120,
+              backBufferLength: 30
+            });
             state.heroHlsInstance = hlsObj;
             hlsObj.loadSource(url);
             hlsObj.attachMedia(video);
@@ -9534,11 +10420,24 @@
               video.play().catch(() => {});
             });
             hlsObj.on(Hls.Events.ERROR, (_e, data) => {
-              if (data && data.fatal && token === state.heroPlaybackToken) {
-                setActiveHeroViewerAddress('');
-                markStreamPlaybackOffline(stream.address);
-                heroAdvance(1);
+              if (!data || token !== state.heroPlaybackToken) return;
+              if (!data.fatal) return;
+
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR && heroNetworkRecoveries < 6) {
+                heroNetworkRecoveries += 1;
+                try { hlsObj.startLoad(-1); } catch (_) {}
+                return;
               }
+
+              if (data.type === Hls.ErrorTypes.MEDIA_ERROR && heroMediaRecoveries < 3) {
+                heroMediaRecoveries += 1;
+                try { hlsObj.recoverMediaError(); } catch (_) {}
+                return;
+              }
+
+              setActiveHeroViewerAddress('');
+              markStreamPlaybackOffline(stream.address);
+              heroAdvance(1);
             });
           }
         } catch (_) {
@@ -9674,6 +10573,7 @@
     }
     const playerBg = qs('.player-bg');
     if (playerBg) {
+      playerBg.classList.remove('player-bg-portrait-source');
       playerBg.querySelectorAll('video').forEach((video) => {
         try {
           video.pause();
@@ -9877,11 +10777,13 @@
     video.muted = false;
     video.defaultMuted = false;
     video.playsInline = true;
-    video.preload = 'metadata';
+    video.preload = 'auto';
     video.style.cssText = 'width:100%;height:100%;object-fit:cover;background:#000;';
     const syncFit = () => syncTheaterVideoFit(video, playerBg);
     video.addEventListener('loadedmetadata', syncFit);
+    video.addEventListener('loadeddata', syncFit);
     video.addEventListener('resize', syncFit);
+    video.addEventListener('canplay', syncFit);
     const markPlayable = () => {
       if (status !== 'ended') markStreamPlaybackOnline(address);
     };
@@ -9891,6 +10793,10 @@
     playerBg.innerHTML = '';
     playerBg.appendChild(video);
     syncFit();
+    window.setTimeout(() => {
+      if (token !== state.playbackToken) return;
+      syncFit();
+    }, 1200);
     if (playerUi) playerUi.style.display = 'none';
 
     const isStale = () => token !== state.playbackToken;
@@ -9911,6 +10817,33 @@
     video.addEventListener('progress', markProgress);
     video.addEventListener('playing', markProgress);
     video.addEventListener('canplay', markProgress);
+
+    const tryRestoreAudio = async () => {
+      if (isStale()) return false;
+      if (!video.muted) return true;
+      video.muted = false;
+      video.defaultMuted = false;
+      try {
+        await video.play();
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+
+    const playWithAudioRecovery = async () => {
+      const played = await tryPlayVideoWithMutedFallback(video);
+      if (!played) return false;
+      if (video.muted) {
+        const restored = await tryRestoreAudio();
+        if (!restored) {
+          // Keep playback running even when browser blocks unmuted autoplay.
+          video.muted = true;
+          video.defaultMuted = true;
+        }
+      }
+      return true;
+    };
 
     const showFailure = (message) => {
       if (fallbackShown || isStale()) return;
@@ -9939,7 +10872,18 @@
       try {
         if (state.hlsInstance && hlsAttached) {
           try { state.hlsInstance.startLoad(-1); } catch (_) {}
-          if ((now - lastProgressAt) > 14000) {
+          const liveSync = Number(state.hlsInstance.liveSyncPosition || 0);
+          let liveEdge = Number.isFinite(liveSync) && liveSync > 0 ? liveSync : 0;
+          if (!liveEdge && video.seekable && video.seekable.length) {
+            try { liveEdge = Number(video.seekable.end(video.seekable.length - 1) || 0); } catch (_) { liveEdge = 0; }
+          }
+          if (liveEdge > 0) {
+            const drift = liveEdge - Number(video.currentTime || 0);
+            if (drift > 3.5) {
+              try { video.currentTime = Math.max(0, liveEdge - 0.35); } catch (_) {}
+            }
+          }
+          if ((now - lastProgressAt) > 12000) {
             try { state.hlsInstance.recoverMediaError(); } catch (_) {}
           }
         } else if (sourceAssigned && (video.readyState || 0) < 2) {
@@ -9952,7 +10896,7 @@
           }
         }
 
-        const played = await tryPlayVideoWithMutedFallback(video);
+        const played = await playWithAudioRecovery();
         if (played && status !== 'ended') markStreamPlaybackOnline(address);
         markProgress();
         return !!played;
@@ -9990,10 +10934,15 @@
             showFailure('Playback failed after multiple retries. The stream may be offline, blocked by CORS, or unsupported.');
           },
           hlsConfig: {
-            xhrSetup: (xhr) => { xhr.withCredentials = false; }
+            xhrSetup: (xhr) => { xhr.withCredentials = false; },
+            liveSyncDurationCount: 3,
+            liveMaxLatencyDurationCount: 9,
+            maxBufferLength: 60,
+            maxMaxBufferLength: 180,
+            backBufferLength: 45
           },
-          maxNetworkRecoveries: 5,
-          maxMediaRecoveries: 2
+          maxNetworkRecoveries: 6,
+          maxMediaRecoveries: 3
         });
         if (!hls) return false;
         hlsAttached = true;
@@ -10023,7 +10972,13 @@
         sourceAssigned = true;
       } else {
         const attached = await attachHls();
-        if (attached) return;
+        if (attached) {
+          window.setTimeout(() => {
+            if (isStale()) return;
+            attemptPlaybackRecovery('error').catch(() => {});
+          }, 900);
+          return;
+        }
       }
     }
 
@@ -10032,7 +10987,7 @@
       sourceAssigned = true;
     }
     if (sourceAssigned && !hlsAttached) {
-      const played = await tryPlayVideoWithMutedFallback(video);
+      const played = await playWithAudioRecovery();
       if (played && status !== 'ended') markStreamPlaybackOnline(address);
     }
   }
@@ -14636,6 +15591,19 @@
     state.followPublishPending = false;
     state.streamLikePublishPending = false;
     state.goLiveSelectedAddress = '';
+    state.goLiveTemplateAddress = '';
+    state.goLiveForceNew = false;
+    state.goLiveHostMode = 'self';
+    state.goLiveRelaysOpen = false;
+    state.goLiveThirdPartyProvider = '';
+    if (state.goLivePreviewTimer) {
+      clearTimeout(state.goLivePreviewTimer);
+      state.goLivePreviewTimer = null;
+    }
+    if (state.goLivePreviewHls) {
+      try { state.goLivePreviewHls.destroy(); } catch (_) {}
+      state.goLivePreviewHls = null;
+    }
     state.goLiveHiddenEndedAddresses = loadHiddenEndedStreamsForPubkey(pubkey);
     state.boostedStreamAddresses = new Set();
     state.streamBoostEventIdByAddress = new Map();
@@ -15013,11 +15981,11 @@
     const streamUrlInput = qs('#goLiveStreamUrl');
     const thumbInput = qs('#goLiveThumb');
     const startsInput = qs('#goLiveStarts');
-    const statusEl = qs('.srow .sc.sl');
+    const statusEl = qs('#goLiveModal .srow .sc.sl') || qs('.srow .sc.sl');
 
     const preferredAddress = statusOverride
       ? state.selectedStreamAddress
-      : (state.goLiveSelectedAddress || state.selectedStreamAddress);
+      : (state.goLiveForceNew ? '' : (state.goLiveSelectedAddress || state.selectedStreamAddress));
     const currentEditAddress = (preferredAddress || '').trim();
     const current = currentEditAddress ? state.streamsByAddress.get(currentEditAddress) : null;
     const useCurrentFields = !!(statusOverride && current);
@@ -15261,8 +16229,24 @@
         const row = c.closest('.srow');
         qsa('.sc', row).forEach((x) => x.classList.remove('sl'));
         c.classList.add('sl');
+        if (row && row.id === 'goLiveStatusRow') updateGoLiveStartsVisibility();
       });
     });
+
+    const goLiveStreamUrl = qs('#goLiveStreamUrl');
+    if (goLiveStreamUrl) {
+      goLiveStreamUrl.addEventListener('input', () => {
+        if (state.goLiveHostMode !== 'self') return;
+        scheduleGoLiveStreamPreview(280);
+      });
+    }
+
+    const goLiveThumb = qs('#goLiveThumb');
+    if (goLiveThumb) {
+      goLiveThumb.addEventListener('input', () => {
+        updateGoLiveThumbPreview();
+      });
+    }
 
     const nsecLoginInput = qs('#nsecLoginInput');
     if (nsecLoginInput) {
@@ -15399,7 +16383,9 @@
       state.videoPostModalEventId = '';
       state.videoPostModalHostPubkey = '';
       state.videoPostModalStream = null;
+      state.videoPostModalIsWatchParty = false;
       stopVideoPostCommentsSubscription();
+      stopVideoPostLiveChatSubscription();
       cleanupVideoPostModalPlayer();
       refreshVideoPostCommentComposerState();
     };
@@ -15473,6 +16459,7 @@
       const notifications = qs('#notificationsPage');
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
+      const myStreams = qs('#myStreamsPage');
       const faq = qs('#faqPage');
       if (p !== 'video') setActiveViewerAddress('');
       if (p === 'home' && routeMode !== 'skip') syncHomeRoute(routeMode);
@@ -15487,6 +16474,7 @@
       if (p === 'notifications' && routeMode !== 'skip') syncNotificationsRoute(routeMode);
       if (p === 'faq' && routeMode !== 'skip') syncFaqRoute(routeMode);
       if (p === 'messages' && routeMode !== 'skip') syncMessagesRoute(routeMode);
+      if (p === 'myStreams' && routeMode !== 'skip') syncMyStreamsRoute(routeMode);
       if (home) home.classList.toggle('active', p === 'home');
       if (video) video.style.display = 'none';
       if (profile) profile.style.display = 'none';
@@ -15495,6 +16483,7 @@
       if (notifications) notifications.style.display = p === 'notifications' ? 'block' : 'none';
       if (communities) communities.style.display = p === 'communities' ? 'block' : 'none';
       if (messages) messages.style.display = p === 'messages' ? 'block' : 'none';
+      if (myStreams) myStreams.style.display = p === 'myStreams' ? 'block' : 'none';
       if (faq) faq.style.display = p === 'faq' ? 'block' : 'none';
       // Communities/home router behavior:
       // - home keeps hero playback and cycling
@@ -15534,6 +16523,11 @@
       } else {
         teardownDmSubscription();
       }
+      if (p === 'myStreams') {
+        updateGoLiveModalState();
+      } else {
+        setMyStreamsStatus('');
+      }
       if (state.settings.miniPlayer && state.selectedStreamAddress) window.showMini();
       else window.hideMini();
       window.scrollTo(0, 0);
@@ -15550,6 +16544,7 @@
       const notifications = qs('#notificationsPage');
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
+      const myStreams = qs('#myStreamsPage');
       const faq = qs('#faqPage');
       const selected = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
       setActiveViewerAddress(selected ? selected.address : '');
@@ -15562,6 +16557,7 @@
       if (notifications) notifications.style.display = 'none';
       if (communities) communities.style.display = 'none';
       if (messages) messages.style.display = 'none';
+      if (myStreams) myStreams.style.display = 'none';
       if (faq) faq.style.display = 'none';
       teardownDmSubscription();
       stopLiveSubscription();
@@ -15586,6 +16582,7 @@
       const notifications = qs('#notificationsPage');
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
+      const myStreams = qs('#myStreamsPage');
       const faq = qs('#faqPage');
       setActiveViewerAddress('');
       if (home) home.classList.remove('active');
@@ -15596,6 +16593,7 @@
       if (notifications) notifications.style.display = 'none';
       if (communities) communities.style.display = 'none';
       if (messages) messages.style.display = 'none';
+      if (myStreams) myStreams.style.display = 'none';
       if (faq) faq.style.display = 'none';
       teardownDmSubscription();
       stopLiveSubscription();
@@ -15985,26 +16983,184 @@
     window.closeMini = window.hideMini;
     window.returnToStream = function () { window.showVideoPage({ routeMode: 'push' }); };
 
+    window.openMyStreams = function (opts = {}) {
+      const routeMode = opts.routeMode || 'push';
+      const allowLoginPrompt = opts.allowLoginPrompt !== false;
+      if (!state.user) {
+        if (allowLoginPrompt) window.openLogin();
+        return false;
+      }
+      state.goLiveForceNew = false;
+      state.goLiveHostMode = 'self';
+      state.goLiveTemplateAddress = '';
+      state.goLiveRelaysOpen = false;
+      if (!state.goLiveSelectedAddress && state.selectedStreamAddress) {
+        state.goLiveSelectedAddress = state.selectedStreamAddress;
+      }
+      setMyStreamsStatus('');
+      updateGoLiveModalState();
+      window.showPage('myStreams', { routeMode });
+      return true;
+    };
+
+    window.selectMyStreamsStream = function (address) {
+      state.goLiveSelectedAddress = (address || '').trim();
+      setMyStreamsStatus('');
+      updateGoLiveModalState();
+    };
+
+    window.publishMyStreamUpdate = async function () {
+      if (!state.user) {
+        window.openLogin();
+        return;
+      }
+      state.goLiveForceNew = false;
+      syncGoLiveModalFromMyStreamsPage();
+      const btn = qs('#myStreamsPublishBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+      }
+      setMyStreamsStatus('Publishing stream update...');
+      try {
+        const stream = await publishCurrentStream();
+        const status = normalizeStreamStatus(stream.status);
+        if (status === 'ended') {
+          setMyStreamsStatus('Stream ended and removed from your editable list.', 'success');
+        } else {
+          setMyStreamsStatus('Stream update published successfully.', 'success');
+        }
+      } catch (err) {
+        setMyStreamsStatus(err && err.message ? err.message : 'Failed to publish stream update.', 'error');
+      } finally {
+        if (btn) btn.disabled = false;
+        updateGoLiveModalState();
+      }
+    };
+
+    window.removeMyStreamFromList = function () {
+      const address = ((qs('#myStreamsStreamSelect') && qs('#myStreamsStreamSelect').value) || state.goLiveSelectedAddress || '').trim();
+      if (!address) return;
+      state.goLiveSelectedAddress = address;
+      const stream = state.streamsByAddress.get(address);
+      if (!stream || normalizeStreamStatus(stream.status) !== 'ended') {
+        alert('Only ended streams can be removed from this list.');
+        return;
+      }
+      window.removeGoLiveStreamFromList();
+      setMyStreamsStatus('Ended stream removed from list.', 'success');
+      updateGoLiveModalState();
+    };
+
+    window.goToMyStreamFromPage = function () {
+      const address = ((qs('#myStreamsStreamSelect') && qs('#myStreamsStreamSelect').value) || state.goLiveSelectedAddress || state.selectedStreamAddress || '').trim();
+      if (!address) return;
+      openStream(address);
+    };
+
+    window.setGoLiveHostMode = function (mode) {
+      applyGoLiveHostModeUi(mode);
+    };
+
+    window.toggleGoLiveRelaysPanel = function () {
+      if (state.goLiveHostMode !== 'self') return;
+      setGoLiveRelaysPanelOpen(!state.goLiveRelaysOpen);
+    };
+
+    window.selectGoLiveThirdParty = function (providerName) {
+      const name = String(providerName || '').trim();
+      if (!name) return;
+      state.goLiveThirdPartyProvider = name;
+      qsa('#goLiveThirdPartyWrap .go-live-third-party-btn').forEach((btn) => {
+        btn.classList.toggle('on', (btn.textContent || '').trim().toLowerCase() === name.toLowerCase());
+      });
+      const help = qs('#goLiveThirdPartyHelp');
+      if (help) help.textContent = `${name} selected. Direct launch integration is coming soon.`;
+    };
+
+    window.handleGoLiveStreamSelect = function (address) {
+      const next = (address || '').trim();
+      if (state.goLiveForceNew) {
+        state.goLiveTemplateAddress = next;
+        return;
+      }
+      window.selectGoLiveStream(next);
+    };
+
+    window.loadGoLiveTemplate = function () {
+      if (!state.goLiveForceNew) return;
+      const selector = qs('#goLiveStreamSelect');
+      const selectedAddress = ((selector && selector.value) || state.goLiveTemplateAddress || '').trim();
+      if (!selectedAddress) return;
+      state.goLiveTemplateAddress = selectedAddress;
+      const stream = state.streamsByAddress.get(selectedAddress);
+      if (!stream) {
+        alert('Could not load that stream template.');
+        return;
+      }
+
+      const title = qs('#goLiveTitle');
+      const summary = qs('#goLiveSummary');
+      const streamUrl = qs('#goLiveStreamUrl');
+      const thumb = qs('#goLiveThumb');
+      const starts = qs('#goLiveStarts');
+      const dtag = qs('#goLiveDTag');
+      const eventId = qs('#goLiveEventId');
+
+      if (title) title.value = stream.title || '';
+      if (summary) summary.value = stream.summary || '';
+      if (streamUrl) streamUrl.value = stream.streaming || '';
+      if (thumb) thumb.value = stream.image || '';
+      if (starts) starts.value = '';
+      if (dtag) dtag.value = generateGoLiveDTag();
+      if (eventId) eventId.value = '';
+      setGoLiveStatusSelection('live');
+      state.goLiveSelectedAddress = '';
+      updateGoLiveThumbPreview();
+      scheduleGoLiveStreamPreview(120);
+    };
+
     window.openGoLive = function () {
       if (!state.user) {
         window.openLogin();
         return;
       }
-      if (!state.goLiveSelectedAddress && state.selectedStreamAddress) {
-        state.goLiveSelectedAddress = state.selectedStreamAddress;
+      const streams = ownManageableStreams();
+      const hasLive = streams.some((stream) => normalizeStreamStatus(stream.status) === 'live');
+      if (hasLive) {
+        state.goLiveForceNew = false;
+        state.goLiveHostMode = 'self';
+        state.goLiveTemplateAddress = '';
+        state.goLiveRelaysOpen = false;
+
+        const hasSelected = streams.some((stream) => stream.address === state.goLiveSelectedAddress);
+        if (!hasSelected) {
+          const preferred = streams.find((stream) => stream.address === state.selectedStreamAddress)
+            || streams.find((stream) => normalizeStreamStatus(stream.status) === 'live')
+            || streams[0]
+            || null;
+          state.goLiveSelectedAddress = preferred ? preferred.address : '';
+        }
+        updateGoLiveModalState();
+      } else {
+        configureGoLiveModalForNewStream();
       }
-      updateGoLiveModalState();
       const modal = qs('#goLiveModal');
       const form = qs('#mForm');
       const success = qs('#mSuccess');
       if (modal) modal.classList.add('open');
-      if (form) form.style.display = 'block';
+      if (form) form.style.display = 'flex';
       if (success) success.className = 'msuccess';
     };
 
-    window.closeGoLive = function () { qs('#goLiveModal').classList.remove('open'); };
+    window.closeGoLive = function () {
+      qs('#goLiveModal').classList.remove('open');
+      setGoLiveRelaysPanelOpen(false);
+      clearGoLiveStreamPreview();
+    };
 
     window.selectGoLiveStream = function (address) {
+      state.goLiveForceNew = false;
       state.goLiveSelectedAddress = (address || '').trim();
       updateGoLiveModalState();
     };
@@ -16024,6 +17180,10 @@
     };
 
     window.publishStream = async function () {
+      if (state.goLiveHostMode === 'third-party') {
+        alert('Host via 3rd party is coming soon.');
+        return;
+      }
       try {
         const stream = await publishCurrentStream();
         const status = normalizeStreamStatus(stream.status);
@@ -17204,9 +18364,12 @@
       state.videoPostModalEventId = '';
       state.videoPostModalHostPubkey = '';
       state.videoPostModalStream = null;
+      state.videoPostModalIsWatchParty = false;
       stopVideoPostCommentsSubscription();
+      stopVideoPostLiveChatSubscription();
       cleanupVideoPostModalPlayer();
       state.videoPostCommentsCacheByEventId = new Map();
+      state.videoPostLiveChatCacheByAddress = new Map();
       state.videosProfileFetchPending = new Set();
       clearVideosRenderTimer();
       if (state.videoThumbObserver) {
@@ -17228,6 +18391,20 @@
       }
       state.nip96DiscoveryByHost = new Map();
       state.goLiveSelectedAddress = '';
+      state.goLiveTemplateAddress = '';
+      state.goLiveForceNew = false;
+      state.goLiveHostMode = 'self';
+      state.goLiveRelaysOpen = false;
+      state.goLiveThirdPartyProvider = '';
+      state.relayPingMsByUrl = new Map();
+      if (state.goLivePreviewTimer) {
+        clearTimeout(state.goLivePreviewTimer);
+        state.goLivePreviewTimer = null;
+      }
+      if (state.goLivePreviewHls) {
+        try { state.goLivePreviewHls.destroy(); } catch (_) {}
+        state.goLivePreviewHls = null;
+      }
       state.goLiveHiddenEndedAddresses = new Set();
       if (state.profileStatusSubId && state.pool) {
         try { state.pool.unsubscribe(state.profileStatusSubId); } catch (_) {}
@@ -17309,6 +18486,8 @@
           if (videos) videos.style.display = 'none';
           const notifications = qs('#notificationsPage');
           if (notifications) notifications.style.display = 'none';
+          const myStreams = qs('#myStreamsPage');
+          if (myStreams) myStreams.style.display = 'none';
           views.showTheaterLayout({
             opts,
             qs,

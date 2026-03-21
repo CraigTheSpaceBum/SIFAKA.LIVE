@@ -61,6 +61,15 @@ function unique(values) {
   return Array.from(new Set((values || []).filter(Boolean)));
 }
 
+function shortStableHash(value) {
+  const text = String(value || 'community');
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
 function normalizeRelayInput(input) {
   if (Array.isArray(input)) return input;
   if (typeof input === 'string') return [input];
@@ -69,11 +78,14 @@ function normalizeRelayInput(input) {
 }
 
 function slugify(input) {
-  return String(input || '')
+  const raw = String(input || '');
+  const slug = raw
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 48) || `community-${Date.now().toString(36)}`;
+    .slice(0, 48);
+  if (slug) return slug;
+  return `community-${shortStableHash(raw).slice(0, 8)}`;
 }
 
 function parseJson(content) {
@@ -810,9 +822,9 @@ export function createNostrBridge(options = {}) {
       ['client', 'sifaka.live']
     ];
 
-    if (input.image) tags.push(['image', String(input.image)]);
+    const imageUrl = String(input.image || input.banner || input.icon || '').trim();
+    if (imageUrl) tags.push(['image', imageUrl]);
     if (input.icon) tags.push(['icon', String(input.icon)]);
-    if (input.banner) tags.push(['banner', String(input.banner)]);
 
     unique(input.topics || []).forEach((topic) => tags.push(['t', String(topic)]));
     unique(input.rules || []).forEach((rule) => tags.push(['rule', String(rule)]));
@@ -823,8 +835,7 @@ export function createNostrBridge(options = {}) {
     const contentPayload = {
       name: String(input.name || input.title || slug),
       about: String(input.description || ''),
-      image: String(input.image || ''),
-      banner: String(input.banner || ''),
+      image: imageUrl,
       rules: unique(input.rules || []),
       topics: unique(input.topics || []),
       posting_policy: String(input.postingPolicy || 'members')

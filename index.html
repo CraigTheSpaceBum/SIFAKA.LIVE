@@ -82,7 +82,7 @@
         </div>
         <button class="pd-item" onclick="openMyProfile();closeAllDD()">&#128100; My Profile</button>
         <button class="pd-item" onclick="showPage('notifications');closeAllDD()">&#128276; Notifications</button>
-        <button class="pd-item" onclick="closeAllDD()">&#128250; My Streams</button>
+        <button class="pd-item" onclick="openMyStreams();closeAllDD()">&#128250; My Streams</button>
         <button class="pd-item" onclick="openSettings();closeAllDD()">&#9881;&#65039; Settings</button>
         <div class="dd-sep"></div>
         <button class="pd-item pd-signout" onclick="signOut();closeAllDD()">Sign Out</button>
@@ -97,29 +97,71 @@
     <div id="mForm">
       <div class="mhd"><div class="mtitle" id="goLiveModalTitle"><span class="mi"></span>Publish Your Stream</div><button class="mclose" onclick="closeGoLive()">x</button></div>
       <div class="msub" id="goLiveModalSub">Broadcasts a <span style="color:var(--purple);font-family:'DM Mono',monospace">kind:30311</span> NIP-53 event to your relays.</div>
+      <div class="go-live-host-modes" id="goLiveHostModes">
+        <button class="go-live-host-btn on" id="goLiveHostSelfBtn" type="button" onclick="setGoLiveHostMode('self')">Self Host</button>
+        <button class="go-live-host-btn" id="goLiveHostThirdPartyBtn" type="button" onclick="setGoLiveHostMode('third-party')">Host via 3rd Party <span>Coming soon</span></button>
+      </div>
+      <div class="go-live-host-note" id="goLiveHostNote">Self host uses your own HLS/RTMP streaming URL.</div>
       <div class="mbody">
-        <div class="go-live-manage" id="goLiveManageWrap">
-          <div class="fg">
-            <label>Your Streams</label>
-            <select id="goLiveStreamSelect" onchange="selectGoLiveStream(this.value)"></select>
-            <div class="go-live-manage-help" id="goLiveManageHint">Select a stream to edit, then save updates.</div>
+        <div class="go-live-self-wrap" id="goLiveSelfWrap">
+          <div class="go-live-create-grid" id="goLiveCreateGrid">
+            <div class="go-live-col go-live-col-form">
+              <div class="go-live-manage" id="goLiveManageWrap">
+                <div class="fg">
+                  <label id="goLiveManageLabel">Your Streams</label>
+                  <select id="goLiveStreamSelect" onchange="handleGoLiveStreamSelect(this.value)"></select>
+                  <div class="go-live-manage-help" id="goLiveManageHint">Select a stream to edit, then save updates.</div>
+                  <div class="go-live-manage-actions">
+                    <button class="btn btn-ghost" type="button" id="goLiveLoadTemplateBtn" onclick="loadGoLiveTemplate()" style="display:none;">Use Old Details</button>
+                  </div>
+                </div>
+              </div>
+              <div class="fg-grid go-live-form-grid">
+                <div class="fg" id="goLiveDTagWrap"><label>Stream ID (d-tag)</label><input id="goLiveDTag" type="text" value=""></div>
+                <div class="fg" id="goLiveEventIdWrap"><label>Event ID</label><input id="goLiveEventId" type="text" value="" readonly placeholder="Will appear after first publish"></div>
+                <div class="fg"><label>Title</label><input id="goLiveTitle" type="text" value="Late Night Nostr Build Session"></div>
+                <div class="fg"><label>Summary</label><textarea id="goLiveSummary">Building a Nostr client from scratch - open Q&amp;A, come hang out!</textarea></div>
+                <div class="fg"><label>Streaming URL (HLS .m3u8 or RTMP)</label><input id="goLiveStreamUrl" type="text" placeholder="https://your-server.com/live/stream.m3u8"></div>
+                <div class="fg">
+                  <label>Thumbnail Image URL</label>
+                  <input id="goLiveThumb" type="text" placeholder="https://your-server.com/thumb.jpg">
+                  <div class="go-live-thumb-preview" id="goLiveThumbPreviewWrap">
+                    <img id="goLiveThumbPreviewImg" alt="Thumbnail preview">
+                    <div class="go-live-thumb-preview-empty" id="goLiveThumbPreviewEmpty">Thumbnail preview will appear here.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="go-live-col go-live-col-preview">
+              <div class="go-live-col-title">Stream Preview</div>
+              <video id="goLiveStreamPreviewVideo" class="go-live-stream-preview-video" controls autoplay muted playsinline loop></video>
+              <div class="go-live-stream-preview-status" id="goLiveStreamPreviewStatus">Enter a streaming URL to preview.</div>
+              <div class="go-live-preview-controls">
+                <div class="fg" id="goLiveStartsWrap"><label>Starts (UTC)</label><input id="goLiveStarts" type="datetime-local" value="2026-02-27T20:00"></div>
+                <div class="fg"><label>Status</label><div class="srow" id="goLiveStatusRow"><button class="sc sl" type="button">Live</button><button class="sc" type="button">Planned</button><button class="sc" type="button">Ended</button></div></div>
+              </div>
+            </div>
+            <div class="go-live-col go-live-col-relays" id="goLiveRelayCol" style="display:none;">
+              <div class="go-live-col-title">Relay Health</div>
+              <div class="relay-bar" id="relayBar">Connected relays: 0/0</div>
+              <div class="go-live-relay-ping-help">Ping shows most recent connection latency.</div>
+              <div class="go-live-relay-list" id="goLiveRelayDetailList"></div>
+            </div>
           </div>
         </div>
-        <div class="fg-grid">
-          <div class="fg"><label>Stream ID (d-tag)</label><input id="goLiveDTag" type="text" value=""></div>
-          <div class="fg"><label>Title</label><input id="goLiveTitle" type="text" value="Late Night Nostr Build Session"></div>
-          <div class="fg full"><label>Event ID</label><input id="goLiveEventId" type="text" value="" readonly placeholder="Will appear after first publish"></div>
-          <div class="fg full"><label>Summary</label><textarea id="goLiveSummary">Building a Nostr client from scratch - open Q&amp;A, come hang out!</textarea></div>
-          <div class="fg full"><label>Streaming URL (HLS .m3u8 or RTMP)</label><input id="goLiveStreamUrl" type="text" placeholder="https://your-server.com/live/stream.m3u8"></div>
-          <div class="fg full"><label>Thumbnail Image URL</label><input id="goLiveThumb" type="text" placeholder="https://your-server.com/thumb.jpg"></div>
-          <div class="fg"><label>Starts (UTC)</label><input id="goLiveStarts" type="datetime-local" value="2026-02-27T20:00"></div>
-          <div class="fg"><label>Status</label><div class="srow"><button class="sc sl">Live</button><button class="sc">Planned</button><button class="sc">Ended</button></div></div>
+        <div class="go-live-third-party-wrap" id="goLiveThirdPartyWrap" style="display:none;">
+          <div class="go-live-third-party-grid">
+            <button class="go-live-third-party-btn" type="button" onclick="selectGoLiveThirdParty('Sifaka.Live')">Sifaka.Live</button>
+            <button class="go-live-third-party-btn" type="button" onclick="selectGoLiveThirdParty('Zap.Stream')">Zap.Stream</button>
+            <button class="go-live-third-party-btn" type="button" onclick="selectGoLiveThirdParty('Shosho.Live')">Shosho.Live</button>
+            <button class="go-live-third-party-btn" type="button" onclick="selectGoLiveThirdParty('Tunestr')">Tunestr</button>
+          </div>
+          <div class="go-live-third-party-help" id="goLiveThirdPartyHelp">Choose a provider. Direct launch integration is coming soon.</div>
         </div>
-        <div class="relay-bar" id="relayBar">Broadcasting to 4 relays: damus.io - nos.lol - snort.social - nostr.wine</div>
       </div>
       <div class="mfooter">
         <button class="btn btn-ghost" onclick="closeGoLive()">Cancel</button>
-        <button class="btn btn-ghost" onclick="goToMyStream()">View Stream</button>
+        <button class="btn btn-ghost" id="goLiveRelaysToggleBtn" onclick="toggleGoLiveRelaysPanel()">Relays</button>
         <button class="btn btn-ghost" id="goLiveRemoveBtn" style="display:none;" onclick="removeGoLiveStreamFromList()">Remove From List</button>
         <button class="btn btn-live-pulse" id="goLivePublishBtn" onclick="publishStream()">Go Live Now</button>
       </div>
@@ -578,7 +620,7 @@
           <div class="video-post-body-media" id="videoPostBodyMedia"></div>
         </div>
         <div class="video-post-side-block">
-          <div class="video-post-side-head">Comments</div>
+          <div class="video-post-side-head" id="videoPostCommentsHead">Comments</div>
           <div class="video-post-comments-status" id="videoPostCommentsStatus"></div>
           <div class="video-post-comments-list" id="videoPostCommentsList"></div>
           <div class="profile-comment-form video-post-comment-form">
@@ -841,6 +883,45 @@
 <!-- ========= MESSAGES PAGE ========= -->
 <div id="messagesPage">
   <div id="messagesRoot"></div>
+</div>
+
+<!-- ========= MY STREAMS PAGE ========= -->
+<div id="myStreamsPage">
+  <div class="my-streams-page-wrap">
+    <div class="my-streams-card">
+      <div class="my-streams-head">
+        <h2 id="myStreamsTitle">Edit Stream</h2>
+        <p id="myStreamsSub">You already have stream events. Edit details and publish updates.</p>
+      </div>
+      <div class="mbody my-streams-body">
+        <div class="go-live-manage" id="myStreamsManageWrap">
+          <div class="fg">
+            <label>Your Streams</label>
+            <select id="myStreamsStreamSelect" onchange="selectMyStreamsStream(this.value)"></select>
+            <div class="go-live-manage-help" id="myStreamsManageHint">Select a stream to edit, then save updates.</div>
+          </div>
+        </div>
+        <div class="fg-grid">
+          <div class="fg"><label>Stream ID (d-tag)</label><input id="myStreamsDTag" type="text" value=""></div>
+          <div class="fg"><label>Title</label><input id="myStreamsTitleInput" type="text" value=""></div>
+          <div class="fg full"><label>Event ID</label><input id="myStreamsEventId" type="text" value="" readonly placeholder="Will appear after first publish"></div>
+          <div class="fg full"><label>Summary</label><textarea id="myStreamsSummary"></textarea></div>
+          <div class="fg full"><label>Streaming URL (HLS .m3u8 or RTMP)</label><input id="myStreamsStreamUrl" type="text" placeholder="https://your-server.com/live/stream.m3u8"></div>
+          <div class="fg full"><label>Thumbnail Image URL</label><input id="myStreamsThumb" type="text" placeholder="https://your-server.com/thumb.jpg"></div>
+          <div class="fg"><label>Starts (UTC)</label><input id="myStreamsStarts" type="datetime-local" value=""></div>
+          <div class="fg"><label>Status</label><div class="srow" id="myStreamsStatusRow"><button class="sc sl" type="button">Live</button><button class="sc" type="button">Planned</button><button class="sc" type="button">Ended</button></div></div>
+        </div>
+        <div class="relay-bar" id="myStreamsRelayBar"></div>
+        <div class="my-streams-status" id="myStreamsStatus" aria-live="polite"></div>
+      </div>
+      <div class="mfooter">
+        <button class="btn btn-ghost" onclick="showPage('home')">Cancel</button>
+        <button class="btn btn-ghost" onclick="goToMyStreamFromPage()">View Stream</button>
+        <button class="btn btn-ghost" id="myStreamsRemoveBtn" style="display:none;" onclick="removeMyStreamFromList()">Remove From List</button>
+        <button class="btn btn-live-pulse" id="myStreamsPublishBtn" onclick="publishMyStreamUpdate()">Save Stream Update</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ========= FAQ PAGE ========= -->

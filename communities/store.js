@@ -38,12 +38,24 @@ function unique(values) {
   return Array.from(new Set((values || []).filter(Boolean)));
 }
 
+function shortStableHash(value) {
+  const text = String(value || 'community');
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
 function slugify(input) {
-  return String(input || '')
+  const raw = String(input || '');
+  const slug = raw
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 48) || `community-${Date.now().toString(36)}`;
+    .slice(0, 48);
+  if (slug) return slug;
+  return `community-${shortStableHash(raw).slice(0, 8)}`;
 }
 
 function parseLines(input) {
@@ -790,14 +802,15 @@ export function createCommunityStore(options = {}) {
     const admins = Array.isArray(payload.admins) ? unique(payload.admins) : parseCsv(payload.admins);
     const relays = Array.isArray(payload.allowedRelays) ? unique(payload.allowedRelays) : parseCsv(payload.allowedRelays);
     const joinMode = String(payload.joinMode || payload.membershipMode || (type === 'private' ? 'approval' : 'open')).trim();
+    const image = String(payload.image || payload.banner || payload.icon || '').trim();
 
     const community = {
       id,
       type,
       title,
       icon: String(payload.icon || '').trim(),
-      image: String(payload.image || '').trim(),
-      banner: String(payload.banner || '').trim(),
+      image,
+      banner: image,
       description: String(payload.description || '').trim(),
       rules,
       topics,
@@ -936,8 +949,15 @@ export function createCommunityStore(options = {}) {
     if (patch.name != null) community.title = String(patch.name).trim() || community.title;
     if (patch.description != null) community.description = String(patch.description).trim();
     if (patch.icon != null) community.icon = String(patch.icon).trim();
-    if (patch.image != null) community.image = String(patch.image).trim();
-    if (patch.banner != null) community.banner = String(patch.banner).trim();
+    if (patch.image != null) {
+      const nextImage = String(patch.image).trim();
+      community.image = nextImage;
+      community.banner = nextImage;
+    } else if (patch.banner != null) {
+      const nextBanner = String(patch.banner).trim();
+      community.banner = nextBanner;
+      if (!community.image) community.image = nextBanner;
+    }
     if (patch.joinMode != null) community.joinMode = String(patch.joinMode).trim();
     if (patch.postingPolicy != null) community.postingPolicy = String(patch.postingPolicy).trim();
     if (patch.discoverable != null) community.discoverable = !!patch.discoverable;

@@ -177,7 +177,6 @@ export function createCommunitiesUI(input) {
       defaultChannelName: 'general',
       description: '',
       image: '',
-      banner: '',
       moderators: '',
       admins: '',
       topics: '',
@@ -226,7 +225,6 @@ export function createCommunitiesUI(input) {
       defaultChannelName: (root.querySelector('#scCreateDefaultChannel') || {}).value || 'general',
       description: (root.querySelector('#scCreateDescription') || {}).value || '',
       image: (root.querySelector('#scCreateImage') || {}).value || '',
-      banner: (root.querySelector('#scCreateBanner') || {}).value || '',
       moderators: (root.querySelector('#scCreateModerators') || {}).value || '',
       admins: (root.querySelector('#scCreateAdmins') || {}).value || '',
       topics: (root.querySelector('#scCreateTopics') || {}).value || '',
@@ -249,8 +247,7 @@ export function createCommunitiesUI(input) {
       communityId: community.id,
       name: String(community.title || ''),
       description: String(community.description || ''),
-      image: normalizeAvatarUrl(community.image || ''),
-      banner: normalizeAvatarUrl(community.banner || ''),
+      image: normalizeAvatarUrl(community.image || community.banner || ''),
       moderators: String((community.moderatorPubkeys || []).join(', ')),
       admins: String((community.adminPubkeys || []).join(', ')),
       joinMode: String(community.joinMode || 'open'),
@@ -282,7 +279,6 @@ export function createCommunitiesUI(input) {
       name: (root.querySelector('#scSettingsName') || {}).value || '',
       description: (root.querySelector('#scSettingsDescription') || {}).value || '',
       image: (root.querySelector('#scSettingsImage') || {}).value || '',
-      banner: (root.querySelector('#scSettingsBanner') || {}).value || '',
       moderators: (root.querySelector('#scSettingsModerators') || {}).value || '',
       admins: (root.querySelector('#scSettingsAdmins') || {}).value || '',
       joinMode: (root.querySelector('#scSettingsJoinMode') || {}).value || 'open',
@@ -529,12 +525,6 @@ export function createCommunitiesUI(input) {
     return 0;
   }
 
-  function assertPublished(result, label) {
-    const sent = sentCountFromPublishResult(result);
-    if (sent > 0) return;
-    throw new Error(`Could not publish ${label}. Check relay connection and try again.`);
-  }
-
   function captureFocusSnapshot() {
     if (typeof document === 'undefined') return null;
     const active = document.activeElement;
@@ -575,6 +565,10 @@ export function createCommunitiesUI(input) {
   function shouldRenderForStoreEvent(evt = {}) {
     const type = String((evt && evt.type) || '').trim();
     if (!type) return true;
+
+    if (ui.openModal === 'createCommunity' && ui.createBusy) {
+      return false;
+    }
 
     if (ui.openModal === 'createCommunity') {
       const alwaysRender = new Set(['user_changed', 'community_created', 'community_removed', 'community_joined', 'community_left', 'joined_set']);
@@ -826,7 +820,7 @@ export function createCommunitiesUI(input) {
     const attachLabel = ui.attachUploadPending
       ? `Uploading${ui.attachUploadProgress > 0 ? ` ${ui.attachUploadProgress}%` : '...'}`
       : 'Attach';
-    const communityBanner = normalizeAvatarUrl(community && (community.banner || community.image || community.icon) || '');
+    const communityBanner = normalizeAvatarUrl(community && (community.image || community.banner || community.icon) || '');
 
     root.innerHTML = `
       <div class="sc-wrap${hasJoinedCommunities ? '' : ' sc-wrap-empty'}" id="scWrap">
@@ -1095,11 +1089,6 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
                 <small>Square image recommended.</small>
               </label>
               <div id="scCreateImagePreview" class="sc-url-preview">${renderCreateImagePreview(draft.image, 'Community image')}</div>
-              <label>Banner image URL
-                <input id="scCreateBanner" value="${esc(draft.banner)}" placeholder="https://example.com/community-banner.jpg">
-                <small>Wide image works best for banners.</small>
-              </label>
-              <div id="scCreateBannerPreview" class="sc-url-preview">${renderCreateImagePreview(draft.banner, 'Banner image', true)}</div>
             </div>
           </section>
 
@@ -1141,7 +1130,7 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
 
           <div class="sc-modal-foot">
             <button data-close="modal">Cancel</button>
-            <button id="scCreateCommunitySubmit">${ui.createBusy ? 'Creating...' : 'Create Community'}</button>
+            <button id="scCreateCommunitySubmit" ${ui.createBusy ? 'disabled' : ''}>${ui.createBusy ? 'Creating...' : 'Create Community'}</button>
           </div>
         </div>
       </div>
@@ -1204,11 +1193,6 @@ function renderCommunitySettingsModal(community) {
                 <small>Square image recommended.</small>
               </label>
               <div id="scSettingsImagePreview" class="sc-url-preview">${renderCreateImagePreview(draft.image || '', 'Community image')}</div>
-              <label>Banner URL
-                <input id="scSettingsBanner" value="${esc(draft.banner || '')}" placeholder="https://example.com/community-banner.jpg" ${disableAttr}>
-                <small>Wide image works best for banners.</small>
-              </label>
-              <div id="scSettingsBannerPreview" class="sc-url-preview">${renderCreateImagePreview(draft.banner || '', 'Banner image', true)}</div>
             </div>
           </section>
 
@@ -1327,7 +1311,7 @@ function renderCommunitySettingsModal(community) {
     const cards = visible.map((entry) => {
       const members = resolveMemberCount(state, entry);
       const joined = joinedCommunityIds.has(entry.id);
-      const media = normalizeAvatarUrl(entry.banner || entry.image || '');
+      const media = normalizeAvatarUrl(entry.image || entry.banner || '');
       const mediaHtml = media
         ? `<span class="sc-community-card-banner has-image"><img src="${esc(media)}" alt="${esc(entry.title)} banner" loading="lazy" referrerpolicy="no-referrer"></span>`
         : `<span class="sc-community-card-banner">${esc(entry.icon || initials(entry.title))}</span>`;
@@ -1627,16 +1611,6 @@ function renderCommunitySettingsModal(community) {
       imageInput.addEventListener('change', syncImage);
     }
 
-    const bannerInput = root.querySelector('#scCreateBanner');
-    if (bannerInput) {
-      const syncBanner = () => {
-        setCreateDraftField('banner', bannerInput.value || '');
-        updateCreateImagePreview('#scCreateBannerPreview', bannerInput.value || '', 'Banner image', true);
-      };
-      bannerInput.addEventListener('input', syncBanner);
-      bannerInput.addEventListener('change', syncBanner);
-    }
-
     const bindRoleSearchField = (selector, field) => {
       const input = root.querySelector(selector);
       if (!input) return;
@@ -1714,6 +1688,7 @@ function renderCommunitySettingsModal(community) {
     root.querySelectorAll('[data-close="modal"]').forEach((el) => {
       el.addEventListener('click', (event) => {
         if (event.target !== el) return;
+        if (ui.openModal === 'createCommunity' && ui.createBusy) return;
         closeModalAndRerender();
       });
     });
@@ -2163,7 +2138,6 @@ function renderCommunitySettingsModal(community) {
           defaultChannelName: form.defaultChannelName || 'general',
           description: form.description || '',
           image: form.image || '',
-          banner: form.banner || '',
           moderators: parsePubkeyCsv(form.moderators || ''),
           admins: parsePubkeyCsv(form.admins || ''),
           topics: parseCsv(form.topics || ''),
@@ -2181,7 +2155,10 @@ function renderCommunitySettingsModal(community) {
         if (!created.ok) {
           ui.createBusy = false;
           createCommunitySubmit.disabled = false;
-          setStatus(created.reason === 'auth_required' ? 'Login required.' : 'Unable to create community.');
+          if (created.reason === 'auth_required') setStatus('Login required.');
+          else if (created.reason === 'duplicate') setStatus('A community with this slug already exists. Change the name or slug and try again.');
+          else if (created.reason === 'missing_name') setStatus('Community name is required.');
+          else setStatus('Unable to create community.');
           return;
         }
 
@@ -2189,6 +2166,7 @@ function renderCommunitySettingsModal(community) {
 
         if (nostrBridge) {
           try {
+            const stateSnapshot = store.getState();
             const members = (store.getState().data.membersByCommunity[created.community.id] || [])
               .map((member) => String(member.pubkey || '').trim())
               .filter(Boolean);
@@ -2211,20 +2189,21 @@ function renderCommunitySettingsModal(community) {
 
             const publishedCommunity = await nostrBridge.publishCommunityCreate({
               ...payload,
+              pubkey: stateSnapshot.currentUserPubkey,
               communityId: created.community.id,
               defaultChannelId: created.community.defaultChannelId,
               channels: embeddedChannels,
               members: uniqueValues(members),
               rolesByPubkey
             });
-            assertPublished(publishedCommunity, 'community metadata');
+            const sent = sentCountFromPublishResult(publishedCommunity);
+            finalStatus = sent > 0
+              ? 'Community created and published.'
+              : 'Community created. Relay publish queued until a relay connection is available.';
           } catch (err) {
-            store.removeCommunity(created.community.id, { source: 'rollback', bypassPermission: true });
-            ui.createBusy = false;
-            createCommunitySubmit.disabled = false;
-            ui.createRoleSearch = { moderators: '', admins: '' };
-            setStatus((err && err.message) ? err.message : 'Community was not published to relays.');
-            return;
+            finalStatus = (err && err.message)
+              ? `Community created locally. Relay publish failed: ${err.message}`
+              : 'Community created locally. Relay publish failed.';
           }
         } else {
           finalStatus = 'Community created locally only.';
@@ -2250,13 +2229,6 @@ function renderCommunitySettingsModal(community) {
       settingsImageInput.addEventListener('input', () => {
         syncCommunitySettingsDraftFromDom();
         updateCreateImagePreview('#scSettingsImagePreview', settingsImageInput.value || '', 'Community image');
-      });
-    }
-    const settingsBannerInput = root.querySelector('#scSettingsBanner');
-    if (settingsBannerInput) {
-      settingsBannerInput.addEventListener('input', () => {
-        syncCommunitySettingsDraftFromDom();
-        updateCreateImagePreview('#scSettingsBannerPreview', settingsBannerInput.value || '', 'Banner image', true);
       });
     }
     const settingsModeratorsInput = root.querySelector('#scSettingsModerators');
@@ -2292,7 +2264,6 @@ function renderCommunitySettingsModal(community) {
           name: draft.name || community.title,
           description: draft.description || '',
           image: draft.image || '',
-          banner: draft.banner || '',
           moderatorPubkeys: parsePubkeyCsv(draft.moderators || ''),
           adminPubkeys: parsePubkeyCsv(draft.admins || ''),
           joinMode: draft.joinMode || community.joinMode,
@@ -2314,6 +2285,7 @@ function renderCommunitySettingsModal(community) {
             await nostrBridge.publishCommunityCreate({
               ...community,
               ...patch,
+              pubkey: state.currentUserPubkey,
               communityId: community.id,
               slug: community.id.split(':')[1],
               name: patch.name,
@@ -2326,12 +2298,14 @@ function renderCommunitySettingsModal(community) {
               const rolesByPubkey = {};
               (store.getState().data.membersByCommunity[community.id] || []).forEach((m) => { rolesByPubkey[m.pubkey] = m.roles || ['member']; });
               await nostrBridge.publishCommunityMembers39002({
+                pubkey: state.currentUserPubkey,
                 communityId: community.id,
                 members,
                 rolesByPubkey,
                 joinMode: patch.joinMode
               });
               await nostrBridge.publishCommunityModerators39003({
+                pubkey: state.currentUserPubkey,
                 communityId: community.id,
                 moderators: patch.moderatorPubkeys,
                 admins: patch.adminPubkeys,
@@ -2411,6 +2385,7 @@ function renderCommunitySettingsModal(community) {
         if (nostrBridge) {
           try {
             await nostrBridge.publishChannelCreate({
+              pubkey: state.currentUserPubkey,
               communityId: payload.communityId,
               channelId: created.channel.id,
               name: created.channel.name,
@@ -2474,6 +2449,7 @@ function renderCommunitySettingsModal(community) {
             for (let i = 0; i < publishQueue.length; i += 1) {
               const entry = publishQueue[i];
               await nostrBridge.publishChannelCreate({
+                pubkey: store.getState().currentUserPubkey,
                 communityId: entry.communityId,
                 channelId: entry.id,
                 name: entry.name,
