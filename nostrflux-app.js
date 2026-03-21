@@ -33,6 +33,7 @@
   const REMOTE_SIGNER_SCAN_TIMEOUT_MS = 180000;
   const REMOTE_SIGNER_REQUESTED_PERMS = 'sign_event,nip04_encrypt,nip04_decrypt';
   const SETTINGS_STORAGE_KEY = 'nostrflux_settings_v1';
+  const NOTIFICATIONS_LAST_READ_STORAGE_KEY = 'nostrflux_notifications_last_read_v1';
   const FOLLOWING_STORAGE_KEY = 'nostrflux_following_pubkeys_v1';
   const DM_LAST_READ_STORAGE_KEY = 'nostrflux_dm_last_read_v1';
   const DM_THREAD_INITIAL_LIMIT = 24;
@@ -84,6 +85,12 @@
     showNip05Badges: true,
     compactChat: false,
     animateZaps: true,
+    notificationsMentions: true,
+    notificationsReplies: true,
+    notificationsLikes: true,
+    notificationsReposts: true,
+    notificationsZaps: true,
+    notificationsFollows: true,
     theme: 'dark',
     cacheQueryTtlSec: 12,
     cacheWarmSec: 75,
@@ -94,6 +101,8 @@
   };
 
   const SAVED_LISTS_STORAGE_KEY = 'nostrflux_saved_lists_v1';
+  const NOSTR_FEED_FILTER_STORAGE_KEY = 'nostrflux_feed_filter_v1';
+  const NOSTR_FEED_PROFILE_KEY = '__nostr_feed__';
 
   const state = {
     relays: [...DEFAULT_RELAYS],
@@ -130,6 +139,8 @@
     isLive: false,
     hlsInstance: null,
     playbackToken: 0,
+    playbackAddress: '',
+    playbackUrl: '',
     profileHlsInstance: null,
     profilePlaybackToken: 0,
     profilePlaybackAddress: '',
@@ -146,6 +157,30 @@
     savedExternalLists: [],                 // [{ naddr, name, pubkeys }] from Liststr/external
     activeListFilter: 'all',               // 'all' | 'following' | 'contacts' | listId | naddr
     listFilterDDOpen: false,
+    videosFilter: 'all',                   // 'all' | 'watch-party' | 'past'
+    nostrFeedFilter: 'following',          // 'following' | 'contacts' | listId | naddr | 'global'
+    nostrFeedSubId: null,
+    nostrFeedRenderTimer: null,
+    nostrFeedEoseTimer: null,
+    nostrFeedEventsById: new Map(),
+    nostrFeedProfileFetchPending: new Set(),
+    nostrFeedRepostLookupPending: new Set(),
+    nostrFeedInteractionHydratedIds: new Set(),
+    nostrFeedInteractionQueuedIds: new Set(),
+    nostrFeedInteractionFetchPending: false,
+    nostrFeedLoading: false,
+    nostrFeedError: '',
+    notificationsById: new Map(),
+    notificationsLoading: false,
+    notificationsError: '',
+    notificationsFetchPending: false,
+    notificationsFetchPromise: null,
+    notificationsLastLoadedAt: 0,
+    notificationsLastReadAt: 0,
+    notificationsProfileFetchPending: new Set(),
+    notificationsTargetNotesById: new Map(),
+    notificationsTargetFetchPending: false,
+    notificationsTargetFetchPromise: null,
     // Hero featured stream cycling
     heroHlsInstance: null,
     heroPlaybackToken: 0,
@@ -1336,6 +1371,12 @@
     )];
     if (!merged.blossomUploadEndpoints.length) merged.blossomUploadEndpoints = [...BLOSSOM_UPLOAD_ENDPOINTS];
     merged.theme = normalizeThemeSetting(merged.theme);
+    merged.notificationsMentions = merged.notificationsMentions !== false;
+    merged.notificationsReplies = merged.notificationsReplies !== false;
+    merged.notificationsLikes = merged.notificationsLikes !== false;
+    merged.notificationsReposts = merged.notificationsReposts !== false;
+    merged.notificationsZaps = merged.notificationsZaps !== false;
+    merged.notificationsFollows = merged.notificationsFollows !== false;
     Object.assign(merged, sanitizeCacheSettings(merged));
 
     state.settings = merged;
@@ -1345,6 +1386,24 @@
   function persistSettings() {
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(state.settings));
+    } catch (_) {
+      // no-op
+    }
+  }
+
+  function loadNotificationsLastReadFromStorage() {
+    try {
+      const raw = localStorage.getItem(NOTIFICATIONS_LAST_READ_STORAGE_KEY);
+      const parsed = Number(raw || 0);
+      state.notificationsLastReadAt = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+    } catch (_) {
+      state.notificationsLastReadAt = 0;
+    }
+  }
+
+  function persistNotificationsLastRead() {
+    try {
+      localStorage.setItem(NOTIFICATIONS_LAST_READ_STORAGE_KEY, String(Math.floor(Number(state.notificationsLastReadAt || 0))));
     } catch (_) {
       // no-op
     }
@@ -1638,6 +1697,12 @@
     setToggleById('setNip05Toggle', state.settings.showNip05Badges);
     setToggleById('setCompactToggle', state.settings.compactChat);
     setToggleById('setAnimateToggle', state.settings.animateZaps);
+    setToggleById('setNotifMentionsToggle', state.settings.notificationsMentions);
+    setToggleById('setNotifRepliesToggle', state.settings.notificationsReplies);
+    setToggleById('setNotifLikesToggle', state.settings.notificationsLikes);
+    setToggleById('setNotifRepostsToggle', state.settings.notificationsReposts);
+    setToggleById('setNotifZapsToggle', state.settings.notificationsZaps);
+    setToggleById('setNotifFollowsToggle', state.settings.notificationsFollows);
 
     const themeSelect = qs('#settingsThemeSelect');
     if (themeSelect) themeSelect.value = normalizeThemeSetting(state.settings.theme);
@@ -1673,6 +1738,12 @@
       showNip05Badges: isToggleOn('setNip05Toggle'),
       compactChat: isToggleOn('setCompactToggle'),
       animateZaps: isToggleOn('setAnimateToggle'),
+      notificationsMentions: isToggleOn('setNotifMentionsToggle'),
+      notificationsReplies: isToggleOn('setNotifRepliesToggle'),
+      notificationsLikes: isToggleOn('setNotifLikesToggle'),
+      notificationsReposts: isToggleOn('setNotifRepostsToggle'),
+      notificationsZaps: isToggleOn('setNotifZapsToggle'),
+      notificationsFollows: isToggleOn('setNotifFollowsToggle'),
       theme: normalizeThemeSetting((theme && theme.value) || state.settings.theme),
       cacheQueryTtlSec: safeCache.cacheQueryTtlSec,
       cacheWarmSec: safeCache.cacheWarmSec,
@@ -1686,6 +1757,7 @@
   function rebuildRelayPool() {
     state.oneShotQueryInflightByKey = new Map();
     stopLiveSubscription();
+    stopNostrFeedSubscription();
     if (state.pool) {
       try {
         state.pool.destroy();
@@ -1714,6 +1786,17 @@
       if (!isVideoPageVisible()) subscribeProfileStats(state.selectedProfilePubkey);
     }
 
+    if (isFeedPageVisible()) {
+      subscribeNostrFeed();
+    }
+    if (state.user) {
+      loadNotifications({
+        force: true,
+        silent: !isNotificationsPageVisible(),
+        minIntervalMs: 0
+      }).catch(() => {});
+    }
+
     // Relay pool was rebuilt; force DM subscription to be recreated on the new pool.
     state.dmSubId = null;
     if (isMessagesPageVisible() && state.user) {
@@ -1738,6 +1821,8 @@
     state.relays = [...state.settings.relays];
     persistSettings();
     applySettingsToDocument();
+    renderNotificationsBell();
+    if (isNotificationsPageVisible()) renderNotifications();
 
     if (opts.reconnect) {
       rebuildRelayPool();
@@ -2140,14 +2225,38 @@
     return applied;
   }
 
+  function parseTextareaComposeTarget(target) {
+    const raw = String(target || '').trim();
+    if (!raw) return { id: '' };
+    if (!/^textarea:/i.test(raw)) return { id: '' };
+    const idx = raw.indexOf(':');
+    const id = idx >= 0 ? raw.slice(idx + 1).trim() : '';
+    return { id };
+  }
+
+  function appendTextToNamedTextarea(target, textToAppend) {
+    const parsed = parseTextareaComposeTarget(target);
+    if (!parsed.id) return false;
+    const textarea = document.getElementById(parsed.id);
+    if (!textarea) return false;
+    const maxLength = Number(textarea.maxLength && textarea.maxLength > 0 ? textarea.maxLength : 4096);
+    return appendTextToTextareaWithLimit(textarea, textToAppend, {
+      maxLength,
+      limitMessage: `That upload URL would exceed the ${maxLength} character limit.`
+    });
+  }
+
   function composeTargetLabel(target = state.composeUploadTarget) {
-    const clean = String(target || '').trim().toLowerCase();
+    const raw = String(target || '').trim();
+    if (parseTextareaComposeTarget(raw).id) return 'comment';
+    const clean = raw.toLowerCase();
     if (clean === 'dm') return 'message';
     if (clean === 'chat') return 'chat';
     return 'note';
   }
 
   function appendTextToComposeTarget(target, textToAppend) {
+    if (appendTextToNamedTextarea(target, textToAppend)) return true;
     const clean = String(target || '').trim().toLowerCase();
     if (clean === 'dm') return appendTextToDmCompose(textToAppend);
     if (clean === 'chat') return appendTextToChatCompose(textToAppend);
@@ -2533,6 +2642,24 @@
     return normalized.toLowerCase() === '/messages';
   }
 
+  function isFeedPath(pathname) {
+    const raw = (pathname || '/').trim();
+    const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
+    return normalized.toLowerCase() === '/feed';
+  }
+
+  function isNotificationsPath(pathname) {
+    const raw = (pathname || '/').trim();
+    const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
+    return normalized.toLowerCase() === '/notifications';
+  }
+
+  function isVideosPath(pathname) {
+    const raw = (pathname || '/').trim();
+    const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
+    return normalized.toLowerCase() === '/videos';
+  }
+
 
   function restoreRouteFromSpaFallbackQuery() {
     if (!window.location || !window.history || !window.history.replaceState) return;
@@ -2721,6 +2848,11 @@
         el.classList.toggle('nip05-square', verified);
       });
     }
+
+    if (isNotificationsPageVisible()) {
+      renderNotifications();
+    }
+    renderNotificationsBell();
 
     if (isMessagesPageVisible()) {
       renderDmContactSelect();
@@ -2933,6 +3065,39 @@
     }
   }
 
+  function syncFeedRoute(mode = 'push') {
+    if (!window.history || !window.history.pushState) return;
+    if (isFeedPath(window.location.pathname)) return;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try {
+      window.history[method]({ view: 'feed' }, '', '/feed');
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  function syncNotificationsRoute(mode = 'push') {
+    if (!window.history || !window.history.pushState) return;
+    if (isNotificationsPath(window.location.pathname)) return;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try {
+      window.history[method]({ view: 'notifications' }, '', '/notifications');
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  function syncVideosRoute(mode = 'push') {
+    if (!window.history || !window.history.pushState) return;
+    if (isVideosPath(window.location.pathname)) return;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try {
+      window.history[method]({ view: 'videos' }, '', '/videos');
+    } catch (_) {
+      // ignore
+    }
+  }
+
   function syncTheaterRoute(stream, mode = 'push') {
     if (!stream || !window.history || !window.history.pushState) return;
 
@@ -3024,6 +3189,18 @@
     if (window.showPage) window.showPage('messages', { routeMode: 'skip' });
   }
 
+  function showFeedFromRoute() {
+    if (window.showPage) window.showPage('feed', { routeMode: 'skip' });
+  }
+
+  function showNotificationsFromRoute() {
+    if (window.showPage) window.showPage('notifications', { routeMode: 'skip' });
+  }
+
+  function showVideosFromRoute() {
+    if (window.showPage) window.showPage('videos', { routeMode: 'skip', videosFilter: 'all' });
+  }
+
   async function syncViewFromLocation(opts = {}) {
     const fallbackMode = opts.fallbackMode || 'replace';
     if (isFaqPath(window.location.pathname)) {
@@ -3032,6 +3209,18 @@
     }
     if (isMessagesPath(window.location.pathname)) {
       showMessagesFromRoute();
+      return;
+    }
+    if (isFeedPath(window.location.pathname)) {
+      showFeedFromRoute();
+      return;
+    }
+    if (isNotificationsPath(window.location.pathname)) {
+      showNotificationsFromRoute();
+      return;
+    }
+    if (isVideosPath(window.location.pathname)) {
+      showVideosFromRoute();
       return;
     }
     const naddr = extractNaddrFromPath(window.location.pathname);
@@ -3072,6 +3261,19 @@
 
   function isMessagesPageVisible() {
     const page = qs('#messagesPage');
+    if (!page) return false;
+    if (window.getComputedStyle) {
+      try {
+        return window.getComputedStyle(page).display !== 'none';
+      } catch (_) {
+        // ignore
+      }
+    }
+    return page.style.display !== 'none';
+  }
+
+  function isNotificationsPageVisible() {
+    const page = qs('#notificationsPage');
     if (!page) return false;
     if (window.getComputedStyle) {
       try {
@@ -5723,12 +5925,30 @@
 
   function upsertStream(stream) {
     const existing = state.streamsByAddress.get(stream.address);
-    if (!existing || existing.created_at <= stream.created_at) {
+    const existingCreatedAt = Number(existing && existing.created_at || 0);
+    const incomingCreatedAt = Number(stream && stream.created_at || 0);
+    const existingId = String(existing && existing.id || '').trim();
+    const incomingId = String(stream && stream.id || '').trim();
+    const existingStatus = normalizeStreamStatus(existing && existing.status);
+    const incomingStatus = normalizeStreamStatus(stream && stream.status);
+    const existingUrl = sanitizeMediaUrl(existing && existing.streaming || '');
+    const incomingUrl = sanitizeMediaUrl(stream && stream.streaming || '');
+    const sameCoreEvent = !!existing
+      && existingCreatedAt === incomingCreatedAt
+      && existingId === incomingId
+      && existingStatus === incomingStatus
+      && existingUrl === incomingUrl
+      && String(existing.title || '') === String(stream.title || '')
+      && String(existing.summary || '') === String(stream.summary || '');
+
+    let didStore = false;
+    if (!existing || incomingCreatedAt > existingCreatedAt || (incomingCreatedAt === existingCreatedAt && !sameCoreEvent)) {
       state.streamsByAddress.set(stream.address, stream);
       schedulePersistLiveStreamsCache();
+      didStore = true;
     }
     if (state.selectedStreamAddress === stream.address) {
-      const selected = state.streamsByAddress.get(stream.address) || stream;
+      const selected = state.streamsByAddress.get(stream.address) || existing || stream;
       const status = normalizeStreamStatus(selected.status);
       const ownPubkey = state.user ? normalizePubkeyHex(state.user.pubkey) : '';
       const streamPubkey = normalizePubkeyHex(selected.pubkey);
@@ -5736,9 +5956,9 @@
       const isWatchingSelected = state.activeViewerAddress === selected.address
         || isVideoPageVisible();
 
-      if (status === 'ended' && !isOwnStream && isWatchingSelected) {
+      if (status === 'ended' && !isOwnStream && isWatchingSelected && didStore) {
         renderVideo(selected);
-      } else if (isWatchingSelected) {
+      } else if (isWatchingSelected && didStore) {
         renderVideo(selected);
       }
     }
@@ -5930,6 +6150,7 @@
   function sortedLiveStreams() {
     return Array.from(state.streamsByAddress.values())
       .filter((s) => s.status !== 'ended')
+      .filter((s) => !isDirectFileVideoUrl(s && s.streaming))
       .sort((a, b) => {
         // Tier 1: has viewers > 0  ->  Tier 2: has streaming URL but 0 viewers  ->  Tier 3: no URL no viewers
         const tierA = effectiveParticipants(a) > 0 ? 0 : (a.streaming ? 1 : 2);
@@ -5938,6 +6159,236 @@
         // Within same tier: higher viewers first
         return effectiveParticipants(b) - effectiveParticipants(a);
       });
+  }
+
+  function normalizeVideosFilter(filterId) {
+    const raw = String(filterId || '').trim().toLowerCase();
+    if (raw === 'watch-party' || raw === 'watchparty' || raw === 'watch') return 'watch-party';
+    if (raw === 'past' || raw === 'past-stream' || raw === 'past-streams' || raw === 'archive') return 'past';
+    return 'all';
+  }
+
+  function isDirectFileVideoUrl(url) {
+    const raw = sanitizeMediaUrl(url || '');
+    if (!raw) return false;
+    const lower = raw.toLowerCase();
+    if (/\.(mp4|webm|mov|m4v|mkv)($|[?#])/.test(lower)) return true;
+    if (/[?&](format|type|mime|ext)=([^&]*(mp4|webm|mov|m4v|mkv)|video%2F(mp4|webm|quicktime)|video\/(mp4|webm|quicktime))/.test(lower)) {
+      return true;
+    }
+    return false;
+  }
+
+  function isWatchPartyStream(stream) {
+    const status = normalizeStreamStatus(stream && stream.status);
+    if (status === 'ended') return false;
+    return isDirectFileVideoUrl(stream && stream.streaming);
+  }
+
+  function isPastVideoStream(stream) {
+    const status = normalizeStreamStatus(stream && stream.status);
+    if (status !== 'ended') return false;
+    const url = sanitizeMediaUrl((stream && stream.streaming) || '');
+    if (!url) return true;
+    return streamHasHttpVideoUrl(stream) || isDirectFileVideoUrl(url);
+  }
+
+  function streamHasHttpVideoUrl(stream) {
+    const url = sanitizeMediaUrl((stream && stream.streaming) || '');
+    if (!url || !/^https?:\/\//i.test(url)) return false;
+    return classifyMediaUrl(url) === 'video' || isDirectFileVideoUrl(url);
+  }
+
+  function sortedWatchPartyStreams() {
+    return Array.from(state.streamsByAddress.values())
+      .filter((stream) => isWatchPartyStream(stream))
+      .sort((a, b) => {
+        const viewerDelta = effectiveParticipants(b) - effectiveParticipants(a);
+        if (viewerDelta) return viewerDelta;
+        return Number(b && b.created_at || 0) - Number(a && a.created_at || 0);
+      });
+  }
+
+  function sortedPastVideoStreams() {
+    return Array.from(state.streamsByAddress.values())
+      .filter((stream) => isPastVideoStream(stream))
+      .sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
+  }
+
+  function sortedOtherVideoStreams() {
+    return Array.from(state.streamsByAddress.values())
+      .filter((stream) => {
+        if (isWatchPartyStream(stream) || isPastVideoStream(stream)) return false;
+        const status = normalizeStreamStatus(stream && stream.status);
+        return streamHasHttpVideoUrl(stream) && status !== 'live';
+      })
+      .sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
+  }
+
+  function sortedVideoStreams() {
+    const watchParty = sortedWatchPartyStreams();
+    const past = sortedPastVideoStreams();
+    const other = sortedOtherVideoStreams();
+    const out = [];
+    const seen = new Set();
+    watchParty.forEach((stream) => {
+      if (!stream || !stream.address || seen.has(stream.address)) return;
+      seen.add(stream.address);
+      out.push(stream);
+    });
+    past.forEach((stream) => {
+      if (!stream || !stream.address || seen.has(stream.address)) return;
+      seen.add(stream.address);
+      out.push(stream);
+    });
+    other.forEach((stream) => {
+      if (!stream || !stream.address || seen.has(stream.address)) return;
+      seen.add(stream.address);
+      out.push(stream);
+    });
+    return out;
+  }
+
+  function renderVideosFilterControls(counts = null) {
+    const map = counts && typeof counts === 'object'
+      ? counts
+      : { all: 0, 'watch-party': 0, past: 0 };
+    const normalized = normalizeVideosFilter(state.videosFilter);
+    state.videosFilter = normalized;
+
+    const allBtn = qs('#videosFilterAllBtn');
+    const watchBtn = qs('#videosFilterWatchPartyBtn');
+    const pastBtn = qs('#videosFilterPastBtn');
+    if (allBtn) {
+      allBtn.classList.toggle('active', normalized === 'all');
+      allBtn.textContent = `All Videos (${Number(map.all || 0)})`;
+    }
+    if (watchBtn) {
+      watchBtn.classList.toggle('active', normalized === 'watch-party');
+      watchBtn.textContent = `Watch Party (${Number(map['watch-party'] || 0)})`;
+    }
+    if (pastBtn) {
+      pastBtn.classList.toggle('active', normalized === 'past');
+      pastBtn.textContent = `Past Streams (${Number(map.past || 0)})`;
+    }
+  }
+
+  function setVideosFilterInternal(filterId, opts = {}) {
+    state.videosFilter = normalizeVideosFilter(filterId);
+    if (opts.render !== false && isVideosPageVisible()) renderVideosPage();
+  }
+
+  function buildVideoArchiveCard(stream, idx) {
+    const profile = profileFor(stream.hostPubkey);
+    const card = document.createElement('article');
+    card.className = 'video-archive-card';
+
+    const gradients = ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8'];
+    const fallback = gradients[idx % gradients.length];
+    const status = normalizeStreamStatus(stream.status);
+    const url = sanitizeMediaUrl(stream.streaming || '');
+    const isWatchParty = isWatchPartyStream(stream);
+    const isPastStream = status === 'ended';
+    const directVideo = isDirectFileVideoUrl(url);
+    const badgeLabel = isWatchParty ? 'WATCH PARTY' : (isPastStream ? 'PAST STREAM' : (directVideo ? 'VIDEO FILE' : 'VIDEO'));
+    const badgeClass = isWatchParty ? 'watch-party' : (directVideo ? 'video-file' : '');
+    const timeAgo = stream.created_at ? `${formatTimeAgo(stream.created_at)} ago` : '';
+    let statusText = 'Recorded';
+    if (isWatchParty) statusText = status === 'planned' ? 'Planned Watch Party' : 'Live Watch Party';
+    else if (isPastStream) statusText = 'Past Stream';
+    else if (status === 'planned') statusText = 'Planned';
+    const viewers = effectiveParticipants(stream);
+    const metaParts = [statusText];
+    if (viewers > 0) metaParts.push(`${formatCount(viewers)} viewers`);
+    if (timeAgo) metaParts.push(timeAgo);
+    const subMeta = metaParts.join(' • ');
+
+    card.innerHTML = `
+      <div class="video-archive-thumb-wrap">
+        ${stream.image
+          ? `<img class="video-archive-thumb" src="${stream.image}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fallback}\\'></div><div class=\\'video-archive-play\\'>&#9654;</div>'">`
+          : `<div class="tc ${fallback}"></div>`}
+        <div class="video-archive-play">&#9654;</div>
+        <div class="video-archive-badge ${badgeClass}">${badgeLabel}</div>
+        ${timeAgo ? `<div class="video-archive-duration">${timeAgo}</div>` : ''}
+      </div>
+      <div class="video-archive-meta">
+        <div class="video-archive-avatar"></div>
+        <div class="video-archive-text">
+          <div class="video-archive-title"></div>
+          <div class="video-archive-host"></div>
+          <div class="video-archive-sub"></div>
+        </div>
+      </div>
+    `;
+
+    const avatarEl = qs('.video-archive-avatar', card);
+    if (avatarEl) {
+      setAvatarEl(avatarEl, profile.picture || '', pickAvatar(stream.hostPubkey));
+      const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
+      const verifiedNip05 = getVerifiedNip05ForPubkey(stream.hostPubkey, profile.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+      avatarEl.classList.toggle('nip05-square', !!verifiedNip05);
+      if (claimedNip05) {
+        ensureNip05Verification(stream.hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
+      }
+    }
+
+    const titleEl = qs('.video-archive-title', card);
+    if (titleEl) titleEl.textContent = stream.title || 'Untitled stream';
+    const hostEl = qs('.video-archive-host', card);
+    if (hostEl) hostEl.textContent = profile.display_name || profile.name || shortHex(stream.hostPubkey);
+    const subEl = qs('.video-archive-sub', card);
+    if (subEl) subEl.textContent = subMeta;
+
+    card.addEventListener('click', () => openStream(stream.address));
+    return card;
+  }
+
+  function renderVideosPage() {
+    const grid = qs('#videosGrid');
+    const countPill = qs('#videosCountPill');
+    if (!grid) return;
+
+    const allStreams = Array.from(state.streamsByAddress.values());
+    const watchParty = sortedWatchPartyStreams();
+    const pastStreams = sortedPastVideoStreams();
+    const allVideos = sortedVideoStreams();
+    const counts = {
+      all: allVideos.length,
+      'watch-party': watchParty.length,
+      past: pastStreams.length
+    };
+    renderVideosFilterControls(counts);
+
+    const filter = normalizeVideosFilter(state.videosFilter);
+    let videos = allVideos;
+    if (filter === 'watch-party') videos = watchParty;
+    else if (filter === 'past') videos = pastStreams;
+
+    if (countPill) {
+      if (filter === 'watch-party') countPill.textContent = counts['watch-party'] ? `${counts['watch-party']} watch parties` : '';
+      else if (filter === 'past') countPill.textContent = counts.past ? `${counts.past} past streams` : '';
+      else countPill.textContent = counts.all ? `${counts.all} videos` : '';
+    }
+
+    if (!allStreams.length) {
+      grid.innerHTML = '<div class="live-grid-loading"><div class="lf-spinner"></div>Syncing streams from relays...</div>';
+      return;
+    }
+
+    if (!videos.length) {
+      if (filter === 'watch-party') {
+        grid.innerHTML = '<div class="videos-empty">No active Watch Party streams yet. Live .mp4 style streams will appear here.</div>';
+      } else if (filter === 'past') {
+        grid.innerHTML = '<div class="videos-empty">No past streams yet.</div>';
+      } else {
+        grid.innerHTML = '<div class="videos-empty">No videos yet. Watch Party streams and ended streams will appear here.</div>';
+      }
+      return;
+    }
+
+    grid.innerHTML = '';
+    videos.forEach((stream, idx) => grid.appendChild(buildVideoArchiveCard(stream, idx)));
   }
 
   function profileFor(pubkey) {
@@ -5973,6 +6424,24 @@
     try {
       localStorage.setItem(SAVED_LISTS_STORAGE_KEY, JSON.stringify(state.savedExternalLists));
     } catch (_) {}
+  }
+
+  function loadPersistedNostrFeedFilter() {
+    try {
+      const raw = (localStorage.getItem(NOSTR_FEED_FILTER_STORAGE_KEY) || '').trim();
+      if (!raw) return;
+      state.nostrFeedFilter = raw;
+    } catch (_) {
+      // no-op
+    }
+  }
+
+  function persistNostrFeedFilter() {
+    try {
+      localStorage.setItem(NOSTR_FEED_FILTER_STORAGE_KEY, String(state.nostrFeedFilter || 'following'));
+    } catch (_) {
+      // no-op
+    }
   }
 
   function parseNip51PeopleList(ev) {
@@ -6138,22 +6607,24 @@
     });
   }
 
-  // Get the pubkeys relevant to the current filter
-  function getPubkeysForFilter() {
-    const f = state.activeListFilter;
-    if (f === 'all') return null;                        // null = show everything
-    if (f === 'following') return state.followedPubkeys; // app-level follow set
+  function getListFilterPubkeys(filterId) {
+    const f = String(filterId || '').trim();
+    if (!f || f === 'all' || f === 'global') return null;
+    if (f === 'following') return state.followedPubkeys;
     if (f === 'contacts') return state.contactListPubkeys;
 
-    // NIP-51 list by id
     const nip51 = state.nip51Lists.get(f);
     if (nip51) return new Set(nip51.pubkeys);
 
-    // Saved external list by naddr
     const saved = state.savedExternalLists.find((l) => l.naddr === f);
     if (saved) return new Set(saved.pubkeys);
 
     return null;
+  }
+
+  // Get the pubkeys relevant to the current live-stream filter
+  function getPubkeysForFilter() {
+    return getListFilterPubkeys(state.activeListFilter);
   }
 
   /* ---- Dropdown rendering ---- */
@@ -6219,6 +6690,10 @@
         if (savedSection) savedSection.style.display = 'none';
       }
     }
+    renderNostrFeedFilterSelect();
+    if (isFeedPageVisible() && state.nostrFeedFilter !== 'global') {
+      subscribeNostrFeed();
+    }
   }
 
   function setActiveListFilterBtn(activeId) {
@@ -6243,6 +6718,10 @@
   function renderFollowingCount() {
     const cnt = qs('#lfFollowingCount');
     if (cnt) cnt.textContent = state.followedPubkeys.size || '';
+    renderNostrFeedFilterSelect();
+    if (isFeedPageVisible() && state.nostrFeedFilter === 'following') {
+      subscribeNostrFeed();
+    }
   }
 
 
@@ -6307,6 +6786,1138 @@
     });
   }
 
+  function normalizeNostrFeedFilter(filterId) {
+    const raw = String(filterId || '').trim();
+    if (!raw) return 'following';
+    if (raw === 'following' || raw === 'contacts' || raw === 'global') return raw;
+    if (state.nip51Lists.has(raw)) return raw;
+    if (state.savedExternalLists.some((entry) => entry && entry.naddr === raw)) return raw;
+    return 'following';
+  }
+
+  function getNostrFeedFilterLabel(filterId) {
+    const f = normalizeNostrFeedFilter(filterId);
+    if (f === 'following') return 'Following';
+    if (f === 'contacts') return 'Contacts';
+    if (f === 'global') return 'Global';
+    const list = state.nip51Lists.get(f);
+    if (list && list.name) return list.name;
+    const saved = state.savedExternalLists.find((entry) => entry && entry.naddr === f);
+    if (saved && saved.name) return saved.name;
+    return 'Following';
+  }
+
+  function getNostrFeedFilterOptions() {
+    const out = [
+      { id: 'following', label: `Following (${state.followedPubkeys.size || 0})` },
+      { id: 'global', label: 'Global (all relays)' }
+    ];
+    if (state.contactListPubkeys.size) {
+      out.push({ id: 'contacts', label: `Contacts (${state.contactListPubkeys.size})` });
+    }
+    if (state.nip51Lists.size) {
+      state.nip51Lists.forEach((list) => {
+        if (!list || !list.id) return;
+        out.push({ id: list.id, label: `${list.name || 'List'} (${(list.pubkeys || []).length || 0})` });
+      });
+    }
+    if (state.savedExternalLists.length) {
+      state.savedExternalLists.forEach((entry) => {
+        if (!entry || !entry.naddr) return;
+        out.push({ id: entry.naddr, label: `${entry.name || 'Saved list'} (${(entry.pubkeys || []).length || 0})` });
+      });
+    }
+    return out;
+  }
+
+  function renderNostrFeedFilterSelect() {
+    const select = qs('#nostrFeedListSelect');
+    if (!select) return;
+    const prev = state.nostrFeedFilter;
+    const options = getNostrFeedFilterOptions();
+    const optionIds = new Set(options.map((entry) => entry.id));
+    const fallback = state.followedPubkeys.size ? 'following' : 'global';
+    const normalized = normalizeNostrFeedFilter(state.nostrFeedFilter);
+    state.nostrFeedFilter = optionIds.has(normalized) ? normalized : fallback;
+
+    select.innerHTML = '';
+    options.forEach((entry) => {
+      const opt = document.createElement('option');
+      opt.value = entry.id;
+      opt.textContent = entry.label;
+      select.appendChild(opt);
+    });
+    select.value = state.nostrFeedFilter;
+    if (prev !== state.nostrFeedFilter) {
+      persistNostrFeedFilter();
+      if (isFeedPageVisible()) subscribeNostrFeed();
+    }
+  }
+
+  function isFeedPageVisible() {
+    const page = qs('#feedPage');
+    if (!page) return false;
+    if (window.getComputedStyle) {
+      try {
+        return window.getComputedStyle(page).display !== 'none';
+      } catch (_) {
+        // ignore
+      }
+    }
+    return page.style.display !== 'none';
+  }
+
+  function isVideosPageVisible() {
+    const page = qs('#videosPage');
+    if (!page) return false;
+    if (window.getComputedStyle) {
+      try {
+        return window.getComputedStyle(page).display !== 'none';
+      } catch (_) {
+        // ignore
+      }
+    }
+    return page.style.display !== 'none';
+  }
+
+  function notificationTypeEnabled(type) {
+    if (type === 'mention') return !!state.settings.notificationsMentions;
+    if (type === 'reply') return !!state.settings.notificationsReplies;
+    if (type === 'like') return !!state.settings.notificationsLikes;
+    if (type === 'repost') return !!state.settings.notificationsReposts;
+    if (type === 'zap') return !!state.settings.notificationsZaps;
+    if (type === 'follow') return !!state.settings.notificationsFollows;
+    return true;
+  }
+
+  function notificationTypeLabel(type) {
+    if (type === 'mention') return 'Mention';
+    if (type === 'reply') return 'Reply';
+    if (type === 'like') return 'Like';
+    if (type === 'repost') return 'Repost';
+    if (type === 'zap') return 'Zap';
+    if (type === 'follow') return 'Follow';
+    return 'Activity';
+  }
+
+  function truncateNotificationText(text, maxLen = 220) {
+    const raw = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '';
+    if (raw.length <= maxLen) return raw;
+    return `${raw.slice(0, Math.max(0, maxLen - 1)).trim()}...`;
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function parseNotificationZapSummary(ev) {
+    if (!ev || ev.kind !== KIND_ZAP_RECEIPT) return { sats: 0, senderPubkey: '', note: '', targetId: '', targetPubkeys: [] };
+    const tags = ev.tags || [];
+    const description = parseJsonSafe(firstTagValue(tags, 'description')) || {};
+    const descriptionTags = Array.isArray(description.tags) ? description.tags : [];
+
+    let sats = satsFromAmountTag(firstTagValue(tags, 'amount'));
+    if (!sats) sats = satsFromAmountTag(firstTagValue(descriptionTags, 'amount'));
+    if (!sats) sats = satsFromBolt11Tag(firstTagValue(tags, 'bolt11'));
+    if (!sats) sats = satsFromBolt11Tag(firstTagValue(descriptionTags, 'bolt11'));
+
+    const senderPubkey = normalizePubkeyHex(description.pubkey || ev.pubkey || '');
+    const note = String(description.content || '').trim();
+    const targetFromTags = firstTagValue(tags, 'e');
+    const targetFromDesc = firstTagValue(descriptionTags, 'e');
+    const targetId = /^[0-9a-f]{64}$/i.test(targetFromTags || '')
+      ? String(targetFromTags || '').toLowerCase()
+      : (/^[0-9a-f]{64}$/i.test(targetFromDesc || '') ? String(targetFromDesc || '').toLowerCase() : '');
+    const targetPubkeys = [...new Set(
+      [...allTagValues(tags, 'p'), ...allTagValues(descriptionTags, 'p')]
+        .map((pk) => normalizePubkeyHex(pk))
+        .filter(Boolean)
+    )];
+
+    return { sats: Number(sats || 0), senderPubkey, note, targetId, targetPubkeys };
+  }
+
+  function buildNotificationEntry(ev, ownPubkey) {
+    if (!ev || !ev.id || !ownPubkey) return null;
+    const actorPubkey = normalizePubkeyHex(ev.pubkey || '');
+    if (!actorPubkey || actorPubkey === ownPubkey) return null;
+
+    const normalizePRefs = (tags) => [...new Set(
+      allTagValues(tags || [], 'p')
+        .map((pk) => normalizePubkeyHex(pk))
+        .filter(Boolean)
+    )];
+
+    if (ev.kind === 1) {
+      const pRefs = normalizePRefs(ev.tags);
+      if (!pRefs.includes(ownPubkey)) return null;
+      const eRefs = allTagValues(ev.tags, 'e').filter((id) => /^[0-9a-f]{64}$/i.test(id));
+      const content = String(ev.content || '').trim();
+      return {
+        id: ev.id,
+        created_at: Number(ev.created_at || 0) || 0,
+        type: eRefs.length ? 'reply' : 'mention',
+        actorPubkey,
+        targetId: eRefs.length ? String(eRefs[eRefs.length - 1] || '').toLowerCase() : '',
+        summary: truncateNotificationText(content || (eRefs.length ? 'Sent you a reply.' : 'Mentioned you in a note.')),
+        raw: ev
+      };
+    }
+
+    if (ev.kind === KIND_REACTION) {
+      const pRefs = normalizePRefs(ev.tags);
+      if (!pRefs.includes(ownPubkey)) return null;
+      const reactionMeta = parseReactionMeta(ev.content, ev.tags);
+      if (!reactionMeta) return null;
+      const target = firstTagValue(ev.tags, 'e');
+      const targetId = /^[0-9a-f]{64}$/i.test(target || '') ? String(target || '').toLowerCase() : '';
+      const isLike = reactionMeta.key === '+';
+      const reactionLabel = reactionMeta.label || reactionMeta.key || '';
+      return {
+        id: ev.id,
+        created_at: Number(ev.created_at || 0) || 0,
+        type: 'like',
+        actorPubkey,
+        targetId,
+        summary: isLike
+          ? (targetId ? 'Liked one of your notes.' : 'Liked your content.')
+          : (targetId ? `Reacted to your post with ${reactionLabel}.` : `Reacted with ${reactionLabel}.`),
+        reactionKey: reactionMeta.key || '',
+        reactionLabel,
+        raw: ev
+      };
+    }
+
+    if (ev.kind === 6) {
+      const pRefs = normalizePRefs(ev.tags);
+      if (!pRefs.includes(ownPubkey)) return null;
+      const target = allTagValues(ev.tags, 'e');
+      const ref = target.length ? target[target.length - 1] : '';
+      const targetId = /^[0-9a-f]{64}$/i.test(ref || '') ? String(ref || '').toLowerCase() : '';
+      return {
+        id: ev.id,
+        created_at: Number(ev.created_at || 0) || 0,
+        type: 'repost',
+        actorPubkey,
+        targetId,
+        summary: 'Boosted your note.',
+        raw: ev
+      };
+    }
+
+    if (ev.kind === KIND_ZAP_RECEIPT) {
+      const zap = parseNotificationZapSummary(ev);
+      if (!Array.isArray(zap.targetPubkeys) || !zap.targetPubkeys.includes(ownPubkey)) return null;
+      const senderPubkey = normalizePubkeyHex(zap.senderPubkey || actorPubkey);
+      if (!senderPubkey || senderPubkey === ownPubkey) return null;
+      const sats = Number(zap.sats || 0);
+      const summary = truncateNotificationText(
+        zap.note || (sats > 0 ? `Sent you ${formatCount(sats)} sats.` : 'Sent you a zap.')
+      );
+      return {
+        id: ev.id,
+        created_at: Number(ev.created_at || 0) || 0,
+        type: 'zap',
+        actorPubkey: senderPubkey,
+        targetId: zap.targetId || '',
+        sats,
+        summary,
+        raw: ev
+      };
+    }
+
+    if (ev.kind === KIND_CONTACTS) {
+      const pRefs = normalizePRefs(ev.tags);
+      if (!pRefs.includes(ownPubkey)) return null;
+      return {
+        id: ev.id,
+        created_at: Number(ev.created_at || 0) || 0,
+        type: 'follow',
+        actorPubkey,
+        targetId: '',
+        summary: 'Started following you.',
+        raw: ev
+      };
+    }
+
+    return null;
+  }
+
+  function notificationSortComparator(a, b) {
+    const at = Number(a && a.created_at || 0);
+    const bt = Number(b && b.created_at || 0);
+    if (at !== bt) return bt - at;
+    return String(b && b.id || '').localeCompare(String(a && a.id || ''));
+  }
+
+  function visibleNotificationEntries() {
+    return Array.from(state.notificationsById.values())
+      .filter((entry) => notificationTypeEnabled(entry.type))
+      .sort(notificationSortComparator);
+  }
+
+  function notificationUnreadCount() {
+    const lastRead = Number(state.notificationsLastReadAt || 0);
+    return visibleNotificationEntries()
+      .filter((entry) => Number(entry.created_at || 0) > lastRead)
+      .length;
+  }
+
+  function renderNotificationsBell() {
+    const badgeEl = qs('#navNotifCount');
+    const menuBadgeEl = qs('#navNotifMenuCount');
+    if (!state.user) {
+      if (badgeEl) badgeEl.style.display = 'none';
+      if (menuBadgeEl) menuBadgeEl.style.display = 'none';
+      return;
+    }
+
+    const unread = notificationUnreadCount();
+    const label = unread > 99 ? '99+' : String(unread);
+    if (badgeEl) {
+      if (unread > 0) {
+        badgeEl.textContent = label;
+        badgeEl.style.display = 'inline-flex';
+      } else {
+        badgeEl.style.display = 'none';
+      }
+    }
+    if (menuBadgeEl) {
+      if (unread > 0) {
+        menuBadgeEl.textContent = label;
+        menuBadgeEl.style.display = 'inline-flex';
+      } else {
+        menuBadgeEl.style.display = 'none';
+      }
+    }
+  }
+
+  function fetchNotificationProfileIfNeeded(pubkey) {
+    const key = normalizePubkeyHex(pubkey);
+    if (!key) return;
+    if (state.profilesByPubkey.has(key)) return;
+    if (state.notificationsProfileFetchPending.has(key)) return;
+    state.notificationsProfileFetchPending.add(key);
+    fetchProfileIfNeeded(key)
+      .then(() => {
+        renderNotificationsBell();
+        if (isNotificationsPageVisible()) renderNotifications();
+      })
+      .catch(() => {})
+      .finally(() => {
+        state.notificationsProfileFetchPending.delete(key);
+      });
+  }
+
+  function renderNotifications() {
+    const listEl = qs('#notificationsList');
+    const statusEl = qs('#notificationsStatus');
+    if (!listEl) return;
+
+    if (!state.user) {
+      listEl.innerHTML = '<div class="notif-empty">Log in to load your notifications.</div>';
+      if (statusEl) {
+        statusEl.style.color = '';
+        statusEl.textContent = 'Not logged in.';
+      }
+      return;
+    }
+
+    const entries = visibleNotificationEntries();
+    const unread = notificationUnreadCount();
+    const lastRead = Number(state.notificationsLastReadAt || 0);
+
+    if (statusEl) {
+      if (state.notificationsError) {
+        statusEl.style.color = 'var(--live)';
+        statusEl.textContent = state.notificationsError;
+      } else if (state.notificationsLoading) {
+        statusEl.style.color = '';
+        statusEl.innerHTML = '<span class="lf-spinner"></span>Loading notifications...';
+      } else {
+        statusEl.style.color = '';
+        statusEl.textContent = `${entries.length} notifications - ${unread} unread`;
+      }
+    }
+
+    listEl.innerHTML = '';
+    if (!entries.length) {
+      listEl.innerHTML = '<div class="notif-empty">No notifications for your selected settings yet.</div>';
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const actorPubkey = normalizePubkeyHex(entry.actorPubkey || '');
+      const actorProfile = profileFor(actorPubkey);
+      const actorName = actorProfile.display_name || actorProfile.name || shortHex(actorPubkey);
+      const actorPicture = actorProfile.picture || '';
+      const isUnread = Number(entry.created_at || 0) > lastRead;
+      const typeLabel = notificationTypeLabel(entry.type);
+      const timeText = `${formatTimeAgo(entry.created_at)} ago`;
+      const verifiedNip05 = getVerifiedNip05ForPubkey(actorPubkey, actorProfile.nip05 || '');
+
+      let actionText = 'sent activity';
+      if (entry.type === 'mention') actionText = 'mentioned you';
+      else if (entry.type === 'reply') actionText = 'replied to you';
+      else if (entry.type === 'like') actionText = 'liked your post';
+      else if (entry.type === 'repost') actionText = 'boosted your post';
+      else if (entry.type === 'follow') actionText = 'followed you';
+      else if (entry.type === 'zap') actionText = entry.sats > 0
+        ? `zapped you ${formatCount(entry.sats)} sats`
+        : 'sent you a zap';
+
+      const row = document.createElement('article');
+      row.className = `notif-item type-${entry.type}${isUnread ? ' unread' : ''}`;
+      row.dataset.notificationId = entry.id;
+      row.dataset.pubkey = actorPubkey;
+      row.innerHTML = '<div class="notif-av"></div><div class="notif-main"><div class="notif-top"><div class="notif-label"></div><div class="notif-time"></div></div><span class="notif-type-chip"></span><div class="notif-text"></div><div class="notif-post-preview" style="display:none"></div></div>';
+
+      const avEl = qs('.notif-av', row);
+      setAvatarEl(avEl, actorPicture, pickAvatar(actorPubkey || actorName));
+      avEl.classList.toggle('nip05-square', !!verifiedNip05);
+      if (!verifiedNip05 && normalizeNip05Value(actorProfile.nip05 || '')) {
+        ensureNip05Verification(actorPubkey, actorProfile.nip05 || '').catch(() => {});
+      }
+      avEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showProfileByPubkey(actorPubkey);
+      });
+
+      const labelEl = qs('.notif-label', row);
+      labelEl.innerHTML = `<strong>${escapeHtml(actorName)}</strong> ${escapeHtml(actionText)}`;
+      const strongEl = qs('strong', labelEl);
+      if (strongEl) {
+        strongEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showProfileByPubkey(actorPubkey);
+        });
+      }
+
+      const timeEl = qs('.notif-time', row);
+      timeEl.textContent = timeText;
+      try { timeEl.title = new Date(Number(entry.created_at || 0) * 1000).toLocaleString(); } catch (_) {}
+
+      const chipEl = qs('.notif-type-chip', row);
+      chipEl.textContent = typeLabel;
+
+      const textEl = qs('.notif-text', row);
+      const summary = truncateNotificationText(entry.summary || '');
+      if (summary) {
+        textEl.textContent = summary;
+      } else {
+        textEl.style.display = 'none';
+      }
+
+      const previewEl = qs('.notif-post-preview', row);
+      const previewText = notificationTargetPreviewText(entry);
+      if (previewEl && previewText) {
+        previewEl.textContent = previewText;
+        previewEl.style.display = 'block';
+      }
+
+      row.addEventListener('click', () => {
+        showProfileByPubkey(actorPubkey);
+      });
+      listEl.appendChild(row);
+
+      if (actorPubkey) fetchNotificationProfileIfNeeded(actorPubkey);
+    });
+  }
+
+  function notificationFiltersForUser(pubkey, opts = {}) {
+    const key = normalizePubkeyHex(pubkey);
+    if (!key) return [];
+    const now = Math.floor(Date.now() / 1000);
+    const sinceSec = Math.max(0, Number(opts.sinceSec || (now - 60 * 60 * 24 * 21)));
+    const limit = Math.max(60, Number(opts.limit || 420));
+    return [
+      { kinds: [1], '#p': [key], since: sinceSec, limit },
+      { kinds: [KIND_REACTION], '#p': [key], since: sinceSec, limit },
+      { kinds: [6], '#p': [key], since: sinceSec, limit },
+      { kinds: [KIND_ZAP_RECEIPT], '#p': [key], since: sinceSec, limit },
+      { kinds: [KIND_CONTACTS], '#p': [key], since: sinceSec, limit: Math.min(limit, 260) }
+    ];
+  }
+
+  function notificationTargetPreviewText(entry) {
+    if (!entry || entry.type !== 'like') return '';
+    const targetId = String(entry.targetId || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(targetId)) return '';
+    const targetNote = state.notificationsTargetNotesById.get(targetId);
+    if (!targetNote) return 'Loading post...';
+
+    const mediaUrls = extractMediaUrlsFromEvent(targetNote);
+    const stripped = stripMediaUrlsFromText(targetNote.content || '', mediaUrls);
+    if (stripped) return truncateNotificationText(stripped, 180);
+    if (mediaUrls.length) return '[Media post]';
+    return '[No post text]';
+  }
+
+  async function hydrateNotificationTargetNotes(entries = [], opts = {}) {
+    if (!state.pool) return [];
+    const force = !!opts.force;
+    const targetIds = Array.from(new Set(
+      (Array.isArray(entries) ? entries : [])
+        .filter((entry) => entry && entry.type === 'like')
+        .map((entry) => String(entry.targetId || '').trim().toLowerCase())
+        .filter((id) => /^[0-9a-f]{64}$/.test(id))
+    ));
+    if (!targetIds.length) return [];
+
+    const missingIds = targetIds.filter((id) => force || !state.notificationsTargetNotesById.has(id));
+    if (!missingIds.length) return [];
+    if (state.notificationsTargetFetchPending && state.notificationsTargetFetchPromise) {
+      return state.notificationsTargetFetchPromise;
+    }
+
+    const wanted = new Set(missingIds);
+    const chunkSize = 24;
+    const filters = [];
+    for (let i = 0; i < missingIds.length; i += chunkSize) {
+      const chunk = missingIds.slice(i, i + chunkSize);
+      if (!chunk.length) continue;
+      filters.push({ kinds: [1, 6], ids: chunk, limit: chunk.length * 2 });
+    }
+    if (!filters.length) return [];
+
+    const promise = fetchEventsCached(filters, {
+      scope: 'notifications-target-notes',
+      timeoutMs: 3200,
+      maxEvents: 1200,
+      ttlMs: 60000,
+      warmMs: 300000,
+      allowStale: true,
+      force
+    }).then((events) => {
+      let changed = false;
+      (events || []).forEach((ev) => {
+        if (!ev || !ev.id) return;
+        const id = String(ev.id || '').trim().toLowerCase();
+        if (!wanted.has(id)) return;
+        const existing = state.notificationsTargetNotesById.get(id);
+        if (!existing || Number(existing.created_at || 0) <= Number(ev.created_at || 0)) {
+          state.notificationsTargetNotesById.set(id, ev);
+          changed = true;
+        }
+      });
+      if (changed && isNotificationsPageVisible()) renderNotifications();
+      return events || [];
+    }).catch(() => {
+      return [];
+    }).finally(() => {
+      state.notificationsTargetFetchPending = false;
+      state.notificationsTargetFetchPromise = null;
+    });
+
+    state.notificationsTargetFetchPending = true;
+    state.notificationsTargetFetchPromise = promise;
+    return promise;
+  }
+
+  function mergeNotificationEvents(events, ownPubkey) {
+    let changed = false;
+    (events || []).forEach((ev) => {
+      const entry = buildNotificationEntry(ev, ownPubkey);
+      if (!entry) return;
+      const existing = state.notificationsById.get(entry.id);
+      if (!existing || Number(existing.created_at || 0) <= Number(entry.created_at || 0)) {
+        state.notificationsById.set(entry.id, entry);
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  function markNotificationsReadInternal(opts = {}) {
+    const explicitTs = Number(opts.ts || 0);
+    const ts = explicitTs > 0 ? Math.floor(explicitTs) : Math.floor(Date.now() / 1000);
+    if (ts > Number(state.notificationsLastReadAt || 0)) {
+      state.notificationsLastReadAt = ts;
+      persistNotificationsLastRead();
+    }
+    renderNotificationsBell();
+    if (!opts.silent && isNotificationsPageVisible()) renderNotifications();
+  }
+
+  async function loadNotifications(opts = {}) {
+    if (!state.user || !state.pool) {
+      state.notificationsLoading = false;
+      state.notificationsError = '';
+      state.notificationsById = new Map();
+      state.notificationsTargetNotesById = new Map();
+      state.notificationsTargetFetchPending = false;
+      state.notificationsTargetFetchPromise = null;
+      renderNotificationsBell();
+      if (isNotificationsPageVisible()) renderNotifications();
+      return [];
+    }
+
+    const force = !!opts.force;
+    const silent = !!opts.silent;
+    const minIntervalMs = Math.max(0, Number(opts.minIntervalMs || 45000));
+    const nowMs = Date.now();
+    if (!force && state.notificationsLastLoadedAt && (nowMs - Number(state.notificationsLastLoadedAt || 0)) < minIntervalMs) {
+      renderNotificationsBell();
+      if (!silent && isNotificationsPageVisible()) renderNotifications();
+      return Array.from(state.notificationsById.values());
+    }
+    if (state.notificationsFetchPending && state.notificationsFetchPromise) {
+      return state.notificationsFetchPromise;
+    }
+
+    state.notificationsLoading = true;
+    state.notificationsError = '';
+    if (!silent && isNotificationsPageVisible()) renderNotifications();
+
+    const ownPubkey = normalizePubkeyHex(state.user.pubkey || '');
+    const filters = notificationFiltersForUser(ownPubkey);
+    const fetchPromise = fetchEventsCached(filters, {
+      scope: 'notifications-feed',
+      timeoutMs: 3600,
+      maxEvents: 2600,
+      ttlMs: 45000,
+      warmMs: 180000,
+      allowStale: true,
+      force
+    }).then((events) => {
+      const activePubkey = state.user ? normalizePubkeyHex(state.user.pubkey || '') : '';
+      if (!activePubkey || activePubkey !== ownPubkey) return [];
+      state.notificationsById = new Map();
+      mergeNotificationEvents(events, ownPubkey);
+      state.notificationsLastLoadedAt = Date.now();
+      state.notificationsLoading = false;
+      state.notificationsError = '';
+      hydrateNotificationTargetNotes(Array.from(state.notificationsById.values()), { force }).catch(() => {});
+      renderNotificationsBell();
+      if (!silent || isNotificationsPageVisible()) renderNotifications();
+      return Array.from(state.notificationsById.values());
+    }).catch(() => {
+      state.notificationsLoading = false;
+      state.notificationsError = 'Could not load notifications from relays right now.';
+      renderNotificationsBell();
+      if (!silent || isNotificationsPageVisible()) renderNotifications();
+      return [];
+    }).finally(() => {
+      state.notificationsFetchPending = false;
+      state.notificationsFetchPromise = null;
+    });
+
+    state.notificationsFetchPending = true;
+    state.notificationsFetchPromise = fetchPromise;
+    return fetchPromise;
+  }
+
+  function clearNostrFeedRenderTimer() {
+    if (!state.nostrFeedRenderTimer) return;
+    clearTimeout(state.nostrFeedRenderTimer);
+    state.nostrFeedRenderTimer = null;
+  }
+
+  function clearNostrFeedEoseTimer() {
+    if (!state.nostrFeedEoseTimer) return;
+    clearTimeout(state.nostrFeedEoseTimer);
+    state.nostrFeedEoseTimer = null;
+  }
+
+  function stopNostrFeedSubscription() {
+    clearNostrFeedRenderTimer();
+    clearNostrFeedEoseTimer();
+    if (state.nostrFeedSubId && state.pool) {
+      try { state.pool.unsubscribe(state.nostrFeedSubId); } catch (_) {}
+    }
+    state.nostrFeedSubId = null;
+    state.nostrFeedInteractionFetchPending = false;
+    state.nostrFeedInteractionQueuedIds = new Set();
+    state.nostrFeedLoading = false;
+  }
+
+  function isNostrFeedVirtualProfile(pubkey) {
+    return String(pubkey || '').trim() === NOSTR_FEED_PROFILE_KEY;
+  }
+
+  function syncNostrFeedProfileMapFromEvents() {
+    state.profileNotesByPubkey.set(NOSTR_FEED_PROFILE_KEY, new Map(state.nostrFeedEventsById));
+  }
+
+  function syncNostrFeedEventsFromProfileMap(pubkey = NOSTR_FEED_PROFILE_KEY) {
+    if (!isNostrFeedVirtualProfile(pubkey)) return;
+    const map = state.profileNotesByPubkey.get(NOSTR_FEED_PROFILE_KEY) || new Map();
+    state.nostrFeedEventsById = new Map(map);
+  }
+
+  function renderFeedOrProfileFeed(pubkey) {
+    if (!pubkey) return;
+    if (isNostrFeedVirtualProfile(pubkey)) {
+      syncNostrFeedEventsFromProfileMap(pubkey);
+      renderNostrFeed();
+      return;
+    }
+    renderProfileFeed(pubkey);
+  }
+
+  function requestNostrFeedRepostTarget(noteId) {
+    const id = String(noteId || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(id)) return;
+    if (state.nostrFeedEventsById.has(id)) return;
+    if (state.nostrFeedRepostLookupPending.has(id)) return;
+    state.nostrFeedRepostLookupPending.add(id);
+    fetchEventsCached(
+      [{ kinds: [1], ids: [id], limit: 1 }],
+      {
+        scope: 'nostr-feed-repost-target',
+        cacheKey: `nostr-feed-repost-target:${id}`,
+        timeoutMs: 2400,
+        maxEvents: 20
+      }
+    ).then((events) => {
+      const match = (events || []).find((ev) => ev && ev.id === id && ev.kind === 1);
+      if (!match) return;
+      state.nostrFeedEventsById.set(match.id, match);
+      syncNostrFeedProfileMapFromEvents();
+      if (isFeedPageVisible()) scheduleNostrFeedRender();
+    }).catch(() => {}).finally(() => {
+      state.nostrFeedRepostLookupPending.delete(id);
+    });
+  }
+
+  function scheduleNostrFeedRender() {
+    if (state.nostrFeedRenderTimer) clearTimeout(state.nostrFeedRenderTimer);
+    state.nostrFeedRenderTimer = setTimeout(() => {
+      state.nostrFeedRenderTimer = null;
+      renderNostrFeed();
+    }, 110);
+  }
+
+  function isTopLevelNostrFeedPost(ev) {
+    if (!ev) return false;
+    if (ev.kind === 6) return true;
+    if (ev.kind !== 1) return false;
+    return allTagValues(ev.tags, 'e').length === 0;
+  }
+
+  function fetchFeedProfileIfNeeded(pubkey) {
+    const key = normalizePubkeyHex(pubkey);
+    if (!key) return;
+    if (state.profilesByPubkey.has(key)) return;
+    if (state.nostrFeedProfileFetchPending.has(key)) return;
+    state.nostrFeedProfileFetchPending.add(key);
+    fetchProfileIfNeeded(key)
+      .then(() => {
+        if (isFeedPageVisible()) scheduleNostrFeedRender();
+      })
+      .catch(() => {})
+      .finally(() => {
+        state.nostrFeedProfileFetchPending.delete(key);
+      });
+  }
+
+  function parseFeedRepostTarget(post) {
+    if (!post || post.kind !== 6) {
+      return {
+        displayNote: post,
+        displayPubkey: post ? (normalizePubkeyHex(post.pubkey) || post.pubkey) : '',
+        boosterPubkey: post ? (normalizePubkeyHex(post.pubkey) || post.pubkey) : ''
+      };
+    }
+
+    let originalNote = null;
+    let originalPubkey = '';
+    const parsed = parseJsonSafe(post.content || '');
+    if (parsed && typeof parsed === 'object') {
+      if (typeof parsed.content === 'string' && /^[0-9a-f]{64}$/i.test(parsed.id || '')) {
+        originalNote = parsed;
+      }
+      if (/^[0-9a-f]{64}$/i.test(parsed.pubkey || '')) originalPubkey = parsed.pubkey;
+    }
+    if (!originalPubkey) {
+      const pRefs = allTagValues(post.tags, 'p');
+      const maybe = pRefs[pRefs.length - 1] || '';
+      if (/^[0-9a-f]{64}$/i.test(maybe)) originalPubkey = maybe;
+    }
+
+    const displayNote = originalNote || post;
+    const displayPubkey = normalizePubkeyHex(originalPubkey || displayNote.pubkey || post.pubkey) || post.pubkey;
+    return {
+      displayNote,
+      displayPubkey,
+      boosterPubkey: normalizePubkeyHex(post.pubkey) || post.pubkey
+    };
+  }
+
+  function collectNostrFeedInteractionTargetIds(posts = []) {
+    const out = new Set();
+    (Array.isArray(posts) ? posts : []).slice(0, 72).forEach((post) => {
+      if (!post) return;
+      const ownId = String(post.id || '').trim().toLowerCase();
+      if (/^[0-9a-f]{64}$/.test(ownId)) out.add(ownId);
+      if (post.kind !== 6) return;
+
+      const refs = allTagValues(post.tags, 'e');
+      const refId = String((refs && refs.length ? refs[refs.length - 1] : '') || '').trim().toLowerCase();
+      if (/^[0-9a-f]{64}$/.test(refId)) {
+        out.add(refId);
+        return;
+      }
+
+      const parsed = parseJsonSafe(post.content || '');
+      const parsedId = String(parsed && parsed.id || '').trim().toLowerCase();
+      if (/^[0-9a-f]{64}$/.test(parsedId)) out.add(parsedId);
+    });
+    return out;
+  }
+
+  function flushNostrFeedInteractionHydrationQueue() {
+    if (state.nostrFeedInteractionFetchPending) return;
+    if (!state.pool) return;
+
+    const batch = Array.from(state.nostrFeedInteractionQueuedIds)
+      .map((id) => String(id || '').trim().toLowerCase())
+      .filter((id) => /^[0-9a-f]{64}$/.test(id))
+      .filter((id) => !state.nostrFeedInteractionHydratedIds.has(id))
+      .slice(0, 84);
+    if (!batch.length) return;
+
+    batch.forEach((id) => {
+      state.nostrFeedInteractionQueuedIds.delete(id);
+      state.nostrFeedInteractionHydratedIds.add(id);
+    });
+    state.nostrFeedInteractionFetchPending = true;
+
+    const chunkSize = 24;
+    const since = Math.floor(Date.now() / 1000) - (60 * 60 * 24 * 14);
+    const interactionKinds = [1, 6, KIND_REACTION, KIND_ZAP_RECEIPT, KIND_DELETION];
+    const filters = [];
+    for (let i = 0; i < batch.length; i += chunkSize) {
+      const chunk = batch.slice(i, i + chunkSize);
+      if (!chunk.length) continue;
+      filters.push({
+        kinds: interactionKinds,
+        '#e': chunk,
+        limit: 420,
+        since
+      });
+    }
+
+    let success = false;
+    fetchEventsCached(filters, {
+      scope: 'nostr-feed-interactions',
+      timeoutMs: 3400,
+      maxEvents: 2600,
+      allowStale: false
+    }).then((events) => {
+      success = true;
+      let changed = false;
+      (events || []).forEach((ev) => {
+        if (!ev || !ev.id) return;
+        if (ev.kind === KIND_DELETION) {
+          allTagValues(ev.tags, 'e').forEach((id) => {
+            const rawRef = String(id || '').trim();
+            const lowerRef = rawRef.toLowerCase();
+            if (!/^[0-9a-f]{64}$/.test(lowerRef)) return;
+            const removed = state.nostrFeedEventsById.delete(rawRef) || state.nostrFeedEventsById.delete(lowerRef);
+            if (removed) changed = true;
+          });
+        }
+        const existing = state.nostrFeedEventsById.get(ev.id);
+        if (!existing || Number(existing.created_at || 0) <= Number(ev.created_at || 0)) {
+          state.nostrFeedEventsById.set(ev.id, ev);
+          changed = true;
+        }
+        if (ev.pubkey) fetchFeedProfileIfNeeded(ev.pubkey);
+      });
+      if (changed) {
+        syncNostrFeedProfileMapFromEvents();
+        if (isFeedPageVisible()) scheduleNostrFeedRender();
+      }
+    }).catch(() => {
+      success = false;
+    }).finally(() => {
+      state.nostrFeedInteractionFetchPending = false;
+      if (!success) {
+        batch.forEach((id) => state.nostrFeedInteractionHydratedIds.delete(id));
+      }
+      if (state.nostrFeedInteractionQueuedIds.size) {
+        setTimeout(() => flushNostrFeedInteractionHydrationQueue(), 70);
+      }
+    });
+  }
+
+  function queueNostrFeedInteractionHydration(posts = []) {
+    if (!state.pool) return;
+    const targets = collectNostrFeedInteractionTargetIds(posts);
+    if (!targets.size) return;
+    targets.forEach((id) => {
+      if (!state.nostrFeedInteractionHydratedIds.has(id)) {
+        state.nostrFeedInteractionQueuedIds.add(id);
+      }
+    });
+    flushNostrFeedInteractionHydrationQueue();
+  }
+
+  function renderNostrFeedItem(note) {
+    const info = parseFeedRepostTarget(note);
+    const displayNote = info.displayNote || note;
+    const displayPubkey = info.displayPubkey;
+    const displayProfile = profileFor(displayPubkey);
+    const boosterProfile = profileFor(info.boosterPubkey);
+    const isRepost = note && note.kind === 6;
+
+    const item = document.createElement('article');
+    item.className = 'profile-feed-item feed-fade-item';
+
+    const boostBanner = isRepost
+      ? `<div class="pf-boost-banner"><div class="pf-boost-av"></div><span class="pf-boost-label"><span class="pf-boost-name"></span> boosted this post</span></div>`
+      : '';
+
+    item.innerHTML = `${boostBanner}
+      <div class="profile-feed-head">
+        <div class="profile-feed-author">
+          <div class="profile-feed-av"></div>
+          <div class="profile-feed-meta"><div class="profile-feed-name"></div><div class="profile-feed-status"></div></div>
+        </div>
+        <div class="profile-feed-time"></div>
+      </div>
+      <div class="profile-feed-text"></div>
+      <div class="profile-feed-media-wrap"></div>`;
+
+    const avEl = qs('.profile-feed-av', item);
+    const nameEl = qs('.profile-feed-name', item);
+    const statusEl = qs('.profile-feed-status', item);
+    const timeEl = qs('.profile-feed-time', item);
+    const textEl = qs('.profile-feed-text', item);
+    const mediaWrap = qs('.profile-feed-media-wrap', item);
+
+    if (avEl) {
+      setAvatarEl(avEl, displayProfile.picture || '', pickAvatar(displayPubkey));
+      const verifiedNip05 = getVerifiedNip05ForPubkey(displayPubkey, displayProfile.nip05 || '');
+      avEl.classList.toggle('nip05-square', !!verifiedNip05);
+      avEl.style.cursor = 'pointer';
+      avEl.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(displayPubkey); };
+      if (!verifiedNip05 && normalizeNip05Value(displayProfile.nip05 || '')) {
+        ensureNip05Verification(displayPubkey, displayProfile.nip05 || '').catch(() => {});
+      }
+    }
+
+    if (nameEl) {
+      nameEl.textContent = displayProfile.display_name || displayProfile.name || shortHex(displayPubkey);
+      nameEl.style.cursor = 'pointer';
+      nameEl.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(displayPubkey); };
+    }
+
+    if (statusEl) {
+      const statusText = getProfileStatusText(displayPubkey);
+      statusEl.textContent = statusText;
+      statusEl.style.display = statusText ? 'block' : 'none';
+    }
+
+    if (timeEl) timeEl.textContent = `${formatTimeAgo(note.created_at)} ago`;
+
+    const mediaUrls = extractMediaUrlsFromEvent(displayNote);
+    const mediaItems = mediaUrls
+      .map((url) => ({ url, kind: classifyMediaUrl(url) }))
+      .filter((entry) => entry.kind && isLikelyUrl(entry.url));
+    const text = stripMediaUrlsFromText(displayNote.content || '', mediaUrls);
+
+    if (textEl) {
+      textEl.innerHTML = '';
+      if (text) {
+        textEl.appendChild(renderNostrContent(text));
+        textEl.style.display = 'block';
+      } else {
+        textEl.textContent = mediaItems.length ? '' : (isRepost ? 'Repost' : '[empty note]');
+        textEl.style.display = mediaItems.length ? 'none' : 'block';
+      }
+    }
+
+    if (mediaWrap) {
+      mediaWrap.innerHTML = '';
+      if (mediaItems.length) {
+        renderPostMedia(mediaWrap, mediaItems);
+      } else {
+        mediaWrap.style.display = 'none';
+      }
+    }
+
+    if (isRepost) {
+      const boostAvEl = qs('.pf-boost-av', item);
+      const boostNameEl = qs('.pf-boost-name', item);
+      if (boostAvEl) {
+        setAvatarEl(boostAvEl, boosterProfile.picture || '', pickAvatar(info.boosterPubkey));
+        boostAvEl.style.cursor = 'pointer';
+        boostAvEl.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(info.boosterPubkey); };
+        const verified = getVerifiedNip05ForPubkey(info.boosterPubkey, boosterProfile.nip05 || '');
+        boostAvEl.classList.toggle('nip05-square', !!verified);
+      }
+      if (boostNameEl) {
+        boostNameEl.textContent = boosterProfile.display_name || boosterProfile.name || shortHex(info.boosterPubkey);
+        boostNameEl.style.cursor = 'pointer';
+        boostNameEl.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(info.boosterPubkey); };
+      }
+      fetchFeedProfileIfNeeded(info.boosterPubkey);
+    }
+
+    fetchFeedProfileIfNeeded(displayPubkey);
+    return item;
+  }
+
+  function renderNostrFeed() {
+    const listEl = qs('#nostrFeedList');
+    const statusEl = qs('#nostrFeedStatus');
+    if (!listEl) return;
+
+    const posts = Array.from(state.nostrFeedEventsById.values())
+      .filter((ev) => isTopLevelNostrFeedPost(ev))
+      .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+    if (posts.length) queueNostrFeedInteractionHydration(posts);
+    const filterLabel = getNostrFeedFilterLabel(state.nostrFeedFilter);
+
+    if (statusEl) {
+      if (state.nostrFeedError) {
+        statusEl.textContent = state.nostrFeedError;
+        statusEl.style.color = 'var(--live)';
+      } else if (state.nostrFeedLoading) {
+        statusEl.style.color = '';
+        statusEl.innerHTML = '<span class="lf-spinner"></span>Loading notes from relays...';
+      } else if (posts.length) {
+        statusEl.style.color = '';
+        statusEl.textContent = `${posts.length} notes - ${filterLabel}`;
+      } else {
+        statusEl.style.color = '';
+        statusEl.textContent = `No notes found for ${filterLabel}.`;
+      }
+    }
+
+    if (!posts.length) {
+      const fallback = state.nostrFeedFilter === 'following'
+        ? 'Try Global or add more people to Following.'
+        : 'Try another list or check your relay connections.';
+      listEl.innerHTML = `<div class="profile-feed-empty">No notes to show yet. ${fallback}</div>`;
+      return;
+    }
+    syncNostrFeedProfileMapFromEvents();
+    renderProfileFeed(NOSTR_FEED_PROFILE_KEY);
+  }
+
+  function subscribeNostrFeed() {
+    stopNostrFeedSubscription();
+    if (!state.pool) return;
+
+    state.nostrFeedFilter = normalizeNostrFeedFilter(state.nostrFeedFilter);
+    persistNostrFeedFilter();
+    renderNostrFeedFilterSelect();
+    state.nostrFeedEventsById = new Map();
+    state.nostrFeedProfileFetchPending = new Set();
+    state.nostrFeedRepostLookupPending = new Set();
+    state.nostrFeedInteractionHydratedIds = new Set();
+    state.nostrFeedInteractionQueuedIds = new Set();
+    state.nostrFeedInteractionFetchPending = false;
+    state.nostrFeedError = '';
+    state.nostrFeedLoading = true;
+    state.profileNotesByPubkey.set(NOSTR_FEED_PROFILE_KEY, new Map());
+    const listEl = qs('#nostrFeedList');
+    if (listEl) listEl.dataset.feedLimit = '24';
+    renderNostrFeed();
+
+    const now = Math.floor(Date.now() / 1000);
+    const filterId = state.nostrFeedFilter;
+    const kinds = [1, 6, KIND_DELETION];
+    let filters = [];
+
+    if (filterId === 'global') {
+      filters = [{ kinds, limit: 260, since: now - (60 * 60 * 18) }];
+    } else {
+      const pubkeySet = getListFilterPubkeys(filterId) || new Set();
+      const pubkeys = Array.from(pubkeySet)
+        .map((pk) => normalizePubkeyHex(pk))
+        .filter(Boolean)
+        .slice(0, 1200);
+      if (!pubkeys.length) {
+        state.nostrFeedLoading = false;
+        renderNostrFeed();
+        return;
+      }
+      const chunkSize = 150;
+      for (let i = 0; i < pubkeys.length; i += chunkSize) {
+        const chunk = pubkeys.slice(i, i + chunkSize);
+        if (!chunk.length) continue;
+        filters.push({
+          kinds,
+          authors: chunk,
+          limit: 110,
+          since: now - (60 * 60 * 24 * 10)
+        });
+      }
+    }
+
+    if (!filters.length) {
+      state.nostrFeedLoading = false;
+      renderNostrFeed();
+      return;
+    }
+
+    clearNostrFeedEoseTimer();
+    state.nostrFeedEoseTimer = setTimeout(() => {
+      state.nostrFeedEoseTimer = null;
+      state.nostrFeedLoading = false;
+      scheduleNostrFeedRender();
+    }, 3600);
+
+    state.nostrFeedSubId = state.pool.subscribe(filters, {
+      event: (ev) => {
+        if (!ev || !ev.id) return;
+        if (ev.kind !== 1 && ev.kind !== 6 && ev.kind !== KIND_DELETION) return;
+        if (ev.kind === KIND_DELETION) {
+          allTagValues(ev.tags, 'e').forEach((id) => {
+            if (/^[0-9a-f]{64}$/i.test(id || '')) state.nostrFeedEventsById.delete(id);
+          });
+          syncNostrFeedProfileMapFromEvents();
+          scheduleNostrFeedRender();
+          return;
+        }
+        const existing = state.nostrFeedEventsById.get(ev.id);
+        if (!existing || Number(existing.created_at || 0) <= Number(ev.created_at || 0)) {
+          state.nostrFeedEventsById.set(ev.id, ev);
+        }
+        syncNostrFeedProfileMapFromEvents();
+        if (ev.pubkey) fetchFeedProfileIfNeeded(ev.pubkey);
+        if (ev.kind === 6) {
+          const repost = parseFeedRepostTarget(ev);
+          if (repost.displayPubkey) fetchFeedProfileIfNeeded(repost.displayPubkey);
+          if (repost.boosterPubkey) fetchFeedProfileIfNeeded(repost.boosterPubkey);
+          const refs = allTagValues(ev.tags, 'e');
+          const targetId = refs.length ? refs[refs.length - 1] : '';
+          if (!repost.displayNote || repost.displayNote === ev || !String(repost.displayNote.content || '').trim()) {
+            requestNostrFeedRepostTarget(targetId);
+          }
+        }
+        scheduleNostrFeedRender();
+      },
+      eose: () => {
+        clearNostrFeedEoseTimer();
+        state.nostrFeedLoading = false;
+        scheduleNostrFeedRender();
+      }
+    });
+  }
+
+  function setNostrFeedFilterInternal(filterId, opts = {}) {
+    const next = normalizeNostrFeedFilter(filterId);
+    const prev = state.nostrFeedFilter;
+    state.nostrFeedFilter = next;
+    persistNostrFeedFilter();
+    renderNostrFeedFilterSelect();
+    if (opts.force || prev !== next) {
+      if (isFeedPageVisible()) subscribeNostrFeed();
+      else renderNostrFeed();
+    }
+  }
+
   function buildStreamCard(stream, idx) {
     // NIP-53: show actual streamer (hostPubkey), not the platform publisher
     const p = profileFor(stream.hostPubkey);
@@ -6328,11 +7939,12 @@
     const statusLabel = stream.status === 'planned' ? 'SOON' : stream.status.toUpperCase();
     const statusBg = stream.status === 'planned' ? 'background:var(--purple)' : '';
     const viewerText = hasViewers ? `&#128065; ${viewerCount.toLocaleString()}` : (hasVideo ? '&#128065; 0' : '&#8212;');
+    const hideLiveBadge = isDirectFileVideoUrl(stream && stream.streaming);
 
     card.innerHTML = `
       <div class="ct">
         <div class="ct-inner">${thumbHtml}</div>
-        <div class="cb-live" style="${statusBg}"><span class="live-dot"></span>${statusLabel}</div>
+        ${hideLiveBadge ? '' : `<div class="cb-live" style="${statusBg}"><span class="live-dot"></span>${statusLabel}</div>`}
         <div class="cb-viewers">${viewerText}</div>
       </div>
       <div class="ci">
@@ -6387,6 +7999,7 @@
   function renderLiveGrid() {
     const grid = qs('#liveGrid');
     const sentinel = qs('#liveGridSentinel');
+    if (isVideosPageVisible()) renderVideosPage();
     if (!grid) return;
     if (!isHomeViewActive()) {
       if (state.liveGridObserver) { state.liveGridObserver.disconnect(); state.liveGridObserver = null; }
@@ -6801,6 +8414,8 @@
 
   function clearPlayback() {
     state.playbackToken += 1;
+    state.playbackAddress = '';
+    state.playbackUrl = '';
     if (state.hlsInstance) {
       try {
         state.hlsInstance.destroy();
@@ -6808,6 +8423,16 @@
         // no-op
       }
       state.hlsInstance = null;
+    }
+    const playerBg = qs('.player-bg');
+    if (playerBg) {
+      playerBg.querySelectorAll('video').forEach((video) => {
+        try {
+          video.pause();
+          video.removeAttribute('src');
+          video.load();
+        } catch (_) {}
+      });
     }
   }
 
@@ -6944,21 +8569,30 @@
   }
 
   async function renderVideoPlayback(stream) {
-    clearPlayback();
-
-    const token = state.playbackToken;
     const playerBg = qs('.player-bg');
     const playerUi = qs('.player-ui');
     if (!playerBg) return;
+    const address = String(stream && stream.address || '').trim();
+    const url = sanitizeMediaUrl((stream && stream.streaming || '').trim());
+    const status = normalizeStreamStatus(stream && stream.status);
+    const existingVideo = playerBg.querySelector('video');
+    const hasHttpUrl = !!url && /^https?:\/\//i.test(url);
+    const sameSource = !!(address && url && state.playbackAddress === address && state.playbackUrl === url);
+    if (sameSource && (existingVideo || state.hlsInstance)) {
+      if (existingVideo) syncTheaterVideoFit(existingVideo, playerBg);
+      return;
+    }
+
+    clearPlayback();
+    const token = state.playbackToken;
+
     playerBg.classList.remove('player-bg-portrait-source');
-    if (normalizeStreamStatus(stream.status) === 'ended') {
+    if (status === 'ended' && !hasHttpUrl) {
       const endedSummary = String(stream.summary || '').trim();
       const message = endedSummary ? `Stream ended. ${endedSummary}` : 'Stream ended.';
       renderPlaybackFallback(message, stream.streaming || '');
       return;
     }
-
-    const url = sanitizeMediaUrl((stream.streaming || '').trim());
     if (!url) {
       if (playerUi) playerUi.style.display = '';
       playerBg.classList.remove('player-bg-portrait-source');
@@ -6966,10 +8600,13 @@
       return;
     }
 
-    if (!/^https?:\/\//i.test(url)) {
+    if (!hasHttpUrl) {
       renderPlaybackFallback('This stream uses a non-HTTP source. Open it in your external player.', url);
       return;
     }
+
+    state.playbackAddress = address;
+    state.playbackUrl = url;
 
     const video = document.createElement('video');
     video.controls = true;
@@ -8161,6 +9798,7 @@
 
     updateTheaterSatsDisplay(current);
     renderStreamZapList(current);
+    renderChatZapReceipt(parsed);
     return true;
   }
   function chatReactionKey(messageId, pubkey) {
@@ -8808,7 +10446,7 @@
       }
 
       state.profileNotesByPubkey.set(profilePubkey, map);
-      renderProfileFeed(profilePubkey);
+      renderFeedOrProfileFeed(profilePubkey);
     } catch (err) {
       alert(err && err.message ? err.message : 'Failed to update post reaction.');
     } finally {
@@ -8901,10 +10539,34 @@
     if (wrap.children.length) container.appendChild(wrap);
   }
 
+  function insertChatRowChronological(sc, row, rowId, createdAt) {
+    if (!sc || !row) return;
+    const safeId = String(rowId || '').trim();
+    if (!safeId) return;
+    const targetTs = Number(createdAt || 0) || 0;
+    row.dataset.msgId = safeId;
+    row.dataset.createdAt = String(targetTs);
+
+    // Relay delivery order is not guaranteed, so keep chat sorted by created_at.
+    let inserted = false;
+    for (let i = sc.children.length - 1; i >= 0; i -= 1) {
+      const existing = sc.children[i];
+      if (!existing || !existing.classList || !existing.classList.contains('cmsg')) continue;
+      const existingTs = Number(existing.dataset.createdAt || 0) || 0;
+      const existingId = existing.dataset.msgId || '';
+      if (existingTs < targetTs || (existingTs === targetTs && existingId <= safeId)) {
+        existing.insertAdjacentElement('afterend', row);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) sc.insertAdjacentElement('afterbegin', row);
+  }
+
   function renderChatMessage(ev) {
     const sc = qs('#chatScroll');
     if (!sc || !ev || !ev.id) return;
-    if (sc.querySelector(`.cmsg[data-msg-id="${CSS.escape(ev.id)}"]`)) return;
+    if (state.chatMessageEventsById.has(ev.id)) return;
 
     const wasNearBottom = (sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28;
     state.chatMessageEventsById.set(ev.id, ev);
@@ -8913,8 +10575,6 @@
     const row = document.createElement('div');
     row.className = 'cmsg';
     row.dataset.pubkey = messagePubkey;
-    row.dataset.msgId = ev.id;
-    row.dataset.createdAt = String(Number(ev.created_at || 0) || 0);
     row.innerHTML = `<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="c-time"></span></div><div class="c-text"></div></div><div class="chat-msg-actions"><button class="cma-btn like-cma chat-like-btn" title="Like">&#10084; <span class="chat-like-count">0</span></button></div>`;
     const avEl = qs('.c-av', row);
     setAvatarEl(avEl, p.picture || '', pickAvatar(messagePubkey));
@@ -8963,23 +10623,77 @@
       window.toggleChatLikeMessage(ev.id);
     });
 
-    // Relay delivery order is not guaranteed, so keep chat sorted by created_at.
-    const targetTs = Number(ev.created_at || 0) || 0;
-    let inserted = false;
-    for (let i = sc.children.length - 1; i >= 0; i -= 1) {
-      const existing = sc.children[i];
-      if (!existing || !existing.classList || !existing.classList.contains('cmsg')) continue;
-      const existingTs = Number(existing.dataset.createdAt || 0) || 0;
-      const existingId = existing.dataset.msgId || '';
-      if (existingTs < targetTs || (existingTs === targetTs && existingId <= ev.id)) {
-        existing.insertAdjacentElement('afterend', row);
-        inserted = true;
-        break;
-      }
-    }
-    if (!inserted) sc.insertAdjacentElement('afterbegin', row);
+    insertChatRowChronological(sc, row, ev.id, ev.created_at);
 
     updateChatLikeUi(ev.id);
+    while (sc.children.length > 300) sc.removeChild(sc.firstChild);
+    if (wasNearBottom) sc.scrollTop = sc.scrollHeight;
+  }
+
+  function renderChatZapReceipt(entry) {
+    const sc = qs('#chatScroll');
+    if (!sc || !entry || !entry.eventId) return;
+    const eventId = String(entry.eventId || '').trim();
+    if (!eventId) return;
+    if (state.chatMessageEventsById.has(eventId)) return;
+    state.chatMessageEventsById.set(eventId, entry);
+
+    const wasNearBottom = (sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28;
+    const senderPubkey = normalizePubkeyHex(entry.senderPubkey || '');
+    const profile = senderPubkey ? profileFor(senderPubkey) : null;
+    const fallbackName = senderPubkey ? shortHex(senderPubkey) : 'Anon';
+    const displayName = (profile && (profile.display_name || profile.name)) || entry.displayName || fallbackName;
+    const picture = (profile && profile.picture) || entry.picture || '';
+    const note = String(entry.note || '').trim();
+
+    const row = document.createElement('div');
+    row.className = 'cmsg zap-ev';
+    row.dataset.pubkey = senderPubkey;
+    row.innerHTML = '<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="chat-zap-amount"></span><span class="c-time"></span></div><div class="c-text"></div></div>';
+
+    const avEl = qs('.c-av', row);
+    setAvatarEl(avEl, picture, pickAvatar(senderPubkey || displayName));
+    const chatNip05 = senderPubkey ? getVerifiedNip05ForPubkey(senderPubkey, profile && profile.nip05 ? profile.nip05 : '') : '';
+    avEl.classList.toggle('nip05-square', !!chatNip05);
+    if (senderPubkey && !chatNip05 && profile && normalizeNip05Value(profile.nip05 || '')) {
+      ensureNip05Verification(senderPubkey, profile.nip05 || '').catch(() => {});
+    }
+    if (senderPubkey) avEl.onclick = () => showProfileByPubkey(senderPubkey);
+
+    const nameEl = qs('.c-name', row);
+    nameEl.textContent = displayName;
+    if (senderPubkey) nameEl.onclick = () => showProfileByPubkey(senderPubkey);
+
+    const amountEl = qs('.chat-zap-amount', row);
+    amountEl.textContent = `⚡ ${formatCount(Number(entry.sats || 0))} sats`;
+
+    const timeEl = qs('.c-time', row);
+    if (timeEl) {
+      timeEl.textContent = formatChatTimestamp(entry.created_at);
+      try { timeEl.title = new Date(Number(entry.created_at || 0) * 1000).toLocaleString(); } catch (_) {}
+    }
+
+    const textEl = qs('.c-text', row);
+    textEl.appendChild(renderNostrContent(note || 'Sent a zap'));
+
+    insertChatRowChronological(sc, row, eventId, entry.created_at);
+
+    if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) {
+      fetchProfileIfNeeded(senderPubkey).then(() => {
+        const updated = profileFor(senderPubkey);
+        const targetRow = sc.querySelector(`.cmsg.zap-ev[data-msg-id="${CSS.escape(eventId)}"]`);
+        if (!targetRow || !updated) return;
+        const targetAv = qs('.c-av', targetRow);
+        if (targetAv) {
+          setAvatarEl(targetAv, updated.picture || '', pickAvatar(senderPubkey));
+          const verified = !!getVerifiedNip05ForPubkey(senderPubkey, updated.nip05 || '');
+          targetAv.classList.toggle('nip05-square', verified);
+        }
+        const targetName = qs('.c-name', targetRow);
+        if (targetName) targetName.textContent = updated.display_name || updated.name || displayName;
+      }).catch(() => {});
+    }
+
     while (sc.children.length > 300) sc.removeChild(sc.firstChild);
     if (wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
@@ -8994,6 +10708,18 @@
   function setUserUi() {
     if (!state.user) {
       setLoggedInUi(false);
+      state.notificationsById = new Map();
+      state.notificationsLoading = false;
+      state.notificationsError = '';
+      state.notificationsFetchPending = false;
+      state.notificationsFetchPromise = null;
+      state.notificationsProfileFetchPending = new Set();
+      state.notificationsTargetNotesById = new Map();
+      state.notificationsTargetFetchPending = false;
+      state.notificationsTargetFetchPromise = null;
+      state.notificationsLastLoadedAt = 0;
+      renderNotificationsBell();
+      if (isNotificationsPageVisible()) renderNotifications();
       renderFollowingCount();
       updateGoLiveButtonState();
       if (window.SifakaCommunities && typeof window.SifakaCommunities.refreshContext === 'function') {
@@ -9037,6 +10763,12 @@
 
     // Load user's contact list + NIP-51 people lists for the filter dropdown
     subscribeUserLists(state.user.pubkey);
+    renderNotificationsBell();
+    loadNotifications({
+      force: false,
+      silent: !isNotificationsPageVisible(),
+      minIntervalMs: isNotificationsPageVisible() ? 0 : 90000
+    }).catch(() => {});
     renderFollowingCount();
     updateGoLiveButtonState();
     if (window.SifakaCommunities && typeof window.SifakaCommunities.refreshContext === 'function') {
@@ -9143,6 +10875,7 @@
   function subscribeLive() {
     stopLiveSubscription();
     if (!state.pool) return;
+    let initialSyncComplete = false;
 
     const debouncedRenderGrid = () => {
       clearLiveGridRenderTimer();
@@ -9162,9 +10895,12 @@
           if (state.pendingRouteAddress && stream.address === state.pendingRouteAddress) {
             tryOpenPendingRouteStream();
           }
-          if (isHomeViewActive()) debouncedRenderGrid();
+          // Avoid rapid card remount/flicker while the initial relay sync is still streaming in.
+          if (isHomeViewActive() && initialSyncComplete) debouncedRenderGrid();
         },
         eose: () => {
+          if (initialSyncComplete) return;
+          initialSyncComplete = true;
           if (isHomeViewActive()) renderLiveGrid();
           persistLiveStreamsCache();
           tryOpenPendingRouteStream();
@@ -9272,10 +11008,12 @@
 
     const nowSec = Math.floor(Date.now() / 1000);
     const streamStart = Number(stream.starts || stream.created_at || 0) || 0;
+    const status = normalizeStreamStatus(stream && stream.status);
+    const isArchive = status === 'ended' || isDirectFileVideoUrl(stream && stream.streaming);
     const chatSince = streamStart
       ? Math.max(0, streamStart - 60 * 60 * 2)
       : (nowSec - 60 * 60 * 24);
-    const chatHistoryLimit = 1200;
+    const chatHistoryLimit = isArchive ? 260 : 1200;
 
     const filters = [{
       kinds: [KIND_LIVE_CHAT],
@@ -9314,16 +11052,17 @@
     const reactionSince = streamStart
       ? Math.max(0, streamStart - 60 * 60 * 12)
       : (nowSec - 60 * 60 * 24 * 7);
+    const reactionHistoryLimit = isArchive ? 320 : 1200;
     const reactionFilters = [
-      { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], limit: 1200, since: reactionSince },
-      { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], limit: 1200, since: reactionSince }
+      { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince },
+      { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince }
     ];
     if (stream.id) {
-      reactionFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], limit: 1200, since: reactionSince });
+      reactionFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
     }
     const pTargets = [...new Set([stream.pubkey, stream.hostPubkey].map((pk) => normalizePubkeyHex(pk)).filter(Boolean))];
     if (pTargets.length) {
-      reactionFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#p': pTargets, limit: 1200, since: reactionSince });
+      reactionFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#p': pTargets, limit: reactionHistoryLimit, since: reactionSince });
     }
 
     state.chatReactionSubId = state.pool.subscribe(
@@ -9385,8 +11124,11 @@
     if (statsTargetPubkey) subscribeProfileStats(statsTargetPubkey);
     if (routeMode !== 'skip') syncTheaterRoute(stream, routeMode);
     renderVideo(stream);
-    subscribeChat(stream);
     window.showVideoPage();
+    setTimeout(() => {
+      if (state.selectedStreamAddress !== address) return;
+      subscribeChat(stream);
+    }, 0);
   }
 
   function clearProfilePlayback() {
@@ -9891,10 +11633,16 @@
       const isRepost = note.kind === 6;
       const item = document.createElement('div');
       item.className = 'profile-feed-item feed-fade-item';
+      const listIdToken = String(listEl.id || 'profile-feed-list')
+        .trim()
+        .replace(/[^a-z0-9_-]/gi, '-')
+        .toLowerCase();
+      const commentInputId = `comment-${listIdToken}-${String(note.id || 'post').toLowerCase()}`;
 
       // For reposts, try to parse the original note from content (NIP-18)
       let originalNote = null;
       let originalPubkey = null;
+      let repostRefId = '';
       if (isRepost) {
         try {
           if (note.content && note.content.trim().startsWith('{')) {
@@ -9902,9 +11650,21 @@
             originalPubkey = originalNote.pubkey;
           }
         } catch (_) {}
+        const eTags = getTagValues(note, 'e');
+        repostRefId = eTags.length ? eTags[eTags.length - 1] : '';
         if (!originalPubkey) {
           const pTag = (note.tags || []).find(t => t[0] === 'p');
           if (pTag) originalPubkey = pTag[1];
+        }
+        if (!originalNote && /^[0-9a-f]{64}$/i.test(repostRefId || '')) {
+          const sourceMap = state.profileNotesByPubkey.get(pubkey) || new Map();
+          const maybeOriginal = sourceMap.get(repostRefId);
+          if (maybeOriginal && maybeOriginal.kind === 1) {
+            originalNote = maybeOriginal;
+            if (!originalPubkey) originalPubkey = maybeOriginal.pubkey;
+          } else if (isNostrFeedVirtualProfile(pubkey)) {
+            requestNostrFeedRepostTarget(repostRefId);
+          }
         }
       }
 
@@ -9917,7 +11677,7 @@
         <div class="profile-feed-head">
           <div class="profile-feed-author">
             <div class="profile-feed-av"></div>
-            <div class="profile-feed-meta"><div class="profile-feed-name"></div><div class="profile-feed-status"></div></div>
+            <div class="profile-feed-meta"><div class="profile-feed-name-row"><div class="profile-feed-name"></div><span class="nip05-badge profile-feed-nip05" style="display:none">&#10003;</span></div><div class="profile-feed-status"></div></div>
           </div>
           <div class="profile-feed-time"></div>
         </div>
@@ -9926,21 +11686,38 @@
         <div class="profile-feed-stats">
           <span class="pfs pfs-comments"><strong>0</strong> Comments</span>
           <button class="pfs pfs-btn profile-post-like-btn" type="button"><strong>0</strong> Likes</button>
-          <span class="pfs pfs-zaps"><strong>0</strong> Zaps</span>
+          <button class="pfs pfs-btn pfs-zaps profile-post-zap-btn" type="button"><strong>0</strong> Zaps</button>
           <button class="pfs pfs-btn profile-post-boost-btn" type="button"><strong>0</strong> Boosts</button>
           <button class="pfs pfs-btn pfs-plus profile-post-emoji-btn" type="button" title="React with custom emoji">+</button>
         </div>
         <div class="profile-feed-emoji-bar"></div>
         <div class="profile-feed-comments"></div>
         <div class="profile-comment-form">
-          <textarea class="profile-comment-input" rows="1" placeholder="Write a comment..."></textarea>
-          <button class="profile-comment-btn">Comment</button>
+          <textarea class="profile-comment-input" id="${commentInputId}" rows="1" maxlength="4096" placeholder="Write a comment..."></textarea>
+          <div class="profile-comment-tools">
+            <div class="profile-comment-row">
+              <button type="button" class="profile-comment-btn">Comment</button>
+              <button type="button" class="profile-comment-attach-btn">Attach</button>
+            </div>
+            <div class="nostr-markup-toolbar nostr-markup-toolbar-chat profile-comment-markup">
+              <button type="button" data-action="h1">H1</button>
+              <button type="button" data-action="h2">H2</button>
+              <button type="button" data-action="h3">H3</button>
+              <button type="button" data-action="bold">B</button>
+              <button type="button" data-action="italic">I</button>
+              <button type="button" data-action="strike">S</button>
+              <button type="button" data-action="ul">UL</button>
+              <button type="button" data-action="ol">OL</button>
+              <button type="button" data-action="quote">"</button>
+              <button type="button" data-action="code">&lt;/&gt;</button>
+            </div>
+          </div>
         </div>`;
 
       // For reposts show original author; for regular posts show profile author
-      const displayProfile = (isRepost && originalProfile) ? originalProfile : profile;
       const displayNote = (isRepost && originalNote) ? originalNote : note;
       const displayPubkey = (isRepost && originalPubkey) ? originalPubkey : note.pubkey;
+      const displayProfile = (isRepost && originalProfile) ? originalProfile : profileFor(displayPubkey);
       const boostPubkey = normalizePubkeyHex(note.pubkey) || note.pubkey;
       const targetPostId =
         (aggregates && aggregates.targetIdByDisplayPostId && aggregates.targetIdByDisplayPostId.get(note.id)) ||
@@ -9950,19 +11727,41 @@
         (aggregates && aggregates.targetPubkeyByDisplayPostId && aggregates.targetPubkeyByDisplayPostId.get(note.id)) ||
         displayPubkey ||
         note.pubkey;
-
       const avEl = qs('.profile-feed-av', item);
-      setAvatarEl(avEl, displayProfile.picture || '', pickAvatar(displayPubkey));
-      const displayVerifiedNip05 = getVerifiedNip05ForPubkey(displayPubkey, displayProfile.nip05 || '');
-      if (avEl) avEl.classList.toggle('nip05-square', !!displayVerifiedNip05);
-      if (!displayVerifiedNip05 && normalizeNip05Value(displayProfile.nip05 || '')) ensureNip05Verification(displayPubkey, displayProfile.nip05 || '').catch(() => {});
-      if (avEl) { avEl.style.cursor = 'pointer'; avEl.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(displayPubkey); }; }
       const nameEl = qs('.profile-feed-name', item);
-      if (nameEl) {
-        nameEl.textContent = displayProfile.name || shortHex(displayPubkey);
-        nameEl.style.cursor = 'pointer';
-        nameEl.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(displayPubkey); };
-      }
+      const nip05BadgeEl = qs('.profile-feed-nip05', item);
+      const refreshFeedIdentity = () => {
+        const profileNow = profileFor(displayPubkey);
+        const verifiedNip05 = getVerifiedNip05ForPubkey(displayPubkey, profileNow.nip05 || '');
+        if (avEl) {
+          setAvatarEl(avEl, profileNow.picture || '', pickAvatar(displayPubkey));
+          avEl.classList.toggle('nip05-square', !!verifiedNip05);
+          avEl.style.cursor = 'pointer';
+          avEl.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(displayPubkey); };
+        }
+        if (nameEl) {
+          nameEl.textContent = profileNow.display_name || profileNow.name || shortHex(displayPubkey);
+          nameEl.style.cursor = 'pointer';
+          nameEl.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(displayPubkey); };
+        }
+        if (nip05BadgeEl) {
+          nip05BadgeEl.style.display = verifiedNip05 ? 'inline-flex' : 'none';
+          nip05BadgeEl.title = verifiedNip05 ? `NIP-05 verified: ${verifiedNip05}` : '';
+        }
+        if (!verifiedNip05 && normalizeNip05Value(profileNow.nip05 || '')) {
+          ensureNip05Verification(displayPubkey, profileNow.nip05 || '')
+            .then(() => {
+              const refreshedVerified = getVerifiedNip05ForPubkey(displayPubkey, profileNow.nip05 || '');
+              if (avEl) avEl.classList.toggle('nip05-square', !!refreshedVerified);
+              if (nip05BadgeEl) {
+                nip05BadgeEl.style.display = refreshedVerified ? 'inline-flex' : 'none';
+                nip05BadgeEl.title = refreshedVerified ? `NIP-05 verified: ${refreshedVerified}` : '';
+              }
+            })
+            .catch(() => {});
+        }
+      };
+      refreshFeedIdentity();
       const statusEl = qs('.profile-feed-status', item);
       const renderFeedStatus = () => {
         if (!statusEl) return;
@@ -10005,12 +11804,7 @@
       // Fetch and display profile if not cached yet
       if (!state.profilesByPubkey.has(displayPubkey)) {
         fetchProfileIfNeeded(displayPubkey).then(() => {
-          const fresh = profileFor(displayPubkey);
-          if (nameEl) { nameEl.textContent = fresh.name || shortHex(displayPubkey); nameEl.style.cursor = 'pointer'; }
-          if (avEl) {
-            setAvatarEl(avEl, fresh.picture || '', pickAvatar(displayPubkey));
-            avEl.classList.toggle('nip05-square', !!getVerifiedNip05ForPubkey(displayPubkey, fresh.nip05 || ''));
-          }
+          refreshFeedIdentity();
           renderFeedStatus();
         }).catch(() => {});
       }
@@ -10027,7 +11821,10 @@
           textEl.appendChild(renderNostrContent(text));
           textEl.style.display = 'block';
         } else {
-          textEl.textContent = mediaItems.length ? '' : (isRepost ? '[Reposted content]' : '[empty note]');
+          const emptyLabel = isRepost
+            ? (repostRefId ? 'Repost (original note loading...)' : 'Repost')
+            : '[empty note]';
+          textEl.textContent = mediaItems.length ? '' : emptyLabel;
           textEl.style.display = !mediaItems.length ? 'block' : 'none';
         }
       }
@@ -10057,6 +11854,10 @@
       if (likeBtn) {
         likeBtn.classList.toggle('active', !!(own && likeSet.has(own)));
         likeBtn.addEventListener('click', () => window.toggleProfilePostLike(targetPostId, targetPostPubkey, pubkey));
+      }
+      const postZapBtn = qs('.profile-post-zap-btn', item);
+      if (postZapBtn) {
+        postZapBtn.addEventListener('click', () => window.zapProfileNote(targetPostId, targetPostPubkey, pubkey, postZapBtn));
       }
       const boostBtn = qs('.profile-post-boost-btn', item);
       if (boostBtn) {
@@ -10176,7 +11977,7 @@
           row.innerHTML = `
             <div class="profile-comment-av"></div>
             <div class="profile-comment-main">
-              <div class="profile-comment-meta"><span class="n"></span><span class="t"></span></div>
+              <div class="profile-comment-meta"><span class="n"></span><span class="nip05-badge profile-comment-nip05" style="display:none">&#10003;</span><span class="t"></span></div>
               <div class="profile-comment-text"></div>
               <div class="profile-comment-media"></div>
               <div class="profile-comment-actions">
@@ -10187,16 +11988,32 @@
               </div>
             </div>`;
           const cAvEl = qs('.profile-comment-av', row);
+          const n = qs('.profile-comment-meta .n', row);
+          const nBadge = qs('.profile-comment-nip05', row);
           setAvatarEl(cAvEl, cp.picture || '', pickAvatar(comment.pubkey));
           const commentVerifiedNip05 = getVerifiedNip05ForPubkey(comment.pubkey, cp.nip05 || '');
           if (cAvEl) cAvEl.classList.toggle('nip05-square', !!commentVerifiedNip05);
-          if (!commentVerifiedNip05 && normalizeNip05Value(cp.nip05 || '')) ensureNip05Verification(comment.pubkey, cp.nip05 || '').catch(() => {});
+          if (!commentVerifiedNip05 && normalizeNip05Value(cp.nip05 || '')) {
+            ensureNip05Verification(comment.pubkey, cp.nip05 || '')
+              .then(() => {
+                const refreshedVerified = getVerifiedNip05ForPubkey(comment.pubkey, cp.nip05 || '');
+                if (cAvEl) cAvEl.classList.toggle('nip05-square', !!refreshedVerified);
+                if (nBadge) {
+                  nBadge.style.display = refreshedVerified ? 'inline-flex' : 'none';
+                  nBadge.title = refreshedVerified ? `NIP-05 verified: ${refreshedVerified}` : '';
+                }
+              })
+              .catch(() => {});
+          }
           if (cAvEl) { cAvEl.style.cursor = 'pointer'; cAvEl.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(comment.pubkey); }; }
-          const n = qs('.profile-comment-meta .n', row);
           if (n) {
             n.textContent = commentDisplayName;
             n.style.cursor = 'pointer';
             n.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(comment.pubkey); };
+          }
+          if (nBadge) {
+            nBadge.style.display = commentVerifiedNip05 ? 'inline-flex' : 'none';
+            nBadge.title = commentVerifiedNip05 ? `NIP-05 verified: ${commentVerifiedNip05}` : '';
           }
           const t = qs('.profile-comment-meta .t', row);
           if (t) t.textContent = `${formatTimeAgo(comment.created_at)} ago`;
@@ -10277,9 +12094,14 @@
             fetchProfileIfNeeded(comment.pubkey).then(() => {
               const fresh = profileFor(comment.pubkey);
               if (n) n.textContent = fresh.display_name || fresh.name || shortHex(comment.pubkey);
+              const freshVerifiedNip05 = getVerifiedNip05ForPubkey(comment.pubkey, fresh.nip05 || '');
+              if (nBadge) {
+                nBadge.style.display = freshVerifiedNip05 ? 'inline-flex' : 'none';
+                nBadge.title = freshVerifiedNip05 ? `NIP-05 verified: ${freshVerifiedNip05}` : '';
+              }
               if (cAvEl) {
                 setAvatarEl(cAvEl, fresh.picture || '', pickAvatar(comment.pubkey));
-                cAvEl.classList.toggle('nip05-square', !!getVerifiedNip05ForPubkey(comment.pubkey, fresh.nip05 || ''));
+                cAvEl.classList.toggle('nip05-square', !!freshVerifiedNip05);
               }
             }).catch(() => {});
           }
@@ -10304,8 +12126,30 @@
 
       commentInput = qs('.profile-comment-input', item);
       commentBtn = qs('.profile-comment-btn', item);
+      const commentAttachBtn = qs('.profile-comment-attach-btn', item);
+      const commentMarkupBtns = qsa('.profile-comment-markup [data-action]', item);
       updateReplyComposerUi();
+      if (commentInput && commentInput.id !== commentInputId) commentInput.id = commentInputId;
+      if (commentAttachBtn && commentInput) {
+        commentAttachBtn.addEventListener('click', () => {
+          window.openComposeUploadModal(`textarea:${commentInput.id}`);
+        });
+      }
+      if (commentInput && commentMarkupBtns && commentMarkupBtns.length) {
+        commentMarkupBtns.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const action = String(btn.dataset.action || '').trim().toLowerCase();
+            if (!action) return;
+            applyNostrMarkupToTextarea(commentInput, action);
+          });
+        });
+      }
       if (commentBtn && commentInput) {
+        commentInput.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' || event.shiftKey) return;
+          event.preventDefault();
+          commentBtn.click();
+        });
         commentBtn.addEventListener('click', async () => {
           const content = (commentInput.value || '').trim();
           if (!content) return;
@@ -10327,9 +12171,10 @@
             state.profileNotesByPubkey.set(pubkey, map);
             commentInput.value = '';
             clearReplyTarget();
-            renderProfileFeed(pubkey);
+            renderFeedOrProfileFeed(pubkey);
           } catch (err) {
             if (window.console) console.warn('Could not post comment', err);
+            alert(err && err.message ? err.message : 'Could not post comment. Please try again.');
           } finally {
             commentBtn.disabled = false;
             commentBtn.textContent = original;
@@ -10354,20 +12199,44 @@
         listEl.dataset.feedLimit = String(newLimit);
         // Re-render with higher limit using current data
         const map = state.profileNotesByPubkey.get(pubkey) || new Map();
+        const isFeedView = isNostrFeedVirtualProfile(pubkey);
         const freshNotes = Array.from(map.values())
           .filter((ev) => {
-            if (!ev || ev.pubkey !== pubkey) return false;
+            if (!ev) return false;
+            if (isFeedView) return isTopLevelNostrFeedPost(ev);
+            if (ev.pubkey !== pubkey) return false;
             if (ev.kind === 6) return true;
             return isTopLevelProfilePost(ev, pubkey);
           })
           .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         const freshAgg = buildProfilePostAggregates(pubkey, freshNotes);
-        renderProfileFeedInto(listEl, freshNotes, profileFor(pubkey), pubkey, freshAgg);
+        const freshProfile = isFeedView
+          ? { pubkey: NOSTR_FEED_PROFILE_KEY, name: 'Nostr Feed', display_name: 'Nostr Feed', picture: '', nip05: '' }
+          : profileFor(pubkey);
+        renderProfileFeedInto(listEl, freshNotes, freshProfile, pubkey, freshAgg);
       }, { rootMargin: '180px' });
       obs.observe(sentinel);
     }
   }
   function renderProfileFeed(pubkey) {
+    if (isNostrFeedVirtualProfile(pubkey)) {
+      const listEl = qs('#nostrFeedList');
+      if (!listEl) return;
+      const map = state.profileNotesByPubkey.get(NOSTR_FEED_PROFILE_KEY) || new Map();
+      const notes = Array.from(map.values())
+        .filter((ev) => isTopLevelNostrFeedPost(ev))
+        .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+      const aggregates = buildProfilePostAggregates(NOSTR_FEED_PROFILE_KEY, notes);
+      renderProfileFeedInto(
+        listEl,
+        notes,
+        { pubkey: NOSTR_FEED_PROFILE_KEY, name: 'Nostr Feed', display_name: 'Nostr Feed', picture: '', nip05: '' },
+        NOSTR_FEED_PROFILE_KEY,
+        aggregates
+      );
+      return;
+    }
+
     const leftList = qs('#profileFeedList');
     const tabList = qs('#profileFeedListSide');
     const count = qs('#profileFeedCount');
@@ -12125,6 +13994,27 @@
       window.showPage('messages');
     };
 
+    window.showNotifications = function () {
+      window.showPage('notifications');
+    };
+
+    window.openNotificationsPage = function () {
+      window.closeAllDD();
+      window.showPage('notifications');
+    };
+
+    window.setVideosFilter = function (filterId) {
+      setVideosFilterInternal(filterId, { render: true });
+    };
+
+    window.refreshNotifications = function (force = false) {
+      loadNotifications({ force: !!force, silent: false, minIntervalMs: 0 }).catch(() => {});
+    };
+
+    window.markNotificationsRead = function () {
+      markNotificationsReadInternal({ silent: false });
+    };
+
     window.openMessagesWithPeer = function (peerToken) {
       openMessagesWithPeer(peerToken, { routeMode: 'push' }).catch(() => {});
     };
@@ -12163,6 +14053,8 @@
           state.hlsInstance = null;
         }
         state.playbackToken++;
+        state.playbackAddress = '';
+        state.playbackUrl = '';
         // Stop runtime ticker
         clearInterval(state._theaterRuntimeInterval);
         state._theaterRuntimeInterval = null;
@@ -12179,16 +14071,28 @@
       const home = qs('#homePage');
       const video = qs('#videoPage');
       const profile = qs('#profilePage');
+      const videos = qs('#videosPage');
+      const feed = qs('#feedPage');
+      const notifications = qs('#notificationsPage');
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
       const faq = qs('#faqPage');
       if (p !== 'video') setActiveViewerAddress('');
       if (p === 'home' && routeMode !== 'skip') syncHomeRoute(routeMode);
+      if (p === 'videos' && routeMode !== 'skip') syncVideosRoute(routeMode);
+      if (p === 'videos' && Object.prototype.hasOwnProperty.call(opts, 'videosFilter')) {
+        setVideosFilterInternal(opts.videosFilter, { render: false });
+      }
+      if (p === 'feed' && routeMode !== 'skip') syncFeedRoute(routeMode);
+      if (p === 'notifications' && routeMode !== 'skip') syncNotificationsRoute(routeMode);
       if (p === 'faq' && routeMode !== 'skip') syncFaqRoute(routeMode);
       if (p === 'messages' && routeMode !== 'skip') syncMessagesRoute(routeMode);
       if (home) home.classList.toggle('active', p === 'home');
       if (video) video.style.display = 'none';
       if (profile) profile.style.display = 'none';
+      if (videos) videos.style.display = p === 'videos' ? 'block' : 'none';
+      if (feed) feed.style.display = p === 'feed' ? 'block' : 'none';
+      if (notifications) notifications.style.display = p === 'notifications' ? 'block' : 'none';
       if (communities) communities.style.display = p === 'communities' ? 'block' : 'none';
       if (messages) messages.style.display = p === 'messages' ? 'block' : 'none';
       if (faq) faq.style.display = p === 'faq' ? 'block' : 'none';
@@ -12202,10 +14106,24 @@
         const streams = heroFeaturedStreams();
         if (streams.length) startHeroCycle();
         renderLiveGrid();
+      } else if (p === 'videos') {
+        ensureHomeLiveSubscription();
+        stopHeroCycle();
+        stopAllAudio(null);
+        renderVideosPage();
       } else {
         stopLiveSubscription();
         stopHeroCycle();
         stopAllAudio(null);
+      }
+      if (p === 'feed') {
+        subscribeNostrFeed();
+      } else {
+        stopNostrFeedSubscription();
+      }
+      if (p === 'notifications') {
+        markNotificationsReadInternal({ silent: true });
+        loadNotifications({ force: false, silent: false, minIntervalMs: 0 }).catch(() => {});
       }
       if (p === 'communities' && window.SifakaCommunities && typeof window.SifakaCommunities.mount === 'function') {
         // Communities view is mounted lazily so existing Sifaka Live startup stays fast.
@@ -12226,6 +14144,9 @@
       const home = qs('#homePage');
       const video = qs('#videoPage');
       const profile = qs('#profilePage');
+      const videos = qs('#videosPage');
+      const feed = qs('#feedPage');
+      const notifications = qs('#notificationsPage');
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
       const faq = qs('#faqPage');
@@ -12235,11 +14156,15 @@
       if (home) home.classList.remove('active');
       if (video) video.style.display = 'block';
       if (profile) profile.style.display = 'none';
+      if (videos) videos.style.display = 'none';
+      if (feed) feed.style.display = 'none';
+      if (notifications) notifications.style.display = 'none';
       if (communities) communities.style.display = 'none';
       if (messages) messages.style.display = 'none';
       if (faq) faq.style.display = 'none';
       teardownDmSubscription();
       stopLiveSubscription();
+      stopNostrFeedSubscription();
       // Kill the hero cycle timer completely ? prevents it firing and starting audio behind theater
       stopHeroCycle();
       stopAllAudio('theater');
@@ -12254,6 +14179,9 @@
       const home = qs('#homePage');
       const video = qs('#videoPage');
       const profile = qs('#profilePage');
+      const videos = qs('#videosPage');
+      const feed = qs('#feedPage');
+      const notifications = qs('#notificationsPage');
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
       const faq = qs('#faqPage');
@@ -12261,11 +14189,15 @@
       if (home) home.classList.remove('active');
       if (video) video.style.display = 'none';
       if (profile) profile.style.display = 'block';
+      if (videos) videos.style.display = 'none';
+      if (feed) feed.style.display = 'none';
+      if (notifications) notifications.style.display = 'none';
       if (communities) communities.style.display = 'none';
       if (messages) messages.style.display = 'none';
       if (faq) faq.style.display = 'none';
       teardownDmSubscription();
       stopLiveSubscription();
+      stopNostrFeedSubscription();
       // Kill the hero cycle timer completely ? prevents audio starting behind profile
       stopHeroCycle();
       stopAllAudio('profile');
@@ -12403,6 +14335,10 @@
 
     window.lfAddList = function () {
       lfAddListInternal();
+    };
+
+    window.setNostrFeedFilterFromSelect = function (filterId) {
+      setNostrFeedFilterInternal(filterId);
     };
 
     // Close list filter dropdown when clicking outside
@@ -13008,8 +14944,15 @@
       if (!noteId || !notePubkey) return;
       if (!state.user) { window.openLogin(); return; }
 
-      const profile = profileFor(notePubkey);
-      const lud16 = String(profile.lud16 || '').trim();
+      let profile = profileFor(notePubkey);
+      let lud16 = String(profile.lud16 || '').trim();
+      if ((!lud16 || !lud16.includes('@')) && !state.profilesByPubkey.has(normalizePubkeyHex(notePubkey) || notePubkey)) {
+        try {
+          await fetchProfileIfNeeded(notePubkey);
+          profile = profileFor(notePubkey);
+          lud16 = String(profile.lud16 || '').trim();
+        } catch (_) {}
+      }
       if (!lud16 || !lud16.includes('@')) {
         alert('This profile has no valid Lightning address (lud16) for zaps.');
         return;
@@ -13034,7 +14977,7 @@
           }
           if (profilePubkey) {
             setTimeout(() => {
-              try { renderProfileFeed(profilePubkey); } catch (_) {}
+              try { renderFeedOrProfileFeed(profilePubkey); } catch (_) {}
             }, 1200);
           }
           return;
@@ -13068,7 +15011,7 @@
         }
 
         state.profileNotesByPubkey.set(profilePubkey, map);
-        renderProfileFeed(profilePubkey);
+        renderFeedOrProfileFeed(profilePubkey);
       } catch (err) {
         alert(err && err.message ? err.message : 'Failed to update post boost.');
       } finally {
@@ -13336,7 +15279,15 @@
     };
 
     function normalizeComposeTarget(target) {
-      const clean = String(target || '').trim().toLowerCase();
+      const raw = String(target || '').trim();
+      if (!raw) return 'profile';
+      if (/^textarea:/i.test(raw)) {
+        const idx = raw.indexOf(':');
+        const id = idx >= 0 ? raw.slice(idx + 1).trim() : '';
+        if (id) return `textarea:${id}`;
+        return 'profile';
+      }
+      const clean = raw.toLowerCase();
       if (clean === 'dm') return 'dm';
       if (clean === 'chat') return 'chat';
       return 'profile';
@@ -13762,17 +15713,39 @@
       cancelRemoteLoginAttempt({ silent: true });
       teardownRemoteSignerSession('Signed out.');
       clearPersistedRemoteSignerSession();
+      stopNostrFeedSubscription();
       try { localStorage.clear(); } catch (_) {}
       state.user = null; state.authMode = 'readonly'; state.localSecretKey = null;
       state.remoteSignerSession = null; state.remoteLoginPending = false; state.remoteLoginAbortController = null; state.remoteLoginUri = '';
       state.pendingOnboardingNsec = ''; state.selectedStreamAddress = null;
       state.selectedProfilePubkey = null; state.selectedProfileLiveAddress = null;
+      state.playbackAddress = ''; state.playbackUrl = '';
       state.profilePlaybackAddress = ''; state.profilePlaybackUrl = '';
       state.followedPubkeys = new Set(); state.contactListPubkeys = new Set();
       state.contactsLatestCreatedAt = 0; state.contactsContent = '';
       state.contactsPTagByPubkey = new Map(); state.contactsOtherTags = [];
       state.followPublishPending = false;
       state.nip51Lists = new Map(); state.savedExternalLists = [];
+      state.nostrFeedFilter = 'following';
+      state.nostrFeedEventsById = new Map();
+      state.nostrFeedProfileFetchPending = new Set();
+      state.nostrFeedRepostLookupPending = new Set();
+      state.nostrFeedInteractionHydratedIds = new Set();
+      state.nostrFeedInteractionQueuedIds = new Set();
+      state.nostrFeedInteractionFetchPending = false;
+      state.nostrFeedLoading = false;
+      state.nostrFeedError = '';
+      state.notificationsById = new Map();
+      state.notificationsLoading = false;
+      state.notificationsError = '';
+      state.notificationsFetchPending = false;
+      state.notificationsFetchPromise = null;
+      state.notificationsLastLoadedAt = 0;
+      state.notificationsLastReadAt = 0;
+      state.notificationsProfileFetchPending = new Set();
+      state.notificationsTargetNotesById = new Map();
+      state.notificationsTargetFetchPending = false;
+      state.notificationsTargetFetchPromise = null;
       state.streamZapTotals = new Map();
       state.streamRecentZapsByAddress = new Map();
       state.streamZapEventIdsByAddress = new Map();
@@ -13935,6 +15908,13 @@
       const originalShowVideoPage = window.showVideoPage;
       window.showVideoPage = function (opts = {}) {
         try {
+          stopNostrFeedSubscription();
+          const feed = qs('#feedPage');
+          if (feed) feed.style.display = 'none';
+          const videos = qs('#videosPage');
+          if (videos) videos.style.display = 'none';
+          const notifications = qs('#notificationsPage');
+          if (notifications) notifications.style.display = 'none';
           views.showTheaterLayout({
             opts,
             qs,
@@ -13984,6 +15964,8 @@
     loadSettingsFromStorage();
     loadFollowedPubkeys();
     loadSavedExternalLists();
+    loadPersistedNostrFeedFilter();
+    loadNotificationsLastReadFromStorage();
     loadLiveStreamsCache();
     applySettingsToDocument();
     restoreRouteFromSpaFallbackQuery();
@@ -14019,6 +16001,7 @@
 
     // Render saved external lists immediately (they come from localStorage)
     renderListFilterDD();
+    renderNostrFeedFilterSelect();
     renderLiveGrid();
   }
 

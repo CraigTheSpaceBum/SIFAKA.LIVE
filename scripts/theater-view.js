@@ -7,6 +7,9 @@
     const home = qs('#homePage');
     const video = qs('#videoPage');
     const profile = qs('#profilePage');
+    const videos = qs('#videosPage');
+    const feed = qs('#feedPage');
+    const notifications = qs('#notificationsPage');
     const communities = qs('#communitiesPage');
     const messages = qs('#messagesPage');
     const faq = qs('#faqPage');
@@ -24,6 +27,9 @@
     if (home) home.classList.remove('active');
     if (video) video.style.display = 'block';
     if (profile) profile.style.display = 'none';
+    if (videos) videos.style.display = 'none';
+    if (feed) feed.style.display = 'none';
+    if (notifications) notifications.style.display = 'none';
     if (communities) communities.style.display = 'none';
     if (messages) messages.style.display = 'none';
     if (faq) faq.style.display = 'none';
