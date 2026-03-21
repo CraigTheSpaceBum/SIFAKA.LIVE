@@ -189,7 +189,7 @@
     featuredCycleTimer: null,
     featuredCycleStart: 0,
     featuredCycleRafId: null,
-    featuredFailed: new Set(),             // addresses that failed playback
+    featuredFailed: new Set(),             // addresses currently considered playback-offline
     // Infinite scroll
     liveGridPage: 0,
     liveGridObserver: null,
@@ -2826,14 +2826,14 @@
       const isRelated = [selected.pubkey, selected.hostPubkey, selected.platformPubkey]
         .map((v) => normalizePubkeyHex(v))
         .includes(normalized);
-      if (isRelated) renderVideo(selected);
+      if (isRelated && isVideoPageVisible()) renderVideo(selected);
     }
 
     if (state.user && normalizePubkeyHex(state.user.pubkey) === normalized) {
       setUserUi();
     }
 
-    if (normalizePubkeyHex(state.selectedProfilePubkey) === normalized) {
+    if (normalizePubkeyHex(state.selectedProfilePubkey) === normalized && isProfilePageVisible()) {
       renderProfilePage(normalized);
       syncProfileRoute(normalized, 'replace');
     }
@@ -3287,6 +3287,19 @@
 
   function isVideoPageVisible() {
     const page = qs('#videoPage');
+    if (!page) return false;
+    if (window.getComputedStyle) {
+      try {
+        return window.getComputedStyle(page).display !== 'none';
+      } catch (_) {
+        // ignore
+      }
+    }
+    return page.style.display !== 'none';
+  }
+
+  function isProfilePageVisible() {
+    const page = qs('#profilePage');
     if (!page) return false;
     if (window.getComputedStyle) {
       try {
@@ -5947,14 +5960,21 @@
       schedulePersistLiveStreamsCache();
       didStore = true;
     }
+    if (didStore && isStreamPlaybackOffline(stream.address)) {
+      const metadataUpdated = incomingCreatedAt > existingCreatedAt
+        || incomingStatus !== existingStatus
+        || incomingUrl !== existingUrl;
+      if (metadataUpdated || incomingStatus === 'ended') {
+        markStreamPlaybackOnline(stream.address);
+      }
+    }
     if (state.selectedStreamAddress === stream.address) {
       const selected = state.streamsByAddress.get(stream.address) || existing || stream;
       const status = normalizeStreamStatus(selected.status);
       const ownPubkey = state.user ? normalizePubkeyHex(state.user.pubkey) : '';
       const streamPubkey = normalizePubkeyHex(selected.pubkey);
       const isOwnStream = !!ownPubkey && ownPubkey === streamPubkey;
-      const isWatchingSelected = state.activeViewerAddress === selected.address
-        || isVideoPageVisible();
+      const isWatchingSelected = isVideoPageVisible();
 
       if (status === 'ended' && !isOwnStream && isWatchingSelected && didStore) {
         renderVideo(selected);
@@ -6147,11 +6167,35 @@
     refreshParticipantDependentUi();
   }
 
+  function isStreamPlaybackOffline(address) {
+    const key = String(address || '').trim();
+    if (!key) return false;
+    return state.featuredFailed.has(key);
+  }
+
+  function markStreamPlaybackOffline(address) {
+    const key = String(address || '').trim();
+    if (!key) return;
+    const wasOffline = state.featuredFailed.has(key);
+    state.featuredFailed.add(key);
+    if (!wasOffline && isHomeViewActive()) renderLiveGrid();
+  }
+
+  function markStreamPlaybackOnline(address) {
+    const key = String(address || '').trim();
+    if (!key) return;
+    const didClear = state.featuredFailed.delete(key);
+    if (didClear && isHomeViewActive()) renderLiveGrid();
+  }
+
   function sortedLiveStreams() {
     return Array.from(state.streamsByAddress.values())
       .filter((s) => s.status !== 'ended')
       .filter((s) => !isDirectFileVideoUrl(s && s.streaming))
       .sort((a, b) => {
+        const offlineA = isStreamPlaybackOffline(a && a.address);
+        const offlineB = isStreamPlaybackOffline(b && b.address);
+        if (offlineA !== offlineB) return offlineA ? 1 : -1;
         // Tier 1: has viewers > 0  ->  Tier 2: has streaming URL but 0 viewers  ->  Tier 3: no URL no viewers
         const tierA = effectiveParticipants(a) > 0 ? 0 : (a.streaming ? 1 : 2);
         const tierB = effectiveParticipants(b) > 0 ? 0 : (b.streaming ? 1 : 2);
@@ -6916,6 +6960,30 @@
       .replace(/'/g, '&#39;');
   }
 
+  function notificationReactionChipHtml(entry) {
+    if (!entry || entry.type !== 'like') return '';
+    const reactionKey = String(entry.reactionKey || '').trim();
+    if (!reactionKey || reactionKey === '+') return '';
+    const reactionLabel = String(entry.reactionLabel || reactionKey).trim() || reactionKey;
+    const reactionImageUrl = sanitizeMediaUrl(entry.reactionImageUrl || '');
+    if (reactionImageUrl && /^https?:\/\//i.test(reactionImageUrl)) {
+      return `<span class="notif-reaction-chip" aria-label="${escapeHtml(reactionLabel)}"><img src="${escapeHtml(reactionImageUrl)}" alt="${escapeHtml(reactionLabel)}"></span>`;
+    }
+    return `<span class="notif-reaction-chip" aria-label="${escapeHtml(reactionLabel)}">${escapeHtml(reactionLabel)}</span>`;
+  }
+
+  function normalizeInlineNostrRefsForRender(text) {
+    const source = String(text || '');
+    if (!source) return '';
+    const token = '(npub1[023456789acdefghjklmnpqrstuvwxyz]+|nprofile1[023456789acdefghjklmnpqrstuvwxyz]+|nevent1[023456789acdefghjklmnpqrstuvwxyz]+|note1[023456789acdefghjklmnpqrstuvwxyz]+|naddr1[023456789acdefghjklmnpqrstuvwxyz]+)';
+    const pattern = new RegExp(`(^|[\\s>(\\[\"'])@?${token}(?=$|[\\s)\\],.;!?\"'])`, 'gi');
+    return source.replace(pattern, (match, lead, entity) => {
+      const safeLead = typeof lead === 'string' ? lead : '';
+      const safeEntity = typeof entity === 'string' ? entity : '';
+      return `${safeLead}nostr:${safeEntity}`;
+    });
+  }
+
   function parseNotificationZapSummary(ev) {
     if (!ev || ev.kind !== KIND_ZAP_RECEIPT) return { sats: 0, senderPubkey: '', note: '', targetId: '', targetPubkeys: [] };
     const tags = ev.tags || [];
@@ -6990,6 +7058,8 @@
           : (targetId ? `Reacted to your post with ${reactionLabel}.` : `Reacted with ${reactionLabel}.`),
         reactionKey: reactionMeta.key || '',
         reactionLabel,
+        reactionImageUrl: reactionMeta.imageUrl || '',
+        reactionShortcode: reactionMeta.shortcode || '',
         raw: ev
       };
     }
@@ -7165,7 +7235,9 @@
       let actionText = 'sent activity';
       if (entry.type === 'mention') actionText = 'mentioned you';
       else if (entry.type === 'reply') actionText = 'replied to you';
-      else if (entry.type === 'like') actionText = 'liked your post';
+      else if (entry.type === 'like') actionText = (entry.reactionKey && entry.reactionKey !== '+')
+        ? 'reacted to your post'
+        : 'liked your post';
       else if (entry.type === 'repost') actionText = 'boosted your post';
       else if (entry.type === 'follow') actionText = 'followed you';
       else if (entry.type === 'zap') actionText = entry.sats > 0
@@ -7190,7 +7262,8 @@
       });
 
       const labelEl = qs('.notif-label', row);
-      labelEl.innerHTML = `<strong>${escapeHtml(actorName)}</strong> ${escapeHtml(actionText)}`;
+      const reactionChipHtml = notificationReactionChipHtml(entry);
+      labelEl.innerHTML = `<strong>${escapeHtml(actorName)}</strong> ${escapeHtml(actionText)}${reactionChipHtml ? ` ${reactionChipHtml}` : ''}`;
       const strongEl = qs('strong', labelEl);
       if (strongEl) {
         strongEl.addEventListener('click', (e) => {
@@ -7204,7 +7277,7 @@
       try { timeEl.title = new Date(Number(entry.created_at || 0) * 1000).toLocaleString(); } catch (_) {}
 
       const chipEl = qs('.notif-type-chip', row);
-      chipEl.textContent = typeLabel;
+      chipEl.textContent = (entry.type === 'like' && entry.reactionKey && entry.reactionKey !== '+') ? 'Reaction' : typeLabel;
 
       const textEl = qs('.notif-text', row);
       const summary = truncateNotificationText(entry.summary || '');
@@ -7215,10 +7288,9 @@
       }
 
       const previewEl = qs('.notif-post-preview', row);
-      const previewText = notificationTargetPreviewText(entry);
-      if (previewEl && previewText) {
-        previewEl.textContent = previewText;
-        previewEl.style.display = 'block';
+      if (previewEl) {
+        previewEl.addEventListener('click', (evt) => evt.stopPropagation());
+        renderNotificationTargetPreview(previewEl, entry);
       }
 
       row.addEventListener('click', () => {
@@ -7245,23 +7317,77 @@
     ];
   }
 
-  function notificationTargetPreviewText(entry) {
-    if (!entry || entry.type !== 'like') return '';
+  function notificationTargetPreviewState(entry) {
+    if (!entry || entry.type !== 'like') return { state: 'none', note: null };
     const targetId = String(entry.targetId || '').trim().toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(targetId)) return '';
+    if (!/^[0-9a-f]{64}$/.test(targetId)) return { state: 'none', note: null };
+    if (!state.notificationsTargetNotesById.has(targetId)) return { state: 'loading', note: null };
     const targetNote = state.notificationsTargetNotesById.get(targetId);
-    if (!targetNote) return 'Loading post...';
+    if (!targetNote || targetNote.__missing) return { state: 'missing', note: null };
+    return { state: 'ready', note: targetNote };
+  }
 
-    const mediaUrls = extractMediaUrlsFromEvent(targetNote);
-    const stripped = stripMediaUrlsFromText(targetNote.content || '', mediaUrls);
-    if (stripped) return truncateNotificationText(stripped, 180);
-    if (mediaUrls.length) return '[Media post]';
-    return '[No post text]';
+  function renderNotificationTargetPreview(previewEl, entry) {
+    if (!previewEl) return;
+    previewEl.innerHTML = '';
+    previewEl.style.display = 'none';
+
+    const preview = notificationTargetPreviewState(entry);
+    if (preview.state === 'none') return;
+    if (preview.state === 'loading') {
+      previewEl.textContent = 'Loading post...';
+      previewEl.style.display = 'block';
+      return;
+    }
+    if (preview.state === 'missing') {
+      previewEl.textContent = 'Post unavailable.';
+      previewEl.style.display = 'block';
+      return;
+    }
+
+    const targetNote = preview.note;
+    const urls = extractMediaUrlsFromEvent(targetNote);
+    const mediaItems = urls
+      .map((url) => ({ url, kind: classifyMediaUrl(url) }))
+      .filter((item) => item.kind === 'photo' || item.kind === 'video' || item.kind === 'audio');
+    const mediaUrls = mediaItems.map((item) => item.url);
+    const strippedText = mediaUrls.length
+      ? stripMediaUrlsFromText(targetNote.content || '', mediaUrls)
+      : String(targetNote.content || '').trim();
+    const normalizedText = normalizeInlineNostrRefsForRender(strippedText);
+    const previewText = truncateNotificationText(normalizedText, 280);
+
+    let hasRenderableContent = false;
+    if (previewText) {
+      const textWrap = document.createElement('div');
+      textWrap.className = 'notif-post-preview-text';
+      textWrap.appendChild(renderNostrContent(previewText));
+      previewEl.appendChild(textWrap);
+      hasRenderableContent = true;
+    }
+    if (mediaItems.length) {
+      renderChatInlineMedia(previewEl, mediaItems, {
+        classPrefix: 'chat',
+        allowVideo: true,
+        allowAudio: true,
+        maxItems: 4
+      });
+      hasRenderableContent = true;
+    }
+    if (!hasRenderableContent) {
+      const empty = document.createElement('div');
+      empty.className = 'notif-post-preview-empty';
+      empty.textContent = '[No post text]';
+      previewEl.appendChild(empty);
+    }
+    previewEl.style.display = 'block';
   }
 
   async function hydrateNotificationTargetNotes(entries = [], opts = {}) {
     if (!state.pool) return [];
     const force = !!opts.force;
+    const nowMs = Date.now();
+    const unresolvedRetryMs = 120000;
     const targetIds = Array.from(new Set(
       (Array.isArray(entries) ? entries : [])
         .filter((entry) => entry && entry.type === 'like')
@@ -7270,7 +7396,14 @@
     ));
     if (!targetIds.length) return [];
 
-    const missingIds = targetIds.filter((id) => force || !state.notificationsTargetNotesById.has(id));
+    const missingIds = targetIds.filter((id) => {
+      if (force || !state.notificationsTargetNotesById.has(id)) return true;
+      const existing = state.notificationsTargetNotesById.get(id);
+      if (!existing) return true;
+      if (existing.__missing !== true) return false;
+      const checkedAt = Number(existing.checkedAt || 0);
+      return !checkedAt || (nowMs - checkedAt) >= unresolvedRetryMs;
+    });
     if (!missingIds.length) return [];
     if (state.notificationsTargetFetchPending && state.notificationsTargetFetchPromise) {
       return state.notificationsTargetFetchPromise;
@@ -7305,6 +7438,13 @@
           state.notificationsTargetNotesById.set(id, ev);
           changed = true;
         }
+      });
+      const checkedAt = Date.now();
+      wanted.forEach((id) => {
+        const existing = state.notificationsTargetNotesById.get(id);
+        if (existing && existing.__missing !== true) return;
+        state.notificationsTargetNotesById.set(id, { id, __missing: true, checkedAt });
+        if (!existing || existing.__missing !== true) changed = true;
       });
       if (changed && isNotificationsPageVisible()) renderNotifications();
       return events || [];
@@ -7936,15 +8076,21 @@
       thumbHtml = `<div class="tc ${gradients[idx % gradients.length]}"></div>`;
     }
 
-    const statusLabel = stream.status === 'planned' ? 'SOON' : stream.status.toUpperCase();
-    const statusBg = stream.status === 'planned' ? 'background:var(--purple)' : '';
+    const isOffline = isStreamPlaybackOffline(stream && stream.address);
+    const statusLabel = isOffline
+      ? 'OFFLINE'
+      : (stream.status === 'planned' ? 'SOON' : stream.status.toUpperCase());
+    const statusBg = isOffline
+      ? 'background:#5c6678;color:#e4e8ef;border:1px solid rgba(210,220,235,.25);'
+      : (stream.status === 'planned' ? 'background:var(--purple)' : '');
+    const statusDot = isOffline ? '' : '<span class="live-dot"></span>';
     const viewerText = hasViewers ? `&#128065; ${viewerCount.toLocaleString()}` : (hasVideo ? '&#128065; 0' : '&#8212;');
     const hideLiveBadge = isDirectFileVideoUrl(stream && stream.streaming);
 
     card.innerHTML = `
       <div class="ct">
         <div class="ct-inner">${thumbHtml}</div>
-        ${hideLiveBadge ? '' : `<div class="cb-live" style="${statusBg}"><span class="live-dot"></span>${statusLabel}</div>`}
+        ${hideLiveBadge ? '' : `<div class="cb-live" style="${statusBg}">${statusDot}${statusLabel}</div>`}
         <div class="cb-viewers">${viewerText}</div>
       </div>
       <div class="ci">
@@ -8252,6 +8398,7 @@
     const onCanPlay = () => {
       if (token !== state.heroPlaybackToken) return;
       setActiveHeroViewerAddress(stream.address);
+      markStreamPlaybackOnline(stream.address);
       video.muted = false; // restore audio
       video.volume = 0.8;
       if (ovEl) ovEl.style.display = 'none';
@@ -8262,7 +8409,7 @@
     video.addEventListener('error', () => {
       if (token !== state.heroPlaybackToken) return;
       setActiveHeroViewerAddress('');
-      state.featuredFailed.add(stream.address);
+      markStreamPlaybackOffline(stream.address);
       heroAdvance(1); // skip to next
     });
 
@@ -8288,7 +8435,7 @@
             hlsObj.on(Hls.Events.ERROR, (_e, data) => {
               if (data && data.fatal && token === state.heroPlaybackToken) {
                 setActiveHeroViewerAddress('');
-                state.featuredFailed.add(stream.address);
+                markStreamPlaybackOffline(stream.address);
                 heroAdvance(1);
               }
             });
@@ -8296,7 +8443,7 @@
         } catch (_) {
           if (token === state.heroPlaybackToken) {
             setActiveHeroViewerAddress('');
-            state.featuredFailed.add(stream.address);
+            markStreamPlaybackOffline(stream.address);
             heroAdvance(1);
           }
         }
@@ -8619,6 +8766,11 @@
     const syncFit = () => syncTheaterVideoFit(video, playerBg);
     video.addEventListener('loadedmetadata', syncFit);
     video.addEventListener('resize', syncFit);
+    const markPlayable = () => {
+      if (status !== 'ended') markStreamPlaybackOnline(address);
+    };
+    video.addEventListener('playing', markPlayable, { once: true });
+    video.addEventListener('canplay', markPlayable, { once: true });
 
     playerBg.innerHTML = '';
     playerBg.appendChild(video);
@@ -8634,6 +8786,7 @@
     const showFailure = (message) => {
       if (fallbackShown || isStale()) return;
       fallbackShown = true;
+      if (status !== 'ended') markStreamPlaybackOffline(address);
       clearPlayback();
       renderPlaybackFallback(message, url);
     };
@@ -8690,7 +8843,8 @@
       sourceAssigned = true;
     }
     if (sourceAssigned && !hlsAttached) {
-      await tryPlayVideoWithMutedFallback(video);
+      const played = await tryPlayVideoWithMutedFallback(video);
+      if (played && status !== 'ended') markStreamPlaybackOnline(address);
     }
   }
 
@@ -10800,8 +10954,8 @@
           }
           renderLiveGrid();
           const sel = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
-          if (sel) renderVideo(sel);
-          if (state.selectedProfilePubkey === ev.pubkey) {
+          if (sel && isVideoPageVisible()) renderVideo(sel);
+          if (state.selectedProfilePubkey === ev.pubkey && isProfilePageVisible()) {
             renderProfilePage(ev.pubkey);
             syncProfileRoute(ev.pubkey, 'replace');
           }
@@ -11123,8 +11277,8 @@
     const statsTargetPubkey = normalizePubkeyHex(stream.hostPubkey || '') || normalizePubkeyHex(stream.pubkey || '');
     if (statsTargetPubkey) subscribeProfileStats(statsTargetPubkey);
     if (routeMode !== 'skip') syncTheaterRoute(stream, routeMode);
-    renderVideo(stream);
     window.showVideoPage();
+    renderVideo(stream);
     setTimeout(() => {
       if (state.selectedStreamAddress !== address) return;
       subscribeChat(stream);
@@ -11185,6 +11339,10 @@
   async function renderProfileLivePlayback(stream) {
     const host = qs('#profileLivePlayer');
     if (!host || !stream) return;
+    if (!isProfilePageVisible()) {
+      clearProfilePlayback();
+      return;
+    }
     const address = String(stream.address || '').trim();
     const url = sanitizeMediaUrl((stream.streaming || '').trim());
     const existingVideo = host.querySelector('video');
@@ -13133,8 +13291,10 @@
     const liveStatus = qs('#profLiveStatus');
     const live = getLatestLiveByPubkey(pubkey);
     state.selectedProfileLiveAddress = live ? live.address : null;
+    const selectedProfileKey = normalizePubkeyHex(state.selectedProfilePubkey) || state.selectedProfilePubkey;
+    const canRenderProfilePlayback = isProfilePageVisible() && selectedProfileKey === normalizedProfilePubkey;
 
-    if (live) {
+    if (live && canRenderProfilePlayback) {
       if (liveWrap) liveWrap.style.display = 'block';
       if (liveStatus) liveStatus.textContent = 'LIVE';
       renderProfileLivePlayback(live);
@@ -13711,7 +13871,7 @@
     // Refresh hero if this is the currently featured stream
     const featStreams = heroFeaturedStreams();
     if (featStreams.length) renderHero(featStreams[state.featuredIndex], state.featuredIndex, featStreams.length);
-    renderVideo(stream);
+    if (isVideoPageVisible()) renderVideo(stream);
     subscribeChat(stream);
     return stream;
   }
@@ -14663,8 +14823,8 @@
       state.isLive = false;
       const selected = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
       if (selected && normalizeStreamStatus(selected.status) === 'ended') {
-        renderVideo(selected);
         window.showVideoPage({ routeMode: 'replace' });
+        renderVideo(selected);
       } else {
         window.showPage('home');
       }
@@ -15600,21 +15760,6 @@
       if (ov) ov.classList.add('open');
     };
 
-    const shareOv = qs('#shareModal');
-    if (shareOv && !shareOv.dataset.boundOutsideClose) {
-      shareOv.dataset.boundOutsideClose = '1';
-      shareOv.addEventListener('click', (e) => {
-        if (e.target === shareOv) window.closeShareModal(e);
-      });
-    }
-    const reactionOv = qs('#reactionPickerModal');
-    if (reactionOv && !reactionOv.dataset.boundOutsideClose) {
-      reactionOv.dataset.boundOutsideClose = '1';
-      reactionOv.addEventListener('click', (e) => {
-        if (e.target === reactionOv) window.closeReactionPicker(e);
-      });
-    }
-
     // ---- Badge popup ----
     window.openBadgePopup = function ({ name, desc, image, id, issuer, definition, award }) {
       const ov = qs('#badgePopupOv');
@@ -15878,13 +16023,7 @@
       if (!e.target.closest('.logo-wrap') && !e.target.closest('.nav-profile')) window.closeAllDD();
     });
 
-    ['goLiveModal', 'endModal', 'loginModal', 'faqModal'].forEach((id) => {
-      const el = qs(`#${id}`);
-      if (!el) return;
-      el.addEventListener('click', function (e) {
-        if (e.target === this) this.classList.remove('open');
-      });
-    });
+    // Backdrop clicks should not dismiss modals. Close controls handle dismissal.
   }
 
   function attachSeparatedPageModules() {

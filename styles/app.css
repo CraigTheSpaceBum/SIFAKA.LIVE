@@ -564,6 +564,27 @@ nav .btn{
   font-weight:700;
   cursor:pointer;
 }
+.notif-reaction-chip{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:1.15rem;
+  height:1.15rem;
+  padding:0 .34rem;
+  margin-left:.24rem;
+  border:1px solid var(--border2);
+  border-radius:999px;
+  background:var(--surface2);
+  font-size:.72rem;
+  line-height:1;
+  vertical-align:middle;
+}
+.notif-reaction-chip img{
+  width:14px;
+  height:14px;
+  object-fit:contain;
+  display:block;
+}
 .notif-time{
   font-family:'DM Mono',monospace;
   font-size:.63rem;
@@ -586,6 +607,19 @@ nav .btn{
   color:var(--text2);
   line-height:1.45;
   word-break:break-word;
+}
+.notif-post-preview-text .nostr-md-p{margin:.14rem 0;line-height:1.45;}
+.notif-post-preview-text .nostr-md-h1,
+.notif-post-preview-text .nostr-md-h2,
+.notif-post-preview-text .nostr-md-h3{margin:.16rem 0 .1rem;font-size:.82rem;line-height:1.35;}
+.notif-post-preview-text .nostr-md-ul,
+.notif-post-preview-text .nostr-md-ol{margin:.2rem 0 .24rem;padding-left:1rem;}
+.notif-post-preview-text .nostr-md-blockquote{margin:.2rem 0;padding:.14rem .42rem;}
+.notif-post-preview .chat-media-wrap{max-width:min(100%,320px);}
+.notif-post-preview-empty{
+  font-family:'DM Mono',monospace;
+  font-size:.64rem;
+  color:var(--muted);
 }
 .notif-type-chip{
   display:inline-flex;
