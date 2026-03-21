@@ -19,6 +19,7 @@
   const KIND_LIVE_CHAT = 1311;
   const KIND_NIP71_VIDEO = 21;
   const KIND_NIP71_REEL = 22;
+  const KIND_COMMENT = 1111;
   const KIND_DIRECT_MESSAGE = 4;
   const KIND_ZAP_RECEIPT = 9735;
   const KIND_PROFILE_STATUS = 30315;
@@ -163,9 +164,14 @@
     videosFilter: 'all',                   // 'all' | 'watch-party' | 'past' | 'nip71-videos' | 'nip71-reels'
     videosRenderTimer: null,
     videosProfileFetchPending: new Set(),
+    videoThumbObserver: null,
     videoPostModalToken: 0,
+    videoPostModalEventId: '',
+    videoPostModalHostPubkey: '',
+    videoPostModalStream: null,
     videoPostModalPlayerCleanup: null,
     videoPostCommentsCacheByEventId: new Map(),
+    videoPostCommentsSubId: null,
     nostrFeedFilter: 'following',          // 'following' | 'contacts' | listId | naddr | 'global'
     nostrFeedSubId: null,
     nostrFeedRenderTimer: null,
@@ -6405,8 +6411,6 @@
   }
 
   function isWatchPartyStream(stream) {
-    const status = normalizeStreamStatus(stream && stream.status);
-    if (status === 'ended') return false;
     return isDirectFileVideoUrl(stream && stream.streaming);
   }
 
@@ -6436,7 +6440,7 @@
 
   function sortedPastVideoStreams() {
     return Array.from(state.streamsByAddress.values())
-      .filter((stream) => isPastVideoStream(stream))
+      .filter((stream) => isPastVideoStream(stream) && !isWatchPartyStream(stream))
       .sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
   }
 
@@ -6532,6 +6536,79 @@
     }, Math.max(0, Number(delayMs || 0)));
   }
 
+  function replaceVideoThumbWithFallback(videoEl, fallbackClass) {
+    if (!videoEl || !videoEl.parentNode) return;
+    const fallback = document.createElement('div');
+    fallback.className = `tc ${fallbackClass}`;
+    try {
+      videoEl.pause();
+      videoEl.removeAttribute('src');
+      videoEl.load();
+    } catch (_) {}
+    videoEl.parentNode.replaceChild(fallback, videoEl);
+  }
+
+  function activateVideoThumbElement(videoEl) {
+    if (!videoEl || videoEl.dataset.thumbLoaded === '1') return;
+    videoEl.dataset.thumbLoaded = '1';
+    const url = sanitizeMediaUrl(videoEl.dataset.thumbSrc || '');
+    const fallbackClass = String(videoEl.dataset.thumbFallback || 't1');
+    if (!url || !/^https?:\/\//i.test(url)) {
+      replaceVideoThumbWithFallback(videoEl, fallbackClass);
+      return;
+    }
+    if (isLikelyHlsStreamUrl(url) && !videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+      // Desktop browsers without native HLS usually cannot provide a poster frame without full HLS setup.
+      replaceVideoThumbWithFallback(videoEl, fallbackClass);
+      return;
+    }
+    try {
+      videoEl.src = url;
+      videoEl.load();
+    } catch (_) {
+      replaceVideoThumbWithFallback(videoEl, fallbackClass);
+    }
+  }
+
+  function ensureVideoThumbObserver() {
+    if (state.videoThumbObserver) return state.videoThumbObserver;
+    if (!('IntersectionObserver' in window)) return null;
+    state.videoThumbObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry || !entry.isIntersecting) return;
+        const videoEl = entry.target;
+        try { state.videoThumbObserver.unobserve(videoEl); } catch (_) {}
+        activateVideoThumbElement(videoEl);
+      });
+    }, { rootMargin: '220px' });
+    return state.videoThumbObserver;
+  }
+
+  function initVideoThumbElement(videoEl) {
+    if (!videoEl) return;
+    videoEl.muted = true;
+    videoEl.defaultMuted = true;
+    videoEl.playsInline = true;
+    videoEl.preload = 'metadata';
+    videoEl.autoplay = false;
+    videoEl.loop = false;
+    videoEl.controls = false;
+    videoEl.addEventListener('loadeddata', () => {
+      // Freeze on first frame for thumbnail behavior.
+      try {
+        videoEl.currentTime = 0.01;
+      } catch (_) {}
+      try { videoEl.pause(); } catch (_) {}
+    });
+    videoEl.addEventListener('error', () => {
+      const fallbackClass = String(videoEl.dataset.thumbFallback || 't1');
+      replaceVideoThumbWithFallback(videoEl, fallbackClass);
+    });
+    const observer = ensureVideoThumbObserver();
+    if (observer) observer.observe(videoEl);
+    else activateVideoThumbElement(videoEl);
+  }
+
   function renderVideosFilterControls(counts = null) {
     const map = counts && typeof counts === 'object'
       ? counts
@@ -6587,17 +6664,23 @@
     const isWatchParty = isWatchPartyStream(stream);
     const isPastStream = status === 'ended';
     const directVideo = isDirectFileVideoUrl(url);
+    const hasImageThumb = !!sanitizeMediaUrl(stream.image || '');
+    const canUseVideoThumb = !hasImageThumb && !!url && /^https?:\/\//i.test(url);
     const badgeLabel = isNip71Reel
       ? 'NOSTR REEL'
       : (isNip71Video
         ? 'NIP-71 VIDEO'
-        : (isWatchParty ? 'WATCH PARTY' : (isPastStream ? 'PAST STREAM' : (directVideo ? 'VIDEO FILE' : 'VIDEO'))));
+        : (isWatchParty
+          ? (isPastStream ? 'PAST WATCH PARTY' : 'WATCH PARTY')
+          : (isPastStream ? 'PAST STREAM' : (directVideo ? 'VIDEO FILE' : 'VIDEO'))));
     const badgeClass = isWatchParty ? 'watch-party' : (directVideo ? 'video-file' : '');
     const timeAgo = stream.created_at ? `${formatTimeAgo(stream.created_at)} ago` : '';
     let statusText = 'Recorded';
     if (isNip71Reel) statusText = 'Nostr Reel (kind:22)';
     else if (isNip71Video) statusText = 'NIP-71 Video (kind:21)';
-    else if (isWatchParty) statusText = status === 'planned' ? 'Planned Watch Party' : 'Live Watch Party';
+    else if (isWatchParty) statusText = status === 'ended'
+      ? 'Past Watch Party'
+      : (status === 'planned' ? 'Planned Watch Party' : 'Live Watch Party');
     else if (isPastStream) statusText = 'Past Stream';
     else if (status === 'planned') statusText = 'Planned';
     const viewers = effectiveParticipants(stream);
@@ -6608,9 +6691,11 @@
 
     card.innerHTML = `
       <div class="video-archive-thumb-wrap">
-        ${stream.image
+        ${hasImageThumb
           ? `<img class="video-archive-thumb" src="${stream.image}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fallback}\\'></div><div class=\\'video-archive-play\\'>&#9654;</div>'">`
-          : `<div class="tc ${fallback}"></div>`}
+          : (canUseVideoThumb
+            ? `<video class="video-archive-thumb-video" data-thumb-src="${escapeHtml(url)}" data-thumb-fallback="${fallback}" muted playsinline preload="metadata"></video>`
+            : `<div class="tc ${fallback}"></div>`)}
         <div class="video-archive-play">&#9654;</div>
         <div class="video-archive-badge ${badgeClass}">${badgeLabel}</div>
         ${timeAgo ? `<div class="video-archive-duration">${timeAgo}</div>` : ''}
@@ -6624,6 +6709,9 @@
         </div>
       </div>
     `;
+
+    const thumbVideoEl = qs('.video-archive-thumb-video', card);
+    if (thumbVideoEl) initVideoThumbElement(thumbVideoEl);
 
     const avatarEl = qs('.video-archive-avatar', card);
     if (avatarEl) {
@@ -6644,7 +6732,7 @@
     if (subEl) subEl.textContent = subMeta;
 
     card.addEventListener('click', () => {
-      if (isNip71Video || isNip71Reel) {
+      if (isNip71Video || isNip71Reel || isWatchParty) {
         openVideoPostModal(stream);
         return;
       }
@@ -6697,7 +6785,7 @@
 
     if (!videos.length) {
       if (filter === 'watch-party') {
-        grid.innerHTML = '<div class="videos-empty">No active Watch Party streams yet. Live .mp4 style streams will appear here.</div>';
+        grid.innerHTML = '<div class="videos-empty">No Watch Party videos yet. Live and past Watch Parties will appear here.</div>';
       } else if (filter === 'past') {
         grid.innerHTML = '<div class="videos-empty">No past streams yet.</div>';
       } else if (filter === 'nip71-videos') {
@@ -6710,6 +6798,11 @@
       return;
     }
 
+    if (state.videoThumbObserver) {
+      qsa('.video-archive-thumb-video', grid).forEach((el) => {
+        try { state.videoThumbObserver.unobserve(el); } catch (_) {}
+      });
+    }
     grid.innerHTML = '';
     const frag = document.createDocumentFragment();
     videos.forEach((stream, idx) => frag.appendChild(buildVideoArchiveCard(stream, idx)));
@@ -6719,6 +6812,36 @@
   function resolveVideoPostEventId(stream) {
     const id = String((stream && (stream.id || (stream.raw && stream.raw.id))) || '').trim().toLowerCase();
     return /^[0-9a-f]{64}$/i.test(id) ? id : '';
+  }
+
+  const VIDEO_POST_COMMENT_KINDS = [1, KIND_COMMENT];
+
+  function isVideoPostCommentEvent(ev) {
+    if (!ev) return false;
+    const kind = Number(ev.kind || 0);
+    return kind === 1 || kind === KIND_COMMENT;
+  }
+
+  function buildVideoPostCommentFilters(eventId) {
+    const normalizedEventId = String(eventId || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(normalizedEventId)) return [];
+    return [
+      { kinds: VIDEO_POST_COMMENT_KINDS, '#e': [normalizedEventId], limit: 300 },
+      { kinds: [KIND_COMMENT], '#E': [normalizedEventId], limit: 300 }
+    ];
+  }
+
+  function videoPostCommentTargetsEvent(ev, eventId) {
+    if (!ev) return false;
+    const normalizedEventId = String(eventId || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(normalizedEventId)) return false;
+    const refs = [
+      ...allTagValues(ev.tags, 'e'),
+      ...allTagValues(ev.tags, 'E')
+    ]
+      .map((ref) => String(ref || '').trim().toLowerCase())
+      .filter((ref) => /^[0-9a-f]{64}$/.test(ref));
+    return refs.includes(normalizedEventId);
   }
 
   function collectVideoPostBodyMedia(stream) {
@@ -6790,36 +6913,91 @@
     const verifiedNip05 = getVerifiedNip05ForPubkey(hostPubkey, profile.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
 
     const bannerEl = qs('#videoPostBanner');
+    const modalCardEl = qs('#videoPostModal .video-post-modal');
+    const hostRowEl = qs('#videoPostModal .video-post-host-row');
     if (bannerEl) {
       if (bannerUrl) {
+        bannerEl.style.display = 'block';
         bannerEl.style.backgroundImage = `linear-gradient(180deg,rgba(7,11,16,.14),rgba(7,11,16,.75)),url("${bannerUrl}")`;
+        if (modalCardEl) modalCardEl.classList.remove('video-post-no-banner');
       } else {
-        bannerEl.style.backgroundImage = 'linear-gradient(140deg,rgba(232,70,10,.36),rgba(247,183,49,.28),rgba(24,34,48,.74))';
+        bannerEl.style.display = 'none';
+        bannerEl.style.backgroundImage = '';
+        if (modalCardEl) modalCardEl.classList.add('video-post-no-banner');
       }
+    }
+    if (hostRowEl) {
+      hostRowEl.classList.toggle('verified', !!verifiedNip05);
+      hostRowEl.classList.toggle('unverified', !verifiedNip05);
+      hostRowEl.classList.toggle('linkable', !!hostPubkey);
+      const openHostProfile = hostPubkey ? (() => showProfileByPubkey(hostPubkey)) : null;
+      hostRowEl.onclick = openHostProfile;
+      hostRowEl.onkeydown = openHostProfile ? ((event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openHostProfile();
+        }
+      }) : null;
+      hostRowEl.tabIndex = openHostProfile ? 0 : -1;
+      hostRowEl.setAttribute('role', openHostProfile ? 'link' : 'group');
     }
 
     const avatarEl = qs('#videoPostHostAvatar');
     if (avatarEl) {
       setAvatarEl(avatarEl, profile.picture || '', pickAvatar(hostPubkey || stream.address || stream.id));
       avatarEl.classList.toggle('nip05-square', !!verifiedNip05);
+      avatarEl.style.cursor = hostPubkey ? 'pointer' : '';
+      avatarEl.onclick = hostPubkey ? (() => showProfileByPubkey(hostPubkey)) : null;
     }
 
     const nameEl = qs('#videoPostHostName');
-    if (nameEl) nameEl.textContent = displayName;
+    if (nameEl) {
+      nameEl.textContent = displayName;
+      nameEl.style.cursor = hostPubkey ? 'pointer' : '';
+      nameEl.onclick = hostPubkey ? (() => showProfileByPubkey(hostPubkey)) : null;
+    }
+
+    const hostCheckEl = qs('#videoPostHostCheck');
+    if (hostCheckEl) {
+      hostCheckEl.style.display = verifiedNip05 ? 'inline-flex' : 'none';
+      hostCheckEl.title = verifiedNip05 ? `NIP-05 verified: ${verifiedNip05}` : '';
+    }
 
     const npubEl = qs('#videoPostHostNpub');
-    if (npubEl) npubEl.textContent = npubDisplay;
+    if (npubEl) {
+      const idDisplay = verifiedNip05 || npubDisplay;
+      npubEl.textContent = idDisplay;
+      npubEl.title = idDisplay;
+      npubEl.style.color = verifiedNip05 ? 'var(--nip05)' : '';
+    }
 
     const nip05El = qs('#videoPostHostNip05');
     if (nip05El) {
-      nip05El.textContent = verifiedNip05 || (claimedNip05 ? `${claimedNip05} (unverified)` : 'No NIP-05 set');
+      if (verifiedNip05) {
+        nip05El.textContent = '';
+        nip05El.title = '';
+        nip05El.style.display = 'none';
+      } else if (claimedNip05) {
+        nip05El.textContent = `${claimedNip05} (unverified)`;
+        nip05El.title = claimedNip05;
+        nip05El.style.display = 'block';
+      } else {
+        nip05El.textContent = '';
+        nip05El.title = '';
+        nip05El.style.display = 'none';
+      }
     }
 
     const titleEl = qs('#videoPostTitle');
     if (titleEl) titleEl.textContent = String(stream.title || 'Untitled video');
 
-    if (claimedNip05 && hostPubkey) {
-      ensureNip05Verification(hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
+    if (claimedNip05 && hostPubkey && !verifiedNip05) {
+      ensureNip05Verification(hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS })
+        .then(() => {
+          if (token !== state.videoPostModalToken) return;
+          renderVideoPostModalHeader(stream, token);
+        })
+        .catch(() => {});
     }
   }
 
@@ -6865,8 +7043,8 @@
     video.controls = true;
     video.autoplay = true;
     video.loop = true;
-    video.muted = true;
-    video.defaultMuted = true;
+    video.muted = false;
+    video.defaultMuted = false;
     video.playsInline = true;
     video.preload = 'metadata';
 
@@ -6907,7 +7085,12 @@
         if (!hlsAttached && !video.canPlayType('application/vnd.apple.mpegurl') && (shouldPreferHls || !looksLikeDirectFileVideo)) {
           const attached = await attachHls();
           if (attached) {
-            await tryPlayVideoWithMutedFallback(video);
+            const played = await tryPlayVideoWithMutedFallback(video);
+            if (played && video.muted) {
+              video.muted = false;
+              video.defaultMuted = false;
+              try { await video.play(); } catch (_) {}
+            }
             return;
           }
         }
@@ -6925,7 +7108,12 @@
       } else {
         const attached = await attachHls();
         if (attached) {
-          await tryPlayVideoWithMutedFallback(video);
+          const played = await tryPlayVideoWithMutedFallback(video);
+          if (played && video.muted) {
+            video.muted = false;
+            video.defaultMuted = false;
+            try { await video.play(); } catch (_) {}
+          }
         }
       }
     }
@@ -6936,6 +7124,11 @@
     }
     if (sourceAssigned && !hlsAttached) {
       const played = await tryPlayVideoWithMutedFallback(video);
+      if (played && video.muted) {
+        video.muted = false;
+        video.defaultMuted = false;
+        try { await video.play(); } catch (_) {}
+      }
       if (!played) showFailure('Autoplay is blocked. Press play to start this video.');
     }
 
@@ -7070,25 +7263,38 @@
     if (!force && cacheEntry && (Date.now() - Number(cacheEntry.savedAt || 0)) < 30000) {
       return Promise.resolve(Array.isArray(cacheEntry.comments) ? cacheEntry.comments : []);
     }
+    const commentFilters = buildVideoPostCommentFilters(eventId);
+    if (!commentFilters.length) return Promise.resolve([]);
 
     return fetchEventsCached(
-      [{ kinds: [1], '#e': [eventId], limit: 140 }],
+      commentFilters,
       {
         scope: 'video-post-comments',
         cacheKey: `video-post-comments:${eventId}`,
-        timeoutMs: 3200,
-        maxEvents: 240
+        timeoutMs: 3800,
+        maxEvents: 420
       }
     ).then((events) => {
       const unique = new Map();
       (events || []).forEach((ev) => {
-        if (!ev || ev.kind !== 1 || !ev.id) return;
+        if (!isVideoPostCommentEvent(ev) || !ev.id || !videoPostCommentTargetsEvent(ev, eventId)) return;
         const existing = unique.get(ev.id);
         if (!existing || Number(existing.created_at || 0) <= Number(ev.created_at || 0)) {
           unique.set(ev.id, ev);
         }
       });
-      const comments = Array.from(unique.values())
+      const fromRelay = Array.from(unique.values())
+        .sort((a, b) => Number(a && a.created_at || 0) - Number(b && b.created_at || 0));
+      const localCached = cacheEntry && Array.isArray(cacheEntry.comments) ? cacheEntry.comments : [];
+      const mergedMap = new Map();
+      [...localCached, ...fromRelay].forEach((ev) => {
+        if (!ev || !ev.id) return;
+        const existing = mergedMap.get(ev.id);
+        if (!existing || Number(existing.created_at || 0) <= Number(ev.created_at || 0)) {
+          mergedMap.set(ev.id, ev);
+        }
+      });
+      const comments = Array.from(mergedMap.values())
         .sort((a, b) => Number(a && a.created_at || 0) - Number(b && b.created_at || 0));
       state.videoPostCommentsCacheByEventId.set(eventId, {
         savedAt: Date.now(),
@@ -7101,6 +7307,161 @@
     });
   }
 
+  function stopVideoPostCommentsSubscription() {
+    if (!state.videoPostCommentsSubId || !state.pool) {
+      state.videoPostCommentsSubId = null;
+      return;
+    }
+    try {
+      state.pool.unsubscribe(state.videoPostCommentsSubId);
+    } catch (_) {}
+    state.videoPostCommentsSubId = null;
+  }
+
+  function subscribeVideoPostComments(stream, token) {
+    stopVideoPostCommentsSubscription();
+    if (!state.pool) return;
+    const eventId = resolveVideoPostEventId(stream);
+    if (!eventId) return;
+    const commentFilters = buildVideoPostCommentFilters(eventId);
+    if (!commentFilters.length) return;
+    state.videoPostCommentsSubId = state.pool.subscribe(
+      commentFilters,
+      {
+        event: (ev) => {
+          if (!isVideoPostCommentEvent(ev) || !ev.id || !videoPostCommentTargetsEvent(ev, eventId)) return;
+          const existingEntry = state.videoPostCommentsCacheByEventId.get(eventId);
+          const existingComments = existingEntry && Array.isArray(existingEntry.comments) ? existingEntry.comments : [];
+          const merged = new Map();
+          [...existingComments, ev].forEach((item) => {
+            if (!item || !item.id) return;
+            const prev = merged.get(item.id);
+            if (!prev || Number(prev.created_at || 0) <= Number(item.created_at || 0)) {
+              merged.set(item.id, item);
+            }
+          });
+          const comments = Array.from(merged.values())
+            .sort((a, b) => Number(a && a.created_at || 0) - Number(b && b.created_at || 0));
+          state.videoPostCommentsCacheByEventId.set(eventId, {
+            savedAt: Date.now(),
+            comments
+          });
+          if (token !== state.videoPostModalToken) return;
+          if (String(state.videoPostModalEventId || '').trim() !== eventId) return;
+          const statusEl = qs('#videoPostCommentsStatus');
+          if (statusEl) statusEl.textContent = comments.length ? `${formatCount(comments.length)} comments` : 'No comments yet';
+          renderVideoPostComments(comments, { token });
+        }
+      }
+    );
+  }
+
+  function refreshVideoPostCommentComposerState() {
+    const input = qs('#videoPostCommentInput');
+    const commentBtn = qs('#videoPostCommentBtn');
+    const attachBtn = qs('#videoPostCommentAttachBtn');
+    const hasTarget = !!String(state.videoPostModalEventId || resolveVideoPostEventId(state.videoPostModalStream) || '').trim();
+    if (input) {
+      input.disabled = !hasTarget;
+      input.placeholder = hasTarget ? 'Write a comment...' : 'Comments unavailable for this item.';
+      if (!hasTarget) input.value = '';
+    }
+    if (commentBtn) commentBtn.disabled = !hasTarget;
+    if (attachBtn) attachBtn.disabled = !hasTarget;
+  }
+
+  function bindVideoPostCommentComposer() {
+    const input = qs('#videoPostCommentInput');
+    const commentBtn = qs('#videoPostCommentBtn');
+    const attachBtn = qs('#videoPostCommentAttachBtn');
+    const markupBtns = qsa('.video-post-comment-markup [data-action]');
+    if (!input || !commentBtn) return;
+    if (!input.id) input.id = 'videoPostCommentInput';
+    if (attachBtn) {
+      attachBtn.onclick = () => {
+        if (!String(state.videoPostModalEventId || '').trim()) return;
+        window.openComposeUploadModal(`textarea:${input.id}`);
+      };
+    }
+
+    if (Array.isArray(markupBtns) && markupBtns.length) {
+      markupBtns.forEach((btn) => {
+        btn.onclick = () => {
+          const action = String(btn.dataset.action || '').trim().toLowerCase();
+          if (!action) return;
+          applyNostrMarkupToTextarea(input, action);
+        };
+      });
+    }
+
+    input.onkeydown = (event) => {
+      if (event.key !== 'Enter' || event.shiftKey) return;
+      event.preventDefault();
+      commentBtn.click();
+    };
+
+    commentBtn.onclick = async () => {
+      const eventId = String(state.videoPostModalEventId || resolveVideoPostEventId(state.videoPostModalStream) || '').trim();
+      const targetPubkey = String(state.videoPostModalHostPubkey || '').trim();
+      if (!eventId) return;
+      const content = String(input.value || '').trim();
+      if (!content) return;
+      if (!state.user) {
+        window.openLogin();
+        return;
+      }
+
+      commentBtn.disabled = true;
+      const originalText = commentBtn.textContent;
+      commentBtn.textContent = 'Posting...';
+      try {
+        const tags = [['e', eventId], ['e', eventId, '', 'root']];
+        if (targetPubkey) tags.push(['p', targetPubkey]);
+        const signed = await signAndPublish(1, content, tags);
+        input.value = '';
+
+        const cacheEntry = state.videoPostCommentsCacheByEventId.get(eventId);
+        const current = cacheEntry && Array.isArray(cacheEntry.comments) ? cacheEntry.comments : [];
+        const dedup = new Map();
+        [...current, signed].forEach((ev) => {
+          if (!ev || !ev.id) return;
+          const existing = dedup.get(ev.id);
+          if (!existing || Number(existing.created_at || 0) <= Number(ev.created_at || 0)) dedup.set(ev.id, ev);
+        });
+        const updatedComments = Array.from(dedup.values())
+          .sort((a, b) => Number(a && a.created_at || 0) - Number(b && b.created_at || 0));
+        state.videoPostCommentsCacheByEventId.set(eventId, {
+          savedAt: Date.now(),
+          comments: updatedComments
+        });
+
+        if (String(state.videoPostModalEventId || '').trim() === eventId) {
+          const statusEl = qs('#videoPostCommentsStatus');
+          if (statusEl) statusEl.textContent = updatedComments.length ? `${formatCount(updatedComments.length)} comments` : 'No comments yet';
+          renderVideoPostComments(updatedComments, { token: state.videoPostModalToken });
+        }
+
+        window.setTimeout(() => {
+          fetchVideoPostComments(state.videoPostModalStream || { id: eventId, raw: { id: eventId } }, { force: true })
+            .then((freshComments) => {
+              if (String(state.videoPostModalEventId || '').trim() !== eventId) return;
+              const statusEl = qs('#videoPostCommentsStatus');
+              if (statusEl) statusEl.textContent = freshComments.length ? `${formatCount(freshComments.length)} comments` : 'No comments yet';
+              renderVideoPostComments(freshComments, { token: state.videoPostModalToken });
+            })
+            .catch(() => {});
+        }, 1600);
+      } catch (err) {
+        alert(err && err.message ? err.message : 'Could not post comment. Please try again.');
+      } finally {
+        commentBtn.disabled = false;
+        commentBtn.textContent = originalText;
+      }
+    };
+
+    refreshVideoPostCommentComposerState();
+  }
+
   function openVideoPostModal(stream) {
     if (!stream) return;
     const ov = qs('#videoPostModal');
@@ -7108,8 +7469,11 @@
 
     state.videoPostModalToken += 1;
     const token = state.videoPostModalToken;
+    state.videoPostModalStream = stream;
+    state.videoPostModalEventId = resolveVideoPostEventId(stream);
 
     const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || String(stream.hostPubkey || stream.pubkey || '').trim().toLowerCase();
+    state.videoPostModalHostPubkey = hostPubkey;
     if (hostPubkey && !state.profilesByPubkey.has(hostPubkey)) {
       fetchProfileIfNeeded(hostPubkey).then(() => {
         if (token !== state.videoPostModalToken) return;
@@ -7137,27 +7501,33 @@
         videoMuted: false,
         videoLoop: false
       });
-      if (!bodyMediaEl.children.length) {
-        bodyMediaEl.innerHTML = '<div class="video-post-empty">No extra photos or media on this post.</div>';
-      }
     }
 
     const commentsStatusEl = qs('#videoPostCommentsStatus');
     const commentsListEl = qs('#videoPostCommentsList');
-    if (commentsStatusEl) commentsStatusEl.textContent = 'Loading comments...';
-    if (commentsListEl) commentsListEl.innerHTML = '<div class="video-post-empty">Loading comments...</div>';
+    if (commentsStatusEl) commentsStatusEl.textContent = state.videoPostModalEventId ? 'Loading comments...' : 'Comments unavailable for this item';
+    if (commentsListEl) commentsListEl.innerHTML = state.videoPostModalEventId
+      ? '<div class="video-post-empty">Loading comments...</div>'
+      : '<div class="video-post-empty">Comments unavailable for this item.</div>';
+    bindVideoPostCommentComposer();
+    refreshVideoPostCommentComposerState();
+    const commentInputEl = qs('#videoPostCommentInput');
+    if (commentInputEl) commentInputEl.value = '';
 
     mountVideoPostModalPlayer(stream.streaming || '', token).catch(() => {});
 
-    fetchVideoPostComments(stream).then((comments) => {
-      if (token !== state.videoPostModalToken) return;
-      if (commentsStatusEl) commentsStatusEl.textContent = comments.length ? `${formatCount(comments.length)} comments` : 'No comments yet';
-      renderVideoPostComments(comments, { token });
-    }).catch(() => {
-      if (token !== state.videoPostModalToken) return;
-      if (commentsStatusEl) commentsStatusEl.textContent = 'Could not load comments right now';
-      if (commentsListEl) commentsListEl.innerHTML = '<div class="video-post-empty">Could not load comments right now.</div>';
-    });
+    if (state.videoPostModalEventId) {
+      fetchVideoPostComments(stream, { force: true }).then((comments) => {
+        if (token !== state.videoPostModalToken) return;
+        if (commentsStatusEl) commentsStatusEl.textContent = comments.length ? `${formatCount(comments.length)} comments` : 'No comments yet';
+        renderVideoPostComments(comments, { token });
+      }).catch(() => {
+        if (token !== state.videoPostModalToken) return;
+        if (commentsStatusEl) commentsStatusEl.textContent = 'Could not load comments right now';
+        if (commentsListEl) commentsListEl.innerHTML = '<div class="video-post-empty">Could not load comments right now.</div>';
+      });
+      subscribeVideoPostComments(stream, token);
+    }
 
     ov.classList.add('open');
   }
@@ -15026,7 +15396,12 @@
       if (!ov) return;
       ov.classList.remove('open');
       state.videoPostModalToken += 1;
+      state.videoPostModalEventId = '';
+      state.videoPostModalHostPubkey = '';
+      state.videoPostModalStream = null;
+      stopVideoPostCommentsSubscription();
       cleanupVideoPostModalPlayer();
+      refreshVideoPostCommentComposerState();
     };
 
     window.refreshNotifications = function (force = false) {
@@ -16826,10 +17201,18 @@
       state.reactionPickerTarget = null;
       state.shareModalStreamAddress = '';
       state.videoPostModalToken = 0;
+      state.videoPostModalEventId = '';
+      state.videoPostModalHostPubkey = '';
+      state.videoPostModalStream = null;
+      stopVideoPostCommentsSubscription();
       cleanupVideoPostModalPlayer();
       state.videoPostCommentsCacheByEventId = new Map();
       state.videosProfileFetchPending = new Set();
       clearVideosRenderTimer();
+      if (state.videoThumbObserver) {
+        try { state.videoThumbObserver.disconnect(); } catch (_) {}
+        state.videoThumbObserver = null;
+      }
       state.composeUploadSource = 'blossom';
       state.composeUploadPending = false;
       state.composeUploadTarget = 'profile';

@@ -556,7 +556,10 @@
       <div class="video-post-host-avatar" id="videoPostHostAvatar"></div>
       <div class="video-post-host-meta">
         <div class="video-post-title" id="videoPostTitle">Video</div>
-        <div class="video-post-host-name" id="videoPostHostName">Unknown</div>
+        <div class="video-post-host-name-row">
+          <div class="video-post-host-name" id="videoPostHostName">Unknown</div>
+          <span class="nip05-badge video-post-host-check" id="videoPostHostCheck" style="display:none">&#10003;</span>
+        </div>
         <div class="video-post-host-id" id="videoPostHostNpub"></div>
         <div class="video-post-host-id" id="videoPostHostNip05"></div>
       </div>
@@ -578,6 +581,27 @@
           <div class="video-post-side-head">Comments</div>
           <div class="video-post-comments-status" id="videoPostCommentsStatus"></div>
           <div class="video-post-comments-list" id="videoPostCommentsList"></div>
+          <div class="profile-comment-form video-post-comment-form">
+            <textarea class="profile-comment-input" id="videoPostCommentInput" rows="1" maxlength="4096" placeholder="Write a comment..."></textarea>
+            <div class="profile-comment-tools">
+              <div class="profile-comment-row">
+                <button type="button" class="profile-comment-btn" id="videoPostCommentBtn">Comment</button>
+                <button type="button" class="profile-comment-attach-btn" id="videoPostCommentAttachBtn">Attach</button>
+              </div>
+              <div class="nostr-markup-toolbar nostr-markup-toolbar-chat profile-comment-markup video-post-comment-markup">
+                <button type="button" data-action="h1">H1</button>
+                <button type="button" data-action="h2">H2</button>
+                <button type="button" data-action="h3">H3</button>
+                <button type="button" data-action="bold">B</button>
+                <button type="button" data-action="italic">I</button>
+                <button type="button" data-action="strike">S</button>
+                <button type="button" data-action="ul">UL</button>
+                <button type="button" data-action="ol">OL</button>
+                <button type="button" data-action="quote">"</button>
+                <button type="button" data-action="code">&lt;/&gt;</button>
+              </div>
+            </div>
+          </div>
         </div>
       </aside>
     </div>
