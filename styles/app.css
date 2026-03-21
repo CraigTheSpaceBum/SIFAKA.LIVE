@@ -411,6 +411,272 @@ nav .btn{
   background:var(--surface2);
 }
 
+.video-post-modal-ov{z-index:2100;}
+.video-post-modal{
+  width:min(1600px,96vw);
+  height:min(94vh,980px);
+  background:var(--surface);
+  border:1px solid var(--border2);
+  border-radius:18px;
+  overflow:hidden;
+  position:relative;
+  box-shadow:0 40px 120px rgba(0,0,0,.9);
+  animation:slideUp .22s cubic-bezier(.4,0,.2,1);
+  display:flex;
+  flex-direction:column;
+}
+.video-post-modal::before{
+  content:'';
+  position:absolute;
+  top:0;
+  left:0;
+  right:0;
+  height:3px;
+  background:linear-gradient(90deg,var(--accent),var(--zap));
+  z-index:2;
+}
+.video-post-close{
+  position:absolute;
+  top:.8rem;
+  right:.8rem;
+  z-index:3;
+}
+.video-post-banner{
+  height:156px;
+  background:linear-gradient(140deg,rgba(232,70,10,.36),rgba(247,183,49,.28),rgba(24,34,48,.74));
+  background-size:cover;
+  background-position:center;
+  border-bottom:1px solid var(--border2);
+}
+.video-post-host-row{
+  display:flex;
+  align-items:flex-end;
+  gap:.75rem;
+  padding:0 .95rem .75rem;
+  margin-top:-32px;
+  position:relative;
+  z-index:2;
+}
+.video-post-host-avatar{
+  width:72px;
+  height:72px;
+  border-radius:50%;
+  border:3px solid var(--surface);
+  background:var(--surface2);
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+}
+.video-post-host-avatar.nip05-square{border-radius:10px;}
+.video-post-host-meta{min-width:0;display:flex;flex-direction:column;gap:.16rem;}
+.video-post-title{
+  font-family:'Syne',sans-serif;
+  font-size:1.02rem;
+  font-weight:760;
+  color:var(--text);
+  line-height:1.3;
+}
+.video-post-host-name{
+  font-size:.84rem;
+  font-weight:700;
+  color:var(--text2);
+  line-height:1.35;
+}
+.video-post-host-id{
+  font-family:'DM Mono',monospace;
+  font-size:.64rem;
+  color:var(--muted);
+  line-height:1.4;
+  word-break:break-all;
+}
+.video-post-body{
+  flex:1;
+  min-height:0;
+  display:grid;
+  grid-template-columns:minmax(0,1.55fr) minmax(340px,.95fr);
+  gap:.75rem;
+  padding:0 .78rem .78rem;
+}
+.video-post-player-col{min-height:0;}
+.video-post-player-wrap{
+  position:relative;
+  height:100%;
+  min-height:340px;
+  max-height:calc(94vh - 278px);
+  background:#000;
+  border:1px solid var(--border2);
+  border-radius:12px;
+  overflow:hidden;
+}
+.video-post-player-wrap video{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+  background:#000;
+}
+.video-post-player-status{
+  position:absolute;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:1rem;
+  color:var(--text2);
+  font-size:.82rem;
+  background:linear-gradient(180deg,rgba(7,11,16,.72),rgba(7,11,16,.84));
+}
+.video-post-side-col{
+  min-height:0;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:.7rem;
+  padding-right:.18rem;
+}
+.video-post-side-block{
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--surface2);
+  padding:.68rem .72rem;
+}
+.video-post-side-head{
+  font-family:'DM Mono',monospace;
+  font-size:.63rem;
+  color:var(--muted);
+  letter-spacing:.09em;
+  text-transform:uppercase;
+  margin-bottom:.45rem;
+}
+.video-post-body-text{
+  color:var(--text2);
+  font-size:.8rem;
+  line-height:1.55;
+}
+.video-post-body-media{margin-top:.55rem;}
+.video-post-comments-status{
+  font-family:'DM Mono',monospace;
+  font-size:.64rem;
+  color:var(--muted);
+  margin-bottom:.4rem;
+}
+.video-post-comments-list{
+  display:flex;
+  flex-direction:column;
+  gap:.5rem;
+}
+.video-post-empty{
+  border:1px dashed var(--border2);
+  border-radius:9px;
+  padding:.62rem;
+  font-size:.74rem;
+  color:var(--muted);
+  background:rgba(255,255,255,.02);
+}
+.video-post-comment-item{
+  display:flex;
+  align-items:flex-start;
+  gap:.44rem;
+  border:1px solid var(--border2);
+  border-radius:10px;
+  padding:.42rem;
+  background:rgba(255,255,255,.02);
+}
+.video-post-comment-avatar{
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  border:1px solid var(--border2);
+  background:var(--surface3);
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+  cursor:pointer;
+}
+.video-post-comment-main{min-width:0;flex:1;}
+.video-post-comment-meta{display:flex;align-items:center;gap:.33rem;}
+.video-post-comment-name{
+  font-size:.72rem;
+  font-weight:650;
+  color:var(--text);
+  cursor:pointer;
+}
+.video-post-comment-name:hover{text-decoration:underline;}
+.video-post-comment-time{
+  font-family:'DM Mono',monospace;
+  font-size:.61rem;
+  color:var(--muted);
+}
+.video-post-comment-text{
+  margin-top:.18rem;
+  font-size:.74rem;
+  color:var(--text2);
+  line-height:1.45;
+  word-break:break-word;
+}
+.video-post-comment-media{margin-top:.34rem;}
+.video-post-media-wrap,
+.video-post-comment-media-wrap{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.34rem;
+}
+.video-post-media-wrap.single,
+.video-post-comment-media-wrap.single{
+  grid-template-columns:1fr;
+}
+.video-post-media-item,
+.video-post-comment-media-item{
+  border:1px solid var(--border2);
+  border-radius:8px;
+  overflow:hidden;
+  background:#070b10;
+  min-height:112px;
+}
+.video-post-media-item.single,
+.video-post-comment-media-item.single{min-height:156px;}
+.video-post-media-item img,
+.video-post-comment-media-item img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+}
+.video-post-media-item video,
+.video-post-comment-media-item video{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:contain;
+  background:#000;
+}
+.video-post-media-item.media-audio,
+.video-post-comment-media-item.media-audio{
+  min-height:auto;
+  padding:.4rem;
+  background:var(--surface);
+}
+
+@media (max-width:1200px){
+  .video-post-body{grid-template-columns:minmax(0,1fr);}
+  .video-post-player-wrap{max-height:min(56vh,560px);}
+  .video-post-side-col{max-height:38vh;}
+}
+@media (max-width:720px){
+  .video-post-modal{width:100vw;height:100vh;border-radius:0;}
+  .video-post-banner{height:132px;}
+  .video-post-host-row{padding:0 .72rem .64rem;gap:.58rem;}
+  .video-post-host-avatar{width:60px;height:60px;}
+  .video-post-title{font-size:.92rem;}
+  .video-post-body{padding:0 .55rem .55rem;}
+  .video-post-player-wrap{min-height:230px;max-height:44vh;}
+}
+
 /* ======== NOSTR FEED PAGE ======== */
 .nostr-feed-wrap{
   max-width:980px;

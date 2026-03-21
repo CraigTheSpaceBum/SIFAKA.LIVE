@@ -831,7 +831,7 @@ export function createCommunitiesUI(input) {
     root.innerHTML = `
       <div class="sc-wrap${hasJoinedCommunities ? '' : ' sc-wrap-empty'}" id="scWrap">
         <aside class="sc-server-rail">
-          <button class="sc-server-add sc-server-add-primary" id="scCreateCommunityBtn" title="Create or join communities">+</button>
+          <button class="sc-server-add sc-server-add-primary" id="scCreateCommunityBtn" title="Create community">+</button>
           <div class="sc-server-list">${railHtml}</div>
         </aside>
 
@@ -908,7 +908,7 @@ export function createCommunitiesUI(input) {
                    <strong>Ready to start your community space?</strong>
                    <p>Set up your own community in minutes, or explore public communities and jump into live conversations.</p>
                    <div class="sc-empty-onboard-actions">
-                     <button id="scOpenCommunityHubBtn" class="sc-onboard-btn">Create or Join</button>
+                      <button id="scOpenCommunityHubBtn" class="sc-onboard-btn">Create</button>
                      <button id="scOpenJoinModalBtn" class="sc-onboard-btn">Browse Public Communities</button>
                    </div>
                  </div>
@@ -2019,11 +2019,18 @@ function renderCommunitySettingsModal(community) {
       });
     }
 
+    const openCreateCommunityModal = () => {
+      ui.createDraft = null;
+      ui.createRoleSearch = { moderators: '', admins: '' };
+      ui.openModal = 'createCommunity';
+      render();
+    };
+
     const createCommunityBtn = root.querySelector('#scCreateCommunityBtn');
-    if (createCommunityBtn) createCommunityBtn.addEventListener('click', () => { ui.openModal = 'communityHub'; render(); });
+    if (createCommunityBtn) createCommunityBtn.addEventListener('click', openCreateCommunityModal);
 
     const openCommunityHubBtn = root.querySelector('#scOpenCommunityHubBtn');
-    if (openCommunityHubBtn) openCommunityHubBtn.addEventListener('click', () => { ui.openModal = 'communityHub'; render(); });
+    if (openCommunityHubBtn) openCommunityHubBtn.addEventListener('click', openCreateCommunityModal);
 
     const openJoinModalBtn = root.querySelector('#scOpenJoinModalBtn');
     if (openJoinModalBtn) openJoinModalBtn.addEventListener('click', () => {
@@ -2033,12 +2040,7 @@ function renderCommunitySettingsModal(community) {
     });
 
     const hubCreateBtn = root.querySelector('#scHubCreateBtn');
-    if (hubCreateBtn) hubCreateBtn.addEventListener('click', () => {
-      ui.createDraft = null;
-      ui.createRoleSearch = { moderators: '', admins: '' };
-      ui.openModal = 'createCommunity';
-      render();
-    });
+    if (hubCreateBtn) hubCreateBtn.addEventListener('click', openCreateCommunityModal);
 
     const hubJoinBtn = root.querySelector('#scHubJoinBtn');
     if (hubJoinBtn) hubJoinBtn.addEventListener('click', () => {
@@ -2187,52 +2189,35 @@ function renderCommunitySettingsModal(community) {
 
         if (nostrBridge) {
           try {
+            const members = (store.getState().data.membersByCommunity[created.community.id] || [])
+              .map((member) => String(member.pubkey || '').trim())
+              .filter(Boolean);
+            const rolesByPubkey = {};
+            (store.getState().data.membersByCommunity[created.community.id] || []).forEach((member) => {
+              const pubkey = String(member.pubkey || '').trim();
+              if (!pubkey) return;
+              rolesByPubkey[pubkey] = uniqueValues(Array.isArray(member.roles) ? member.roles : ['member']);
+            });
+
+            const embeddedChannels = (created.channels || []).map((channel) => ({
+              id: String(channel.id || '').trim(),
+              name: String(channel.name || '').trim(),
+              category: String(channel.category || 'Channels'),
+              topic: String(channel.topic || ''),
+              channelType: String(channel.channelType || 'public'),
+              privacyLevel: String(channel.privacyLevel || 'public'),
+              slowModeSec: Math.max(0, Number(channel.slowModeSec || 0))
+            })).filter((channel) => channel.id && channel.name);
+
             const publishedCommunity = await nostrBridge.publishCommunityCreate({
               ...payload,
               communityId: created.community.id,
-              defaultChannelId: created.community.defaultChannelId
+              defaultChannelId: created.community.defaultChannelId,
+              channels: embeddedChannels,
+              members: uniqueValues(members),
+              rolesByPubkey
             });
             assertPublished(publishedCommunity, 'community metadata');
-
-            if (created.community.type === 'private') {
-              const members = (store.getState().data.membersByCommunity[created.community.id] || []).map((m) => m.pubkey);
-              const rolesByPubkey = {};
-              (store.getState().data.membersByCommunity[created.community.id] || []).forEach((m) => { rolesByPubkey[m.pubkey] = m.roles || ['member']; });
-              const publishedMembers = await nostrBridge.publishCommunityMembers39002({
-                communityId: created.community.id,
-                members,
-                rolesByPubkey,
-                joinMode: created.community.joinMode
-              });
-              assertPublished(publishedMembers, 'private group members (39002)');
-              const publishedMods = await nostrBridge.publishCommunityModerators39003({
-                communityId: created.community.id,
-                moderators: created.community.moderatorPubkeys || [],
-                admins: created.community.adminPubkeys || [],
-                postingPolicy: created.community.postingPolicy
-              });
-              assertPublished(publishedMods, 'private group moderators (39003)');
-            }
-
-            for (let i = 0; i < created.channels.length; i += 1) {
-              const channel = created.channels[i];
-              const publishedChannel = await nostrBridge.publishChannelCreate({
-                communityId: created.community.id,
-                channelId: channel.id,
-                name: channel.name,
-                category: channel.category,
-                topic: channel.topic,
-                channelType: channel.channelType,
-                privacyLevel: channel.privacyLevel,
-                slowModeSec: channel.slowModeSec
-              });
-              assertPublished(publishedChannel, `channel "${channel.name}"`);
-            }
-
-            const membershipPublish = await publishMembershipList();
-            if (!membershipPublish.ok) {
-              finalStatus = 'Community created, but membership sync to relays failed.';
-            }
           } catch (err) {
             store.removeCommunity(created.community.id, { source: 'rollback', bypassPermission: true });
             ui.createBusy = false;

@@ -24,12 +24,10 @@
     </button>
     <div class="nav-dropdown" id="logoDropdown">
       <button class="dd-item" onclick="showPage('home');closeAllDD()"><span class="ddi">&#128308;</span>Live Now <span class="dd-count">24</span></button>
-      <button class="dd-item" onclick="showPage('videos',{videosFilter:'watch-party'});closeAllDD()"><span class="ddi">&#127916;</span>Watch Party</button>
       <button class="dd-item" onclick="showPage('videos',{videosFilter:'all'});closeAllDD()"><span class="ddi">&#127909;</span>Videos</button>
       <button class="dd-item" onclick="showPage('feed');closeAllDD()"><span class="ddi">&#128225;</span>Nostr Feed</button>
       <button class="dd-item" onclick="showCommunities();closeAllDD()"><span class="ddi">&#127970;</span>Communities</button>
       <button class="dd-item" onclick="showPage('messages');closeAllDD()"><span class="ddi">&#128172;</span>Messages</button>
-      <button class="dd-item" onclick="showPage('notifications');closeAllDD()"><span class="ddi">&#128276;</span>Notifications <span class="dd-count" id="navNotifMenuCount" style="display:none">0</span></button>
       <button class="dd-item" onclick="showPage('faq');closeAllDD()"><span class="ddi">&#10067;</span>FAQ & Help</button>
     </div>
   </div>
@@ -549,6 +547,43 @@
   </div>
 </div>
 
+<!-- ========= VIDEO POST POPUP ========= -->
+<div class="modal-ov video-post-modal-ov" id="videoPostModal">
+  <div class="video-post-modal">
+    <button class="mclose video-post-close" onclick="closeVideoPostModal()">x</button>
+    <div class="video-post-banner" id="videoPostBanner"></div>
+    <div class="video-post-host-row">
+      <div class="video-post-host-avatar" id="videoPostHostAvatar"></div>
+      <div class="video-post-host-meta">
+        <div class="video-post-title" id="videoPostTitle">Video</div>
+        <div class="video-post-host-name" id="videoPostHostName">Unknown</div>
+        <div class="video-post-host-id" id="videoPostHostNpub"></div>
+        <div class="video-post-host-id" id="videoPostHostNip05"></div>
+      </div>
+    </div>
+    <div class="video-post-body">
+      <section class="video-post-player-col">
+        <div class="video-post-player-wrap">
+          <video id="videoPostPlayer"></video>
+          <div class="video-post-player-status" id="videoPostPlayerStatus"></div>
+        </div>
+      </section>
+      <aside class="video-post-side-col">
+        <div class="video-post-side-block">
+          <div class="video-post-side-head">Post</div>
+          <div class="video-post-body-text" id="videoPostBodyText"></div>
+          <div class="video-post-body-media" id="videoPostBodyMedia"></div>
+        </div>
+        <div class="video-post-side-block">
+          <div class="video-post-side-head">Comments</div>
+          <div class="video-post-comments-status" id="videoPostCommentsStatus"></div>
+          <div class="video-post-comments-list" id="videoPostCommentsList"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
 <!-- ========= REACTION PICKER ========= -->
 <div class="modal-ov" id="reactionPickerModal">
   <div class="settings-modal share-modal">
@@ -720,6 +755,8 @@
     </div>
     <div class="videos-filter-row" id="videosFilterRow">
       <button class="videos-filter-btn active" id="videosFilterAllBtn" onclick="setVideosFilter('all')">All Videos</button>
+      <button class="videos-filter-btn" id="videosFilterNip71VideosBtn" onclick="setVideosFilter('nip71-videos')">Videos</button>
+      <button class="videos-filter-btn" id="videosFilterNip71ReelsBtn" onclick="setVideosFilter('nip71-reels')">Nostr Reels</button>
       <button class="videos-filter-btn" id="videosFilterWatchPartyBtn" onclick="setVideosFilter('watch-party')">Watch Party</button>
       <button class="videos-filter-btn" id="videosFilterPastBtn" onclick="setVideosFilter('past')">Past Streams</button>
     </div>

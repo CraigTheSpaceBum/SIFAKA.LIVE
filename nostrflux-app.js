@@ -17,6 +17,8 @@
   const KIND_REACTION = 7;
   const KIND_LIVE_EVENT = 30311;
   const KIND_LIVE_CHAT = 1311;
+  const KIND_NIP71_VIDEO = 21;
+  const KIND_NIP71_REEL = 22;
   const KIND_DIRECT_MESSAGE = 4;
   const KIND_ZAP_RECEIPT = 9735;
   const KIND_PROFILE_STATUS = 30315;
@@ -117,6 +119,7 @@
     remoteLoginUri: '',
     pendingOnboardingNsec: '',
     streamsByAddress: new Map(),
+    nip71VideosByEventId: new Map(),
     profilesByPubkey: new Map(),
     profileNotesByPubkey: new Map(),
     profileStatsByPubkey: new Map(),
@@ -157,7 +160,12 @@
     savedExternalLists: [],                 // [{ naddr, name, pubkeys }] from Liststr/external
     activeListFilter: 'all',               // 'all' | 'following' | 'contacts' | listId | naddr
     listFilterDDOpen: false,
-    videosFilter: 'all',                   // 'all' | 'watch-party' | 'past'
+    videosFilter: 'all',                   // 'all' | 'watch-party' | 'past' | 'nip71-videos' | 'nip71-reels'
+    videosRenderTimer: null,
+    videosProfileFetchPending: new Set(),
+    videoPostModalToken: 0,
+    videoPostModalPlayerCleanup: null,
+    videoPostCommentsCacheByEventId: new Map(),
     nostrFeedFilter: 'following',          // 'following' | 'contacts' | listId | naddr | 'global'
     nostrFeedSubId: null,
     nostrFeedRenderTimer: null,
@@ -2622,6 +2630,125 @@
       participants,
       raw: ev
     };
+  }
+
+  function extractNip71ImetaUrls(tags = []) {
+    const out = [];
+    (tags || []).forEach((tag) => {
+      if (!Array.isArray(tag) || String(tag[0] || '').toLowerCase() !== 'imeta') return;
+      for (let i = 1; i < tag.length; i += 1) {
+        const part = String(tag[i] || '').trim();
+        if (!part) continue;
+        const urlPrefixed = part.match(/(?:^|\s)url\s+(https?:\/\/\S+)/i);
+        const direct = part.match(/https?:\/\/\S+/i);
+        const candidate = sanitizeMediaUrl((urlPrefixed && urlPrefixed[1]) || (direct && direct[0]) || '');
+        if (!candidate) continue;
+        out.push(candidate);
+      }
+    });
+    return out;
+  }
+
+  function collectNip71MediaUrls(ev, parsedContent = null) {
+    const out = [...extractMediaUrlsFromEvent(ev), ...extractNip71ImetaUrls((ev && ev.tags) || [])];
+    const content = parsedContent && typeof parsedContent === 'object'
+      ? parsedContent
+      : parseJsonSafe(ev && ev.content ? ev.content : '');
+    if (content && typeof content === 'object') {
+      const directCandidates = [
+        content.url,
+        content.video,
+        content.streaming,
+        content.src,
+        content.media,
+        content.image,
+        content.thumb,
+        content.thumbnail,
+        content.poster
+      ];
+      directCandidates.forEach((value) => {
+        const clean = sanitizeMediaUrl(value || '');
+        if (clean) out.push(clean);
+      });
+      if (Array.isArray(content.urls)) {
+        content.urls.forEach((value) => {
+          const clean = sanitizeMediaUrl(value || '');
+          if (clean) out.push(clean);
+        });
+      }
+    }
+    return Array.from(new Set(out.filter(Boolean)));
+  }
+
+  function parseNip71VideoEvent(ev) {
+    const kind = Number(ev && ev.kind || 0);
+    if (kind !== KIND_NIP71_VIDEO && kind !== KIND_NIP71_REEL) return null;
+
+    const tags = (ev && ev.tags) || [];
+    const tagMap = parseTags(tags);
+    const parsedContent = parseJsonSafe(ev && ev.content ? ev.content : '');
+    const urls = collectNip71MediaUrls(ev, parsedContent);
+    const streaming = urls.find((url) => classifyMediaUrl(url) === 'video' || isDirectFileVideoUrl(url)) || '';
+    if (!streaming) return null;
+
+    const mediaImage = urls.find((url) => classifyMediaUrl(url) === 'photo') || '';
+    const image = sanitizeMediaUrl(
+      firstTag(tagMap, 'image')
+      || firstTag(tagMap, 'thumb')
+      || (parsedContent && (parsedContent.image || parsedContent.thumb || parsedContent.thumbnail || parsedContent.poster))
+      || mediaImage
+      || ''
+    );
+    const fallbackText = String(ev && ev.content || '').trim();
+    const title = String(
+      firstTag(tagMap, 'title')
+      || firstTag(tagMap, 'name')
+      || (parsedContent && (parsedContent.title || parsedContent.name))
+      || fallbackText.slice(0, 90)
+      || (kind === KIND_NIP71_REEL ? 'Nostr Reel' : 'NIP-71 Video')
+    ).trim();
+    const summary = String(
+      firstTag(tagMap, 'summary')
+      || (parsedContent && (parsedContent.summary || parsedContent.description || parsedContent.caption))
+      || fallbackText
+      || ''
+    ).trim();
+    const publisherPubkey = normalizePubkeyHex(ev && ev.pubkey) || String(ev && ev.pubkey || '').trim().toLowerCase();
+    const address = `nip71:${kind}:${String(ev && ev.id || '').trim()}`;
+    if (!publisherPubkey || !address || !ev || !ev.id) return null;
+
+    return {
+      id: ev.id,
+      pubkey: publisherPubkey,
+      hostPubkey: publisherPubkey,
+      platformPubkey: null,
+      created_at: ev.created_at,
+      kind,
+      nip71Kind: kind,
+      d: String(ev.id || '').slice(0, 12),
+      address,
+      status: 'ended',
+      title,
+      summary,
+      image,
+      streaming,
+      starts: null,
+      participants: 0,
+      raw: ev
+    };
+  }
+
+  function upsertNip71Video(video) {
+    const eventId = String(video && video.id || '').trim();
+    if (!eventId) return false;
+    const existing = state.nip71VideosByEventId.get(eventId);
+    const incomingCreatedAt = Number(video && video.created_at || 0);
+    const existingCreatedAt = Number(existing && existing.created_at || 0);
+    if (!existing || incomingCreatedAt >= existingCreatedAt) {
+      state.nip71VideosByEventId.set(eventId, video);
+      return true;
+    }
+    return false;
   }
 
   function isHomePath(pathname) {
@@ -5726,6 +5853,8 @@
   }
 
   function parseProfile(ev) {
+    const normalizedPubkey = normalizePubkeyHex(ev && ev.pubkey || '') || String(ev && ev.pubkey || '').trim().toLowerCase();
+    const fallbackPubkey = normalizedPubkey || String(ev && ev.pubkey || '').trim();
     let obj = {};
     try {
       obj = JSON.parse(ev.content || '{}');
@@ -5733,9 +5862,9 @@
       obj = {};
     }
     return {
-      pubkey: ev.pubkey,
+      pubkey: normalizedPubkey,
       created_at: ev.created_at || 0,
-      name: obj.display_name || obj.name || shortHex(ev.pubkey),
+      name: obj.display_name || obj.name || shortHex(fallbackPubkey),
       display_name: obj.display_name || '',
       username: obj.name || '',
       about: obj.about || '',
@@ -5926,6 +6055,53 @@
     return signed;
   }
 
+  function isLikelyPlayableStreamUrl(url) {
+    const clean = sanitizeMediaUrl(url || '');
+    if (!clean || !/^https?:\/\//i.test(clean)) return false;
+    if (isLikelyHlsStreamUrl(clean)) return true;
+    if (isDirectFileVideoUrl(clean)) return true;
+    return classifyMediaUrl(clean) === 'video';
+  }
+
+  function mergeIncomingStream(existing, incoming) {
+    if (!existing) return incoming;
+    const merged = { ...existing, ...incoming };
+
+    const existingUrl = sanitizeMediaUrl((existing && existing.streaming) || '');
+    const incomingUrl = sanitizeMediaUrl((incoming && incoming.streaming) || '');
+    if (!incomingUrl) {
+      merged.streaming = existingUrl;
+    } else if (!isLikelyPlayableStreamUrl(incomingUrl) && isLikelyPlayableStreamUrl(existingUrl)) {
+      // Do not downgrade a known-good playable URL to a likely non-playable one.
+      merged.streaming = existingUrl;
+    } else {
+      merged.streaming = incomingUrl;
+    }
+
+    if (!sanitizeMediaUrl((incoming && incoming.image) || '')) {
+      merged.image = sanitizeMediaUrl((existing && existing.image) || '');
+    }
+
+    if (!String((incoming && incoming.title) || '').trim()) {
+      merged.title = String((existing && existing.title) || '');
+    }
+    if (!String((incoming && incoming.summary) || '').trim()) {
+      merged.summary = String((existing && existing.summary) || '');
+    }
+    if (!String((incoming && incoming.status) || '').trim()) {
+      merged.status = String((existing && existing.status) || '');
+    }
+
+    if (!String((incoming && incoming.hostPubkey) || '').trim()) {
+      merged.hostPubkey = String((existing && existing.hostPubkey) || (merged.pubkey || ''));
+    }
+    if ((incoming && incoming.platformPubkey) == null && existing && existing.platformPubkey) {
+      merged.platformPubkey = existing.platformPubkey;
+    }
+
+    return merged;
+  }
+
   function updateRelayBar() {
     const bar = qs('#relayBar');
     if (!bar || !state.pool) return;
@@ -5938,38 +6114,41 @@
 
   function upsertStream(stream) {
     const existing = state.streamsByAddress.get(stream.address);
+    const incoming = mergeIncomingStream(existing, stream);
     const existingCreatedAt = Number(existing && existing.created_at || 0);
-    const incomingCreatedAt = Number(stream && stream.created_at || 0);
+    const incomingCreatedAt = Number(incoming && incoming.created_at || 0);
     const existingId = String(existing && existing.id || '').trim();
-    const incomingId = String(stream && stream.id || '').trim();
+    const incomingId = String(incoming && incoming.id || '').trim();
     const existingStatus = normalizeStreamStatus(existing && existing.status);
-    const incomingStatus = normalizeStreamStatus(stream && stream.status);
+    const incomingStatus = normalizeStreamStatus(incoming && incoming.status);
     const existingUrl = sanitizeMediaUrl(existing && existing.streaming || '');
-    const incomingUrl = sanitizeMediaUrl(stream && stream.streaming || '');
+    const incomingUrl = sanitizeMediaUrl(incoming && incoming.streaming || '');
     const sameCoreEvent = !!existing
       && existingCreatedAt === incomingCreatedAt
       && existingId === incomingId
       && existingStatus === incomingStatus
       && existingUrl === incomingUrl
-      && String(existing.title || '') === String(stream.title || '')
-      && String(existing.summary || '') === String(stream.summary || '');
+      && String(existing.title || '') === String(incoming.title || '')
+      && String(existing.summary || '') === String(incoming.summary || '')
+      && Number(existing.participants || 0) === Number(incoming.participants || 0)
+      && sanitizeMediaUrl(existing.image || '') === sanitizeMediaUrl(incoming.image || '');
 
     let didStore = false;
     if (!existing || incomingCreatedAt > existingCreatedAt || (incomingCreatedAt === existingCreatedAt && !sameCoreEvent)) {
-      state.streamsByAddress.set(stream.address, stream);
+      state.streamsByAddress.set(incoming.address, incoming);
       schedulePersistLiveStreamsCache();
       didStore = true;
     }
-    if (didStore && isStreamPlaybackOffline(stream.address)) {
+    if (didStore && isStreamPlaybackOffline(incoming.address)) {
       const metadataUpdated = incomingCreatedAt > existingCreatedAt
         || incomingStatus !== existingStatus
         || incomingUrl !== existingUrl;
       if (metadataUpdated || incomingStatus === 'ended') {
-        markStreamPlaybackOnline(stream.address);
+        markStreamPlaybackOnline(incoming.address);
       }
     }
-    if (state.selectedStreamAddress === stream.address) {
-      const selected = state.streamsByAddress.get(stream.address) || existing || stream;
+    if (state.selectedStreamAddress === incoming.address) {
+      const selected = state.streamsByAddress.get(incoming.address) || existing || incoming;
       const status = normalizeStreamStatus(selected.status);
       const ownPubkey = state.user ? normalizePubkeyHex(state.user.pubkey) : '';
       const streamPubkey = normalizePubkeyHex(selected.pubkey);
@@ -6209,6 +6388,8 @@
     const raw = String(filterId || '').trim().toLowerCase();
     if (raw === 'watch-party' || raw === 'watchparty' || raw === 'watch') return 'watch-party';
     if (raw === 'past' || raw === 'past-stream' || raw === 'past-streams' || raw === 'archive') return 'past';
+    if (raw === 'nip71-videos' || raw === 'nip71' || raw === 'kind21' || raw === 'videos-kind21' || raw === 'videos21') return 'nip71-videos';
+    if (raw === 'nip71-reels' || raw === 'reels' || raw === 'kind22' || raw === 'nostr-reels' || raw === 'reel') return 'nip71-reels';
     return 'all';
   }
 
@@ -6293,19 +6474,87 @@
     return out;
   }
 
+  function sortedNip71VideosByKind(kind) {
+    const targetKind = Number(kind || 0);
+    return Array.from(state.nip71VideosByEventId.values())
+      .filter((entry) => Number(entry && entry.nip71Kind || 0) === targetKind)
+      .sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
+  }
+
+  function sortedNip71Videos() {
+    return Array.from(state.nip71VideosByEventId.values())
+      .sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
+  }
+
+  function sortedAllArchiveVideos() {
+    return [...sortedVideoStreams(), ...sortedNip71Videos()]
+      .sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
+  }
+
+  function collectProfilePubkeysFromStreams(streams = []) {
+    const out = new Set();
+    (streams || []).forEach((stream) => {
+      if (!stream || typeof stream !== 'object') return;
+      [stream.hostPubkey, stream.pubkey, stream.platformPubkey].forEach((pubkey) => {
+        const normalized = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
+        if (normalized) out.add(normalized);
+      });
+    });
+    return out;
+  }
+
+  function ensureProfilesForStreams(streams = []) {
+    const wanted = Array.from(collectProfilePubkeysFromStreams(streams));
+    wanted.forEach((pubkey) => {
+      if (!pubkey || state.profilesByPubkey.has(pubkey) || state.videosProfileFetchPending.has(pubkey)) return;
+      state.videosProfileFetchPending.add(pubkey);
+      fetchProfileIfNeeded(pubkey)
+        .catch(() => {})
+        .finally(() => {
+          state.videosProfileFetchPending.delete(pubkey);
+        });
+    });
+  }
+
+  function clearVideosRenderTimer() {
+    if (!state.videosRenderTimer) return;
+    clearTimeout(state.videosRenderTimer);
+    state.videosRenderTimer = null;
+  }
+
+  function scheduleVideosPageRender(delayMs = 90) {
+    if (!isVideosPageVisible()) return;
+    clearVideosRenderTimer();
+    state.videosRenderTimer = setTimeout(() => {
+      state.videosRenderTimer = null;
+      if (!isVideosPageVisible()) return;
+      renderVideosPage();
+    }, Math.max(0, Number(delayMs || 0)));
+  }
+
   function renderVideosFilterControls(counts = null) {
     const map = counts && typeof counts === 'object'
       ? counts
-      : { all: 0, 'watch-party': 0, past: 0 };
+      : { all: 0, 'watch-party': 0, past: 0, 'nip71-videos': 0, 'nip71-reels': 0 };
     const normalized = normalizeVideosFilter(state.videosFilter);
     state.videosFilter = normalized;
 
     const allBtn = qs('#videosFilterAllBtn');
+    const nip71VideosBtn = qs('#videosFilterNip71VideosBtn');
+    const nip71ReelsBtn = qs('#videosFilterNip71ReelsBtn');
     const watchBtn = qs('#videosFilterWatchPartyBtn');
     const pastBtn = qs('#videosFilterPastBtn');
     if (allBtn) {
       allBtn.classList.toggle('active', normalized === 'all');
       allBtn.textContent = `All Videos (${Number(map.all || 0)})`;
+    }
+    if (nip71VideosBtn) {
+      nip71VideosBtn.classList.toggle('active', normalized === 'nip71-videos');
+      nip71VideosBtn.textContent = `Videos (${Number(map['nip71-videos'] || 0)})`;
+    }
+    if (nip71ReelsBtn) {
+      nip71ReelsBtn.classList.toggle('active', normalized === 'nip71-reels');
+      nip71ReelsBtn.textContent = `Nostr Reels (${Number(map['nip71-reels'] || 0)})`;
     }
     if (watchBtn) {
       watchBtn.classList.toggle('active', normalized === 'watch-party');
@@ -6319,11 +6568,12 @@
 
   function setVideosFilterInternal(filterId, opts = {}) {
     state.videosFilter = normalizeVideosFilter(filterId);
-    if (opts.render !== false && isVideosPageVisible()) renderVideosPage();
+    if (opts.render !== false && isVideosPageVisible()) scheduleVideosPageRender(0);
   }
 
   function buildVideoArchiveCard(stream, idx) {
-    const profile = profileFor(stream.hostPubkey);
+    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || String(stream.hostPubkey || stream.pubkey || '').trim().toLowerCase();
+    const profile = profileFor(hostPubkey);
     const card = document.createElement('article');
     card.className = 'video-archive-card';
 
@@ -6331,14 +6581,23 @@
     const fallback = gradients[idx % gradients.length];
     const status = normalizeStreamStatus(stream.status);
     const url = sanitizeMediaUrl(stream.streaming || '');
+    const nip71Kind = Number(stream.nip71Kind || 0);
+    const isNip71Video = nip71Kind === KIND_NIP71_VIDEO;
+    const isNip71Reel = nip71Kind === KIND_NIP71_REEL;
     const isWatchParty = isWatchPartyStream(stream);
     const isPastStream = status === 'ended';
     const directVideo = isDirectFileVideoUrl(url);
-    const badgeLabel = isWatchParty ? 'WATCH PARTY' : (isPastStream ? 'PAST STREAM' : (directVideo ? 'VIDEO FILE' : 'VIDEO'));
+    const badgeLabel = isNip71Reel
+      ? 'NOSTR REEL'
+      : (isNip71Video
+        ? 'NIP-71 VIDEO'
+        : (isWatchParty ? 'WATCH PARTY' : (isPastStream ? 'PAST STREAM' : (directVideo ? 'VIDEO FILE' : 'VIDEO'))));
     const badgeClass = isWatchParty ? 'watch-party' : (directVideo ? 'video-file' : '');
     const timeAgo = stream.created_at ? `${formatTimeAgo(stream.created_at)} ago` : '';
     let statusText = 'Recorded';
-    if (isWatchParty) statusText = status === 'planned' ? 'Planned Watch Party' : 'Live Watch Party';
+    if (isNip71Reel) statusText = 'Nostr Reel (kind:22)';
+    else if (isNip71Video) statusText = 'NIP-71 Video (kind:21)';
+    else if (isWatchParty) statusText = status === 'planned' ? 'Planned Watch Party' : 'Live Watch Party';
     else if (isPastStream) statusText = 'Past Stream';
     else if (status === 'planned') statusText = 'Planned';
     const viewers = effectiveParticipants(stream);
@@ -6368,23 +6627,29 @@
 
     const avatarEl = qs('.video-archive-avatar', card);
     if (avatarEl) {
-      setAvatarEl(avatarEl, profile.picture || '', pickAvatar(stream.hostPubkey));
+      setAvatarEl(avatarEl, profile.picture || '', pickAvatar(hostPubkey || stream.address || stream.id));
       const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
-      const verifiedNip05 = getVerifiedNip05ForPubkey(stream.hostPubkey, profile.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+      const verifiedNip05 = getVerifiedNip05ForPubkey(hostPubkey, profile.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
       avatarEl.classList.toggle('nip05-square', !!verifiedNip05);
-      if (claimedNip05) {
-        ensureNip05Verification(stream.hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
+      if (claimedNip05 && hostPubkey) {
+        ensureNip05Verification(hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
       }
     }
 
     const titleEl = qs('.video-archive-title', card);
     if (titleEl) titleEl.textContent = stream.title || 'Untitled stream';
     const hostEl = qs('.video-archive-host', card);
-    if (hostEl) hostEl.textContent = profile.display_name || profile.name || shortHex(stream.hostPubkey);
+    if (hostEl) hostEl.textContent = profile.display_name || profile.name || shortHex(hostPubkey);
     const subEl = qs('.video-archive-sub', card);
     if (subEl) subEl.textContent = subMeta;
 
-    card.addEventListener('click', () => openStream(stream.address));
+    card.addEventListener('click', () => {
+      if (isNip71Video || isNip71Reel) {
+        openVideoPostModal(stream);
+        return;
+      }
+      openStream(stream.address);
+    });
     return card;
   }
 
@@ -6396,11 +6661,16 @@
     const allStreams = Array.from(state.streamsByAddress.values());
     const watchParty = sortedWatchPartyStreams();
     const pastStreams = sortedPastVideoStreams();
-    const allVideos = sortedVideoStreams();
+    const nip71Videos = sortedNip71VideosByKind(KIND_NIP71_VIDEO);
+    const nip71Reels = sortedNip71VideosByKind(KIND_NIP71_REEL);
+    const allVideos = sortedAllArchiveVideos();
+    ensureProfilesForStreams(allVideos);
     const counts = {
       all: allVideos.length,
       'watch-party': watchParty.length,
-      past: pastStreams.length
+      past: pastStreams.length,
+      'nip71-videos': nip71Videos.length,
+      'nip71-reels': nip71Reels.length
     };
     renderVideosFilterControls(counts);
 
@@ -6408,14 +6678,19 @@
     let videos = allVideos;
     if (filter === 'watch-party') videos = watchParty;
     else if (filter === 'past') videos = pastStreams;
+    else if (filter === 'nip71-videos') videos = nip71Videos;
+    else if (filter === 'nip71-reels') videos = nip71Reels;
 
     if (countPill) {
       if (filter === 'watch-party') countPill.textContent = counts['watch-party'] ? `${counts['watch-party']} watch parties` : '';
       else if (filter === 'past') countPill.textContent = counts.past ? `${counts.past} past streams` : '';
+      else if (filter === 'nip71-videos') countPill.textContent = counts['nip71-videos'] ? `${counts['nip71-videos']} NIP-71 videos` : '';
+      else if (filter === 'nip71-reels') countPill.textContent = counts['nip71-reels'] ? `${counts['nip71-reels']} nostr reels` : '';
       else countPill.textContent = counts.all ? `${counts.all} videos` : '';
     }
 
-    if (!allStreams.length) {
+    const totalSources = allStreams.length + nip71Videos.length + nip71Reels.length;
+    if (!totalSources) {
       grid.innerHTML = '<div class="live-grid-loading"><div class="lf-spinner"></div>Syncing streams from relays...</div>';
       return;
     }
@@ -6425,20 +6700,476 @@
         grid.innerHTML = '<div class="videos-empty">No active Watch Party streams yet. Live .mp4 style streams will appear here.</div>';
       } else if (filter === 'past') {
         grid.innerHTML = '<div class="videos-empty">No past streams yet.</div>';
+      } else if (filter === 'nip71-videos') {
+        grid.innerHTML = '<div class="videos-empty">No NIP-71 kind:21 videos found yet.</div>';
+      } else if (filter === 'nip71-reels') {
+        grid.innerHTML = '<div class="videos-empty">No NIP-71 kind:22 reels found yet.</div>';
       } else {
-        grid.innerHTML = '<div class="videos-empty">No videos yet. Watch Party streams and ended streams will appear here.</div>';
+        grid.innerHTML = '<div class="videos-empty">No videos yet. Streams, NIP-71 videos, and Nostr reels will appear here.</div>';
       }
       return;
     }
 
     grid.innerHTML = '';
-    videos.forEach((stream, idx) => grid.appendChild(buildVideoArchiveCard(stream, idx)));
+    const frag = document.createDocumentFragment();
+    videos.forEach((stream, idx) => frag.appendChild(buildVideoArchiveCard(stream, idx)));
+    grid.appendChild(frag);
+  }
+
+  function resolveVideoPostEventId(stream) {
+    const id = String((stream && (stream.id || (stream.raw && stream.raw.id))) || '').trim().toLowerCase();
+    return /^[0-9a-f]{64}$/i.test(id) ? id : '';
+  }
+
+  function collectVideoPostBodyMedia(stream) {
+    const event = stream && stream.raw && typeof stream.raw === 'object' ? stream.raw : null;
+    const rawContent = event && typeof event.content === 'string' ? event.content : '';
+    const parsedContent = parseJsonSafe(rawContent);
+    const urls = [];
+
+    if (event && (Number(event.kind || 0) === KIND_NIP71_VIDEO || Number(event.kind || 0) === KIND_NIP71_REEL)) {
+      collectNip71MediaUrls(event, parsedContent).forEach((url) => urls.push(url));
+    } else {
+      extractHttpUrls(String((stream && stream.summary) || '')).forEach((url) => urls.push(url));
+      extractHttpUrls(rawContent).forEach((url) => urls.push(url));
+      const image = sanitizeMediaUrl((stream && stream.image) || '');
+      const streaming = sanitizeMediaUrl((stream && stream.streaming) || '');
+      if (image) urls.push(image);
+      if (streaming) urls.push(streaming);
+    }
+
+    const unique = Array.from(new Set(
+      urls
+        .map((url) => sanitizeMediaUrl(url))
+        .filter(Boolean)
+    ));
+    const mediaItems = unique
+      .map((url) => ({ url, kind: classifyMediaUrl(url) }))
+      .filter((entry) => entry.kind === 'photo' || entry.kind === 'video' || entry.kind === 'audio');
+
+    // Keep the main player video in the left column and avoid duplicating it in the right column.
+    const mainVideoUrl = sanitizeMediaUrl((stream && stream.streaming) || '');
+    return mediaItems.filter((entry) => !(mainVideoUrl && entry.kind === 'video' && entry.url === mainVideoUrl));
+  }
+
+  function buildVideoPostBody(stream) {
+    const event = stream && stream.raw && typeof stream.raw === 'object' ? stream.raw : null;
+    const rawContent = event && typeof event.content === 'string' ? event.content : '';
+    const parsedContent = parseJsonSafe(rawContent);
+    const mediaItems = collectVideoPostBodyMedia(stream);
+    const stripUrls = mediaItems.map((entry) => entry.url);
+
+    let text = '';
+    if (parsedContent && typeof parsedContent === 'object') {
+      text = String(
+        parsedContent.description
+        || parsedContent.summary
+        || parsedContent.caption
+        || parsedContent.text
+        || parsedContent.content
+        || ''
+      ).trim();
+    } else if (rawContent && !String(rawContent).trim().startsWith('{')) {
+      text = String(rawContent || '').trim();
+    }
+    if (!text) text = String((stream && stream.summary) || '').trim();
+    if (!text) text = String((stream && stream.title) || '').trim();
+    if (stripUrls.length) text = stripMediaUrlsFromText(text, stripUrls);
+
+    return { text, mediaItems };
+  }
+
+  function renderVideoPostModalHeader(stream, token) {
+    if (!stream || token !== state.videoPostModalToken) return;
+    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || String(stream.hostPubkey || stream.pubkey || '').trim().toLowerCase();
+    const profile = profileFor(hostPubkey);
+    const bannerUrl = sanitizeMediaUrl(profile.banner || '');
+    const displayName = profile.display_name || profile.name || shortHex(hostPubkey);
+    const npubDisplay = formatNpubForDisplay(hostPubkey) || shortHex(hostPubkey);
+    const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
+    const verifiedNip05 = getVerifiedNip05ForPubkey(hostPubkey, profile.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+
+    const bannerEl = qs('#videoPostBanner');
+    if (bannerEl) {
+      if (bannerUrl) {
+        bannerEl.style.backgroundImage = `linear-gradient(180deg,rgba(7,11,16,.14),rgba(7,11,16,.75)),url("${bannerUrl}")`;
+      } else {
+        bannerEl.style.backgroundImage = 'linear-gradient(140deg,rgba(232,70,10,.36),rgba(247,183,49,.28),rgba(24,34,48,.74))';
+      }
+    }
+
+    const avatarEl = qs('#videoPostHostAvatar');
+    if (avatarEl) {
+      setAvatarEl(avatarEl, profile.picture || '', pickAvatar(hostPubkey || stream.address || stream.id));
+      avatarEl.classList.toggle('nip05-square', !!verifiedNip05);
+    }
+
+    const nameEl = qs('#videoPostHostName');
+    if (nameEl) nameEl.textContent = displayName;
+
+    const npubEl = qs('#videoPostHostNpub');
+    if (npubEl) npubEl.textContent = npubDisplay;
+
+    const nip05El = qs('#videoPostHostNip05');
+    if (nip05El) {
+      nip05El.textContent = verifiedNip05 || (claimedNip05 ? `${claimedNip05} (unverified)` : 'No NIP-05 set');
+    }
+
+    const titleEl = qs('#videoPostTitle');
+    if (titleEl) titleEl.textContent = String(stream.title || 'Untitled video');
+
+    if (claimedNip05 && hostPubkey) {
+      ensureNip05Verification(hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
+    }
+  }
+
+  function cleanupVideoPostModalPlayer() {
+    if (typeof state.videoPostModalPlayerCleanup === 'function') {
+      try { state.videoPostModalPlayerCleanup(); } catch (_) {}
+    }
+    state.videoPostModalPlayerCleanup = null;
+  }
+
+  async function mountVideoPostModalPlayer(url, token) {
+    const video = qs('#videoPostPlayer');
+    const statusEl = qs('#videoPostPlayerStatus');
+    if (!video) return;
+
+    cleanupVideoPostModalPlayer();
+
+    const mediaUrl = sanitizeMediaUrl(url || '');
+    if (!mediaUrl || !/^https?:\/\//i.test(mediaUrl)) {
+      if (statusEl) {
+        statusEl.textContent = 'No browser-playable video URL found.';
+        statusEl.style.display = 'flex';
+      }
+      return;
+    }
+
+    const isStale = () => token !== state.videoPostModalToken;
+    let hlsInstance = null;
+    let hlsAttached = false;
+    const shouldPreferHls = isLikelyHlsStreamUrl(mediaUrl);
+    const looksLikeDirectFileVideo = isDirectFileVideoUrl(mediaUrl);
+
+    if (statusEl) {
+      statusEl.textContent = '';
+      statusEl.style.display = 'none';
+    }
+
+    video.onerror = null;
+    video.pause();
+    video.removeAttribute('src');
+    try { video.load(); } catch (_) {}
+
+    video.controls = true;
+    video.autoplay = true;
+    video.loop = true;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+
+    const showFailure = (message) => {
+      if (isStale()) return;
+      if (statusEl) {
+        statusEl.textContent = message;
+        statusEl.style.display = 'flex';
+      }
+    };
+
+    const attachHls = async () => {
+      if (hlsAttached || isStale()) return false;
+      try {
+        const hls = await attachHlsPlaybackWithRecovery(video, mediaUrl, {
+          isStale,
+          onAttach: (instance) => { hlsInstance = instance; },
+          onFatal: () => {
+            showFailure('Video playback failed after retries. Try opening the source URL directly.');
+          },
+          hlsConfig: {
+            xhrSetup: (xhr) => { xhr.withCredentials = false; }
+          },
+          maxNetworkRecoveries: 4,
+          maxMediaRecoveries: 2
+        });
+        if (!hls) return false;
+        hlsAttached = true;
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+
+    video.onerror = () => {
+      if (isStale()) return;
+      (async () => {
+        if (!hlsAttached && !video.canPlayType('application/vnd.apple.mpegurl') && (shouldPreferHls || !looksLikeDirectFileVideo)) {
+          const attached = await attachHls();
+          if (attached) {
+            await tryPlayVideoWithMutedFallback(video);
+            return;
+          }
+        }
+        showFailure('Could not play this video in your browser.');
+      })().catch(() => {
+        showFailure('Could not play this video in your browser.');
+      });
+    };
+
+    let sourceAssigned = false;
+    if (shouldPreferHls) {
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = mediaUrl;
+        sourceAssigned = true;
+      } else {
+        const attached = await attachHls();
+        if (attached) {
+          await tryPlayVideoWithMutedFallback(video);
+        }
+      }
+    }
+
+    if (!hlsAttached && !sourceAssigned) {
+      video.src = mediaUrl;
+      sourceAssigned = true;
+    }
+    if (sourceAssigned && !hlsAttached) {
+      const played = await tryPlayVideoWithMutedFallback(video);
+      if (!played) showFailure('Autoplay is blocked. Press play to start this video.');
+    }
+
+    state.videoPostModalPlayerCleanup = () => {
+      try {
+        if (hlsInstance) hlsInstance.destroy();
+      } catch (_) {}
+      hlsInstance = null;
+      hlsAttached = false;
+      video.onerror = null;
+      try { video.pause(); } catch (_) {}
+      video.removeAttribute('src');
+      try { video.load(); } catch (_) {}
+      if (statusEl) {
+        statusEl.textContent = '';
+        statusEl.style.display = 'none';
+      }
+    };
+  }
+
+  function renderVideoPostComments(comments, opts = {}) {
+    const listEl = qs('#videoPostCommentsList');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    const normalizedComments = Array.isArray(comments) ? comments : [];
+    if (!normalizedComments.length) {
+      listEl.innerHTML = '<div class="video-post-empty">No comments yet.</div>';
+      return;
+    }
+
+    const token = Number(opts.token || 0);
+    const skipProfileHydrate = !!opts.skipProfileHydrate;
+    const missingPubkeys = new Set();
+    const frag = document.createDocumentFragment();
+
+    normalizedComments.forEach((comment) => {
+      if (!comment || !comment.id) return;
+      const commentPubkey = normalizePubkeyHex(comment.pubkey || '') || String(comment.pubkey || '').trim().toLowerCase();
+      const profile = profileFor(commentPubkey);
+      const displayName = profile.display_name || profile.name || shortHex(commentPubkey);
+      const verifiedNip05 = getVerifiedNip05ForPubkey(commentPubkey, profile.nip05 || '');
+
+      const row = document.createElement('div');
+      row.className = 'video-post-comment-item';
+      row.innerHTML = `
+        <div class="video-post-comment-avatar"></div>
+        <div class="video-post-comment-main">
+          <div class="video-post-comment-meta">
+            <span class="video-post-comment-name"></span>
+            <span class="nip05-badge video-post-comment-nip05" style="display:none">&#10003;</span>
+            <span class="video-post-comment-time"></span>
+          </div>
+          <div class="video-post-comment-text"></div>
+          <div class="video-post-comment-media"></div>
+        </div>
+      `;
+
+      const avatarEl = qs('.video-post-comment-avatar', row);
+      if (avatarEl) {
+        setAvatarEl(avatarEl, profile.picture || '', pickAvatar(commentPubkey));
+        avatarEl.classList.toggle('nip05-square', !!verifiedNip05);
+        avatarEl.addEventListener('click', () => showProfileByPubkey(commentPubkey));
+      }
+
+      const nameEl = qs('.video-post-comment-name', row);
+      if (nameEl) {
+        nameEl.textContent = displayName;
+        nameEl.addEventListener('click', () => showProfileByPubkey(commentPubkey));
+      }
+
+      const nip05El = qs('.video-post-comment-nip05', row);
+      if (nip05El) {
+        nip05El.style.display = verifiedNip05 ? 'inline-flex' : 'none';
+        nip05El.title = verifiedNip05 ? `NIP-05 verified: ${verifiedNip05}` : '';
+      }
+
+      const timeEl = qs('.video-post-comment-time', row);
+      if (timeEl) timeEl.textContent = `${formatTimeAgo(comment.created_at)} ago`;
+
+      const textEl = qs('.video-post-comment-text', row);
+      const mediaEl = qs('.video-post-comment-media', row);
+      const rawComment = String(comment.content || '');
+      const mediaItems = Array.from(new Set(
+        extractHttpUrls(rawComment)
+          .map((url) => sanitizeMediaUrl(url))
+          .filter(Boolean)
+      ))
+        .map((url) => ({ url, kind: classifyMediaUrl(url) }))
+        .filter((entry) => entry.kind === 'photo' || entry.kind === 'video' || entry.kind === 'audio');
+      const mediaUrls = mediaItems.map((entry) => entry.url);
+      const text = mediaUrls.length ? stripMediaUrlsFromText(rawComment, mediaUrls) : rawComment;
+      if (textEl) {
+        textEl.innerHTML = '';
+        if (String(text || '').trim()) textEl.appendChild(renderNostrContent(text));
+        else textEl.textContent = '[empty comment]';
+      }
+      if (mediaEl) {
+        mediaEl.innerHTML = '';
+        renderChatInlineMedia(mediaEl, mediaItems, {
+          allowVideo: true,
+          classPrefix: 'video-post-comment',
+          maxItems: 4,
+          videoAutoplay: false,
+          videoMuted: false,
+          videoLoop: false
+        });
+        mediaEl.style.display = mediaEl.children.length ? 'block' : 'none';
+      }
+
+      if (!skipProfileHydrate && commentPubkey && !state.profilesByPubkey.has(commentPubkey)) {
+        missingPubkeys.add(commentPubkey);
+      }
+      frag.appendChild(row);
+    });
+    listEl.appendChild(frag);
+
+    if (!skipProfileHydrate && missingPubkeys.size) {
+      Promise.allSettled(Array.from(missingPubkeys).map((pubkey) => fetchProfileIfNeeded(pubkey))).then(() => {
+        if (token !== state.videoPostModalToken) return;
+        renderVideoPostComments(normalizedComments, { token, skipProfileHydrate: true });
+      });
+    }
+  }
+
+  function fetchVideoPostComments(stream, opts = {}) {
+    const eventId = resolveVideoPostEventId(stream);
+    if (!eventId) return Promise.resolve([]);
+
+    const force = !!opts.force;
+    const cacheEntry = state.videoPostCommentsCacheByEventId.get(eventId);
+    if (!force && cacheEntry && (Date.now() - Number(cacheEntry.savedAt || 0)) < 30000) {
+      return Promise.resolve(Array.isArray(cacheEntry.comments) ? cacheEntry.comments : []);
+    }
+
+    return fetchEventsCached(
+      [{ kinds: [1], '#e': [eventId], limit: 140 }],
+      {
+        scope: 'video-post-comments',
+        cacheKey: `video-post-comments:${eventId}`,
+        timeoutMs: 3200,
+        maxEvents: 240
+      }
+    ).then((events) => {
+      const unique = new Map();
+      (events || []).forEach((ev) => {
+        if (!ev || ev.kind !== 1 || !ev.id) return;
+        const existing = unique.get(ev.id);
+        if (!existing || Number(existing.created_at || 0) <= Number(ev.created_at || 0)) {
+          unique.set(ev.id, ev);
+        }
+      });
+      const comments = Array.from(unique.values())
+        .sort((a, b) => Number(a && a.created_at || 0) - Number(b && b.created_at || 0));
+      state.videoPostCommentsCacheByEventId.set(eventId, {
+        savedAt: Date.now(),
+        comments
+      });
+      return comments;
+    }).catch(() => {
+      if (cacheEntry && Array.isArray(cacheEntry.comments)) return cacheEntry.comments;
+      return [];
+    });
+  }
+
+  function openVideoPostModal(stream) {
+    if (!stream) return;
+    const ov = qs('#videoPostModal');
+    if (!ov) return;
+
+    state.videoPostModalToken += 1;
+    const token = state.videoPostModalToken;
+
+    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || String(stream.hostPubkey || stream.pubkey || '').trim().toLowerCase();
+    if (hostPubkey && !state.profilesByPubkey.has(hostPubkey)) {
+      fetchProfileIfNeeded(hostPubkey).then(() => {
+        if (token !== state.videoPostModalToken) return;
+        renderVideoPostModalHeader(stream, token);
+      }).catch(() => {});
+    }
+
+    renderVideoPostModalHeader(stream, token);
+
+    const body = buildVideoPostBody(stream);
+    const bodyTextEl = qs('#videoPostBodyText');
+    const bodyMediaEl = qs('#videoPostBodyMedia');
+    if (bodyTextEl) {
+      bodyTextEl.innerHTML = '';
+      if (body.text) bodyTextEl.appendChild(renderNostrContent(body.text));
+      else bodyTextEl.textContent = 'No post text provided.';
+    }
+    if (bodyMediaEl) {
+      bodyMediaEl.innerHTML = '';
+      renderChatInlineMedia(bodyMediaEl, body.mediaItems, {
+        allowVideo: true,
+        classPrefix: 'video-post',
+        maxItems: 8,
+        videoAutoplay: false,
+        videoMuted: false,
+        videoLoop: false
+      });
+      if (!bodyMediaEl.children.length) {
+        bodyMediaEl.innerHTML = '<div class="video-post-empty">No extra photos or media on this post.</div>';
+      }
+    }
+
+    const commentsStatusEl = qs('#videoPostCommentsStatus');
+    const commentsListEl = qs('#videoPostCommentsList');
+    if (commentsStatusEl) commentsStatusEl.textContent = 'Loading comments...';
+    if (commentsListEl) commentsListEl.innerHTML = '<div class="video-post-empty">Loading comments...</div>';
+
+    mountVideoPostModalPlayer(stream.streaming || '', token).catch(() => {});
+
+    fetchVideoPostComments(stream).then((comments) => {
+      if (token !== state.videoPostModalToken) return;
+      if (commentsStatusEl) commentsStatusEl.textContent = comments.length ? `${formatCount(comments.length)} comments` : 'No comments yet';
+      renderVideoPostComments(comments, { token });
+    }).catch(() => {
+      if (token !== state.videoPostModalToken) return;
+      if (commentsStatusEl) commentsStatusEl.textContent = 'Could not load comments right now';
+      if (commentsListEl) commentsListEl.innerHTML = '<div class="video-post-empty">Could not load comments right now.</div>';
+    });
+
+    ov.classList.add('open');
   }
 
   function profileFor(pubkey) {
-    return state.profilesByPubkey.get(pubkey) || {
-      pubkey,
-      name: shortHex(pubkey),
+    const normalizedPubkey = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
+    const profile = (normalizedPubkey && state.profilesByPubkey.get(normalizedPubkey))
+      || state.profilesByPubkey.get(pubkey);
+    if (profile) return profile;
+    return {
+      pubkey: normalizedPubkey || pubkey,
+      name: shortHex(normalizedPubkey || pubkey),
       about: '',
       picture: '',
       banner: '',
@@ -8145,7 +8876,7 @@
   function renderLiveGrid() {
     const grid = qs('#liveGrid');
     const sentinel = qs('#liveGridSentinel');
-    if (isVideosPageVisible()) renderVideosPage();
+    if (isVideosPageVisible()) scheduleVideosPageRender();
     if (!grid) return;
     if (!isHomeViewActive()) {
       if (state.liveGridObserver) { state.liveGridObserver.disconnect(); state.liveGridObserver = null; }
@@ -8664,10 +9395,13 @@
 
     const hls = new Hls({
       enableWorker: true,
-      lowLatencyMode: true,
-      backBufferLength: 12,
-      maxBufferLength: 20,
-      maxMaxBufferLength: 60,
+      // Theater mode prioritizes playback stability over ultra-low latency.
+      lowLatencyMode: false,
+      backBufferLength: 30,
+      maxBufferLength: 45,
+      maxMaxBufferLength: 120,
+      liveSyncDurationCount: 4,
+      liveMaxLatencyDurationCount: 12,
       manifestLoadingTimeOut: 15000,
       manifestLoadingMaxRetry: 5,
       manifestLoadingRetryDelay: 1200,
@@ -8680,6 +9414,7 @@
 
     let networkRecoveries = 0;
     let mediaRecoveries = 0;
+    let lastNonFatalNetworkRecoveryAt = 0;
 
     onAttach(hls);
     hls.loadSource(url);
@@ -8691,12 +9426,23 @@
     });
 
     hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (isStale() || !data || !data.fatal) return;
+      if (isStale() || !data) return;
+
+      if (!data.fatal) {
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          const now = Date.now();
+          if ((now - lastNonFatalNetworkRecoveryAt) > 4000) {
+            lastNonFatalNetworkRecoveryAt = now;
+            try { hls.startLoad(-1); } catch (_) {}
+          }
+        }
+        return;
+      }
 
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveries < maxNetworkRecoveries) {
         networkRecoveries += 1;
         try {
-          hls.startLoad();
+          hls.startLoad(-1);
           return;
         } catch (_) {}
       }
@@ -8782,14 +9528,87 @@
     let fallbackShown = false;
     const shouldPreferHls = isLikelyHlsStreamUrl(url);
     const looksLikeDirectFileVideo = /\.(mp4|webm|mov|m4v|mkv)($|[?#])/i.test(url);
+    let sourceAssigned = false;
+    let stallWatchdogId = null;
+    let lastProgressAt = Date.now();
+    let lastPlaybackTime = 0;
+    let recoveryInFlight = false;
+    const markProgress = () => {
+      lastProgressAt = Date.now();
+      lastPlaybackTime = Number(video.currentTime || 0);
+    };
+    video.addEventListener('timeupdate', markProgress);
+    video.addEventListener('progress', markProgress);
+    video.addEventListener('playing', markProgress);
+    video.addEventListener('canplay', markProgress);
 
     const showFailure = (message) => {
       if (fallbackShown || isStale()) return;
       fallbackShown = true;
+      if (stallWatchdogId) {
+        clearInterval(stallWatchdogId);
+        stallWatchdogId = null;
+      }
       if (status !== 'ended') markStreamPlaybackOffline(address);
       clearPlayback();
       renderPlaybackFallback(message, url);
     };
+
+    const attemptPlaybackRecovery = async (reason = 'watchdog') => {
+      if (recoveryInFlight || isStale() || fallbackShown) return false;
+      if (video.ended) return false;
+      if (video.paused && !video.seeking && reason !== 'error') return false;
+
+      const now = Date.now();
+      const currentTime = Number(video.currentTime || 0);
+      const stalledLongEnough = (now - lastProgressAt) > 9000;
+      const timeMoved = Math.abs(currentTime - lastPlaybackTime) > 0.04;
+      if (reason !== 'error' && (!stalledLongEnough || timeMoved)) return false;
+
+      recoveryInFlight = true;
+      try {
+        if (state.hlsInstance && hlsAttached) {
+          try { state.hlsInstance.startLoad(-1); } catch (_) {}
+          if ((now - lastProgressAt) > 14000) {
+            try { state.hlsInstance.recoverMediaError(); } catch (_) {}
+          }
+        } else if (sourceAssigned && (video.readyState || 0) < 2) {
+          const sourceUrl = video.currentSrc || url;
+          if (sourceUrl) {
+            try {
+              video.src = sourceUrl;
+              video.load();
+            } catch (_) {}
+          }
+        }
+
+        const played = await tryPlayVideoWithMutedFallback(video);
+        if (played && status !== 'ended') markStreamPlaybackOnline(address);
+        markProgress();
+        return !!played;
+      } catch (_) {
+        return false;
+      } finally {
+        recoveryInFlight = false;
+      }
+    };
+
+    const scheduleRecovery = () => {
+      if (isStale() || fallbackShown) return;
+      window.setTimeout(() => {
+        attemptPlaybackRecovery('stall').catch(() => {});
+      }, 1500);
+    };
+    video.addEventListener('waiting', scheduleRecovery);
+    video.addEventListener('stalled', scheduleRecovery);
+    stallWatchdogId = window.setInterval(() => {
+      if (isStale() || fallbackShown || !document.body.contains(video)) {
+        clearInterval(stallWatchdogId);
+        stallWatchdogId = null;
+        return;
+      }
+      attemptPlaybackRecovery('watchdog').catch(() => {});
+    }, 6000);
 
     const attachHls = async () => {
       if (hlsAttached || isStale()) return false;
@@ -8821,13 +9640,13 @@
           const attached = await attachHls();
           if (attached) return;
         }
+        const recovered = await attemptPlaybackRecovery('error');
+        if (recovered) return;
         showFailure('Playback failed. The stream URL may be offline or unsupported.');
       })().catch(() => {
         showFailure('Playback failed. The stream URL may be offline or unsupported.');
       });
     });
-
-    let sourceAssigned = false;
     if (shouldPreferHls) {
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
@@ -10934,10 +11753,15 @@
   function subscribeProfiles(pubkeys) {
     // Always include the logged-in user so their profile isn't lost when other fetches fire
     const allKeys = [...pubkeys];
-    if (state.user && state.user.pubkey && !allKeys.includes(state.user.pubkey)) {
-      allKeys.unshift(state.user.pubkey);
+    const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '') || '';
+    if (ownPubkey && !allKeys.includes(ownPubkey)) {
+      allKeys.unshift(ownPubkey);
     }
-    const unique = [...new Set(allKeys)];
+    const unique = [...new Set(
+      allKeys
+        .map((pubkey) => normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase())
+        .filter(Boolean)
+    )];
     if (!unique.length) return;
     if (state.profileSubId) state.pool.unsubscribe(state.profileSubId);
     state.profileSubId = state.pool.subscribe(
@@ -10946,24 +11770,27 @@
         event: (ev) => {
           if (ev.kind !== KIND_PROFILE) return;
           const parsed = parseProfile(ev);
-          state.profilesByPubkey.set(ev.pubkey, parsed);
-          ensureNip05Verification(ev.pubkey, parsed.nip05 || '').catch(() => {});
-          if (state.user && state.user.pubkey === ev.pubkey) {
-            state.user.profile = state.profilesByPubkey.get(ev.pubkey);
+          const profilePubkey = normalizePubkeyHex(parsed.pubkey || ev.pubkey || '') || '';
+          if (!profilePubkey) return;
+          state.profilesByPubkey.set(profilePubkey, { ...parsed, pubkey: profilePubkey });
+          ensureNip05Verification(profilePubkey, parsed.nip05 || '').catch(() => {});
+          if (state.user && normalizePubkeyHex(state.user.pubkey) === profilePubkey) {
+            state.user.profile = state.profilesByPubkey.get(profilePubkey);
             setUserUi();
           }
-          renderLiveGrid();
+          if (isHomeViewActive()) renderLiveGrid();
+          if (isVideosPageVisible()) scheduleVideosPageRender();
           const sel = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
           if (sel && isVideoPageVisible()) renderVideo(sel);
-          if (state.selectedProfilePubkey === ev.pubkey && isProfilePageVisible()) {
-            renderProfilePage(ev.pubkey);
-            syncProfileRoute(ev.pubkey, 'replace');
+          if (normalizePubkeyHex(state.selectedProfilePubkey) === profilePubkey && isProfilePageVisible()) {
+            renderProfilePage(profilePubkey);
+            syncProfileRoute(profilePubkey, 'replace');
           }
           if (isMessagesPageVisible()) {
             renderDmContactSelect();
             scheduleDmRender({
               conversations: true,
-              thread: normalizePubkeyHex(state.dmActivePeerPubkey) === normalizePubkeyHex(ev.pubkey)
+              thread: normalizePubkeyHex(state.dmActivePeerPubkey) === profilePubkey
             });
           }
         }
@@ -10973,30 +11800,32 @@
 
   // Fetch a single profile on demand (commenters, repost authors, etc.)
   function fetchProfileIfNeeded(pubkey) {
-    if (!pubkey) return Promise.resolve();
-    const existing = state.profilesByPubkey.get(pubkey);
+    const normalizedPubkey = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
+    if (!normalizedPubkey) return Promise.resolve();
+    const existing = state.profilesByPubkey.get(normalizedPubkey);
     if (existing && (existing.name || existing.display_name || existing.picture)) return Promise.resolve();
     return fetchEventsCached(
-      [{ kinds: [KIND_PROFILE], authors: [pubkey], limit: 2 }],
+      [{ kinds: [KIND_PROFILE], authors: [normalizedPubkey], limit: 2 }],
       {
         scope: 'profile-by-pubkey',
-        cacheKey: `profile-by-pubkey:${pubkey}`,
+        cacheKey: `profile-by-pubkey:${normalizedPubkey}`,
         timeoutMs: 2200,
         maxEvents: 10
       }
     ).then((events) => {
       const latest = (events || [])
-        .filter((ev) => ev && ev.kind === KIND_PROFILE && ev.pubkey === pubkey)
+        .filter((ev) => ev && ev.kind === KIND_PROFILE && normalizePubkeyHex(ev.pubkey || '') === normalizedPubkey)
         .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))[0];
       if (!latest) return;
       const parsed = parseProfile(latest);
-      state.profilesByPubkey.set(pubkey, parsed);
-      ensureNip05Verification(pubkey, parsed.nip05 || '').catch(() => {});
+      state.profilesByPubkey.set(normalizedPubkey, { ...parsed, pubkey: normalizedPubkey });
+      ensureNip05Verification(normalizedPubkey, parsed.nip05 || '').catch(() => {});
+      if (isVideosPageVisible()) scheduleVideosPageRender();
       if (isMessagesPageVisible()) {
         renderDmContactSelect();
         scheduleDmRender({
           conversations: true,
-          thread: normalizePubkeyHex(state.dmActivePeerPubkey) === normalizePubkeyHex(pubkey)
+          thread: normalizePubkeyHex(state.dmActivePeerPubkey) === normalizedPubkey
         });
       }
     }).catch(() => {});
@@ -11041,29 +11870,42 @@
     };
 
     state.liveSubId = state.pool.subscribe(
-      [{ kinds: [KIND_LIVE_EVENT], limit: 200, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7 }],
+      [{ kinds: [KIND_LIVE_EVENT, KIND_NIP71_VIDEO, KIND_NIP71_REEL], limit: 350, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 30 }],
       {
         event: (ev) => {
-          const stream = parseLiveEvent(ev);
-          upsertStream(stream);
-          if (state.pendingRouteAddress && stream.address === state.pendingRouteAddress) {
-            tryOpenPendingRouteStream();
+          const kind = Number(ev && ev.kind || 0);
+          if (kind === KIND_LIVE_EVENT) {
+            const stream = parseLiveEvent(ev);
+            upsertStream(stream);
+            if (state.pendingRouteAddress && stream.address === state.pendingRouteAddress) {
+              tryOpenPendingRouteStream();
+            }
+            if (isVideosPageVisible()) scheduleVideosPageRender();
+            // Avoid rapid card remount/flicker while the initial relay sync is still streaming in.
+            if (isHomeViewActive() && initialSyncComplete) debouncedRenderGrid();
+            return;
           }
-          // Avoid rapid card remount/flicker while the initial relay sync is still streaming in.
-          if (isHomeViewActive() && initialSyncComplete) debouncedRenderGrid();
+
+          if (kind === KIND_NIP71_VIDEO || kind === KIND_NIP71_REEL) {
+            const video = parseNip71VideoEvent(ev);
+            if (!video) return;
+            const changed = upsertNip71Video(video);
+            if (video.hostPubkey) fetchProfileIfNeeded(video.hostPubkey).catch(() => {});
+            if (changed && isVideosPageVisible()) scheduleVideosPageRender();
+          }
         },
         eose: () => {
           if (initialSyncComplete) return;
           initialSyncComplete = true;
           if (isHomeViewActive()) renderLiveGrid();
+          if (isVideosPageVisible()) scheduleVideosPageRender();
           persistLiveStreamsCache();
           tryOpenPendingRouteStream();
           if (isHomeViewActive() && shouldRunHeroCycle() && !state.featuredCycleTimer) startHeroCycle();
-          const streams = sortedLiveStreams();
-          // Fetch profiles for both the event publisher AND actual streamer
-          const pubSet = new Set();
-          streams.forEach((s) => { pubSet.add(s.pubkey); if (s.hostPubkey) pubSet.add(s.hostPubkey); });
+          const allKnownVideoEntries = [...Array.from(state.streamsByAddress.values()), ...sortedNip71Videos()];
+          const pubSet = collectProfilePubkeysFromStreams(allKnownVideoEntries);
           subscribeProfiles(Array.from(pubSet));
+          ensureProfilesForStreams(allKnownVideoEntries);
           if (isHomeViewActive() && state.selectedProfilePubkey) renderProfilePage(state.selectedProfilePubkey);
         }
       }
@@ -14167,6 +15009,26 @@
       setVideosFilterInternal(filterId, { render: true });
     };
 
+    window.openVideoPostModal = function (streamAddressOrObject) {
+      let stream = null;
+      if (streamAddressOrObject && typeof streamAddressOrObject === 'object') {
+        stream = streamAddressOrObject;
+      } else {
+        const key = String(streamAddressOrObject || '').trim();
+        stream = key ? (state.nip71VideosByEventId.get(key) || state.streamsByAddress.get(key) || null) : null;
+      }
+      if (!stream) return;
+      openVideoPostModal(stream);
+    };
+
+    window.closeVideoPostModal = function () {
+      const ov = qs('#videoPostModal');
+      if (!ov) return;
+      ov.classList.remove('open');
+      state.videoPostModalToken += 1;
+      cleanupVideoPostModalPlayer();
+    };
+
     window.refreshNotifications = function (force = false) {
       loadNotifications({ force: !!force, silent: false, minIntervalMs: 0 }).catch(() => {});
     };
@@ -14243,6 +15105,9 @@
       if (p === 'videos' && Object.prototype.hasOwnProperty.call(opts, 'videosFilter')) {
         setVideosFilterInternal(opts.videosFilter, { render: false });
       }
+      if (p !== 'videos' && typeof window.closeVideoPostModal === 'function') {
+        window.closeVideoPostModal();
+      }
       if (p === 'feed' && routeMode !== 'skip') syncFeedRoute(routeMode);
       if (p === 'notifications' && routeMode !== 'skip') syncNotificationsRoute(routeMode);
       if (p === 'faq' && routeMode !== 'skip') syncFaqRoute(routeMode);
@@ -14270,7 +15135,7 @@
         ensureHomeLiveSubscription();
         stopHeroCycle();
         stopAllAudio(null);
-        renderVideosPage();
+        scheduleVideosPageRender(0);
       } else {
         stopLiveSubscription();
         stopHeroCycle();
@@ -14301,6 +15166,7 @@
 
     window.showVideoPage = function (opts = {}) {
       const routeMode = opts.routeMode || 'replace';
+      if (typeof window.closeVideoPostModal === 'function') window.closeVideoPostModal();
       const home = qs('#homePage');
       const video = qs('#videoPage');
       const profile = qs('#profilePage');
@@ -14336,6 +15202,7 @@
 
     window.showProfile = function (name, av, npub, nip05, rawPubkey, opts = {}) {
       const routeMode = opts.routeMode || 'push';
+      if (typeof window.closeVideoPostModal === 'function') window.closeVideoPostModal();
       const home = qs('#homePage');
       const video = qs('#videoPage');
       const profile = qs('#profilePage');
@@ -15958,6 +16825,11 @@
       state.postBoostPublishPendingByNoteId = new Set();
       state.reactionPickerTarget = null;
       state.shareModalStreamAddress = '';
+      state.videoPostModalToken = 0;
+      cleanupVideoPostModalPlayer();
+      state.videoPostCommentsCacheByEventId = new Map();
+      state.videosProfileFetchPending = new Set();
+      clearVideosRenderTimer();
       state.composeUploadSource = 'blossom';
       state.composeUploadPending = false;
       state.composeUploadTarget = 'profile';
@@ -15990,7 +16862,7 @@
         state.liveStreamCachePersistTimer = null;
       }
       window.closeAllDD();
-      ['goLiveModal','endModal','loginModal','settingsModal','faqModal','shareModal','reactionPickerModal','composeUploadModal','gifPickerModal'].forEach((id) => {
+      ['goLiveModal','endModal','loginModal','settingsModal','faqModal','shareModal','videoPostModal','reactionPickerModal','composeUploadModal','gifPickerModal'].forEach((id) => {
         const el = qs('#' + id); if (el) el.classList.remove('open');
       });
       setUserUi();

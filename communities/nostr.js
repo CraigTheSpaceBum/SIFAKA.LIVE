@@ -187,6 +187,52 @@ function parseCommunityEvent(event) {
     .filter((tag) => Array.isArray(tag) && tag[0] === 'p' && String(tag[3] || '').toLowerCase().includes('admin'))
     .map((tag) => String(tag[1] || '').trim())
     .filter(Boolean);
+  const defaultChannelId = String(firstTagValue(tags, 'default_channel') || content.default_channel || '');
+
+  const embeddedChannels = (Array.isArray(content.channels) ? content.channels : [])
+    .map((entry, index) => {
+      const item = entry && typeof entry === 'object' ? entry : {};
+      const fallbackName = `channel-${index + 1}`;
+      const name = String(item.name || item.channel || item.title || fallbackName).trim();
+      const idValue = String(item.id || '').trim();
+      const channelId = idValue || `ch:${d.slice(0, 24)}:${slugify(name || fallbackName)}`;
+      return {
+        id: channelId,
+        communityId: id,
+        name,
+        topic: String(item.topic || item.about || ''),
+        category: String(item.category || 'Channels'),
+        channelType: String(item.channelType || item.type || 'public'),
+        privacyLevel: String(item.privacyLevel || item.privacy || 'public'),
+        slowModeSec: Math.max(0, Number(item.slowModeSec || item.slow_mode || 0)),
+        source: 'nostr',
+        createdAt: Number(event.created_at || nowSec()) * 1000,
+        eventId: event.id
+      };
+    })
+    .filter((entry) => entry.id && entry.name);
+
+  const embeddedRolesInput = (content.roles_by_pubkey && typeof content.roles_by_pubkey === 'object')
+    ? content.roles_by_pubkey
+    : ((content.rolesByPubkey && typeof content.rolesByPubkey === 'object') ? content.rolesByPubkey : {});
+  const embeddedRolesByPubkey = {};
+  Object.keys(embeddedRolesInput || {}).forEach((rawPubkey) => {
+    const pubkey = String(rawPubkey || '').trim();
+    if (!pubkey) return;
+    const rawRoles = embeddedRolesInput[rawPubkey];
+    const roleList = Array.isArray(rawRoles) ? rawRoles : [rawRoles];
+    const normalizedRoles = unique(roleList.map((role) => String(role || '').trim()).filter(Boolean));
+    if (!normalizedRoles.length) return;
+    embeddedRolesByPubkey[pubkey] = normalizedRoles;
+  });
+
+  const embeddedMembers = unique([
+    ...(Array.isArray(content.members) ? content.members : []).map((member) => String(member || '').trim()).filter(Boolean),
+    ...Object.keys(embeddedRolesByPubkey)
+  ]);
+  embeddedMembers.forEach((pubkey) => {
+    if (!embeddedRolesByPubkey[pubkey]) embeddedRolesByPubkey[pubkey] = ['member'];
+  });
 
   return {
     id,
@@ -204,8 +250,11 @@ function parseCommunityEvent(event) {
     joinMode: String(firstTagValue(tags, 'mode') || firstTagValue(tags, 'join') || content.join_mode || (type === 'private' ? 'approval' : 'open')),
     postingPolicy: String(firstTagValue(tags, 'posting_policy') || content.posting_policy || 'members'),
     discoverable: type === 'public' ? firstTagValue(tags, 'discoverable') !== '0' : false,
-    defaultChannelId: String(firstTagValue(tags, 'default_channel') || content.default_channel || ''),
+    defaultChannelId,
     allowedRelays: unique([...tagValues(tags, 'relay'), ...tagValues(tags, 'r')]),
+    embeddedChannels,
+    embeddedMembers,
+    embeddedRolesByPubkey,
     createdAt: Number(event.created_at || nowSec()) * 1000,
     updatedAt: Number(event.created_at || nowSec()) * 1000,
     source: 'nostr',
@@ -585,6 +634,22 @@ export function createNostrBridge(options = {}) {
 
         const community = parseCommunityEvent(event);
         if (community && handlers.onCommunity) handlers.onCommunity(community, event, ctx);
+        if (community && handlers.onChannel) {
+          (community.embeddedChannels || []).forEach((embeddedChannel) => {
+            handlers.onChannel(embeddedChannel, event, ctx);
+          });
+        }
+        if (community && handlers.onCommunityMembers39002 && (community.embeddedMembers || []).length) {
+          handlers.onCommunityMembers39002({
+            communityId: community.id,
+            members: community.embeddedMembers,
+            rolesByPubkey: community.embeddedRolesByPubkey || {},
+            replace: true,
+            source: 'nostr',
+            eventId: event.id,
+            createdAt: Number(event.created_at || nowSec()) * 1000
+          }, event, ctx);
+        }
 
         const members39002 = parseCommunityMembers39002(event);
         if (members39002 && handlers.onCommunityMembers39002) handlers.onCommunityMembers39002(members39002, event, ctx);
@@ -690,6 +755,49 @@ export function createNostrBridge(options = {}) {
     const slug = slugify(input.slug || input.name || input.title || 'community');
     const communityId = `${type === 'private' ? 'n29' : 'n72'}:${slug}`;
     const defaultChannelId = String(input.defaultChannelId || `ch:${slug}:general`).trim();
+    const moderatorPubkeys = unique([...(input.moderators || []), ...(input.moderatorPubkeys || [])].map((value) => String(value || '').trim()).filter(Boolean));
+    const adminPubkeys = unique([...(input.admins || []), ...(input.adminPubkeys || [])].map((value) => String(value || '').trim()).filter(Boolean));
+
+    const normalizedChannels = (Array.isArray(input.channels) ? input.channels : [])
+      .map((entry) => {
+        const item = entry && typeof entry === 'object' ? entry : {};
+        const name = String(item.name || '').trim();
+        const idValue = String(item.id || '').trim();
+        if (!name || !idValue) return null;
+        return {
+          id: idValue,
+          name,
+          category: String(item.category || 'Channels'),
+          topic: String(item.topic || ''),
+          channelType: String(item.channelType || item.type || 'public'),
+          privacyLevel: String(item.privacyLevel || item.privacy || 'public'),
+          slowModeSec: Math.max(0, Number(item.slowModeSec || item.slow_mode || 0))
+        };
+      })
+      .filter(Boolean);
+
+    const includeMemberData = Array.isArray(input.members) || (input.rolesByPubkey && typeof input.rolesByPubkey === 'object');
+    const normalizedRolesByPubkey = {};
+    const normalizedMembers = unique((Array.isArray(input.members) ? input.members : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean));
+    if (includeMemberData) {
+      const rawRoles = (input.rolesByPubkey && typeof input.rolesByPubkey === 'object') ? input.rolesByPubkey : {};
+      Object.keys(rawRoles).forEach((rawPubkey) => {
+        const pubkeyKey = String(rawPubkey || '').trim();
+        if (!pubkeyKey) return;
+        const roleList = Array.isArray(rawRoles[rawPubkey]) ? rawRoles[rawPubkey] : [rawRoles[rawPubkey]];
+        const normalizedRoleList = unique(roleList.map((role) => String(role || '').trim()).filter(Boolean));
+        if (!normalizedRoleList.length) return;
+        normalizedRolesByPubkey[pubkeyKey] = normalizedRoleList;
+      });
+      Object.keys(normalizedRolesByPubkey).forEach((pubkeyKey) => {
+        if (!normalizedMembers.includes(pubkeyKey)) normalizedMembers.push(pubkeyKey);
+      });
+      normalizedMembers.forEach((pubkeyKey) => {
+        if (!normalizedRolesByPubkey[pubkeyKey]) normalizedRolesByPubkey[pubkeyKey] = ['member'];
+      });
+    }
 
     const tags = [
       ['d', slug],
@@ -709,23 +817,31 @@ export function createNostrBridge(options = {}) {
     unique(input.topics || []).forEach((topic) => tags.push(['t', String(topic)]));
     unique(input.rules || []).forEach((rule) => tags.push(['rule', String(rule)]));
     unique(input.allowedRelays || []).forEach((relay) => tags.push(['relay', String(relay)]));
-    unique([...(input.moderators || []), ...(input.moderatorPubkeys || [])]).forEach((moderatorPubkey) => tags.push(['p', String(moderatorPubkey), '', 'moderator']));
-    unique([...(input.admins || []), ...(input.adminPubkeys || [])]).forEach((adminPubkey) => tags.push(['p', String(adminPubkey), '', 'admin']));
+    moderatorPubkeys.forEach((moderatorPubkey) => tags.push(['p', String(moderatorPubkey), '', 'moderator']));
+    adminPubkeys.forEach((adminPubkey) => tags.push(['p', String(adminPubkey), '', 'admin']));
+
+    const contentPayload = {
+      name: String(input.name || input.title || slug),
+      about: String(input.description || ''),
+      image: String(input.image || ''),
+      banner: String(input.banner || ''),
+      rules: unique(input.rules || []),
+      topics: unique(input.topics || []),
+      posting_policy: String(input.postingPolicy || 'members')
+    };
+    if (defaultChannelId) contentPayload.default_channel = defaultChannelId;
+    if (normalizedChannels.length) contentPayload.channels = normalizedChannels;
+    if (includeMemberData) {
+      contentPayload.members = normalizedMembers;
+      contentPayload.roles_by_pubkey = normalizedRolesByPubkey;
+    }
 
     const unsigned = {
       kind,
       created_at: nowSec(),
       pubkey,
       tags,
-      content: JSON.stringify({
-        name: String(input.name || input.title || slug),
-        about: String(input.description || ''),
-        image: String(input.image || ''),
-        banner: String(input.banner || ''),
-        rules: unique(input.rules || []),
-        topics: unique(input.topics || []),
-        posting_policy: String(input.postingPolicy || 'members')
-      })
+      content: JSON.stringify(contentPayload)
     };
 
     const signed = await signEvent(unsigned);
