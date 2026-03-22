@@ -2,6 +2,7 @@ import { cloneMockState } from './mock-data.js';
 import { computeEffectivePermissions, DEFAULT_ROLE_DEFS } from './permissions.js';
 
 const JOINED_STORAGE_PREFIX = 'sifaka_communities_joined_v2';
+const LOCAL_GRAPH_STORAGE_KEY = 'sifaka_communities_local_graph_v1';
 
 function createEmitter() {
   const listeners = new Set();
@@ -113,6 +114,79 @@ function writeJoinedToStorage(pubkey, ids) {
   } catch (_) {}
 }
 
+function readLocalGraphFromStorage() {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const raw = window.localStorage.getItem(LOCAL_GRAPH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const communities = Array.isArray(parsed.communities)
+      ? parsed.communities
+        .filter((community) => community && typeof community === 'object' && community.id)
+        .map((community) => clone(community))
+      : [];
+    const channelsByCommunity = {};
+    const membersByCommunity = {};
+    const profiles = {};
+
+    if (parsed.channelsByCommunity && typeof parsed.channelsByCommunity === 'object') {
+      Object.keys(parsed.channelsByCommunity).forEach((communityId) => {
+        const list = Array.isArray(parsed.channelsByCommunity[communityId]) ? parsed.channelsByCommunity[communityId] : [];
+        channelsByCommunity[communityId] = list
+          .filter((channel) => channel && typeof channel === 'object' && channel.id)
+          .map((channel) => clone(channel));
+      });
+    }
+
+    if (parsed.membersByCommunity && typeof parsed.membersByCommunity === 'object') {
+      Object.keys(parsed.membersByCommunity).forEach((communityId) => {
+        const list = Array.isArray(parsed.membersByCommunity[communityId]) ? parsed.membersByCommunity[communityId] : [];
+        membersByCommunity[communityId] = list
+          .filter((member) => member && typeof member === 'object' && member.pubkey)
+          .map((member) => clone(member));
+      });
+    }
+
+    if (parsed.profiles && typeof parsed.profiles === 'object') {
+      Object.keys(parsed.profiles).forEach((pubkey) => {
+        const profile = parsed.profiles[pubkey];
+        if (!profile || typeof profile !== 'object') return;
+        profiles[pubkey] = {
+          ...profileFallback(pubkey),
+          ...clone(profile),
+          pubkey
+        };
+      });
+    }
+
+    return {
+      communities,
+      channelsByCommunity,
+      membersByCommunity,
+      profiles
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeLocalGraphToStorage(snapshot) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const payload = snapshot && typeof snapshot === 'object'
+      ? snapshot
+      : {
+        communities: [],
+        channelsByCommunity: {},
+        membersByCommunity: {},
+        profiles: {}
+      };
+    window.localStorage.setItem(LOCAL_GRAPH_STORAGE_KEY, JSON.stringify(payload));
+  } catch (_) {}
+}
+
 function ensureArrayMap(store, key) {
   if (!store[key]) store[key] = [];
   return store[key];
@@ -156,6 +230,11 @@ export function createCommunityStore(options = {}) {
     ensureArrayMap(state.data.membersByCommunity, communityId);
   }
 
+  function isLocallyPersistedCommunity(communityId) {
+    const community = getCommunity(communityId);
+    return !!(community && String(community.source || '').trim().toLowerCase() === 'local');
+  }
+
   function ensureProfile(pubkey, patch = {}) {
     if (!pubkey) return;
     if (!state.data.profiles[pubkey]) state.data.profiles[pubkey] = profileFallback(pubkey);
@@ -163,6 +242,84 @@ export function createCommunityStore(options = {}) {
       ...state.data.profiles[pubkey],
       ...patch
     };
+  }
+
+  function collectLocalGraphSnapshot() {
+    const communities = state.data.communities
+      .filter((community) => String(community && community.source || '').trim().toLowerCase() === 'local')
+      .map((community) => clone(community));
+    const channelsByCommunity = {};
+    const membersByCommunity = {};
+    const profiles = {};
+    const profilePubkeys = new Set();
+
+    communities.forEach((community) => {
+      if (!community || !community.id) return;
+      const communityId = community.id;
+      channelsByCommunity[communityId] = clone(state.data.channelsByCommunity[communityId] || []);
+      membersByCommunity[communityId] = clone(state.data.membersByCommunity[communityId] || []);
+
+      [
+        community.ownerPubkey,
+        ...(Array.isArray(community.moderatorPubkeys) ? community.moderatorPubkeys : []),
+        ...(Array.isArray(community.adminPubkeys) ? community.adminPubkeys : []),
+        ...(membersByCommunity[communityId] || []).map((member) => member.pubkey)
+      ].forEach((pubkey) => {
+        const normalized = String(pubkey || '').trim();
+        if (normalized) profilePubkeys.add(normalized);
+      });
+    });
+
+    profilePubkeys.forEach((pubkey) => {
+      profiles[pubkey] = clone(state.data.profiles[pubkey] || profileFallback(pubkey));
+    });
+
+    return {
+      communities,
+      channelsByCommunity,
+      membersByCommunity,
+      profiles
+    };
+  }
+
+  function persistLocalGraph() {
+    writeLocalGraphToStorage(collectLocalGraphSnapshot());
+  }
+
+  function hydrateLocalGraph() {
+    const snapshot = readLocalGraphFromStorage();
+    if (!snapshot) return;
+
+    Object.keys(snapshot.profiles || {}).forEach((pubkey) => {
+      ensureProfile(pubkey, snapshot.profiles[pubkey] || {});
+    });
+
+    (snapshot.communities || []).forEach((storedCommunity) => {
+      if (!storedCommunity || !storedCommunity.id) return;
+      const community = {
+        ...clone(storedCommunity),
+        source: 'local'
+      };
+      const existingIndex = state.data.communities.findIndex((entry) => entry.id === community.id);
+      if (existingIndex >= 0) {
+        state.data.communities[existingIndex] = {
+          ...state.data.communities[existingIndex],
+          ...community
+        };
+      } else {
+        state.data.communities.push(community);
+      }
+
+      ensureCommunityContainers(community.id);
+      state.data.channelsByCommunity[community.id] = clone(snapshot.channelsByCommunity[community.id] || []);
+      state.data.membersByCommunity[community.id] = clone(snapshot.membersByCommunity[community.id] || []);
+      (state.data.channelsByCommunity[community.id] || []).forEach((channel) => {
+        if (!channel || !channel.id) return;
+        if (!state.data.messagesByChannel[channel.id]) state.data.messagesByChannel[channel.id] = [];
+      });
+      refreshLeadershipLists(community.id);
+      touchCommunity(community.id, community.updatedAt || community.createdAt || nowMs());
+    });
   }
 
   function getCommunity(id = state.activeCommunityId) {
@@ -666,6 +823,7 @@ export function createCommunityStore(options = {}) {
     const member = ensureMember(communityId, pubkey, ['member']);
     member.roles = unique(roleIds || ['member']);
     refreshLeadershipLists(communityId);
+    if (isLocallyPersistedCommunity(communityId)) persistLocalGraph();
     emitter.emit({ type: 'member_role_changed', communityId, pubkey });
     return { ok: true };
   }
@@ -685,6 +843,7 @@ export function createCommunityStore(options = {}) {
     if (action === 'ban') member.banned = true;
     if (action === 'kick') state.data.membersByCommunity[communityId] = list.filter((m) => m.pubkey !== pubkey);
 
+    if (isLocallyPersistedCommunity(communityId)) persistLocalGraph();
     emitter.emit({ type: 'moderation_applied', communityId, pubkey, action });
     return { ok: true };
   }
@@ -730,6 +889,7 @@ export function createCommunityStore(options = {}) {
     if (!state.data.messagesByChannel[channel.id]) state.data.messagesByChannel[channel.id] = [];
     if (!community.defaultChannelId) community.defaultChannelId = channel.id;
 
+    if (isLocallyPersistedCommunity(communityId)) persistLocalGraph();
     emitter.emit({ type: 'channel_created', channel });
     return { ok: true, channel };
   }
@@ -751,6 +911,7 @@ export function createCommunityStore(options = {}) {
       pinned: patch.pinned != null ? !!patch.pinned : channel.pinned
     });
 
+    if (isLocallyPersistedCommunity(community.id)) persistLocalGraph();
     emitter.emit({ type: 'channel_updated', channelId, patch });
     return { ok: true, channel };
   }
@@ -782,6 +943,7 @@ export function createCommunityStore(options = {}) {
       toCategory: to,
       count: changed.length
     });
+    if (isLocallyPersistedCommunity(id)) persistLocalGraph();
     return { ok: true, count: changed.length, channels: changed.slice() };
   }
 
@@ -890,6 +1052,7 @@ export function createCommunityStore(options = {}) {
 
     joinCommunity(id, { source: 'local' });
     setActiveCommunity(id);
+    persistLocalGraph();
     emitter.emit({ type: 'community_created', community, channels: createdChannels });
     return { ok: true, community, channels: createdChannels };
   }
@@ -935,6 +1098,7 @@ export function createCommunityStore(options = {}) {
     state.inviteCodesByCommunity.delete(id);
     state.joinedCommunityIds.delete(id);
     persistJoined();
+    persistLocalGraph();
     ensureActiveSelection();
 
     emitter.emit({ type: 'community_removed', communityId: id, source: options.source || 'local' });
@@ -975,6 +1139,7 @@ export function createCommunityStore(options = {}) {
     refreshLeadershipLists(communityId);
     community.updatedAt = nowMs();
 
+    if (isLocallyPersistedCommunity(communityId)) persistLocalGraph();
     emitter.emit({ type: 'community_updated', communityId, patch });
     return { ok: true, community };
   }
@@ -1239,7 +1404,7 @@ export function createCommunityStore(options = {}) {
 
   function setCurrentUser(pubkey) {
     const next = String(pubkey || '').trim();
-    if (!next || next === state.currentUserPubkey) return;
+    if (next === state.currentUserPubkey) return;
     state.currentUserPubkey = next;
 
     const fromStorage = readJoinedFromStorage(next);
@@ -1312,6 +1477,8 @@ export function createCommunityStore(options = {}) {
       if (community) touchCommunity(community.id, message.createdAt);
     });
   });
+
+  hydrateLocalGraph();
 
   const joinedFromStorage = readJoinedFromStorage(state.currentUserPubkey);
   if (joinedFromStorage.length) {

@@ -6,7 +6,7 @@
 <title>Sifaka Live</title>
 <link rel="icon" type="image/x-icon" href="/sifaka.ico">
 <link rel="shortcut icon" type="image/x-icon" href="/sifaka.ico">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./styles/app.css">
 <link rel="stylesheet" href="./styles/themes.css">
 <link rel="stylesheet" href="./communities/communities.css">
@@ -182,7 +182,7 @@
 <div class="modal-ov" id="endModal">
   <div class="end-confirm-modal">
     <div style="font-size:2rem;margin-bottom:.6rem"></div>
-    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:1.05rem;margin-bottom:.4rem;">End Stream</div>
+    <div style="font-family:var(--font-display);font-weight:800;font-size:1.05rem;margin-bottom:.4rem;">End Stream</div>
     <div style="font-size:.82rem;color:var(--text2);margin-bottom:1.2rem;line-height:1.5;">This will publish a <span style="font-family:'DM Mono',monospace;color:var(--purple)">kind:30311</span> ended event to your relays.</div>
     <div style="display:flex;gap:.55rem;justify-content:center;">
       <button class="btn" style="background:var(--live);color:#fff;" onclick="confirmEndStream()">End Stream</button>
@@ -378,8 +378,9 @@
     </div>
 
     <!-- Tab bar -->
-    <div class="smv2-tabs">
+        <div class="smv2-tabs">
       <button class="smv2-tab tab-profile active" id="smTab-profile" onclick="switchSettingsTab('profile')">👤 Profile</button>
+      <button class="smv2-tab tab-wallet" id="smTab-wallet" onclick="switchSettingsTab('wallet')">Connect Wallet</button>
       <button class="smv2-tab tab-relays" id="smTab-relays" onclick="switchSettingsTab('relays')">📡 Relays</button>
       <button class="smv2-tab tab-app" id="smTab-app" onclick="switchSettingsTab('app')">🎨 App</button>
     </div>
@@ -458,6 +459,38 @@
         <button class="btn btn-primary" onclick="saveProfileSettings()">Save Profile →</button>
       </div>
     </div>
+    <div class="smv2-panel" id="smPanelWallet">
+      <div class="smv2-panel-label">NIP-47 / Nostr Wallet Connect - connect an external Lightning wallet for zaps</div>
+      <div class="wallet-connect-card">
+        <div class="wallet-connect-head">
+          <div>
+            <div class="smv2-section-title wallet-connect-title">Connect a Wallet</div>
+            <div class="smv2-field-hint">Paste your `nostr+walletconnect://...` string or scan the wallet QR code. The connection string is stored locally in this browser.</div>
+          </div>
+          <div class="wallet-state-chip disconnected" id="settingsWalletStateChip">Not connected</div>
+        </div>
+
+        <div class="fg wallet-connect-field" style="margin:0">
+          <label>NWC Connection String</label>
+          <textarea id="settingsNwcInput" placeholder="nostr+walletconnect://..." spellcheck="false"></textarea>
+        </div>
+
+        <div class="wallet-connect-actions">
+          <button class="btn btn-ghost" id="settingsNwcScanBtn" type="button" onclick="toggleWalletScanner()">Scan QR</button>
+          <button class="btn btn-primary" type="button" onclick="saveWalletSettings()">Connect Wallet</button>
+          <button class="btn btn-ghost" id="settingsNwcDisconnectBtn" type="button" onclick="clearWalletSettings()">Disconnect</button>
+        </div>
+
+        <div class="wallet-scanner-wrap" id="settingsWalletScannerWrap">
+          <video id="settingsWalletScannerVideo" class="wallet-scanner-video" autoplay muted playsinline></video>
+          <div class="wallet-scanner-hint" id="settingsWalletScannerHint">Point your camera at the NWC QR code.</div>
+        </div>
+
+        <div class="wallet-summary-card" id="settingsWalletSummary"></div>
+        <div id="settingsWalletStatus" class="remote-login-status" aria-live="polite"></div>
+      </div>
+    </div>
+
 
     <!-- ── Panel: Relays ── -->
     <div class="smv2-panel" id="smPanelRelays">
@@ -1090,6 +1123,7 @@
           <div class="sib-actions-row">
             <button class="btn btn-follow" id="theaterFollowBtn" style="padding:.36rem .8rem;font-size:.79rem;" onclick="toggleTheaterFollow()">Follow</button>
             <button class="btn btn-zap" id="theaterZapBtn" style="padding:.36rem .8rem;font-size:.79rem;" onclick="theaterZap()">Zap</button>
+            <button class="action-btn like-btn" id="likeBtn" type="button" onclick="toggleLike()">&#10084; Like</button>
             <button class="action-btn share-btn" id="theaterShareBtn" onclick="shareStream()">Share</button>
             <button class="action-btn report-btn" title="Report stream">Report</button>
           </div>
@@ -1390,6 +1424,10 @@
 <script src="./nostrflux-app.js"></script>
 </body>
 </html>
+
+
+
+
 
 
 

@@ -31,14 +31,21 @@
   const NOSTR_TOOLS_SRC = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
   const HLS_JS_SRC = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
   const NOSTR_CONNECT_KIND = 24133;
+  const NWC_INFO_KIND = 13194;
+  const NWC_REQUEST_KIND = 23194;
+  const NWC_RESPONSE_KIND = 23195;
   const REMOTE_SIGNER_REQUEST_TIMEOUT_MS = 18000;
   const REMOTE_SIGNER_CONNECT_TIMEOUT_MS = 28000;
   const REMOTE_SIGNER_SCAN_TIMEOUT_MS = 180000;
   const REMOTE_SIGNER_REQUESTED_PERMS = 'sign_event,nip04_encrypt,nip04_decrypt';
+  const NWC_REQUEST_TIMEOUT_MS = 18000;
+  const NWC_INFO_TIMEOUT_MS = 4500;
+  const NWC_SCAN_INTERVAL_MS = 420;
   const SETTINGS_STORAGE_KEY = 'nostrflux_settings_v1';
   const NOTIFICATIONS_LAST_READ_STORAGE_KEY = 'nostrflux_notifications_last_read_v1';
   const FOLLOWING_STORAGE_KEY = 'nostrflux_following_pubkeys_v1';
   const DM_LAST_READ_STORAGE_KEY = 'nostrflux_dm_last_read_v1';
+  const DM_LOCAL_ACTIVITY_STORAGE_KEY = 'nostrflux_dm_local_activity_v1';
   const DM_THREAD_INITIAL_LIMIT = 24;
   const DM_THREAD_PAGE_INCREMENT = 120;
   const DM_RENDER_BATCH_DELAY_MS = 80;
@@ -52,6 +59,8 @@
   const DM_BACKFILL_LIMIT_PER_DIRECTION = 480;
   const DM_DECRYPT_QUEUE_SOFT_CAP = 1800;
   const DM_PER_PEER_MEMORY_CAP = 1200;
+  const DM_LOCAL_ACTIVITY_MAX_ITEMS = 200;
+  const DM_LOCAL_ACTIVITY_MAX_AGE_SEC = 60 * 60 * 24 * 30;
   const HIDDEN_ENDED_STREAMS_STORAGE_KEY = 'nostrflux_hidden_ended_streams_v1';
   const NIP05_LOOKUP_CACHE_TTL_MS = 1000 * 60 * 30;
   const NIP05_LOOKUP_MISS_CACHE_TTL_MS = 1000 * 60 * 3;
@@ -80,21 +89,34 @@
   const ONE_SHOT_CACHE_MAX_ENTRIES = 700;
   const THEATER_CHAT_CACHE_TTL_MS = 1000 * 10;
   const THEATER_CHAT_CACHE_WARM_MS = 1000 * 45;
-  const THEATER_CHAT_CACHE_REFRESH_MS = 1000 * 12;
+  const THEATER_CHAT_CACHE_REFRESH_MS = 1000 * 30;
+  const THEATER_CHAT_CACHE_APPLY_MAX = 260;
+  const THEATER_REACTION_CACHE_APPLY_MAX = 360;
+  const VIDEOS_RENDER_CHUNK_SIZE = 24;
   const THEATER_CHAT_MAX_ROWS = 220;
   const THEATER_CHAT_MAX_ROWS_LIVE = 15;
   const THEATER_CHAT_RENDER_BATCH_SIZE = 28;
   const THEATER_CHAT_REALTIME_FLUSH_MS_LIVE = 140;
   const THEATER_CHAT_REALTIME_FLUSH_MS_ARCHIVE = 80;
   const THEATER_CHAT_REALTIME_BATCH_LIVE = 8;
-  const THEATER_CHAT_HISTORY_WINDOW_LIVE_SEC = 60 * 60 * 24 * 3;
-  const THEATER_CHAT_HISTORY_WINDOW_ARCHIVE_SEC = 60 * 60 * 24 * 14;
-  const THEATER_CHAT_HISTORY_LIMIT_LIVE = 320;
-  const THEATER_CHAT_HISTORY_LIMIT_ARCHIVE = 220;
-  const THEATER_REACTION_HISTORY_WINDOW_LIVE_SEC = 60 * 60 * 12;
-  const THEATER_REACTION_HISTORY_WINDOW_ARCHIVE_SEC = 60 * 60 * 24 * 30;
-  const THEATER_REACTION_HISTORY_LIMIT_LIVE = 180;
-  const THEATER_REACTION_HISTORY_LIMIT_ARCHIVE = 280;
+  const THEATER_CHAT_HISTORY_WINDOW_LIVE_SEC = 60 * 60 * 2;
+  const THEATER_CHAT_HISTORY_WINDOW_ARCHIVE_SEC = 60 * 60 * 24 * 2;
+  const THEATER_CHAT_HISTORY_LIMIT_LIVE = 180;
+  const THEATER_CHAT_HISTORY_LIMIT_ARCHIVE = 180;
+  const THEATER_REACTION_HISTORY_WINDOW_LIVE_SEC = 60 * 60 * 3;
+  const THEATER_REACTION_HISTORY_WINDOW_ARCHIVE_SEC = 60 * 60 * 24 * 3;
+  const THEATER_REACTION_HISTORY_LIMIT_LIVE = 140;
+const THEATER_REACTION_HISTORY_LIMIT_ARCHIVE = 180;
+const THEATER_CHAT_PROFILE_FETCH_BATCH = 24;
+const THEATER_P_ONLY_ZAP_HISTORY_WINDOW_LIVE_SEC = 60 * 30;
+const THEATER_P_ONLY_ZAP_HISTORY_WINDOW_ARCHIVE_SEC = 60 * 60 * 6;
+const THEATER_P_ONLY_ZAP_HISTORY_LIMIT_LIVE = 70;
+const THEATER_P_ONLY_ZAP_HISTORY_LIMIT_ARCHIVE = 40;
+const THEATER_CHAT_LIVE_SUB_LOOKBACK_SEC = 60 * 3;
+const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
+  const VIDEO_POST_LIVE_CHAT_MAX_MESSAGES = 160;
+  const VIDEO_POST_LIVE_CHAT_FETCH_MAX_EVENTS = 260;
+  const VIDEO_POST_LIVE_CHAT_RENDER_DEBOUNCE_MS = 90;
 
   const DEFAULT_SETTINGS = {
     relays: [...DEFAULT_RELAYS],
@@ -117,7 +139,8 @@
     cacheLiveFeedTtlSec: 120,
     lud16: '',
     website: '',
-    banner: ''
+    banner: '',
+    nwcConnectionUri: ''
   };
 
   const SAVED_LISTS_STORAGE_KEY = 'nostrflux_saved_lists_v1';
@@ -132,9 +155,13 @@
     authMode: 'readonly',
     localSecretKey: null,
     remoteSignerSession: null,
+    nwcLastProbe: null,
     remoteLoginPending: false,
     remoteLoginAbortController: null,
     remoteLoginUri: '',
+    walletScannerStream: null,
+    walletScannerActive: false,
+    walletScannerIntervalId: null,
     pendingOnboardingNsec: '',
     streamsByAddress: new Map(),
     streamEventIdsByAddress: new Map(),
@@ -181,6 +208,10 @@
     listFilterDDOpen: false,
     videosFilter: 'all',                   // 'all' | 'watch-party' | 'past' | 'nip71-videos' | 'nip71-reels'
     videosRenderTimer: null,
+    videosRenderChunkTimer: null,
+    videosRenderToken: 0,
+    videosRenderPending: false,
+    videosLastRenderAt: 0,
     videosProfileFetchPending: new Set(),
     videoThumbObserver: null,
     videoPostModalToken: 0,
@@ -193,6 +224,7 @@
     videoPostCommentsSubId: null,
     videoPostLiveChatCacheByAddress: new Map(),
     videoPostLiveChatSubId: null,
+    videoPostLiveChatRenderTimer: null,
     nostrFeedFilter: 'following',          // 'following' | 'contacts' | listId | naddr | 'global'
     nostrFeedSubId: null,
     nostrFeedRenderTimer: null,
@@ -261,6 +293,8 @@
     _chatProfileEoseTimer: null,
     _chatCacheWarmTimer: null,
     _chatCacheWarmAddress: '',
+    _chatMessageQueueTimer: null,
+    _chatReactionQueueTimer: null,
     dmSubId: null,
     dmOwnerPubkey: '',
     dmMessagesByPeer: new Map(),
@@ -898,15 +932,31 @@
     return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
+  function buildRemoteClientMetadata() {
+    const canonicalUrl = 'https://sifaka.live';
+    const imageUrl = 'https://sifaka.live/logo.png';
+    return {
+      name: 'Sifaka.Live',
+      url: canonicalUrl,
+      image: imageUrl,
+      icon: imageUrl,
+      description: 'Live Stream on Nostr!',
+      icons: [imageUrl],
+      perms: REMOTE_SIGNER_REQUESTED_PERMS
+    };
+  }
+
   function buildNostrConnectUri(session) {
     const params = new URLSearchParams();
     uniqueRelayUrls(session.relays || []).forEach((relay) => params.append('relay', relay));
     params.set('secret', String(session.connectSecret || '').trim());
     params.set('perms', REMOTE_SIGNER_REQUESTED_PERMS);
-    const metadata = {
-      name: 'Sifaka Live',
-      url: (window.location && window.location.origin) ? window.location.origin : 'https://sifaka.live'
-    };
+    const metadata = buildRemoteClientMetadata();
+    params.set('name', String(metadata.name || 'Sifaka.Live'));
+    params.set('url', String(metadata.url || 'https://sifaka.live'));
+    if (metadata.image) params.set('image', String(metadata.image));
+    if (metadata.icon) params.set('icon', String(metadata.icon));
+    if (metadata.description) params.set('description', String(metadata.description));
     params.set('metadata', JSON.stringify(metadata));
     return `nostrconnect://${session.clientPubkey}?${params.toString()}`;
   }
@@ -1281,6 +1331,617 @@
     }
   }
 
+  function parseNwcConnectionString(input) {
+    let raw = String(input || '').trim();
+    if (!raw) throw new Error('Paste your Nostr Wallet Connect string first.');
+    raw = raw.replace(/\s+/g, '');
+    raw = raw.replace(/^nostrwalletconnect:/i, 'nostr+walletconnect:');
+    if (/^nostr\+walletconnect:[^/]/i.test(raw)) {
+      raw = raw.replace(/^nostr\+walletconnect:/i, 'nostr+walletconnect://');
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(raw);
+    } catch (_) {
+      throw new Error('Invalid NWC connection string. Expected nostr+walletconnect://...');
+    }
+    if (parsed.protocol !== 'nostr+walletconnect:') {
+      throw new Error('Invalid NWC connection string. Expected nostr+walletconnect://...');
+    }
+
+    const walletPubkey = normalizePubkeyHex((parsed.hostname || parsed.pathname || '').replace(/^\/+/, ''));
+    if (!walletPubkey) {
+      throw new Error('NWC string is missing a valid wallet service pubkey.');
+    }
+
+    const relays = uniqueRelayUrls(parsed.searchParams.getAll('relay'));
+    if (!relays.length) {
+      throw new Error('NWC string must include at least one relay.');
+    }
+
+    const secretHex = String(parsed.searchParams.get('secret') || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(secretHex)) {
+      throw new Error('NWC string is missing a valid 32-byte secret.');
+    }
+
+    return {
+      raw,
+      walletPubkey,
+      relays,
+      secretHex,
+      lud16: String(parsed.searchParams.get('lud16') || '').trim()
+    };
+  }
+
+  function createNwcSession(config) {
+    return ensureNostrTools().then((tools) => {
+      if (!tools || typeof tools.SimplePool !== 'function' || typeof tools.getPublicKey !== 'function') {
+        throw new Error('Nostr tools are unavailable for wallet connections.');
+      }
+      const clientSecret = normalizeSecretKey(config && (config.secretHex || config.clientSecretHex || config.clientSecret));
+      return {
+        pool: new tools.SimplePool(),
+        relays: uniqueRelayUrls(config && config.relays || []),
+        remoteSignerPubkey: normalizePubkeyHex(config && config.walletPubkey || ''),
+        clientSecret,
+        clientPubkey: tools.getPublicKey(clientSecret),
+        encryption: config && config.encryption === 'nip04' ? 'nip04' : 'nip44',
+        nip44ConversationKey: null,
+        responseSub: null,
+        pendingRequests: new Map(),
+        requestCounter: 0,
+        closed: false
+      };
+    });
+  }
+
+  function teardownNwcSessionObject(session, reason = 'Wallet session closed.') {
+    if (!session) return;
+    session.closed = true;
+    if (session.pendingRequests instanceof Map) {
+      session.pendingRequests.forEach((pending) => {
+        if (!pending) return;
+        if (pending.timeoutId) clearTimeout(pending.timeoutId);
+        if (pending.abortSignal && pending.abortHandler) {
+          try { pending.abortSignal.removeEventListener('abort', pending.abortHandler); } catch (_) {}
+        }
+        try {
+          pending.reject(new Error(reason));
+        } catch (_) {}
+      });
+      session.pendingRequests.clear();
+    }
+    if (session.responseSub && typeof session.responseSub.close === 'function') {
+      try { session.responseSub.close(reason); } catch (_) {}
+    }
+    session.responseSub = null;
+    if (session.pool && typeof session.pool.destroy === 'function') {
+      try { session.pool.destroy(); } catch (_) {}
+    }
+    session.pool = null;
+  }
+
+  function parseNwcInfoEvent(ev) {
+    if (!ev) return null;
+    const capabilities = String(ev.content || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    const encryptionModes = allTagValues(ev.tags, 'encryption')
+      .flatMap((value) => String(value || '').trim().split(/\s+/))
+      .filter(Boolean);
+    const notifications = allTagValues(ev.tags, 'notifications')
+      .flatMap((value) => String(value || '').trim().split(/\s+/))
+      .filter(Boolean);
+    return {
+      capabilities,
+      notifications,
+      encryptionModes,
+      preferredEncryption: encryptionModes.includes('nip44_v2')
+        ? 'nip44'
+        : (encryptionModes.includes('nip04') ? 'nip04' : 'nip44')
+    };
+  }
+
+  async function waitForNwcInfoEvent(session, opts = {}) {
+    if (!session || !session.pool || !session.remoteSignerPubkey) return null;
+    const timeoutMs = Math.max(1500, Number(opts.timeoutMs || NWC_INFO_TIMEOUT_MS));
+    return await new Promise((resolve) => {
+      let settled = false;
+      let idleTimer = null;
+      let best = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (idleTimer) clearTimeout(idleTimer);
+        if (sub && typeof sub.close === 'function') {
+          try { sub.close('nwc info done'); } catch (_) {}
+        }
+        resolve(best);
+      };
+      const nudgeFinish = (delayMs) => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(finish, delayMs);
+      };
+      const timer = setTimeout(() => {
+        clearTimeout(timer);
+        finish();
+      }, timeoutMs);
+      const sub = session.pool.subscribe(
+        session.relays,
+        {
+          kinds: [NWC_INFO_KIND],
+          authors: [session.remoteSignerPubkey],
+          limit: 1
+        },
+        {
+          onevent: (ev) => {
+            if (!best || Number(ev.created_at || 0) >= Number(best.created_at || 0)) {
+              best = ev;
+            }
+            nudgeFinish(180);
+          }
+        }
+      );
+    });
+  }
+
+  async function handleNwcResponseEvent(session, ev) {
+    if (!session || session.closed || !ev || !ev.content) return;
+    const requestEventId = String(firstTagValue(ev.tags, 'e') || '').trim();
+    if (!requestEventId || !session.pendingRequests || !session.pendingRequests.has(requestEventId)) return;
+
+    const pending = session.pendingRequests.get(requestEventId);
+    let decoded;
+    try {
+      decoded = await decryptRemoteSignerPayloadFromSender(session, session.remoteSignerPubkey, ev.content, pending && pending.mode || '');
+    } catch (_) {
+      return;
+    }
+    if (!decoded || !decoded.payload) return;
+
+    session.pendingRequests.delete(requestEventId);
+    if (pending.timeoutId) clearTimeout(pending.timeoutId);
+    if (pending.abortSignal && pending.abortHandler) {
+      try { pending.abortSignal.removeEventListener('abort', pending.abortHandler); } catch (_) {}
+    }
+
+    const payload = decoded.payload;
+    const errorMeta = payload && payload.error;
+    if (errorMeta) {
+      const msg = typeof errorMeta === 'string'
+        ? errorMeta
+        : String(errorMeta.message || errorMeta.code || 'Wallet request failed.');
+      const err = new Error(msg);
+      err.nwcResponse = payload;
+      err.nwcErrorCode = typeof errorMeta === 'object' ? String(errorMeta.code || '') : '';
+      pending.reject(err);
+      return;
+    }
+
+    pending.resolve({
+      result: payload.result,
+      payload,
+      encryption: decoded.encryption
+    });
+  }
+
+  function startNwcResponseSubscription(session) {
+    if (!session || session.responseSub || !session.pool) return;
+    const since = Math.floor(Date.now() / 1000) - 10;
+    session.responseSub = session.pool.subscribe(
+      session.relays,
+      {
+        kinds: [NWC_RESPONSE_KIND],
+        authors: [session.remoteSignerPubkey],
+        '#p': [session.clientPubkey],
+        since
+      },
+      {
+        onevent: (ev) => {
+          handleNwcResponseEvent(session, ev).catch(() => {});
+        }
+      }
+    );
+  }
+
+  async function sendNwcRequestOnce(session, method, params, mode, opts = {}) {
+    if (!session || session.closed || !session.pool) {
+      throw new Error('Wallet connection is not ready.');
+    }
+    const signal = opts.signal || null;
+    const timeoutMs = Math.max(3000, Number(opts.timeoutMs || NWC_REQUEST_TIMEOUT_MS));
+    throwIfAborted(signal, 'Wallet request cancelled.');
+    startNwcResponseSubscription(session);
+
+    const payload = {
+      method: String(method || '').trim(),
+      params: (params && typeof params === 'object') ? params : {}
+    };
+    const encryptedContent = await encryptRemoteSignerPayload(session, payload, mode);
+    const tools = await ensureNostrTools();
+    const tags = [['p', session.remoteSignerPubkey]];
+    if (mode === 'nip04') tags.push(['encryption', 'nip04']);
+    else tags.push(['encryption', 'nip44_v2']);
+    const unsigned = {
+      kind: NWC_REQUEST_KIND,
+      created_at: Math.floor(Date.now() / 1000),
+      tags,
+      content: encryptedContent
+    };
+    const signed = finalizeEventWithSecret(tools, unsigned, session.clientSecret);
+    const requestEventId = String(signed && signed.id || '').trim();
+    if (!requestEventId) {
+      throw new Error('Wallet request could not be signed.');
+    }
+
+    let abortHandler = null;
+    const responsePromise = new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        session.pendingRequests.delete(requestEventId);
+        if (signal && abortHandler) {
+          try { signal.removeEventListener('abort', abortHandler); } catch (_) {}
+        }
+        reject(new Error(`Wallet timed out while waiting for ${payload.method}.`));
+      }, timeoutMs);
+
+      abortHandler = () => {
+        session.pendingRequests.delete(requestEventId);
+        clearTimeout(timeoutId);
+        reject(new Error('Wallet request cancelled.'));
+      };
+
+      session.pendingRequests.set(requestEventId, {
+        resolve,
+        reject,
+        timeoutId,
+        abortSignal: signal,
+        abortHandler,
+        mode
+      });
+      if (signal) signal.addEventListener('abort', abortHandler, { once: true });
+    });
+
+    try {
+      const publishes = session.pool.publish(session.relays, signed, { maxWait: Math.max(3000, timeoutMs - 1000), abort: signal });
+      if (!Array.isArray(publishes) || !publishes.length) {
+        throw new Error('No relays configured for wallet requests.');
+      }
+      await Promise.allSettled(publishes);
+    } catch (err) {
+      const pending = session.pendingRequests.get(requestEventId);
+      if (pending) {
+        session.pendingRequests.delete(requestEventId);
+        if (pending.timeoutId) clearTimeout(pending.timeoutId);
+        if (pending.abortSignal && pending.abortHandler) {
+          try { pending.abortSignal.removeEventListener('abort', pending.abortHandler); } catch (_) {}
+        }
+        pending.reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    }
+
+    const response = await responsePromise;
+    if (response && response.encryption && response.encryption !== session.encryption) {
+      session.encryption = response.encryption;
+      session.nip44ConversationKey = null;
+    }
+    return response.result;
+  }
+
+  async function sendNwcRequest(session, method, params = {}, opts = {}) {
+    const preferred = opts.preferredEncryption === 'nip04'
+      ? 'nip04'
+      : (session.encryption === 'nip04' ? 'nip04' : 'nip44');
+    const modes = opts.fallbackEncrypt === false
+      ? [preferred]
+      : (preferred === 'nip04' ? ['nip04', 'nip44'] : ['nip44', 'nip04']);
+    let lastErr = null;
+    for (const mode of modes) {
+      try {
+        return await sendNwcRequestOnce(session, method, params, mode, opts);
+      } catch (err) {
+        if (isAbortLikeError(err)) throw err;
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error(`Wallet request failed: ${method}`);
+  }
+
+  async function probeNwcConnection(config) {
+    const session = await createNwcSession(config);
+    try {
+      const infoEvent = await waitForNwcInfoEvent(session, { timeoutMs: NWC_INFO_TIMEOUT_MS });
+      const info = parseNwcInfoEvent(infoEvent);
+      if (info && info.preferredEncryption) {
+        session.encryption = info.preferredEncryption;
+        session.nip44ConversationKey = null;
+      }
+      if (info && info.capabilities.length && !info.capabilities.includes('pay_invoice')) {
+        throw new Error('This wallet does not advertise pay_invoice support.');
+      }
+
+      let liveInfo = null;
+      let warning = '';
+      try {
+        liveInfo = await sendNwcRequest(session, 'get_info', {}, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
+        if (liveInfo && Array.isArray(liveInfo.methods) && liveInfo.methods.length && !liveInfo.methods.includes('pay_invoice')) {
+          throw new Error('This wallet does not allow pay_invoice on this connection.');
+        }
+      } catch (err) {
+        warning = err && err.message ? err.message : 'Wallet live probe failed.';
+      }
+
+      if (!info && !liveInfo) {
+        throw new Error(warning || 'Could not reach the wallet relay for this NWC connection.');
+      }
+
+      return { info, liveInfo, warning };
+    } finally {
+      teardownNwcSessionObject(session, 'Wallet probe finished.');
+    }
+  }
+
+  const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+
+  function bech32Polymod(values) {
+    const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+    let chk = 1;
+    for (let i = 0; i < values.length; i += 1) {
+      const value = Number(values[i] || 0);
+      const top = chk >>> 25;
+      chk = ((chk & 0x1ffffff) << 5) ^ value;
+      for (let j = 0; j < generators.length; j += 1) {
+        if ((top >>> j) & 1) chk ^= generators[j];
+      }
+    }
+    return chk;
+  }
+
+  function bech32HrpExpand(hrp) {
+    const out = [];
+    const text = String(hrp || '').toLowerCase();
+    for (let i = 0; i < text.length; i += 1) out.push(text.charCodeAt(i) >>> 5);
+    out.push(0);
+    for (let i = 0; i < text.length; i += 1) out.push(text.charCodeAt(i) & 31);
+    return out;
+  }
+
+  function bech32CreateChecksum(hrp, data) {
+    const values = bech32HrpExpand(hrp).concat(data, [0, 0, 0, 0, 0, 0]);
+    const mod = bech32Polymod(values) ^ 1;
+    const out = [];
+    for (let i = 0; i < 6; i += 1) {
+      out.push((mod >>> (5 * (5 - i))) & 31);
+    }
+    return out;
+  }
+
+  function convertBits(data, fromBits, toBits, pad = true) {
+    let acc = 0;
+    let bits = 0;
+    const out = [];
+    const maxValue = (1 << toBits) - 1;
+    const maxAcc = (1 << (fromBits + toBits - 1)) - 1;
+    for (let i = 0; i < data.length; i += 1) {
+      const value = Number(data[i]);
+      if (!Number.isFinite(value) || value < 0 || (value >>> fromBits) !== 0) {
+        throw new Error('Invalid data while encoding LNURL.');
+      }
+      acc = ((acc << fromBits) | value) & maxAcc;
+      bits += fromBits;
+      while (bits >= toBits) {
+        bits -= toBits;
+        out.push((acc >>> bits) & maxValue);
+      }
+    }
+    if (pad) {
+      if (bits) out.push((acc << (toBits - bits)) & maxValue);
+    } else if (bits >= fromBits || ((acc << (toBits - bits)) & maxValue)) {
+      throw new Error('Could not convert LNURL encoding.');
+    }
+    return out;
+  }
+
+  function bech32Encode(hrp, data) {
+    const normalizedHrp = String(hrp || '').trim().toLowerCase();
+    if (!normalizedHrp) throw new Error('Missing bech32 prefix.');
+    const words = Array.isArray(data) ? data : [];
+    const checksum = bech32CreateChecksum(normalizedHrp, words);
+    const combined = words.concat(checksum);
+    let out = `${normalizedHrp}1`;
+    for (let i = 0; i < combined.length; i += 1) {
+      out += BECH32_CHARSET.charAt(combined[i]);
+    }
+    return out;
+  }
+
+  function encodeLnurlPayUrl(url) {
+    const clean = String(url || '').trim();
+    if (!/^https?:\/\//i.test(clean)) {
+      throw new Error('Invalid Lightning address endpoint.');
+    }
+    const bytes = Array.from(new TextEncoder().encode(clean));
+    return bech32Encode('lnurl', convertBits(bytes, 8, 5, true));
+  }
+
+  async function fetchJsonOrThrow(url, fallbackMessage) {
+    let response = null;
+    try {
+      response = await fetch(url, {
+        headers: { Accept: 'application/json' }
+      });
+    } catch (err) {
+      throw new Error((err && err.message) || fallbackMessage || 'Request failed.');
+    }
+
+    let parsed = null;
+    try {
+      parsed = await response.json();
+    } catch (_) {
+      parsed = null;
+    }
+
+    const statusText = parsed && typeof parsed === 'object'
+      ? String(parsed.status || '').trim().toUpperCase()
+      : '';
+    const reason = parsed && typeof parsed === 'object'
+      ? String(parsed.reason || parsed.message || '').trim()
+      : '';
+    if (!response.ok || statusText === 'ERROR') {
+      throw new Error(reason || fallbackMessage || `Request failed (${response.status}).`);
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error(fallbackMessage || 'Unexpected response.');
+    }
+    return parsed;
+  }
+
+  async function fetchZapEndpointInfo(lud16, zapAmountMsats = 0) {
+    const clean = String(lud16 || '').trim();
+    if (!clean || !clean.includes('@')) {
+      throw new Error('This profile has no valid Lightning address (lud16) for zaps.');
+    }
+    const [userRaw, domainRaw] = clean.split('@');
+    const user = String(userRaw || '').trim();
+    const domain = String(domainRaw || '').trim().toLowerCase();
+    if (!user || !domain) {
+      throw new Error('This profile has no valid Lightning address (lud16) for zaps.');
+    }
+
+    const payUrl = `https://${domain}/.well-known/lnurlp/${encodeURIComponent(user)}`;
+    const meta = await fetchJsonOrThrow(payUrl, 'Could not load this Lightning address for zaps.');
+    const callback = String(meta.callback || '').trim();
+    if (!/^https?:\/\//i.test(callback)) throw new Error('Invalid Lightning callback URL.');
+    if (meta.allowsNostr !== true) {
+      throw new Error('This Lightning address can receive payments, but it does not support public Nostr zaps.');
+    }
+    const receiptPubkey = normalizePubkeyHex(meta.nostrPubkey || '');
+    if (!receiptPubkey) {
+      throw new Error('This Lightning address does not advertise a valid Nostr zap receipt pubkey.');
+    }
+
+    const minSendable = Number(meta.minSendable || 0);
+    const maxSendable = Number(meta.maxSendable || 0);
+    const amount = Number(zapAmountMsats || 0);
+    if (amount > 0 && Number.isFinite(minSendable) && minSendable > 0 && amount < minSendable) {
+      throw new Error(`Zap amount is below the recipient's minimum (${formatCount(Math.ceil(minSendable / 1000))} sats).`);
+    }
+    if (amount > 0 && Number.isFinite(maxSendable) && maxSendable > 0 && amount > maxSendable) {
+      throw new Error(`Zap amount is above the recipient's maximum (${formatCount(Math.floor(maxSendable / 1000))} sats).`);
+    }
+
+    return {
+      lud16: clean,
+      payUrl,
+      callback,
+      lnurl: encodeLnurlPayUrl(payUrl),
+      receiptPubkey,
+      minSendable: Number.isFinite(minSendable) ? minSendable : 0,
+      maxSendable: Number.isFinite(maxSendable) ? maxSendable : 0
+    };
+  }
+
+  function buildZapRequestTags(recipientPubkey, zapAmountMsats, zapInfo, extraTags = []) {
+    const targetPubkey = normalizePubkeyHex(recipientPubkey || '');
+    if (!targetPubkey) throw new Error('Missing zap recipient pubkey.');
+
+    const relays = uniqueRelayUrls(state.relays || []);
+    if (!relays.length) {
+      throw new Error('No relays are connected to receive the zap receipt.');
+    }
+
+    const tags = [
+      ['relays', ...relays],
+      ['amount', String(zapAmountMsats)],
+      ['p', targetPubkey]
+    ];
+    const lnurl = String(zapInfo && zapInfo.lnurl || '').trim();
+    if (lnurl) tags.push(['lnurl', lnurl]);
+
+    (Array.isArray(extraTags) ? extraTags : []).forEach((tag) => {
+      if (!Array.isArray(tag) || !tag.length) return;
+      const normalizedTag = tag.map((value) => String(value == null ? '' : value));
+      if (!normalizedTag[0] || !normalizedTag[1]) return;
+      tags.push(normalizedTag);
+    });
+    return tags;
+  }
+
+  async function buildZapInvoiceForLud16(lud16, zapAmountMsats, zapRequestEvent, opts = {}) {
+    const zapInfo = opts && opts.zapInfo
+      ? opts.zapInfo
+      : await fetchZapEndpointInfo(lud16, zapAmountMsats);
+    const callbackUrl = new URL(zapInfo.callback);
+    callbackUrl.searchParams.set('amount', String(zapAmountMsats));
+    callbackUrl.searchParams.set('nostr', JSON.stringify(zapRequestEvent));
+    if (zapInfo.lnurl) callbackUrl.searchParams.set('lnurl', zapInfo.lnurl);
+    const invoiceData = await fetchJsonOrThrow(callbackUrl.toString(), 'Could not create a zap invoice.');
+    if (!invoiceData.pr) throw new Error('No payment request returned.');
+    return invoiceData.pr;
+  }
+
+  function getSavedNwcConfig() {
+    try {
+      return parseNwcConnectionString(state.settings && state.settings.nwcConnectionUri || '');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function payInvoiceWithNwcConfig(config, invoice, opts = {}) {
+    const session = await createNwcSession(config);
+    try {
+      const infoEvent = await waitForNwcInfoEvent(session, { timeoutMs: Math.min(NWC_INFO_TIMEOUT_MS, 2200) });
+      const info = parseNwcInfoEvent(infoEvent);
+      if (info && info.preferredEncryption) {
+        session.encryption = info.preferredEncryption;
+        session.nip44ConversationKey = null;
+      }
+      return await sendNwcRequest(session, 'pay_invoice', { invoice }, {
+        timeoutMs: Math.max(NWC_REQUEST_TIMEOUT_MS, Number(opts.timeoutMs || 0))
+      });
+    } finally {
+      teardownNwcSessionObject(session, 'Wallet payment finished.');
+    }
+  }
+
+  async function payInvoiceWithPreferredWallet(invoice) {
+    const cleanInvoice = String(invoice || '').trim();
+    if (!cleanInvoice) throw new Error('Missing invoice.');
+
+    let lastErr = null;
+    const savedConfig = getSavedNwcConfig();
+    if (savedConfig) {
+      try {
+        await payInvoiceWithNwcConfig(savedConfig, cleanInvoice);
+        return 'nwc';
+      } catch (err) {
+        lastErr = err;
+        console.warn('NWC payment failed:', err && err.message ? err.message : err);
+      }
+    }
+
+    if (window.webln) {
+      try {
+        await window.webln.enable();
+        await window.webln.sendPayment(cleanInvoice);
+        return 'webln';
+      } catch (err) {
+        lastErr = err;
+        console.warn('WebLN payment failed:', err && err.message ? err.message : err);
+      }
+    }
+
+    if (lastErr) throw lastErr;
+    throw new Error('No compatible wallet is available to pay this invoice.');
+  }
+
+  async function payZapInvoiceForLud16(lud16, zapAmountMsats, zapRequestEvent, opts = {}) {
+    const invoice = await buildZapInvoiceForLud16(lud16, zapAmountMsats, zapRequestEvent, opts);
+    return await payInvoiceWithPreferredWallet(invoice);
+  }
+
   function sanitizeMediaUrl(v) {
     const raw = String(v || '').trim();
     if (!raw) return '';
@@ -1430,6 +2091,7 @@
     merged.notificationsReposts = merged.notificationsReposts !== false;
     merged.notificationsZaps = merged.notificationsZaps !== false;
     merged.notificationsFollows = merged.notificationsFollows !== false;
+    merged.nwcConnectionUri = String(merged.nwcConnectionUri || '').trim();
     Object.assign(merged, sanitizeCacheSettings(merged));
 
     state.settings = merged;
@@ -1722,6 +2384,110 @@
     return !!(el && el.classList.contains('on'));
   }
 
+  function setWalletSettingsStatus(message, mode = 'info') {
+    const statusEl = qs('#settingsWalletStatus');
+    if (!statusEl) return;
+    const clean = String(message || '').trim();
+    statusEl.textContent = clean;
+    statusEl.classList.remove('is-loading', 'is-success', 'is-error', 'is-info', 'is-visible');
+    if (!clean) return;
+    statusEl.classList.add('is-visible');
+    statusEl.classList.add(mode === 'loading' || mode === 'success' || mode === 'error' ? `is-${mode}` : 'is-info');
+  }
+
+  function updateWalletScannerUi(isActive) {
+    const wrap = qs('#settingsWalletScannerWrap');
+    const btn = qs('#settingsNwcScanBtn');
+    if (wrap) wrap.classList.toggle('open', !!isActive);
+    if (btn) btn.textContent = isActive ? 'Stop Scan' : 'Scan QR';
+  }
+
+  function stopWalletScanner(opts = {}) {
+    if (state.walletScannerIntervalId) {
+      clearInterval(state.walletScannerIntervalId);
+      state.walletScannerIntervalId = null;
+    }
+    if (state.walletScannerStream) {
+      try {
+        state.walletScannerStream.getTracks().forEach((track) => {
+          try { track.stop(); } catch (_) {}
+        });
+      } catch (_) {}
+      state.walletScannerStream = null;
+    }
+    state.walletScannerActive = false;
+    const video = qs('#settingsWalletScannerVideo');
+    if (video) {
+      try { video.pause(); } catch (_) {}
+      try { video.srcObject = null; } catch (_) {}
+    }
+    updateWalletScannerUi(false);
+    if (!opts.keepStatus) setWalletSettingsStatus('');
+  }
+
+  function renderWalletSettingsSummary() {
+    const summaryEl = qs('#settingsWalletSummary');
+    const chipEl = qs('#settingsWalletStateChip');
+    const disconnectBtn = qs('#settingsNwcDisconnectBtn');
+    if (!summaryEl || !chipEl) return;
+
+    let config = null;
+    let parseError = '';
+    try {
+      config = parseNwcConnectionString(state.settings && state.settings.nwcConnectionUri || '');
+    } catch (err) {
+      parseError = state.settings && state.settings.nwcConnectionUri
+        ? (err && err.message ? err.message : 'Saved wallet connection is invalid.')
+        : '';
+      config = null;
+    }
+
+    if (disconnectBtn) disconnectBtn.disabled = !config && !parseError;
+    summaryEl.classList.remove('open');
+    summaryEl.innerHTML = '';
+    chipEl.className = 'wallet-state-chip disconnected';
+    chipEl.textContent = parseError ? 'Needs attention' : 'Not connected';
+
+    if (parseError) {
+      summaryEl.classList.add('open');
+      summaryEl.innerHTML = `<div class="wallet-summary-note">${escapeHtml(parseError)}</div>`;
+      return;
+    }
+    if (!config) return;
+
+    const probe = state.nwcLastProbe && state.nwcLastProbe.walletPubkey === config.walletPubkey
+      ? state.nwcLastProbe
+      : null;
+    const methods = probe && Array.isArray(probe.methods) ? probe.methods.filter(Boolean) : [];
+    const label = probe && !probe.warning ? 'Connected' : 'Saved';
+    chipEl.className = `wallet-state-chip ${probe && !probe.warning ? 'connected' : 'saved'}`;
+    chipEl.textContent = label;
+
+    const rows = [
+      { label: 'Wallet Service', value: shortHex(config.walletPubkey), mono: true },
+      { label: 'Relays', value: `${config.relays.length} relay${config.relays.length === 1 ? '' : 's'}` },
+      { label: 'Lightning', value: config.lud16 || (probe && probe.lud16) || 'Not included in URI' },
+      { label: 'Encryption', value: probe && probe.preferredEncryption === 'nip04' ? 'NIP-04' : 'NIP-44 preferred' }
+    ];
+    if (probe && probe.alias) rows.push({ label: 'Alias', value: probe.alias });
+    if (probe && probe.network) rows.push({ label: 'Network', value: probe.network });
+    if (methods.length) rows.push({ label: 'Methods', value: methods.join(', ') });
+
+    summaryEl.innerHTML = `
+      <div class="wallet-summary-grid">
+        ${rows.map((row) => `
+          <div class="wallet-summary-item">
+            <div class="wallet-summary-label">${escapeHtml(row.label)}</div>
+            <div class="wallet-summary-value${row.mono ? ' mono' : ''}">${escapeHtml(row.value)}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="wallet-summary-note">${escapeHtml(probe && probe.warning
+        ? `Wallet saved with a warning: ${probe.warning}. Zaps will retry this wallet first.`
+        : 'This wallet will be used for zaps before the browser wallet fallback.')}</div>`;
+    summaryEl.classList.add('open');
+  }
+
   function populateSettingsModal() {
     renderSettingsRelayList();
     const lud16 = qs('#settingsLud16Input');
@@ -1732,6 +2498,7 @@
     const about = qs('#settingsAbout');
     const avatarUrl = qs('#settingsAvatarUrl');
     const nip05 = qs('#settingsNip05Input');
+    const nwcInput = qs('#settingsNwcInput');
 
     const up = state.user ? profileFor(state.user.pubkey) : null;
     if (lud16) lud16.value = (up && up.lud16) || state.settings.lud16 || '';
@@ -1742,8 +2509,10 @@
     if (about) about.value = (up && up.about) || '';
     if (avatarUrl) avatarUrl.value = (up && up.picture) || '';
     if (nip05) nip05.value = (up && up.nip05) || '';
+    if (nwcInput) nwcInput.value = state.settings.nwcConnectionUri || '';
 
     if (up && up.picture) previewSettingsAvatar(up.picture);
+    else previewSettingsAvatar('');
 
     setToggleById('setAutoPublishToggle', state.settings.autoPublish);
     setToggleById('setMiniPlayerToggle', state.settings.miniPlayer);
@@ -1767,6 +2536,9 @@
     if (cacheQueryInput) cacheQueryInput.value = String(safeCache.cacheQueryTtlSec);
     if (cacheWarmInput) cacheWarmInput.value = String(safeCache.cacheWarmSec);
     if (cacheLiveInput) cacheLiveInput.value = String(safeCache.cacheLiveFeedTtlSec);
+    stopWalletScanner({ keepStatus: true });
+    renderWalletSettingsSummary();
+    setWalletSettingsStatus('');
   }
 
   function collectSettingsFromModal() {
@@ -1829,10 +2601,6 @@
       const current = state.streamsByAddress.get(state.selectedStreamAddress);
       if (current) {
         subscribeChat(current);
-        if (isVideoPageVisible()) {
-          const statsTargetPubkey = normalizePubkeyHex(current.hostPubkey || '') || normalizePubkeyHex(current.pubkey || '');
-          if (statsTargetPubkey) subscribeProfileStats(statsTargetPubkey);
-        }
       }
     }
 
@@ -2791,6 +3559,15 @@
     const existing = state.nip71VideosByEventId.get(eventId);
     const incomingCreatedAt = Number(video && video.created_at || 0);
     const existingCreatedAt = Number(existing && existing.created_at || 0);
+    const sameCore = !!existing
+      && existingCreatedAt === incomingCreatedAt
+      && Number(existing && existing.nip71Kind || 0) === Number(video && video.nip71Kind || 0)
+      && String(existing && existing.title || '') === String(video && video.title || '')
+      && String(existing && existing.summary || '') === String(video && video.summary || '')
+      && sanitizeMediaUrl(existing && existing.image || '') === sanitizeMediaUrl(video && video.image || '')
+      && sanitizeMediaUrl(existing && existing.streaming || '') === sanitizeMediaUrl(video && video.streaming || '')
+      && Number(existing && existing.participants || 0) === Number(video && video.participants || 0);
+    if (sameCore) return false;
     if (!existing || incomingCreatedAt >= existingCreatedAt) {
       state.nip71VideosByEventId.set(eventId, video);
       return true;
@@ -3712,6 +4489,141 @@
     }
   }
 
+  function dmLocalActivityStorageKeyFor(ownerPubkey) {
+    const owner = normalizePubkeyHex(ownerPubkey);
+    if (!owner) return '';
+    return `${DM_LOCAL_ACTIVITY_STORAGE_KEY}:${owner}`;
+  }
+
+  function buildDmLocalActivityContent(activityType, activityData, peerPubkey) {
+    const peer = normalizePubkeyHex(peerPubkey);
+    const normalizedType = String(activityType || '').trim().toLowerCase();
+    const data = activityData && typeof activityData === 'object' ? activityData : {};
+    if (normalizedType === 'zap' || normalizedType === 'zap-open') {
+      const senderPubkey = normalizePubkeyHex(data.senderPubkey || state.user && state.user.pubkey || '') || '';
+      const recipientPubkey = normalizePubkeyHex(data.recipientPubkey || peer) || peer;
+      const amountSats = Math.max(0, Math.floor(Number(data.amountSats || 0) || 0));
+      const senderName = dmIdentitySummary(senderPubkey, 'You').name;
+      const recipientName = dmIdentitySummary(recipientPubkey, dmDisplayNameForPeer(peer)).name;
+      if (normalizedType === 'zap-open') {
+        return `${senderName} opened a zap for ${recipientName}${amountSats > 0 ? ` (${formatCount(amountSats)} sats)` : ''}`;
+      }
+      return `${senderName} zapped ${recipientName}${amountSats > 0 ? ` with ${formatCount(amountSats)} sats` : ''}`;
+    }
+    return '';
+  }
+
+  function serializeLocalDmActivityMessage(message) {
+    if (!message || !message.activity || !String(message.id || '').startsWith('local_dm_activity_')) return null;
+    const peerPubkey = normalizePubkeyHex(message.peerPubkey || '');
+    if (!peerPubkey) return null;
+    const payload = {
+      id: String(message.id || '').trim(),
+      peerPubkey,
+      mine: message.mine !== false,
+      pubkey: normalizePubkeyHex(message.pubkey || '') || '',
+      created_at: Number(message.created_at || 0) || Math.floor(Date.now() / 1000),
+      content: String(message.content || '').trim(),
+      activity: true,
+      activityType: String(message.activityType || '').trim().toLowerCase()
+    };
+    if (payload.activityType === 'zap' || payload.activityType === 'zap-open') {
+      const data = message.activityData && typeof message.activityData === 'object' ? message.activityData : {};
+      payload.activityData = {
+        senderPubkey: normalizePubkeyHex(data.senderPubkey || payload.pubkey || '') || '',
+        recipientPubkey: normalizePubkeyHex(data.recipientPubkey || peerPubkey) || peerPubkey,
+        amountSats: Math.max(0, Math.floor(Number(data.amountSats || 0) || 0)),
+        lud16: String(data.lud16 || '').trim()
+      };
+    }
+    return payload;
+  }
+
+  function persistLocalDmActivitiesForOwner(ownerPubkey = state.dmOwnerPubkey || state.user && state.user.pubkey || '') {
+    const owner = normalizePubkeyHex(ownerPubkey);
+    const key = dmLocalActivityStorageKeyFor(owner);
+    if (!owner || !key) return;
+    const cutoff = Math.floor(Date.now() / 1000) - DM_LOCAL_ACTIVITY_MAX_AGE_SEC;
+    let items = [];
+    state.dmMessagesByPeer.forEach((messages) => {
+      (messages || []).forEach((message) => {
+        const payload = serializeLocalDmActivityMessage(message);
+        if (!payload) return;
+        if (Number(payload.created_at || 0) < cutoff) return;
+        items.push(payload);
+      });
+    });
+    items.sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0));
+    if (items.length > DM_LOCAL_ACTIVITY_MAX_ITEMS) {
+      items = items.slice(items.length - DM_LOCAL_ACTIVITY_MAX_ITEMS);
+    }
+    try {
+      localStorage.setItem(key, JSON.stringify(items));
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  function loadLocalDmActivitiesForOwner(ownerPubkey = state.dmOwnerPubkey || state.user && state.user.pubkey || '') {
+    const owner = normalizePubkeyHex(ownerPubkey);
+    const key = dmLocalActivityStorageKeyFor(owner);
+    if (!owner || !key) return;
+
+    let parsed = [];
+    try {
+      const raw = localStorage.getItem(key);
+      parsed = raw ? JSON.parse(raw) : [];
+    } catch (_) {
+      parsed = [];
+    }
+
+    const cutoff = Math.floor(Date.now() / 1000) - DM_LOCAL_ACTIVITY_MAX_AGE_SEC;
+    (Array.isArray(parsed) ? parsed : []).forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return;
+      const id = String(entry.id || '').trim();
+      const peer = normalizePubkeyHex(entry.peerPubkey || '');
+      if (!id || !peer || state.dmEventIds.has(id)) return;
+      const createdAt = Number(entry.created_at || 0) || Math.floor(Date.now() / 1000);
+      if (createdAt < cutoff) return;
+      const activityType = String(entry.activityType || '').trim().toLowerCase();
+      const rawData = entry.activityData && typeof entry.activityData === 'object' ? entry.activityData : {};
+      const activityData = (activityType === 'zap' || activityType === 'zap-open')
+        ? {
+            senderPubkey: normalizePubkeyHex(rawData.senderPubkey || entry.pubkey || owner) || owner,
+            recipientPubkey: normalizePubkeyHex(rawData.recipientPubkey || peer) || peer,
+            amountSats: Math.max(0, Math.floor(Number(rawData.amountSats || 0) || 0)),
+            lud16: String(rawData.lud16 || '').trim()
+          }
+        : null;
+      const content = String(entry.content || '').trim() || buildDmLocalActivityContent(activityType, activityData, peer);
+      if (!content) return;
+
+      const message = {
+        id,
+        peerPubkey: peer,
+        mine: entry.mine !== false,
+        pubkey: normalizePubkeyHex(entry.pubkey || owner) || owner,
+        created_at: createdAt,
+        ciphertext: '',
+        content,
+        decrypted: true,
+        decryptError: false,
+        activity: true,
+        activityType,
+        activityData
+      };
+
+      state.dmEventIds.add(id);
+      const messages = state.dmMessagesByPeer.get(peer) || [];
+      insertDmMessageSorted(messages, message);
+      capDmMessagesForPeer(peer, messages);
+      state.dmMessagesByPeer.set(peer, messages);
+      if (!state.dmActivePeerPubkey) state.dmActivePeerPubkey = peer;
+    });
+
+    persistLocalDmActivitiesForOwner(owner);
+  }
+
   function getDmPeerFromEvent(ev, ownerPubkey) {
     if (!ev || Number(ev.kind || 0) !== KIND_DIRECT_MESSAGE) return '';
     const owner = normalizePubkeyHex(ownerPubkey);
@@ -3801,6 +4713,25 @@
     const profile = profileFor(peer);
     const preferred = String(profile.display_name || profile.name || '').trim();
     return preferred || shortHex(peer);
+  }
+
+  function dmIdentitySummary(pubkey, fallbackLabel = 'Unknown') {
+    const normalized = normalizePubkeyHex(pubkey);
+    const profile = normalized ? profileFor(normalized) : {};
+    const claimedNip05 = normalizeNip05Value((profile && profile.nip05) || '');
+    const verifiedNip05 = normalized ? getVerifiedNip05ForPubkey(normalized, claimedNip05) : '';
+    if (normalized && claimedNip05 && !verifiedNip05) {
+      ensureNip05Verification(normalized, claimedNip05).catch(() => {});
+    }
+    const preferred = String((profile && (profile.display_name || profile.name)) || fallbackLabel || '').trim();
+    return {
+      pubkey: normalized || '',
+      name: preferred || (normalized ? shortHex(normalized) : String(fallbackLabel || 'Unknown')),
+      picture: String((profile && profile.picture) || '').trim(),
+      fallback: pickAvatar(normalized || preferred || fallbackLabel || '?'),
+      verifiedNip05: verifiedNip05 || '',
+      hasVerifiedNip05: !!verifiedNip05
+    };
   }
 
   function dmDisplaySublineForPeer(peerPubkey) {
@@ -4824,9 +5755,12 @@
         queueDmDecrypt(message);
       }
 
+      const isZapActivity = !!(message.activity && (message.activityType === 'zap' || message.activityType === 'zap-open'));
+
       const row = document.createElement('article');
       row.className = `dm-msg${message.mine ? ' out' : ''}`;
       if (message.activity) row.classList.add('activity');
+      if (isZapActivity) row.classList.add('dm-zap-activity');
       row.dataset.msgId = String(message.id || '');
 
       const senderPubkey =
@@ -4840,36 +5774,47 @@
         : (message.mine ? 'Me' : dmDisplayNameForPeer(activePeer));
       const senderName = String(senderProfile.display_name || senderProfile.name || senderFallback).trim() || senderFallback;
 
-      const top = document.createElement('div');
-      top.className = 'dm-msg-top';
-      const who = document.createElement('div');
-      who.className = 'dm-msg-who';
-      const fromAv = document.createElement('div');
-      fromAv.className = 'dm-msg-from-av';
-      setAvatarEl(fromAv, senderProfile.picture || '', pickAvatar(senderPubkey));
-      if (senderPubkey) {
-        fromAv.style.cursor = 'pointer';
-        fromAv.onclick = () => showProfileByPubkey(senderPubkey);
+      if (!isZapActivity) {
+        const top = document.createElement('div');
+        top.className = 'dm-msg-top';
+        const who = document.createElement('div');
+        who.className = 'dm-msg-who';
+        const fromAv = document.createElement('div');
+        fromAv.className = 'dm-msg-from-av';
+        setAvatarEl(fromAv, senderProfile.picture || '', pickAvatar(senderPubkey));
+        if (senderPubkey) {
+          fromAv.style.cursor = 'pointer';
+          fromAv.onclick = () => showProfileByPubkey(senderPubkey);
+        }
+        const from = document.createElement('span');
+        from.className = 'dm-msg-from';
+        from.textContent = senderName;
+        if (senderPubkey) {
+          from.style.cursor = 'pointer';
+          from.onclick = () => showProfileByPubkey(senderPubkey);
+        }
+        who.appendChild(fromAv);
+        who.appendChild(from);
+        const stamp = document.createElement('span');
+        stamp.className = 'dm-msg-time';
+        stamp.textContent = `${formatChatTimestamp(message.created_at)} - ${formatTimeAgo(message.created_at)} ago`;
+        top.appendChild(who);
+        top.appendChild(stamp);
+        row.appendChild(top);
       }
-      const from = document.createElement('span');
-      from.className = 'dm-msg-from';
-      from.textContent = senderName;
-      if (senderPubkey) {
-        from.style.cursor = 'pointer';
-        from.onclick = () => showProfileByPubkey(senderPubkey);
-      }
-      who.appendChild(fromAv);
-      who.appendChild(from);
-      const stamp = document.createElement('span');
-      stamp.className = 'dm-msg-time';
-      stamp.textContent = `${formatChatTimestamp(message.created_at)} - ${formatTimeAgo(message.created_at)} ago`;
-      top.appendChild(who);
-      top.appendChild(stamp);
-      row.appendChild(top);
 
       const body = document.createElement('div');
       body.className = 'dm-msg-body';
-      if (message.decryptError) {
+      if (isZapActivity) {
+        try {
+          const card = buildDmZapActivityCard(message, activePeer);
+          if (card) body.appendChild(card);
+          else body.textContent = String(message.content || '').trim() || 'Zap activity';
+        } catch (err) {
+          console.warn('Failed to render DM zap activity card:', err && err.message ? err.message : err);
+          body.textContent = String(message.content || '').trim() || 'Zap activity';
+        }
+      } else if (message.decryptError) {
         body.textContent = 'Unable to decrypt this DM with the current signer.';
       } else if (!message.decrypted) {
         body.textContent = 'Decrypting encrypted message...';
@@ -4909,10 +5854,12 @@
       row.appendChild(body);
 
       if (message.activity) {
-        const lock = document.createElement('div');
-        lock.className = 'dm-msg-lock';
-        lock.textContent = 'Activity';
-        row.appendChild(lock);
+        if (!isZapActivity) {
+          const lock = document.createElement('div');
+          lock.className = 'dm-msg-lock';
+          lock.textContent = 'Activity';
+          row.appendChild(lock);
+        }
       } else {
         const reactions = document.createElement('div');
         reactions.className = 'dm-msg-reactions';
@@ -5282,6 +6229,8 @@
       loadDmLastReadForOwner(owner);
     }
 
+    loadLocalDmActivitiesForOwner(owner);
+
     if (opts.subscribe !== false && !state.dmSubId) {
       subscribeDirectMessages();
     }
@@ -5425,10 +6374,33 @@
     }
   }
 
-  function appendLocalDmActivity(peerPubkey, text) {
+  function appendLocalDmActivity(peerPubkey, input) {
     const peer = normalizePubkeyHex(peerPubkey);
     if (!peer) return null;
-    const content = String(text || '').trim();
+    let activityType = '';
+    let activityData = null;
+    let content = '';
+
+    if (input && typeof input === 'object' && !Array.isArray(input)) {
+      activityType = String(input.type || '').trim().toLowerCase();
+      if (activityType === 'zap' || activityType === 'zap-open') {
+        const senderPubkey = normalizePubkeyHex(input.senderPubkey || state.user && state.user.pubkey || '') || '';
+        const recipientPubkey = normalizePubkeyHex(input.recipientPubkey || peer) || peer;
+        const amountSats = Math.max(0, Math.floor(Number(input.amountSats || 0) || 0));
+        const lud16 = String(input.lud16 || '').trim();
+        activityData = {
+          senderPubkey,
+          recipientPubkey,
+          amountSats,
+          lud16
+        };
+        content = buildDmLocalActivityContent(activityType, activityData, peer);
+      } else {
+        content = String(input.text || input.content || '').trim();
+      }
+    } else {
+      content = String(input || '').trim();
+    }
     if (!content) return null;
     const localId = `local_dm_activity_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const localMsg = {
@@ -5441,7 +6413,9 @@
       content,
       decrypted: true,
       decryptError: false,
-      activity: true
+      activity: true,
+      activityType,
+      activityData
     };
     if (!state.dmEventIds.has(localId)) {
       state.dmEventIds.add(localId);
@@ -5449,12 +6423,89 @@
       insertDmMessageSorted(messages, localMsg);
       capDmMessagesForPeer(peer, messages);
       state.dmMessagesByPeer.set(peer, messages);
+      persistLocalDmActivitiesForOwner(state.dmOwnerPubkey || state.user && state.user.pubkey || '');
     }
     if (isMessagesPageVisible()) {
       const isActive = normalizePubkeyHex(state.dmActivePeerPubkey) === peer;
-      scheduleDmRender({ conversations: true, thread: isActive, scrollToBottom: isActive });
+      if (isActive) {
+        renderDmConversationList();
+        renderDmThread({ scrollToBottom: true });
+      } else {
+        scheduleDmRender({ conversations: true, thread: false, scrollToBottom: false });
+      }
     }
     return localMsg;
+  }
+
+  function buildDmZapActivityCard(message, activePeer) {
+    const activityType = String(message && message.activityType || '').trim().toLowerCase();
+    if (activityType !== 'zap' && activityType !== 'zap-open') return null;
+
+    const data = message && message.activityData && typeof message.activityData === 'object'
+      ? message.activityData
+      : {};
+    const sender = dmIdentitySummary(
+      data.senderPubkey || normalizePubkeyHex(message && message.pubkey || '') || normalizePubkeyHex(state.user && state.user.pubkey || ''),
+      'You'
+    );
+    const recipient = dmIdentitySummary(
+      data.recipientPubkey || normalizePubkeyHex(activePeer || '') || normalizePubkeyHex(message && message.peerPubkey || ''),
+      dmDisplayNameForPeer(activePeer || message && message.peerPubkey || '')
+    );
+    const amountSats = Math.max(0, Math.floor(Number(data.amountSats || 0) || 0));
+
+    [sender.pubkey, recipient.pubkey].forEach((pubkey) => {
+      if (!pubkey || state.profilesByPubkey.has(pubkey)) return;
+      fetchProfileIfNeeded(pubkey).then(() => {
+        if (isMessagesPageVisible()) renderDmThread();
+      }).catch(() => {});
+    });
+
+    const card = document.createElement('div');
+    card.className = `dm-zap-card${activityType === 'zap-open' ? ' pending' : ''}`;
+
+    const stamp = document.createElement('div');
+    stamp.className = 'dm-zap-time';
+    stamp.textContent = `${formatChatTimestamp(message.created_at)} - ${formatTimeAgo(message.created_at)} ago`;
+
+    const createParty = (summary) => {
+      const el = document.createElement(summary.pubkey ? 'button' : 'div');
+      if (summary.pubkey) el.type = 'button';
+      el.className = 'dm-zap-party';
+      el.classList.add(summary.hasVerifiedNip05 ? 'verified' : 'unverified');
+      const av = document.createElement('div');
+      av.className = 'dm-zap-party-av';
+      av.classList.toggle('nip05-square', !!summary.hasVerifiedNip05);
+      setAvatarEl(av, summary.picture || '', summary.fallback);
+      const inner = document.createElement('div');
+      inner.className = 'dm-zap-party-inner';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'dm-zap-party-name';
+      nameEl.textContent = summary.name;
+      inner.appendChild(nameEl);
+      el.appendChild(av);
+      el.appendChild(inner);
+      if (summary.pubkey) {
+        el.addEventListener('click', () => showProfileByPubkey(summary.pubkey));
+      }
+      return el;
+    };
+
+    const actionRow = document.createElement('div');
+    actionRow.className = 'dm-zap-amount';
+    actionRow.textContent = activityType === 'zap-open'
+      ? `opening zap ${formatCount(amountSats)} sats`
+      : `zapped ${formatCount(amountSats)} sats`;
+
+    if (!amountSats) {
+      actionRow.textContent = activityType === 'zap-open' ? 'opening zap' : 'zapped';
+    }
+
+    card.appendChild(stamp);
+    card.appendChild(createParty(sender));
+    card.appendChild(actionRow);
+    card.appendChild(createParty(recipient));
+    return card;
   }
 
   async function toggleFollowActiveDmPeer() {
@@ -5503,18 +6554,11 @@
     let paid = false;
     const zapAmountMsats = 21000;
     try {
-      if (window.webln) {
-        await window.webln.enable();
-        const zapTags = [['relays', ...state.relays], ['amount', String(zapAmountMsats)], ['p', peer]];
-        const zapRequest = await signAndPublish(9734, 'zap from Sifaka Live DM', zapTags);
-        const [user, domain] = lud16.split('@');
-        const meta = await fetch(`https://${domain}/.well-known/lnurlp/${user}`).then((r) => r.json());
-        if (!meta.callback) throw new Error('Invalid LNURL response.');
-        const invoiceData = await fetch(`${meta.callback}?amount=${zapAmountMsats}&nostr=${encodeURIComponent(JSON.stringify(zapRequest))}`).then((r) => r.json());
-        if (!invoiceData.pr) throw new Error('No payment request returned.');
-        await window.webln.sendPayment(invoiceData.pr);
-        paid = true;
-      }
+      const zapInfo = await fetchZapEndpointInfo(lud16, zapAmountMsats);
+      const zapTags = buildZapRequestTags(peer, zapAmountMsats, zapInfo);
+      const zapRequest = await signEvent(9734, 'zap from Sifaka Live DM', zapTags);
+      const paymentMethod = await payZapInvoiceForLud16(lud16, zapAmountMsats, zapRequest, { zapInfo });
+      paid = !!paymentMethod;
     } catch (err) {
       if (window.console) console.warn('DM zap failed:', err && err.message ? err.message : err);
     } finally {
@@ -5527,12 +6571,24 @@
     if (!paid) {
       window.open(`lightning:${lud16}`, '_blank');
       setDmStatus('Opened Lightning wallet to complete zap.', 'info');
-      appendLocalDmActivity(peer, `? Opened zap for ${dmDisplayNameForPeer(peer)} (${lud16})`);
+      appendLocalDmActivity(peer, {
+        type: 'zap-open',
+        senderPubkey: normalizePubkeyHex(state.user && state.user.pubkey || '') || '',
+        recipientPubkey: peer,
+        amountSats: 21,
+        lud16
+      });
       return;
     }
 
     setDmStatus('Zap sent.', 'success');
-    appendLocalDmActivity(peer, `? Zapped ${dmDisplayNameForPeer(peer)} with 21 sats`);
+    appendLocalDmActivity(peer, {
+      type: 'zap',
+      senderPubkey: normalizePubkeyHex(state.user && state.user.pubkey || '') || '',
+      recipientPubkey: peer,
+      amountSats: 21,
+      lud16
+    });
   }
 
   function openDmAttachModal() {
@@ -6333,7 +7389,8 @@
         renderVideo(selected);
       }
     }
-    updateGoLiveButtonState();
+    if (didStore) updateGoLiveButtonState();
+    return didStore;
   }
 
   function normalizeStreamStatus(status) {
@@ -7131,6 +8188,58 @@
       .sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
   }
 
+  function collectVideosPageBuckets() {
+    const streams = Array.from(state.streamsByAddress.values());
+    const watchParty = [];
+    const pastStreams = [];
+    const otherStreams = [];
+
+    streams.forEach((stream) => {
+      if (!stream || typeof stream !== 'object') return;
+      if (isWatchPartyStream(stream)) {
+        watchParty.push(stream);
+        return;
+      }
+      if (isPastVideoStream(stream)) {
+        pastStreams.push(stream);
+        return;
+      }
+      const status = normalizeStreamStatus(stream && stream.status);
+      if (streamHasHttpVideoUrl(stream) && status !== 'live') otherStreams.push(stream);
+    });
+
+    watchParty.sort((a, b) => {
+      const viewerDelta = effectiveParticipants(b) - effectiveParticipants(a);
+      if (viewerDelta) return viewerDelta;
+      return Number(b && b.created_at || 0) - Number(a && a.created_at || 0);
+    });
+    pastStreams.sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
+    otherStreams.sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
+
+    const nip71All = Array.from(state.nip71VideosByEventId.values())
+      .filter((entry) => entry && typeof entry === 'object')
+      .sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
+    const nip71Videos = [];
+    const nip71Reels = [];
+    nip71All.forEach((entry) => {
+      const kind = Number(entry && entry.nip71Kind || 0);
+      if (kind === KIND_NIP71_VIDEO) nip71Videos.push(entry);
+      else if (kind === KIND_NIP71_REEL) nip71Reels.push(entry);
+    });
+
+    const allVideos = [...watchParty, ...pastStreams, ...otherStreams, ...nip71All]
+      .sort((a, b) => Number(b && b.created_at || 0) - Number(a && a.created_at || 0));
+
+    return {
+      streams,
+      watchParty,
+      pastStreams,
+      nip71Videos,
+      nip71Reels,
+      allVideos
+    };
+  }
+
   function collectProfilePubkeysFromStreams(streams = []) {
     const out = new Set();
     (streams || []).forEach((stream) => {
@@ -7162,14 +8271,53 @@
     state.videosRenderTimer = null;
   }
 
+  function clearVideosChunkRender() {
+    if (state.videosRenderChunkTimer) {
+      clearTimeout(state.videosRenderChunkTimer);
+      state.videosRenderChunkTimer = null;
+    }
+    state.videosRenderToken = Number(state.videosRenderToken || 0) + 1;
+  }
+
+  function updateVideosPageCardsForProfile(pubkey) {
+    if (!isVideosPageVisible()) return;
+    const normalizedPubkey = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
+    if (!normalizedPubkey) return;
+    const profile = profileFor(normalizedPubkey);
+    const selector = `.video-archive-card[data-host-pubkey="${cssEscapeValue(normalizedPubkey)}"]`;
+    const cards = qsa(selector);
+    if (!cards.length) return;
+    const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
+    const verifiedNip05 = getVerifiedNip05ForPubkey(normalizedPubkey, profile.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+    cards.forEach((card) => {
+      const avatarEl = qs('.video-archive-avatar', card);
+      if (avatarEl) {
+        setAvatarEl(avatarEl, profile.picture || '', pickAvatar(normalizedPubkey));
+        avatarEl.classList.toggle('nip05-square', !!verifiedNip05);
+      }
+      const hostEl = qs('.video-archive-host', card);
+      if (hostEl) hostEl.textContent = profile.display_name || profile.name || shortHex(normalizedPubkey);
+    });
+    if (claimedNip05) {
+      ensureNip05Verification(normalizedPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
+    }
+  }
+
   function scheduleVideosPageRender(delayMs = 90) {
     if (!isVideosPageVisible()) return;
+    if (state.videosRenderChunkTimer) {
+      state.videosRenderPending = true;
+      return;
+    }
     clearVideosRenderTimer();
+    const nowMs = Date.now();
+    const minGapMs = 160;
+    const remainingGap = Math.max(0, (Number(state.videosLastRenderAt || 0) + minGapMs) - nowMs);
     state.videosRenderTimer = setTimeout(() => {
       state.videosRenderTimer = null;
       if (!isVideosPageVisible()) return;
       renderVideosPage();
-    }, Math.max(0, Number(delayMs || 0)));
+    }, Math.max(0, Number(delayMs || 0), remainingGap));
   }
 
   function replaceVideoThumbWithFallback(videoEl, fallbackClass) {
@@ -7289,6 +8437,7 @@
     const profile = profileFor(hostPubkey);
     const card = document.createElement('article');
     card.className = 'video-archive-card';
+    if (hostPubkey) card.dataset.hostPubkey = hostPubkey;
 
     const gradients = ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8'];
     const fallback = gradients[idx % gradients.length];
@@ -7382,13 +8531,18 @@
     const countPill = qs('#videosCountPill');
     if (!grid) return;
 
-    const allStreams = Array.from(state.streamsByAddress.values());
-    const watchParty = sortedWatchPartyStreams();
-    const pastStreams = sortedPastVideoStreams();
-    const nip71Videos = sortedNip71VideosByKind(KIND_NIP71_VIDEO);
-    const nip71Reels = sortedNip71VideosByKind(KIND_NIP71_REEL);
-    const allVideos = sortedAllArchiveVideos();
-    ensureProfilesForStreams(allVideos);
+    state.videosLastRenderAt = Date.now();
+    state.videosRenderPending = false;
+    clearVideosChunkRender();
+    const renderToken = state.videosRenderToken;
+
+    const buckets = collectVideosPageBuckets();
+    const allStreams = buckets.streams;
+    const watchParty = buckets.watchParty;
+    const pastStreams = buckets.pastStreams;
+    const nip71Videos = buckets.nip71Videos;
+    const nip71Reels = buckets.nip71Reels;
+    const allVideos = buckets.allVideos;
     const counts = {
       all: allVideos.length,
       'watch-party': watchParty.length,
@@ -7440,9 +8594,34 @@
       });
     }
     grid.innerHTML = '';
-    const frag = document.createDocumentFragment();
-    videos.forEach((stream, idx) => frag.appendChild(buildVideoArchiveCard(stream, idx)));
-    grid.appendChild(frag);
+    let idx = 0;
+    const renderChunk = () => {
+      if (!isVideosPageVisible()) {
+        state.videosRenderChunkTimer = null;
+        return;
+      }
+      if (renderToken !== state.videosRenderToken) {
+        state.videosRenderChunkTimer = null;
+        return;
+      }
+      const frag = document.createDocumentFragment();
+      const end = Math.min(idx + VIDEOS_RENDER_CHUNK_SIZE, videos.length);
+      ensureProfilesForStreams(videos.slice(idx, end));
+      for (; idx < end; idx += 1) {
+        frag.appendChild(buildVideoArchiveCard(videos[idx], idx));
+      }
+      grid.appendChild(frag);
+      if (idx < videos.length) {
+        state.videosRenderChunkTimer = setTimeout(renderChunk, 0);
+      } else {
+        state.videosRenderChunkTimer = null;
+        if (state.videosRenderPending) {
+          state.videosRenderPending = false;
+          scheduleVideosPageRender(60);
+        }
+      }
+    };
+    renderChunk();
   }
 
   function resolveVideoPostEventId(stream) {
@@ -8042,6 +9221,10 @@
   }
 
   function stopVideoPostLiveChatSubscription() {
+    if (state.videoPostLiveChatRenderTimer) {
+      clearTimeout(state.videoPostLiveChatRenderTimer);
+      state.videoPostLiveChatRenderTimer = null;
+    }
     if (!state.videoPostLiveChatSubId || !state.pool) {
       state.videoPostLiveChatSubId = null;
       return;
@@ -8068,12 +9251,29 @@
       }
     });
     const messages = Array.from(merged.values())
-      .sort((a, b) => Number(a && a.created_at || 0) - Number(b && b.created_at || 0));
+      .sort((a, b) => Number(a && a.created_at || 0) - Number(b && b.created_at || 0))
+      .slice(-VIDEO_POST_LIVE_CHAT_MAX_MESSAGES);
     state.videoPostLiveChatCacheByAddress.set(streamAddress, {
       savedAt: Date.now(),
       messages
     });
     return messages;
+  }
+
+  function scheduleVideoPostLiveChatRender(stream, token, delayMs = VIDEO_POST_LIVE_CHAT_RENDER_DEBOUNCE_MS) {
+    if (state.videoPostLiveChatRenderTimer) return;
+    state.videoPostLiveChatRenderTimer = setTimeout(() => {
+      state.videoPostLiveChatRenderTimer = null;
+      if (token !== state.videoPostModalToken) return;
+      if (!state.videoPostModalIsWatchParty) return;
+      const streamAddress = resolveVideoPostLiveChatAddress(stream);
+      if (!streamAddress) return;
+      const cacheEntry = state.videoPostLiveChatCacheByAddress.get(streamAddress);
+      const messages = cacheEntry && Array.isArray(cacheEntry.messages) ? cacheEntry.messages : [];
+      const statusEl = qs('#videoPostCommentsStatus');
+      if (statusEl) statusEl.textContent = messages.length ? `${formatCount(messages.length)} messages` : 'No live chat yet';
+      renderVideoPostLiveChat(messages, { token });
+    }, Math.max(0, Number(delayMs || 0)));
   }
 
   function renderVideoPostLiveChat(messages, opts = {}) {
@@ -8182,7 +9382,7 @@
         scope: 'video-post-live-chat',
         cacheKey: `video-post-live-chat:${streamAddress}`,
         timeoutMs: 4200,
-        maxEvents: 900
+        maxEvents: VIDEO_POST_LIVE_CHAT_FETCH_MAX_EVENTS
       }
     ).then((events) => upsertVideoPostLiveChatCache(stream, events, { reset: false }))
       .catch(() => (cacheEntry && Array.isArray(cacheEntry.messages) ? cacheEntry.messages : []));
@@ -8202,12 +9402,10 @@
         event: (ev) => {
           if (!ev || ev.kind !== KIND_LIVE_CHAT || !ev.id) return;
           if (!videoPostLiveChatTargetsStream(ev, stream)) return;
-          const messages = upsertVideoPostLiveChatCache(stream, [ev], { reset: false });
+          upsertVideoPostLiveChatCache(stream, [ev], { reset: false });
           if (token !== state.videoPostModalToken) return;
           if (!state.videoPostModalIsWatchParty) return;
-          const statusEl = qs('#videoPostCommentsStatus');
-          if (statusEl) statusEl.textContent = messages.length ? `${formatCount(messages.length)} messages` : 'No live chat yet';
-          renderVideoPostLiveChat(messages, { token });
+          scheduleVideoPostLiveChatRender(stream, token);
         }
       }
     );
@@ -10170,7 +11368,6 @@
   function renderLiveGrid() {
     const grid = qs('#liveGrid');
     const sentinel = qs('#liveGridSentinel');
-    if (isVideosPageVisible()) scheduleVideosPageRender();
     if (!grid) return;
     if (!isHomeViewActive()) {
       if (state.liveGridObserver) { state.liveGridObserver.disconnect(); state.liveGridObserver = null; }
@@ -13029,7 +14226,6 @@
     setAvatarEl(avEl, p.picture || '', pickAvatar(messagePubkey));
     const chatNip05 = getVerifiedNip05ForPubkey(messagePubkey, p.nip05 || '');
     avEl.classList.toggle('nip05-square', !!chatNip05);
-    if (!chatNip05 && normalizeNip05Value(p.nip05 || '')) ensureNip05Verification(messagePubkey, p.nip05 || '').catch(() => {});
     avEl.onclick = () => showProfileByPubkey(messagePubkey);
     const nameEl = qs('.c-name', row);
     nameEl.textContent = state.profilesByPubkey.has(messagePubkey)
@@ -13043,29 +14239,7 @@
     }
     const ctext = qs('.c-text', row);
     const rawText = String(ev.content || '');
-    const allUrls = Array.from(new Set(
-      extractHttpUrls(rawText)
-        .map((u) => sanitizeMediaUrl(u))
-        .filter(Boolean)
-    ));
-    const mediaItems = allUrls
-      .map((url) => ({ url, kind: classifyMediaUrl(url) }))
-      .filter((item) => item.kind === 'photo' || item.kind === 'video' || item.kind === 'audio');
-    const mediaUrls = mediaItems.map((item) => item.url);
-    const spotifyItems = extractSpotifyPreviewItems(allUrls);
-    const spotifyUrls = spotifyItems.map((item) => item.sourceUrl);
-    const urlsToStrip = Array.from(new Set([...mediaUrls, ...spotifyUrls]));
-    const renderText = urlsToStrip.length ? stripMediaUrlsFromText(rawText, urlsToStrip) : rawText;
-    if (renderText) ctext.appendChild(renderNostrContent(renderText));
-    renderChatInlineMedia(ctext, mediaItems, {
-      allowVideo: true,
-      classPrefix: 'chat',
-      maxItems: 4,
-      videoAutoplay: false,
-      videoMuted: false,
-      videoLoop: false
-    });
-    renderSpotifyLinkPreviews(ctext, spotifyItems, { classPrefix: 'chat', maxItems: 2 });
+    if (rawText) ctext.appendChild(renderNostrContent(rawText));
     const likeBtn = qs('.chat-like-btn', row);
     if (likeBtn) likeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -13075,7 +14249,7 @@
     insertChatRowChronological(sc, row, ev.id, ev.created_at);
 
     updateChatLikeUi(ev.id);
-    while (sc.children.length > 300) sc.removeChild(sc.firstChild);
+    while (sc.children.length > THEATER_CHAT_MAX_ROWS) sc.removeChild(sc.firstChild);
     if (wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
   function renderChatZapReceipt(entry) {
@@ -13103,9 +14277,6 @@
     setAvatarEl(avEl, picture, pickAvatar(senderPubkey || displayName));
     const chatNip05 = senderPubkey ? getVerifiedNip05ForPubkey(senderPubkey, profile && profile.nip05 ? profile.nip05 : '') : '';
     avEl.classList.toggle('nip05-square', !!chatNip05);
-    if (senderPubkey && !chatNip05 && profile && normalizeNip05Value(profile.nip05 || '')) {
-      ensureNip05Verification(senderPubkey, profile.nip05 || '').catch(() => {});
-    }
     if (senderPubkey) avEl.onclick = () => showProfileByPubkey(senderPubkey);
 
     const nameEl = qs('.c-name', row);
@@ -13127,7 +14298,7 @@
     insertChatRowChronological(sc, row, eventId, entry.created_at);
 
     if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) {
-      fetchProfileIfNeeded(senderPubkey).then(() => {
+      fetchProfileIfNeeded(senderPubkey, { skipNip05: true }).then(() => {
         const updated = profileFor(senderPubkey);
         const targetRow = sc.querySelector(`.cmsg.zap-ev[data-msg-id="${CSS.escape(eventId)}"]`);
         if (!targetRow || !updated) return;
@@ -13142,7 +14313,7 @@
       }).catch(() => {});
     }
 
-    while (sc.children.length > 300) sc.removeChild(sc.firstChild);
+    while (sc.children.length > THEATER_CHAT_MAX_ROWS) sc.removeChild(sc.firstChild);
     if (wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
   function setLoggedInUi(on) {
@@ -13246,6 +14417,22 @@
           const parsed = parseProfile(ev);
           const profilePubkey = normalizePubkeyHex(parsed.pubkey || ev.pubkey || '') || '';
           if (!profilePubkey) return;
+          const existingProfile = state.profilesByPubkey.get(profilePubkey);
+          const existingTs = Number(existingProfile && existingProfile.created_at || 0);
+          const incomingTs = Number(parsed.created_at || 0);
+          if (existingProfile && existingTs > incomingTs) return;
+          if (
+            existingProfile &&
+            existingTs === incomingTs &&
+            String(existingProfile.name || '') === String(parsed.name || '') &&
+            String(existingProfile.display_name || '') === String(parsed.display_name || '') &&
+            String(existingProfile.about || '') === String(parsed.about || '') &&
+            String(existingProfile.picture || '') === String(parsed.picture || '') &&
+            String(existingProfile.banner || '') === String(parsed.banner || '') &&
+            String(existingProfile.nip05 || '') === String(parsed.nip05 || '')
+          ) {
+            return;
+          }
           state.profilesByPubkey.set(profilePubkey, { ...parsed, pubkey: profilePubkey });
           ensureNip05Verification(profilePubkey, parsed.nip05 || '').catch(() => {});
           if (state.user && normalizePubkeyHex(state.user.pubkey) === profilePubkey) {
@@ -13253,9 +14440,16 @@
             setUserUi();
           }
           if (isHomeViewActive()) renderLiveGrid();
-          if (isVideosPageVisible()) scheduleVideosPageRender();
+          updateVideosPageCardsForProfile(profilePubkey);
           const sel = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
-          if (sel && isVideoPageVisible()) renderVideo(sel);
+          if (sel && isVideoPageVisible()) {
+            const selHost = normalizePubkeyHex(sel.hostPubkey || '');
+            const selPublisher = normalizePubkeyHex(sel.pubkey || '');
+            const selPlatform = normalizePubkeyHex(sel.platformPubkey || '');
+            if (profilePubkey === selHost || profilePubkey === selPublisher || profilePubkey === selPlatform) {
+              renderVideo(sel);
+            }
+          }
           if (normalizePubkeyHex(state.selectedProfilePubkey) === profilePubkey && isProfilePageVisible()) {
             renderProfilePage(profilePubkey);
             syncProfileRoute(profilePubkey, 'replace');
@@ -13273,7 +14467,7 @@
   }
 
   // Fetch a single profile on demand (commenters, repost authors, etc.)
-  function fetchProfileIfNeeded(pubkey) {
+  function fetchProfileIfNeeded(pubkey, opts = {}) {
     const normalizedPubkey = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
     if (!normalizedPubkey) return Promise.resolve();
     const existing = state.profilesByPubkey.get(normalizedPubkey);
@@ -13293,8 +14487,8 @@
       if (!latest) return;
       const parsed = parseProfile(latest);
       state.profilesByPubkey.set(normalizedPubkey, { ...parsed, pubkey: normalizedPubkey });
-      ensureNip05Verification(normalizedPubkey, parsed.nip05 || '').catch(() => {});
-      if (isVideosPageVisible()) scheduleVideosPageRender();
+      if (!opts.skipNip05) ensureNip05Verification(normalizedPubkey, parsed.nip05 || '').catch(() => {});
+      updateVideosPageCardsForProfile(normalizedPubkey);
       if (isMessagesPageVisible()) {
         renderDmContactSelect();
         scheduleDmRender({
@@ -13350,11 +14544,11 @@
           const kind = Number(ev && ev.kind || 0);
           if (kind === KIND_LIVE_EVENT) {
             const stream = parseLiveEvent(ev);
-            upsertStream(stream);
+            const changed = upsertStream(stream);
             if (state.pendingRouteAddress && stream.address === state.pendingRouteAddress) {
               tryOpenPendingRouteStream();
             }
-            if (isVideosPageVisible()) scheduleVideosPageRender();
+            if (changed && isVideosPageVisible()) scheduleVideosPageRender(220);
             // Avoid rapid card remount/flicker while the initial relay sync is still streaming in.
             if (isHomeViewActive() && initialSyncComplete) debouncedRenderGrid();
             return;
@@ -13365,7 +14559,7 @@
             if (!video) return;
             const changed = upsertNip71Video(video);
             if (video.hostPubkey) fetchProfileIfNeeded(video.hostPubkey).catch(() => {});
-            if (changed && isVideosPageVisible()) scheduleVideosPageRender();
+            if (changed && isVideosPageVisible()) scheduleVideosPageRender(220);
           }
         },
         eose: () => {
@@ -13376,10 +14570,14 @@
           persistLiveStreamsCache();
           tryOpenPendingRouteStream();
           if (isHomeViewActive() && shouldRunHeroCycle() && !state.featuredCycleTimer) startHeroCycle();
-          const allKnownVideoEntries = [...Array.from(state.streamsByAddress.values()), ...sortedNip71Videos()];
-          const pubSet = collectProfilePubkeysFromStreams(allKnownVideoEntries);
+          const allKnownLiveEntries = Array.from(state.streamsByAddress.values());
+          const initialVisibleVideoEntries = isVideosPageVisible()
+            ? sortedNip71Videos().slice(0, VIDEOS_RENDER_CHUNK_SIZE)
+            : [];
+          const initialProfileEntries = [...allKnownLiveEntries, ...initialVisibleVideoEntries];
+          const pubSet = collectProfilePubkeysFromStreams(initialProfileEntries);
           subscribeProfiles(Array.from(pubSet));
-          ensureProfilesForStreams(allKnownVideoEntries);
+          ensureProfilesForStreams(initialProfileEntries);
           if (isHomeViewActive() && state.selectedProfilePubkey) renderProfilePage(state.selectedProfilePubkey);
         }
       }
@@ -13395,6 +14593,8 @@
     if (state._chatProfileSubId) { try { state.pool.unsubscribe(state._chatProfileSubId); } catch (_) {} state._chatProfileSubId = null; }
     if (state._chatCacheWarmTimer) { clearTimeout(state._chatCacheWarmTimer); state._chatCacheWarmTimer = null; }
     state._chatCacheWarmAddress = '';
+    if (state._chatMessageQueueTimer) { clearTimeout(state._chatMessageQueueTimer); state._chatMessageQueueTimer = null; }
+    if (state._chatReactionQueueTimer) { clearTimeout(state._chatReactionQueueTimer); state._chatReactionQueueTimer = null; }
     const sc = qs('#chatScroll');
     if (sc) sc.innerHTML = '';
     state.chatLikePubkeysByMessageId = new Map();
@@ -13417,7 +14617,12 @@
     renderStreamZapList(stream);
 
     const seenIds = new Set();
+    const seenReactionIds = new Set();
     const unknownPubkeys = new Set(); // pubkeys seen in chat but not yet in profile cache
+    const chatEventQueue = [];
+    let chatQueueCursor = 0;
+    const reactionEventQueue = [];
+    let reactionQueueCursor = 0;
 
     function scheduleMissingChatProfiles(delayMs = 220) {
       if (state._chatProfileFetchTimer) clearTimeout(state._chatProfileFetchTimer);
@@ -13430,12 +14635,13 @@
     // Called after EOSE and also for each new real-time message
     function fetchMissingChatProfiles() {
       if (!unknownPubkeys.size) return;
-      const toFetch = Array.from(new Set(
+      const queuedPubkeys = Array.from(new Set(
         Array.from(unknownPubkeys)
           .map((pk) => normalizePubkeyHex(pk))
           .filter((pk) => pk && !state.profilesByPubkey.has(pk))
       ));
       unknownPubkeys.clear();
+      const toFetch = queuedPubkeys.slice(0, THEATER_CHAT_PROFILE_FETCH_BATCH);
       if (!toFetch.length) return;
 
       if (state._chatProfileEoseTimer) { clearTimeout(state._chatProfileEoseTimer); state._chatProfileEoseTimer = null; }
@@ -13448,8 +14654,23 @@
             const normalizedProfilePubkey = normalizePubkeyHex(profileEv.pubkey || '');
             if (!normalizedProfilePubkey) return;
             const p = parseProfile(profileEv);
+            const existingProfile = state.profilesByPubkey.get(normalizedProfilePubkey);
+            const existingTs = Number(existingProfile && existingProfile.created_at || 0);
+            const incomingTs = Number(p.created_at || 0);
+            if (existingProfile && existingTs > incomingTs) return;
+            if (
+              existingProfile &&
+              existingTs === incomingTs &&
+              String(existingProfile.name || '') === String(p.name || '') &&
+              String(existingProfile.display_name || '') === String(p.display_name || '') &&
+              String(existingProfile.about || '') === String(p.about || '') &&
+              String(existingProfile.picture || '') === String(p.picture || '') &&
+              String(existingProfile.banner || '') === String(p.banner || '') &&
+              String(existingProfile.nip05 || '') === String(p.nip05 || '')
+            ) {
+              return;
+            }
             state.profilesByPubkey.set(normalizedProfilePubkey, { ...p, pubkey: normalizedProfilePubkey });
-            ensureNip05Verification(normalizedProfilePubkey, p.nip05 || '').catch(() => {});
             // Update all chat rows for this pubkey
             const chatEl = qs('#chatScroll');
             if (!chatEl) return;
@@ -13482,137 +14703,134 @@
     const streamStart = Number(stream.starts || stream.created_at || 0) || 0;
     const status = normalizeStreamStatus(stream && stream.status);
     const isArchive = status === 'ended' || isDirectFileVideoUrl(stream && stream.streaming);
+    const chatHistoryWindowSec = isArchive ? THEATER_CHAT_HISTORY_WINDOW_ARCHIVE_SEC : THEATER_CHAT_HISTORY_WINDOW_LIVE_SEC;
+    const chatPaddingSec = isArchive ? 60 * 60 * 2 : 60 * 30;
     const chatSince = streamStart
-      ? Math.max(0, streamStart - 60 * 60 * 2)
-      : (nowSec - 60 * 60 * 24);
-    const chatHistoryLimit = isArchive ? 260 : 1200;
-
-    const filters = [{
+      ? Math.max(0, Math.max(streamStart - chatPaddingSec, nowSec - chatHistoryWindowSec))
+      : Math.max(0, nowSec - chatHistoryWindowSec);
+    const chatHistoryLimit = isArchive ? THEATER_CHAT_HISTORY_LIMIT_ARCHIVE : THEATER_CHAT_HISTORY_LIMIT_LIVE;
+    const chatLiveSince = Math.max(0, nowSec - THEATER_CHAT_LIVE_SUB_LOOKBACK_SEC);
+    const chatHistoryFilters = [{
       kinds: [KIND_LIVE_CHAT],
       '#a': [stream.address],
       limit: chatHistoryLimit,
       since: chatSince
     }];
+    const chatLiveFilters = [{
+      kinds: [KIND_LIVE_CHAT],
+      '#a': [stream.address],
+      since: chatLiveSince
+    }];
     if (stream.id) {
-      filters.push({
+      chatHistoryFilters.push({
         kinds: [KIND_LIVE_CHAT],
         '#e': [stream.id],
         limit: chatHistoryLimit,
         since: chatSince
       });
+      chatLiveFilters.push({
+        kinds: [KIND_LIVE_CHAT],
+        '#e': [stream.id],
+        since: chatLiveSince
+      });
     }
 
-    state.chatSubId = state.pool.subscribe(filters, {
-      event: (ev) => {
-        if (!ev || !ev.id) return;
-        if (seenIds.has(ev.id)) return;
-        seenIds.add(ev.id);
-        renderChatMessage(ev);
-        // Queue profile fetch for unknown sender
-        const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
-        if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) {
-          unknownPubkeys.add(senderPubkey);
-          scheduleMissingChatProfiles();
-        }
-      },
-      eose: () => {
-        // Batch-fetch all profiles we saw during history replay
-        scheduleMissingChatProfiles(0);
-      }
-    });
-
+    const reactionHistoryWindowSec = isArchive ? THEATER_REACTION_HISTORY_WINDOW_ARCHIVE_SEC : THEATER_REACTION_HISTORY_WINDOW_LIVE_SEC;
+    const reactionPaddingSec = isArchive ? 60 * 60 * 6 : 60 * 60;
     const reactionSince = streamStart
-      ? Math.max(0, streamStart - 60 * 60 * 12)
-      : (nowSec - 60 * 60 * 24 * 7);
-    const reactionHistoryLimit = isArchive ? 320 : 1200;
-    const reactionFilters = [
+      ? Math.max(0, Math.max(streamStart - reactionPaddingSec, nowSec - reactionHistoryWindowSec))
+      : Math.max(0, nowSec - reactionHistoryWindowSec);
+    const reactionHistoryLimit = isArchive ? THEATER_REACTION_HISTORY_LIMIT_ARCHIVE : THEATER_REACTION_HISTORY_LIMIT_LIVE;
+    const reactionLiveSince = Math.max(0, nowSec - THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC);
+    const reactionHistoryFilters = [
       { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince },
       { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince }
     ];
+    const reactionLiveFilters = [
+      { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], since: reactionLiveSince },
+      { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], since: reactionLiveSince }
+    ];
     if (stream.id) {
-      reactionFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
+      reactionHistoryFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
+      reactionLiveFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], since: reactionLiveSince });
     }
     const pTargets = [...new Set([stream.pubkey, stream.hostPubkey].map((pk) => normalizePubkeyHex(pk)).filter(Boolean))];
     if (pTargets.length) {
-      reactionFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#p': pTargets, limit: reactionHistoryLimit, since: reactionSince });
+      const pOnlyReactionSince = streamStart
+        ? Math.max(0, streamStart - (isArchive ? THEATER_P_ONLY_ZAP_HISTORY_WINDOW_ARCHIVE_SEC : THEATER_P_ONLY_ZAP_HISTORY_WINDOW_LIVE_SEC))
+        : (nowSec - (isArchive ? THEATER_P_ONLY_ZAP_HISTORY_WINDOW_ARCHIVE_SEC : THEATER_P_ONLY_ZAP_HISTORY_WINDOW_LIVE_SEC));
+      const pOnlyReactionLimit = isArchive ? THEATER_P_ONLY_ZAP_HISTORY_LIMIT_ARCHIVE : THEATER_P_ONLY_ZAP_HISTORY_LIMIT_LIVE;
+      reactionHistoryFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#p': pTargets, limit: pOnlyReactionLimit, since: pOnlyReactionSince });
     }
-
-    const theaterChatCacheKey = `theater-chat-history:${String(stream.address || '').trim()}:${String(stream.id || '').trim()}:${chatSince}:${chatHistoryLimit}`;
-    const theaterReactionCacheKey = `theater-chat-reactions:${String(stream.address || '').trim()}:${String(stream.id || '').trim()}:${reactionSince}:${reactionHistoryLimit}`;
-    const theaterChatCacheOpts = {
-      scope: 'theater-chat-history',
-      cacheKey: theaterChatCacheKey,
-      timeoutMs: 2600,
-      maxEvents: Math.max(300, chatHistoryLimit),
-      ttlMs: THEATER_CHAT_CACHE_TTL_MS,
-      warmMs: THEATER_CHAT_CACHE_WARM_MS,
-      allowStale: true
-    };
-    const theaterReactionCacheOpts = {
-      scope: 'theater-chat-reactions',
-      cacheKey: theaterReactionCacheKey,
-      timeoutMs: 2800,
-      maxEvents: Math.max(320, reactionHistoryLimit),
-      ttlMs: THEATER_CHAT_CACHE_TTL_MS,
-      warmMs: THEATER_CHAT_CACHE_WARM_MS,
-      allowStale: true
-    };
 
     function isSameSelectedStream() {
       return state.selectedStreamAddress === stream.address;
     }
 
-    function sortEventsChronological(events) {
-      return (Array.isArray(events) ? events : [])
-        .filter((ev) => ev && ev.id)
-        .slice()
-        .sort((a, b) => {
-          const aTs = Number(a.created_at || 0) || 0;
-          const bTs = Number(b.created_at || 0) || 0;
-          if (aTs !== bTs) return aTs - bTs;
-          return String(a.id || '').localeCompare(String(b.id || ''));
-        });
-    }
-
-    function applyCachedChatEvents(events) {
-      const ordered = sortEventsChronological(events);
-      if (!ordered.length) return;
-      ordered.forEach((ev) => {
-        if (Number(ev.kind || 0) !== KIND_LIVE_CHAT) return;
-        if (seenIds.has(ev.id)) return;
-        seenIds.add(ev.id);
+    function flushChatEventQueue() {
+      state._chatMessageQueueTimer = null;
+      if (!isSameSelectedStream()) {
+        chatEventQueue.length = 0;
+        chatQueueCursor = 0;
+        return;
+      }
+      const batchSize = 28;
+      let processed = 0;
+      while (chatQueueCursor < chatEventQueue.length && processed < batchSize) {
+        const ev = chatEventQueue[chatQueueCursor];
+        chatQueueCursor += 1;
+        processed += 1;
+        if (!ev || Number(ev.kind || 0) !== KIND_LIVE_CHAT || !ev.id) continue;
         renderChatMessage(ev);
         const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
         if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) unknownPubkeys.add(senderPubkey);
-      });
-      if (unknownPubkeys.size) scheduleMissingChatProfiles(0);
+      }
+      if (chatQueueCursor >= chatEventQueue.length) {
+        chatEventQueue.length = 0;
+        chatQueueCursor = 0;
+        if (unknownPubkeys.size) scheduleMissingChatProfiles(0);
+        return;
+      }
+      state._chatMessageQueueTimer = setTimeout(flushChatEventQueue, 8);
+    }
+
+    function queueChatEvent(ev) {
+      if (!ev || !ev.id) return;
+      chatEventQueue.push(ev);
+      if (state._chatMessageQueueTimer) return;
+      state._chatMessageQueueTimer = setTimeout(flushChatEventQueue, 8);
     }
 
     function handleChatReactionEvent(ev) {
-      if (!ev || !ev.id) return;
+      const outcome = { streamReactionsDirty: false, streamZapsDirty: false };
+      if (!ev || !ev.id) return outcome;
+      if (seenReactionIds.has(ev.id)) return outcome;
+      seenReactionIds.add(ev.id);
 
       if (ev.kind === KIND_REACTION) {
         const targetId = firstTagValue(ev.tags, 'e');
-        if (!/^[0-9a-f]{64}$/i.test(targetId || '')) return;
+        if (!/^[0-9a-f]{64}$/i.test(targetId || '')) return outcome;
         if (targetId === stream.id) {
           const reactionMeta = parseReactionMeta(ev.content, ev.tags);
-          if (!reactionMeta) return;
+          if (!reactionMeta) return outcome;
           applyStreamReaction(reactionMeta, normalizePubkeyHex(ev.pubkey), ev.id);
-          renderStreamReactionsUi(stream);
-          return;
+          outcome.streamReactionsDirty = true;
+          return outcome;
         }
         const kTag = firstTagValue(ev.tags, 'k');
-        if (kTag && kTag !== String(KIND_LIVE_CHAT)) return;
+        if (kTag && kTag !== String(KIND_LIVE_CHAT)) return outcome;
         const reactionContent = (ev.content || '').trim();
-        if (!reactionContent || reactionContent === '-') return;
+        if (!reactionContent || reactionContent === '-') return outcome;
         applyChatLikeReaction(targetId, normalizePubkeyHex(ev.pubkey), ev.id);
         updateChatLikeUi(targetId);
-        return;
+        return outcome;
       }
 
       if (ev.kind === KIND_ZAP_RECEIPT) {
-        addStreamZapReceipt(ev, stream);
-        return;
+        if (addStreamZapReceipt(ev, stream, { deferUi: true })) {
+          outcome.streamZapsDirty = true;
+        }
+        return outcome;
       }
 
       if (ev.kind === KIND_DELETION) {
@@ -13621,60 +14839,160 @@
           const streamReactionMeta = state.streamReactionEventById.get(rid);
           if (streamReactionMeta) {
             removeStreamReactionById(rid);
-            renderStreamReactionsUi(stream);
+            outcome.streamReactionsDirty = true;
           }
           const meta = state.chatReactionEventById.get(rid);
           applyChatUnlikeByReactionId(rid);
           if (meta && meta.messageId) updateChatLikeUi(meta.messageId);
         });
       }
+      return outcome;
     }
 
-    function applyCachedReactionEvents(events) {
-      const ordered = sortEventsChronological(events);
-      if (!ordered.length) return;
-      ordered.forEach((ev) => handleChatReactionEvent(ev));
+    function flushReactionEventQueue() {
+      state._chatReactionQueueTimer = null;
+      if (!isSameSelectedStream()) {
+        reactionEventQueue.length = 0;
+        reactionQueueCursor = 0;
+        return;
+      }
+      const batchSize = 20;
+      let processed = 0;
+      let streamReactionsDirty = false;
+      let streamZapsDirty = false;
+      while (reactionQueueCursor < reactionEventQueue.length && processed < batchSize) {
+        const ev = reactionEventQueue[reactionQueueCursor];
+        reactionQueueCursor += 1;
+        processed += 1;
+        const outcome = handleChatReactionEvent(ev);
+        if (outcome && outcome.streamReactionsDirty) streamReactionsDirty = true;
+        if (outcome && outcome.streamZapsDirty) streamZapsDirty = true;
+      }
+      if (streamReactionsDirty) {
+        renderStreamReactionsUi(stream);
+      }
+      if (streamZapsDirty) {
+        updateTheaterSatsDisplay(stream);
+        renderStreamZapList(stream);
+      }
+      if (reactionQueueCursor >= reactionEventQueue.length) {
+        reactionEventQueue.length = 0;
+        reactionQueueCursor = 0;
+        return;
+      }
+      state._chatReactionQueueTimer = setTimeout(flushReactionEventQueue, 10);
     }
 
-    function warmTheaterChatCaches() {
-      fetchEventsCached(filters, theaterChatCacheOpts).catch(() => {});
-      fetchEventsCached(reactionFilters, theaterReactionCacheOpts).catch(() => {});
+    function queueReactionEvent(ev) {
+      if (!ev || !ev.id) return;
+      reactionEventQueue.push(ev);
+      if (state._chatReactionQueueTimer) return;
+      state._chatReactionQueueTimer = setTimeout(flushReactionEventQueue, 10);
     }
 
-    function scheduleTheaterChatCacheWarm() {
-      if (state._chatCacheWarmTimer) clearTimeout(state._chatCacheWarmTimer);
-      state._chatCacheWarmAddress = stream.address;
-      state._chatCacheWarmTimer = setTimeout(() => {
-        state._chatCacheWarmTimer = null;
-        if (state._chatCacheWarmAddress !== stream.address) return;
-        if (!isSameSelectedStream()) return;
-        if (!isVideoPageVisible()) return;
-        warmTheaterChatCaches();
-        scheduleTheaterChatCacheWarm();
-      }, THEATER_CHAT_CACHE_REFRESH_MS);
-    }
+    state.chatSubId = state.pool.subscribe(chatLiveFilters, {
+      event: (ev) => {
+        if (!ev || !ev.id) return;
+        if (seenIds.has(ev.id)) return;
+        seenIds.add(ev.id);
+        queueChatEvent(ev);
+      },
+      eose: () => {
+        scheduleMissingChatProfiles(0);
+      }
+    });
 
-    function hydrateTheaterFromCache() {
-      Promise.all([
-        fetchEventsCached(filters, theaterChatCacheOpts),
-        fetchEventsCached(reactionFilters, theaterReactionCacheOpts)
-      ]).then(([chatEvents, reactionEvents]) => {
-        if (!isSameSelectedStream()) return;
-        applyCachedChatEvents(chatEvents);
-        applyCachedReactionEvents(reactionEvents);
-      }).catch(() => {});
-    }
+    fetchEventsCached(chatHistoryFilters, {
+      scope: 'theater-chat-history',
+      cacheKey: `theater-chat-history:${stream.address}:${chatSince}:${chatHistoryLimit}`,
+      timeoutMs: 2400,
+      maxEvents: Math.max(180, chatHistoryLimit * 4),
+      ttlMs: THEATER_CHAT_CACHE_TTL_MS,
+      warmMs: THEATER_CHAT_CACHE_WARM_MS
+    }).then((events) => {
+      if (!isSameSelectedStream()) return;
+      const sorted = (events || [])
+        .filter((ev) => ev && ev.id && Number(ev.kind || 0) === KIND_LIVE_CHAT)
+        .sort((a, b) => {
+          const byTime = Number(a.created_at || 0) - Number(b.created_at || 0);
+          return byTime || String(a.id || '').localeCompare(String(b.id || ''));
+        });
+      sorted.forEach((ev) => {
+        if (seenIds.has(ev.id)) return;
+        seenIds.add(ev.id);
+        queueChatEvent(ev);
+      });
+      scheduleMissingChatProfiles(0);
+    }).catch(() => {});
 
     state.chatReactionSubId = state.pool.subscribe(
-      reactionFilters,
+      reactionLiveFilters,
       {
         event: (ev) => {
-          handleChatReactionEvent(ev);
+          queueReactionEvent(ev);
         }
       }
     );
-    hydrateTheaterFromCache();
-    scheduleTheaterChatCacheWarm();
+
+    fetchEventsCached(reactionHistoryFilters, {
+      scope: 'theater-reaction-history',
+      cacheKey: `theater-reaction-history:${stream.address}:${reactionSince}:${reactionHistoryLimit}`,
+      timeoutMs: 2600,
+      maxEvents: Math.max(220, reactionHistoryLimit * 4),
+      ttlMs: THEATER_CHAT_CACHE_TTL_MS,
+      warmMs: THEATER_CHAT_CACHE_WARM_MS
+    }).then((events) => {
+      if (!isSameSelectedStream()) return;
+      const sorted = (events || [])
+        .filter((ev) => ev && ev.id && (
+          Number(ev.kind || 0) === KIND_REACTION ||
+          Number(ev.kind || 0) === KIND_ZAP_RECEIPT ||
+          Number(ev.kind || 0) === KIND_DELETION
+        ))
+        .sort((a, b) => {
+          const byTime = Number(a.created_at || 0) - Number(b.created_at || 0);
+          return byTime || String(a.id || '').localeCompare(String(b.id || ''));
+        });
+      sorted.forEach((ev) => {
+        queueReactionEvent(ev);
+      });
+    }).catch(() => {});
+  }
+
+  function stopChatSubscription() {
+    if (state.chatSubId && state.pool) {
+      try { state.pool.unsubscribe(state.chatSubId); } catch (_) {}
+    }
+    state.chatSubId = null;
+    if (state.chatReactionSubId && state.pool) {
+      try { state.pool.unsubscribe(state.chatReactionSubId); } catch (_) {}
+    }
+    state.chatReactionSubId = null;
+    if (state._chatProfileSubId && state.pool) {
+      try { state.pool.unsubscribe(state._chatProfileSubId); } catch (_) {}
+    }
+    state._chatProfileSubId = null;
+    if (state._chatProfileFetchTimer) {
+      clearTimeout(state._chatProfileFetchTimer);
+      state._chatProfileFetchTimer = null;
+    }
+    if (state._chatProfileEoseTimer) {
+      clearTimeout(state._chatProfileEoseTimer);
+      state._chatProfileEoseTimer = null;
+    }
+    if (state._chatCacheWarmTimer) {
+      clearTimeout(state._chatCacheWarmTimer);
+      state._chatCacheWarmTimer = null;
+    }
+    state._chatCacheWarmAddress = '';
+    if (state._chatMessageQueueTimer) {
+      clearTimeout(state._chatMessageQueueTimer);
+      state._chatMessageQueueTimer = null;
+    }
+    if (state._chatReactionQueueTimer) {
+      clearTimeout(state._chatReactionQueueTimer);
+      state._chatReactionQueueTimer = null;
+    }
   }
 
   function openStream(address, opts = {}) {
@@ -13684,8 +15002,6 @@
     state.pendingRouteAddress = '';
     state.pendingRouteNaddr = '';
     state.selectedStreamAddress = address;
-    const statsTargetPubkey = normalizePubkeyHex(stream.hostPubkey || '') || normalizePubkeyHex(stream.pubkey || '');
-    if (statsTargetPubkey) subscribeProfileStats(statsTargetPubkey);
     if (routeMode !== 'skip') syncTheaterRoute(stream, routeMode);
     window.showVideoPage();
     renderVideo(stream);
@@ -16705,6 +18021,7 @@
       const myStreams = qs('#myStreamsPage');
       const faq = qs('#faqPage');
       if (p !== 'video') setActiveViewerAddress('');
+      if (p !== 'video') stopChatSubscription();
       if (p === 'home' && routeMode !== 'skip') syncHomeRoute(routeMode);
       if (p === 'videos' && routeMode !== 'skip') syncVideosRoute(routeMode);
       if (p === 'videos' && Object.prototype.hasOwnProperty.call(opts, 'videosFilter')) {
@@ -16744,6 +18061,9 @@
         stopAllAudio(null);
         scheduleVideosPageRender(0);
       } else {
+        clearVideosRenderTimer();
+        clearVideosChunkRender();
+        state.videosRenderPending = false;
         stopLiveSubscription();
         stopHeroCycle();
         stopAllAudio(null);
@@ -16805,6 +18125,10 @@
       teardownDmSubscription();
       stopLiveSubscription();
       stopNostrFeedSubscription();
+      subscribeProfileStats('');
+      clearVideosRenderTimer();
+      clearVideosChunkRender();
+      state.videosRenderPending = false;
       // Kill the hero cycle timer completely ? prevents it firing and starting audio behind theater
       stopHeroCycle();
       stopAllAudio('theater');
@@ -16828,6 +18152,7 @@
       const myStreams = qs('#myStreamsPage');
       const faq = qs('#faqPage');
       setActiveViewerAddress('');
+      stopChatSubscription();
       if (home) home.classList.remove('active');
       if (video) video.style.display = 'none';
       if (profile) profile.style.display = 'block';
@@ -17573,11 +18898,13 @@
     };
 
     window.closeSettings = function () {
+      stopWalletScanner({ keepStatus: true });
       qs('#settingsModal').classList.remove('open');
     };
 
     window.switchSettingsTab = function (tab) {
-      ['profile','relays','app'].forEach(t => {
+      if (tab !== 'wallet') stopWalletScanner({ keepStatus: true });
+      ['profile','wallet','relays','app'].forEach(t => {
         const btn = qs(`#smTab-${t}`);
         const panel = qs(`#smPanel${t.charAt(0).toUpperCase()+t.slice(1)}`);
         if (btn) btn.classList.toggle('active', t === tab);
@@ -17593,6 +18920,132 @@
       } else {
         preview.innerHTML = '?';
       }
+    };
+
+    window.toggleWalletScanner = async function () {
+      if (state.walletScannerActive) {
+        stopWalletScanner({ keepStatus: true });
+        setWalletSettingsStatus('QR scanner stopped.', 'info');
+        return;
+      }
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        setWalletSettingsStatus('Camera scanning is not available here. Paste the NWC string instead.', 'error');
+        return;
+      }
+      if (typeof window.BarcodeDetector !== 'function') {
+        setWalletSettingsStatus('QR scanning is not supported in this browser yet. Paste the NWC string instead.', 'info');
+        return;
+      }
+
+      let detector;
+      try {
+        detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      } catch (_) {
+        setWalletSettingsStatus('QR scanning is not supported in this browser yet. Paste the NWC string instead.', 'info');
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        const video = qs('#settingsWalletScannerVideo');
+        state.walletScannerStream = stream;
+        state.walletScannerActive = true;
+        if (video) {
+          video.srcObject = stream;
+          try { await video.play(); } catch (_) {}
+        }
+        updateWalletScannerUi(true);
+        setWalletSettingsStatus('Camera ready. Scan your wallet QR code.', 'loading');
+        state.walletScannerIntervalId = setInterval(() => {
+          const target = qs('#settingsWalletScannerVideo');
+          if (!state.walletScannerActive || !target || target.readyState < 2) return;
+          detector.detect(target).then((codes) => {
+            if (!state.walletScannerActive || !Array.isArray(codes) || !codes.length) return;
+            const code = codes.find((entry) => entry && (entry.rawValue || entry.rawString));
+            const value = String(code && (code.rawValue || code.rawString) || '').trim();
+            if (!value) return;
+            const input = qs('#settingsNwcInput');
+            if (input) input.value = value;
+            stopWalletScanner({ keepStatus: true });
+            setWalletSettingsStatus('QR code scanned. Review it, then click Connect Wallet.', 'success');
+          }).catch(() => {});
+        }, NWC_SCAN_INTERVAL_MS);
+      } catch (err) {
+        stopWalletScanner({ keepStatus: true });
+        setWalletSettingsStatus(err && err.message ? err.message : 'Could not access your camera. Paste the NWC string instead.', 'error');
+      }
+    };
+
+    window.saveWalletSettings = async function () {
+      const input = qs('#settingsNwcInput');
+      const raw = (input && input.value) || '';
+      let config;
+      try {
+        config = parseNwcConnectionString(raw);
+      } catch (err) {
+        setWalletSettingsStatus(err && err.message ? err.message : 'Invalid wallet connection string.', 'error');
+        return;
+      }
+
+      stopWalletScanner({ keepStatus: true });
+      setWalletSettingsStatus('Checking wallet connection...', 'loading');
+
+      let probe = null;
+      try {
+        probe = await probeNwcConnection(config);
+      } catch (err) {
+        const msg = err && err.message ? err.message : 'Wallet probe failed.';
+        if (/pay_invoice|UNAUTHORIZED|RESTRICTED/i.test(msg)) {
+          setWalletSettingsStatus(msg, 'error');
+          return;
+        }
+        probe = { info: null, liveInfo: null, warning: msg };
+      }
+
+      const next = {
+        ...state.settings,
+        nwcConnectionUri: config.raw
+      };
+      applySettings(next, { reconnect: false });
+
+      const methodSet = new Set();
+      if (probe && probe.info && Array.isArray(probe.info.capabilities)) {
+        probe.info.capabilities.forEach((method) => methodSet.add(String(method || '').trim()));
+      }
+      if (probe && probe.liveInfo && Array.isArray(probe.liveInfo.methods)) {
+        probe.liveInfo.methods.forEach((method) => methodSet.add(String(method || '').trim()));
+      }
+      state.nwcLastProbe = {
+        walletPubkey: config.walletPubkey,
+        lud16: config.lud16,
+        alias: probe && probe.liveInfo ? String(probe.liveInfo.alias || '').trim() : '',
+        network: probe && probe.liveInfo ? String(probe.liveInfo.network || '').trim() : '',
+        preferredEncryption: probe && probe.info && probe.info.preferredEncryption === 'nip04' ? 'nip04' : 'nip44',
+        methods: Array.from(methodSet).filter(Boolean),
+        warning: probe && probe.warning ? String(probe.warning || '').trim() : ''
+      };
+      renderWalletSettingsSummary();
+      if (probe && probe.warning) {
+        setWalletSettingsStatus(`Wallet saved. ${probe.warning}`, 'info');
+      } else {
+        setWalletSettingsStatus('Wallet connected and ready for zaps.', 'success');
+      }
+    };
+
+    window.clearWalletSettings = function () {
+      stopWalletScanner({ keepStatus: true });
+      const input = qs('#settingsNwcInput');
+      if (input) input.value = '';
+      state.nwcLastProbe = null;
+      applySettings({
+        ...state.settings,
+        nwcConnectionUri: ''
+      }, { reconnect: false });
+      renderWalletSettingsSummary();
+      setWalletSettingsStatus('Wallet disconnected.', 'success');
     };
 
     window.toggleSetting = function (el) {
@@ -17763,32 +19216,28 @@
         return;
       }
 
-      if (window.webln) {
-        try {
-          await window.webln.enable();
-          const zapAmountMsats = 21000;
-          const zapTags = [['relays', ...state.relays], ['amount', String(zapAmountMsats)], ['p', notePubkey], ['e', noteId]];
-          const zapRequest = await signAndPublish(9734, 'zap from Sifaka Live', zapTags);
-          const [user, domain] = lud16.split('@');
-          const meta = await fetch(`https://${domain}/.well-known/lnurlp/${user}`).then((r) => r.json());
-          if (!meta.callback) throw new Error('Invalid LNURL response.');
-          const invoiceData = await fetch(`${meta.callback}?amount=${zapAmountMsats}&nostr=${encodeURIComponent(JSON.stringify(zapRequest))}`).then((r) => r.json());
-          if (!invoiceData.pr) throw new Error('No payment request returned.');
-          await window.webln.sendPayment(invoiceData.pr);
-          if (buttonEl) {
-            const original = buttonEl.textContent;
-            buttonEl.textContent = 'Zapped';
-            setTimeout(() => { buttonEl.textContent = original; }, 1400);
-          }
-          if (profilePubkey) {
-            setTimeout(() => {
-              try { renderFeedOrProfileFeed(profilePubkey); } catch (_) {}
-            }, 1200);
-          }
-          return;
-        } catch (err) {
-          console.warn('Comment zap failed:', err && err.message ? err.message : err);
+      try {
+        const zapAmountMsats = 21000;
+        const zapInfo = await fetchZapEndpointInfo(lud16, zapAmountMsats);
+        const zapTags = buildZapRequestTags(notePubkey, zapAmountMsats, zapInfo, [
+          ['e', noteId],
+          ['k', '1']
+        ]);
+        const zapRequest = await signEvent(9734, 'zap from Sifaka Live', zapTags);
+        await payZapInvoiceForLud16(lud16, zapAmountMsats, zapRequest, { zapInfo });
+        if (buttonEl) {
+          const original = buttonEl.textContent;
+          buttonEl.textContent = 'Zapped';
+          setTimeout(() => { buttonEl.textContent = original; }, 1400);
         }
+        if (profilePubkey) {
+          setTimeout(() => {
+            try { renderFeedOrProfileFeed(profilePubkey); } catch (_) {}
+          }, 1200);
+        }
+        return;
+      } catch (err) {
+        console.warn('Comment zap failed:', err && err.message ? err.message : err);
       }
 
       window.open(`lightning:${lud16}`, '_blank');
@@ -18055,24 +19504,62 @@
         .filter((s) => s.address !== current && s.status === 'live')
         .slice(0, 6);
       list.innerHTML = '';
+      list.className = 'reco-grid';
       if (!others.length) {
-        list.innerHTML = '<div style="font-size:.74rem;color:var(--muted);padding:.25rem .45rem;">No other live streams right now.</div>';
+        list.innerHTML = '<div class="reco-empty">No other live streams right now.</div>';
         return;
       }
       others.forEach((s, i) => {
         const p = profileFor(s.hostPubkey);
         const viewerCount = effectiveParticipants(s);
-        const item = document.createElement('div');
-        item.className = 'reco-item';
-        item.innerHTML = `
-          <div class="reco-thumb"><div class="tc ${thumbClasses[i % thumbClasses.length]}" style="height:100%;display:flex;align-items:center;justify-content:center;font-size:1.2rem;"></div></div>
-          <div class="reco-text"><div class="rt"></div><div class="rs"></div></div>`;
-        qs('.rt', item).textContent = s.title || 'Untitled stream';
-        qs('.rs', item).innerHTML = `${p.name || shortHex(s.hostPubkey)} - <span style="color:var(--live)">${viewerCount > 0 ? viewerCount.toLocaleString() + ' live' : 'live'}</span>`;
-        if (s.image) {
-          const thumb = qs('.reco-thumb', item);
-          thumb.innerHTML = `<img src="${s.image}" style="width:100%;height:100%;object-fit:cover;" loading="lazy">`;
+        const isOffline = isStreamPlaybackOffline(s && s.address);
+        const statusLabel = isOffline ? 'OFFLINE' : 'LIVE';
+        const statusBg = isOffline
+          ? 'background:#5c6678;color:#e4e8ef;border:1px solid rgba(210,220,235,.25);'
+          : '';
+        const statusDot = isOffline ? '' : '<span class="live-dot"></span>';
+        const viewerText = viewerCount > 0 ? `&#128065; ${viewerCount.toLocaleString()}` : '&#128065; 0';
+        const streamThumb = sanitizeMediaUrl(s.image || '');
+        const profileThumb = sanitizeMediaUrl(p.picture || '');
+        let thumbHtml;
+        if (streamThumb) {
+          const fb = thumbClasses[i % thumbClasses.length];
+          thumbHtml = `<div class="ct-thumb-wrap"><img class="ct-thumb" src="${streamThumb}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fb}\\'></div>'"></div>`;
+        } else if (profileThumb) {
+          const fb = thumbClasses[i % thumbClasses.length];
+          thumbHtml = `<div class="ct-thumb-wrap"><img class="ct-thumb" src="${profileThumb}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fb}\\'></div>'"></div>`;
+        } else {
+          thumbHtml = `<div class="tc ${thumbClasses[i % thumbClasses.length]}"></div>`;
         }
+        const item = document.createElement('div');
+        item.className = 'stream-card reco-card';
+        item.innerHTML = `
+          <div class="ct">
+            <div class="ct-inner">${thumbHtml}</div>
+            <div class="cb-live reco-badge" style="${statusBg}">${statusDot}${statusLabel}</div>
+            <div class="cb-viewers">${viewerText}</div>
+          </div>
+          <div class="ci">
+            <div class="ci-row">
+              <div class="ci-av"></div>
+              <div class="reco-meta">
+                <div class="ci-title"></div>
+                <div class="ci-host"></div>
+              </div>
+            </div>
+          </div>`;
+        const avEl = qs('.ci-av', item);
+        if (avEl) {
+          setAvatarEl(avEl, p.picture || '', pickAvatar(s.hostPubkey));
+          const claimedNip05 = normalizeNip05Value(p.nip05 || '');
+          const verifiedNip05 = getVerifiedNip05ForPubkey(s.hostPubkey, p.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+          avEl.classList.toggle('nip05-square', !!verifiedNip05);
+          if (claimedNip05) {
+            ensureNip05Verification(s.hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
+          }
+        }
+        qs('.ci-title', item).textContent = s.title || 'Untitled stream';
+        qs('.ci-host', item).textContent = `${p.display_name || p.name || shortHex(s.hostPubkey)} • ${viewerCount > 0 ? `${viewerCount.toLocaleString()} live` : 'Live now'}`;
         item.addEventListener('click', () => openStream(s.address));
         list.appendChild(item);
       });
@@ -18297,23 +19784,21 @@
       const p = profileFor(stream.hostPubkey);
       const lud16 = (p.lud16 || '').trim();
       if (!lud16) { alert('This streamer has no Lightning address (lud16) set on their Nostr profile.'); return; }
-      if (window.webln) {
-        try {
-          await window.webln.enable();
-          const zapAmountMsats = 21000;
-          const zapTags = [['relays', ...state.relays], ['amount', String(zapAmountMsats)], ['p', stream.pubkey], ['e', stream.id]];
-          const zapRequest = await signAndPublish(9734, '\u26A1 zapping from Sifaka Live', zapTags);
-          const [user, domain] = lud16.split('@');
-          const meta = await fetch(`https://${domain}/.well-known/lnurlp/${user}`).then((r) => r.json());
-          if (!meta.callback) throw new Error('Invalid LNURL response.');
-          const invoiceData = await fetch(`${meta.callback}?amount=${zapAmountMsats}&nostr=${encodeURIComponent(JSON.stringify(zapRequest))}`).then((r) => r.json());
-          if (!invoiceData.pr) throw new Error('No payment request returned.');
-          await window.webln.sendPayment(invoiceData.pr);
-          const zapBtn = qs('#theaterZapBtn');
-          if (zapBtn) { const o = zapBtn.innerHTML; zapBtn.textContent = '\u26A1 Zapped!'; setTimeout(() => { zapBtn.innerHTML = o; }, 2000); }
-          return;
-        } catch (err) { console.warn('WebLN zap failed:', err.message); }
-      }
+      try {
+        const zapAmountMsats = 21000;
+        const targetPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+        const zapInfo = await fetchZapEndpointInfo(lud16, zapAmountMsats);
+        const zapTags = buildZapRequestTags(targetPubkey, zapAmountMsats, zapInfo, [
+          ['e', stream.id],
+          ['a', stream.address],
+          ['k', String(KIND_LIVE_EVENT)]
+        ]);
+        const zapRequest = await signEvent(9734, '\u26A1 zapping from Sifaka Live', zapTags);
+        await payZapInvoiceForLud16(lud16, zapAmountMsats, zapRequest, { zapInfo });
+        const zapBtn = qs('#theaterZapBtn');
+        if (zapBtn) { const o = zapBtn.innerHTML; zapBtn.textContent = '\u26A1 Zapped!'; setTimeout(() => { zapBtn.innerHTML = o; }, 2000); }
+        return;
+      } catch (err) { console.warn('Wallet zap failed:', err && err.message ? err.message : err); }
       window.open(`lightning:${lud16}`, '_blank');
     };
 
@@ -18618,9 +20103,20 @@
       state.videoPostLiveChatCacheByAddress = new Map();
       state.videosProfileFetchPending = new Set();
       clearVideosRenderTimer();
+      clearVideosChunkRender();
+      state.videosRenderPending = false;
+      state.videosLastRenderAt = 0;
       if (state.videoThumbObserver) {
         try { state.videoThumbObserver.disconnect(); } catch (_) {}
         state.videoThumbObserver = null;
+      }
+      if (state._chatMessageQueueTimer) {
+        clearTimeout(state._chatMessageQueueTimer);
+        state._chatMessageQueueTimer = null;
+      }
+      if (state._chatReactionQueueTimer) {
+        clearTimeout(state._chatReactionQueueTimer);
+        state._chatReactionQueueTimer = null;
       }
       state.composeUploadSource = 'blossom';
       state.composeUploadPending = false;
@@ -18725,7 +20221,14 @@
       const originalShowVideoPage = window.showVideoPage;
       window.showVideoPage = function (opts = {}) {
         try {
+          if (typeof window.closeVideoPostModal === 'function') window.closeVideoPostModal();
           stopNostrFeedSubscription();
+          stopLiveSubscription();
+          teardownDmSubscription();
+          subscribeProfileStats('');
+          clearVideosRenderTimer();
+          clearVideosChunkRender();
+          state.videosRenderPending = false;
           const feed = qs('#feedPage');
           if (feed) feed.style.display = 'none';
           const videos = qs('#videosPage');
