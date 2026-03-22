@@ -78,23 +78,6 @@
   const ONE_SHOT_CACHE_DEFAULT_TTL_MS = 1000 * 12;
   const ONE_SHOT_CACHE_DEFAULT_WARM_MS = 1000 * 75;
   const ONE_SHOT_CACHE_MAX_ENTRIES = 700;
-  const THEATER_CHAT_CACHE_TTL_MS = 1000 * 10;
-  const THEATER_CHAT_CACHE_WARM_MS = 1000 * 45;
-  const THEATER_CHAT_CACHE_REFRESH_MS = 1000 * 12;
-  const THEATER_CHAT_MAX_ROWS = 220;
-  const THEATER_CHAT_MAX_ROWS_LIVE = 15;
-  const THEATER_CHAT_RENDER_BATCH_SIZE = 28;
-  const THEATER_CHAT_REALTIME_FLUSH_MS_LIVE = 140;
-  const THEATER_CHAT_REALTIME_FLUSH_MS_ARCHIVE = 80;
-  const THEATER_CHAT_REALTIME_BATCH_LIVE = 8;
-  const THEATER_CHAT_HISTORY_WINDOW_LIVE_SEC = 60 * 60 * 24 * 3;
-  const THEATER_CHAT_HISTORY_WINDOW_ARCHIVE_SEC = 60 * 60 * 24 * 14;
-  const THEATER_CHAT_HISTORY_LIMIT_LIVE = 320;
-  const THEATER_CHAT_HISTORY_LIMIT_ARCHIVE = 220;
-  const THEATER_REACTION_HISTORY_WINDOW_LIVE_SEC = 60 * 60 * 12;
-  const THEATER_REACTION_HISTORY_WINDOW_ARCHIVE_SEC = 60 * 60 * 24 * 30;
-  const THEATER_REACTION_HISTORY_LIMIT_LIVE = 180;
-  const THEATER_REACTION_HISTORY_LIMIT_ARCHIVE = 280;
 
   const DEFAULT_SETTINGS = {
     relays: [...DEFAULT_RELAYS],
@@ -137,7 +120,6 @@
     remoteLoginUri: '',
     pendingOnboardingNsec: '',
     streamsByAddress: new Map(),
-    streamEventIdsByAddress: new Map(),
     nip71VideosByEventId: new Map(),
     profilesByPubkey: new Map(),
     profileNotesByPubkey: new Map(),
@@ -254,13 +236,9 @@
     chatOwnLikeEventByMessageId: new Map(),
     chatMessageEventsById: new Map(),
     chatLikePublishPendingByMessageId: new Set(),
-    chatSendPending: false,
-    chatSendPendingSince: 0,
     _chatProfileSubId: null,
     _chatProfileFetchTimer: null,
     _chatProfileEoseTimer: null,
-    _chatCacheWarmTimer: null,
-    _chatCacheWarmAddress: '',
     dmSubId: null,
     dmOwnerPubkey: '',
     dmMessagesByPeer: new Map(),
@@ -1495,7 +1473,6 @@
         const stream = cloneCachedStream(item);
         if (!stream || !stream.address || !stream.pubkey) return;
         state.streamsByAddress.set(stream.address, stream);
-        rememberStreamEventId(stream.address, stream.id);
       });
     } catch (_) {
       // ignore cache read errors
@@ -5527,12 +5504,12 @@
     if (!paid) {
       window.open(`lightning:${lud16}`, '_blank');
       setDmStatus('Opened Lightning wallet to complete zap.', 'info');
-      appendLocalDmActivity(peer, `? Opened zap for ${dmDisplayNameForPeer(peer)} (${lud16})`);
+      appendLocalDmActivity(peer, `⚡ Opened zap for ${dmDisplayNameForPeer(peer)} (${lud16})`);
       return;
     }
 
     setDmStatus('Zap sent.', 'success');
-    appendLocalDmActivity(peer, `? Zapped ${dmDisplayNameForPeer(peer)} with 21 sats`);
+    appendLocalDmActivity(peer, `⚡ Zapped ${dmDisplayNameForPeer(peer)} with 21 sats`);
   }
 
   function openDmAttachModal() {
@@ -6258,29 +6235,6 @@
     renderGoLiveRelayDetails();
   }
 
-  function rememberStreamEventId(address, eventId) {
-    const key = String(address || '').trim();
-    const id = String(eventId || '').trim().toLowerCase();
-    if (!key || !/^[0-9a-f]{64}$/i.test(id)) return;
-    if (!state.streamEventIdsByAddress.has(key)) state.streamEventIdsByAddress.set(key, []);
-    const current = state.streamEventIdsByAddress.get(key) || [];
-    const next = [id, ...current.filter((existingId) => existingId !== id)];
-    state.streamEventIdsByAddress.set(key, next.slice(0, 24));
-  }
-
-  function getKnownStreamEventIds(stream) {
-    if (!stream) return [];
-    const currentId = String(stream.id || '').trim().toLowerCase();
-    const fromState = Array.isArray(state.streamEventIdsByAddress.get(stream.address))
-      ? state.streamEventIdsByAddress.get(stream.address)
-      : [];
-    return Array.from(new Set(
-      [currentId, ...fromState]
-        .map((id) => String(id || '').trim().toLowerCase())
-        .filter((id) => /^[0-9a-f]{64}$/i.test(id))
-    )).slice(0, 12);
-  }
-
   function upsertStream(stream) {
     const existing = state.streamsByAddress.get(stream.address);
     const incoming = mergeIncomingStream(existing, stream);
@@ -6305,11 +6259,8 @@
     let didStore = false;
     if (!existing || incomingCreatedAt > existingCreatedAt || (incomingCreatedAt === existingCreatedAt && !sameCoreEvent)) {
       state.streamsByAddress.set(incoming.address, incoming);
-      rememberStreamEventId(incoming.address, incoming.id);
       schedulePersistLiveStreamsCache();
       didStore = true;
-    } else {
-      rememberStreamEventId(incoming.address, incoming.id);
     }
     if (didStore && isStreamPlaybackOffline(incoming.address)) {
       const metadataUpdated = incomingCreatedAt > existingCreatedAt
@@ -12006,21 +11957,6 @@
     return Math.max(0, Math.floor(sats));
   }
 
-  function streamTargetPubkeys(stream) {
-    const streamPublisherPubkey = normalizePubkeyHex(stream && stream.pubkey || '');
-    const streamHostPubkey = normalizePubkeyHex(stream && stream.hostPubkey || '') || streamPublisherPubkey;
-    return Array.from(new Set([streamHostPubkey, streamPublisherPubkey].filter(Boolean)));
-  }
-
-  function streamSessionStartSec(stream, statusHint = '') {
-    const status = normalizeStreamStatus(statusHint || (stream && stream.status));
-    const starts = Number(stream && stream.starts || 0) || 0;
-    const createdAt = Number(stream && stream.created_at || 0) || 0;
-    if (status === 'planned') return starts || createdAt || 0;
-    if (starts && createdAt) return Math.max(starts, createdAt);
-    return starts || createdAt || 0;
-  }
-
   function parseStreamZapReceipt(ev, stream) {
     if (!ev || ev.kind !== KIND_ZAP_RECEIPT || !stream) return null;
 
@@ -12065,46 +12001,6 @@
       picture,
       note: String(description.content || '').trim()
     };
-  }
-
-  function chatEventMatchesStream(ev, stream) {
-    if (!ev || Number(ev.kind || 0) !== KIND_LIVE_CHAT || !stream) return false;
-    const tags = ev.tags || [];
-    const targetAList = allTagValues(tags, 'a');
-    const targetEList = allTagValues(tags, 'e');
-    const targetPList = allTagValues(tags, 'p').map((pk) => normalizePubkeyHex(pk)).filter(Boolean);
-    const streamAddress = String(stream.address || '').trim();
-    const streamEventIds = getKnownStreamEventIds(stream);
-    const status = normalizeStreamStatus(stream && stream.status);
-    const isArchive = status === 'ended' || isDirectFileVideoUrl(stream && stream.streaming);
-    const nowSec = Math.floor(Date.now() / 1000);
-    const evTs = Number(ev.created_at || 0) || 0;
-    const sessionStart = streamSessionStartSec(stream, status);
-    const lowerBound = isArchive
-      ? Math.max(0, nowSec - THEATER_CHAT_HISTORY_WINDOW_ARCHIVE_SEC)
-      : (sessionStart
-        ? Math.max(0, sessionStart - 60 * 30)
-        : Math.max(0, nowSec - THEATER_CHAT_HISTORY_WINDOW_LIVE_SEC));
-    const matchesByAddress = !!(streamAddress && targetAList.includes(streamAddress));
-    const matchesByEvent = !!targetEList.find((id) => streamEventIds.includes(String(id || '').trim().toLowerCase()));
-    if ((matchesByAddress || matchesByEvent) && (isArchive || !evTs || evTs >= lowerBound)) return true;
-
-    // Some clients send chat with only #p tags. Allow for current session window only.
-    const hasAddressOrEventRef = targetAList.length || targetEList.length;
-    if (!hasAddressOrEventRef && targetPList.length) {
-      const streamTargets = streamTargetPubkeys(stream);
-      if (targetPList.some((pk) => streamTargets.includes(pk)) && (isArchive || !evTs || evTs >= lowerBound)) {
-        return true;
-      }
-    }
-
-    // Own-author fallback for clients that sometimes omit a/e tags.
-    const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
-    const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
-    if (!ownPubkey || !senderPubkey || ownPubkey !== senderPubkey) return false;
-    if (hasAddressOrEventRef || targetPList.length) return false;
-    // Some clients omit p/a/e on live chat notes entirely. For own-author only, allow session-recent notes.
-    return !!(evTs && (isArchive || evTs >= lowerBound));
   }
 
   function updateTheaterSatsDisplay(stream) {
@@ -12176,7 +12072,7 @@
     });
   }
 
-  function addStreamZapReceipt(ev, stream, opts = {}) {
+  function addStreamZapReceipt(ev, stream) {
     const current = stream || state.streamsByAddress.get(state.selectedStreamAddress);
     if (!current || !ev || !ev.id) return false;
 
@@ -12198,17 +12094,9 @@
     list.sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
     state.streamRecentZapsByAddress.set(current.address, list.slice(0, 20));
 
-    if (!opts.deferUi) {
-      updateTheaterSatsDisplay(current);
-      renderStreamZapList(current);
-    }
-    if (!opts.suppressChatEntry) {
-      renderChatZapReceipt(parsed, {
-        assumeChronological: !!opts.assumeChronological,
-        autoScroll: opts.autoScroll !== false,
-        maxRows: opts.maxRows || THEATER_CHAT_MAX_ROWS
-      });
-    }
+    updateTheaterSatsDisplay(current);
+    renderStreamZapList(current);
+    renderChatZapReceipt(parsed);
     return true;
   }
   function chatReactionKey(messageId, pubkey) {
@@ -12973,45 +12861,6 @@
     if (!inserted) sc.insertAdjacentElement('afterbegin', row);
   }
 
-  function pruneChatStateForMessageId(msgId) {
-    const safeMsgId = String(msgId || '').trim();
-    if (!safeMsgId) return;
-    state.chatMessageEventsById.delete(safeMsgId);
-    state.chatLikePubkeysByMessageId.delete(safeMsgId);
-    state.chatOwnLikeEventByMessageId.delete(safeMsgId);
-    if (state.chatReactionIdByMessageAndPubkey && state.chatReactionIdByMessageAndPubkey.size) {
-      Array.from(state.chatReactionIdByMessageAndPubkey.keys()).forEach((key) => {
-        if (!key.startsWith(`${safeMsgId}:`)) return;
-        const reactionId = state.chatReactionIdByMessageAndPubkey.get(key);
-        if (reactionId) state.chatReactionEventById.delete(reactionId);
-        state.chatReactionIdByMessageAndPubkey.delete(key);
-      });
-    }
-  }
-
-  function pruneChatStateForRemovedRow(row) {
-    if (!row || !row.dataset) return;
-    const msgId = String(row.dataset.msgId || '').trim();
-    if (!msgId) return;
-    pruneChatStateForMessageId(msgId);
-  }
-
-  function removeChatMessageById(messageId) {
-    const safeMsgId = String(messageId || '').trim();
-    if (!safeMsgId) return;
-    const sc = qs('#chatScroll');
-    if (sc) {
-      const escaped = (window.CSS && typeof window.CSS.escape === 'function')
-        ? window.CSS.escape(safeMsgId)
-        : safeMsgId.replace(/["\\]/g, '');
-      const row = sc.querySelector(`.cmsg[data-msg-id="${escaped}"]`);
-      if (row && row.parentNode === sc) {
-        sc.removeChild(row);
-      }
-    }
-    pruneChatStateForMessageId(safeMsgId);
-  }
-
   function renderChatMessage(ev) {
     const sc = qs('#chatScroll');
     if (!sc || !ev || !ev.id) return;
@@ -13078,6 +12927,7 @@
     while (sc.children.length > 300) sc.removeChild(sc.firstChild);
     if (wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
+
   function renderChatZapReceipt(entry) {
     const sc = qs('#chatScroll');
     if (!sc || !entry || !entry.eventId) return;
@@ -13145,6 +12995,7 @@
     while (sc.children.length > 300) sc.removeChild(sc.firstChild);
     if (wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
+
   function setLoggedInUi(on) {
     const out = qs('#navLoggedOut');
     const inn = qs('#navLoggedIn');
@@ -13393,8 +13244,6 @@
     if (state._chatProfileFetchTimer) { clearTimeout(state._chatProfileFetchTimer); state._chatProfileFetchTimer = null; }
     if (state._chatProfileEoseTimer) { clearTimeout(state._chatProfileEoseTimer); state._chatProfileEoseTimer = null; }
     if (state._chatProfileSubId) { try { state.pool.unsubscribe(state._chatProfileSubId); } catch (_) {} state._chatProfileSubId = null; }
-    if (state._chatCacheWarmTimer) { clearTimeout(state._chatCacheWarmTimer); state._chatCacheWarmTimer = null; }
-    state._chatCacheWarmAddress = '';
     const sc = qs('#chatScroll');
     if (sc) sc.innerHTML = '';
     state.chatLikePubkeysByMessageId = new Map();
@@ -13537,144 +13386,52 @@
       reactionFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#p': pTargets, limit: reactionHistoryLimit, since: reactionSince });
     }
 
-    const theaterChatCacheKey = `theater-chat-history:${String(stream.address || '').trim()}:${String(stream.id || '').trim()}:${chatSince}:${chatHistoryLimit}`;
-    const theaterReactionCacheKey = `theater-chat-reactions:${String(stream.address || '').trim()}:${String(stream.id || '').trim()}:${reactionSince}:${reactionHistoryLimit}`;
-    const theaterChatCacheOpts = {
-      scope: 'theater-chat-history',
-      cacheKey: theaterChatCacheKey,
-      timeoutMs: 2600,
-      maxEvents: Math.max(300, chatHistoryLimit),
-      ttlMs: THEATER_CHAT_CACHE_TTL_MS,
-      warmMs: THEATER_CHAT_CACHE_WARM_MS,
-      allowStale: true
-    };
-    const theaterReactionCacheOpts = {
-      scope: 'theater-chat-reactions',
-      cacheKey: theaterReactionCacheKey,
-      timeoutMs: 2800,
-      maxEvents: Math.max(320, reactionHistoryLimit),
-      ttlMs: THEATER_CHAT_CACHE_TTL_MS,
-      warmMs: THEATER_CHAT_CACHE_WARM_MS,
-      allowStale: true
-    };
-
-    function isSameSelectedStream() {
-      return state.selectedStreamAddress === stream.address;
-    }
-
-    function sortEventsChronological(events) {
-      return (Array.isArray(events) ? events : [])
-        .filter((ev) => ev && ev.id)
-        .slice()
-        .sort((a, b) => {
-          const aTs = Number(a.created_at || 0) || 0;
-          const bTs = Number(b.created_at || 0) || 0;
-          if (aTs !== bTs) return aTs - bTs;
-          return String(a.id || '').localeCompare(String(b.id || ''));
-        });
-    }
-
-    function applyCachedChatEvents(events) {
-      const ordered = sortEventsChronological(events);
-      if (!ordered.length) return;
-      ordered.forEach((ev) => {
-        if (Number(ev.kind || 0) !== KIND_LIVE_CHAT) return;
-        if (seenIds.has(ev.id)) return;
-        seenIds.add(ev.id);
-        renderChatMessage(ev);
-        const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
-        if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) unknownPubkeys.add(senderPubkey);
-      });
-      if (unknownPubkeys.size) scheduleMissingChatProfiles(0);
-    }
-
-    function handleChatReactionEvent(ev) {
-      if (!ev || !ev.id) return;
-
-      if (ev.kind === KIND_REACTION) {
-        const targetId = firstTagValue(ev.tags, 'e');
-        if (!/^[0-9a-f]{64}$/i.test(targetId || '')) return;
-        if (targetId === stream.id) {
-          const reactionMeta = parseReactionMeta(ev.content, ev.tags);
-          if (!reactionMeta) return;
-          applyStreamReaction(reactionMeta, normalizePubkeyHex(ev.pubkey), ev.id);
-          renderStreamReactionsUi(stream);
-          return;
-        }
-        const kTag = firstTagValue(ev.tags, 'k');
-        if (kTag && kTag !== String(KIND_LIVE_CHAT)) return;
-        const reactionContent = (ev.content || '').trim();
-        if (!reactionContent || reactionContent === '-') return;
-        applyChatLikeReaction(targetId, normalizePubkeyHex(ev.pubkey), ev.id);
-        updateChatLikeUi(targetId);
-        return;
-      }
-
-      if (ev.kind === KIND_ZAP_RECEIPT) {
-        addStreamZapReceipt(ev, stream);
-        return;
-      }
-
-      if (ev.kind === KIND_DELETION) {
-        const deletedIds = allTagValues(ev.tags, 'e').filter((id) => /^[0-9a-f]{64}$/i.test(id));
-        deletedIds.forEach((rid) => {
-          const streamReactionMeta = state.streamReactionEventById.get(rid);
-          if (streamReactionMeta) {
-            removeStreamReactionById(rid);
-            renderStreamReactionsUi(stream);
-          }
-          const meta = state.chatReactionEventById.get(rid);
-          applyChatUnlikeByReactionId(rid);
-          if (meta && meta.messageId) updateChatLikeUi(meta.messageId);
-        });
-      }
-    }
-
-    function applyCachedReactionEvents(events) {
-      const ordered = sortEventsChronological(events);
-      if (!ordered.length) return;
-      ordered.forEach((ev) => handleChatReactionEvent(ev));
-    }
-
-    function warmTheaterChatCaches() {
-      fetchEventsCached(filters, theaterChatCacheOpts).catch(() => {});
-      fetchEventsCached(reactionFilters, theaterReactionCacheOpts).catch(() => {});
-    }
-
-    function scheduleTheaterChatCacheWarm() {
-      if (state._chatCacheWarmTimer) clearTimeout(state._chatCacheWarmTimer);
-      state._chatCacheWarmAddress = stream.address;
-      state._chatCacheWarmTimer = setTimeout(() => {
-        state._chatCacheWarmTimer = null;
-        if (state._chatCacheWarmAddress !== stream.address) return;
-        if (!isSameSelectedStream()) return;
-        if (!isVideoPageVisible()) return;
-        warmTheaterChatCaches();
-        scheduleTheaterChatCacheWarm();
-      }, THEATER_CHAT_CACHE_REFRESH_MS);
-    }
-
-    function hydrateTheaterFromCache() {
-      Promise.all([
-        fetchEventsCached(filters, theaterChatCacheOpts),
-        fetchEventsCached(reactionFilters, theaterReactionCacheOpts)
-      ]).then(([chatEvents, reactionEvents]) => {
-        if (!isSameSelectedStream()) return;
-        applyCachedChatEvents(chatEvents);
-        applyCachedReactionEvents(reactionEvents);
-      }).catch(() => {});
-    }
-
     state.chatReactionSubId = state.pool.subscribe(
       reactionFilters,
       {
         event: (ev) => {
-          handleChatReactionEvent(ev);
+          if (!ev || !ev.id) return;
+
+          if (ev.kind === KIND_REACTION) {
+            const targetId = firstTagValue(ev.tags, 'e');
+            if (!/^[0-9a-f]{64}$/i.test(targetId || '')) return;
+            if (targetId === stream.id) {
+              const reactionMeta = parseReactionMeta(ev.content, ev.tags);
+              if (!reactionMeta) return;
+              applyStreamReaction(reactionMeta, normalizePubkeyHex(ev.pubkey), ev.id);
+              renderStreamReactionsUi(stream);
+              return;
+            }
+            const kTag = firstTagValue(ev.tags, 'k');
+            if (kTag && kTag !== String(KIND_LIVE_CHAT)) return;
+            const reactionContent = (ev.content || '').trim();
+            if (!reactionContent || reactionContent === '-') return;
+            applyChatLikeReaction(targetId, normalizePubkeyHex(ev.pubkey), ev.id);
+            updateChatLikeUi(targetId);
+            return;
+          }
+
+          if (ev.kind === KIND_ZAP_RECEIPT) {
+            addStreamZapReceipt(ev, stream);
+            return;
+          }
+
+          if (ev.kind === KIND_DELETION) {
+            const deletedIds = allTagValues(ev.tags, 'e').filter((id) => /^[0-9a-f]{64}$/i.test(id));
+            deletedIds.forEach((rid) => {
+              const streamReactionMeta = state.streamReactionEventById.get(rid);
+              if (streamReactionMeta) {
+                removeStreamReactionById(rid);
+                renderStreamReactionsUi(stream);
+              }
+              const meta = state.chatReactionEventById.get(rid);
+              applyChatUnlikeByReactionId(rid);
+              if (meta && meta.messageId) updateChatLikeUi(meta.messageId);
+            });
+          }
         }
       }
     );
-    hydrateTheaterFromCache();
-    scheduleTheaterChatCacheWarm();
   }
 
   function openStream(address, opts = {}) {
@@ -14549,10 +14306,10 @@
               <div class="profile-comment-text"></div>
               <div class="profile-comment-media"></div>
               <div class="profile-comment-actions">
-                <button type="button" class="profile-comment-reply-btn">? Reply</button>
-                <button type="button" class="profile-comment-like-btn">?? <span class="profile-comment-like-count">0</span></button>
-                <button type="button" class="profile-comment-zap-btn">? <span class="profile-comment-zap-count">0</span></button>
-                <button type="button" class="profile-comment-boost-btn">?? <span class="profile-comment-boost-count">0</span></button>
+                <button type="button" class="profile-comment-reply-btn">↩ Reply</button>
+                <button type="button" class="profile-comment-like-btn">❤️ <span class="profile-comment-like-count">0</span></button>
+                <button type="button" class="profile-comment-zap-btn">⚡ <span class="profile-comment-zap-count">0</span></button>
+                <button type="button" class="profile-comment-boost-btn">🔁 <span class="profile-comment-boost-count">0</span></button>
               </div>
             </div>`;
           const cAvEl = qs('.profile-comment-av', row);
@@ -18539,7 +18296,6 @@
       state.streamZapTotals = new Map();
       state.streamRecentZapsByAddress = new Map();
       state.streamZapEventIdsByAddress = new Map();
-      state.streamEventIdsByAddress = new Map();
       state.likedStreamAddresses = new Set();
       state.streamLikeEventIdByAddress = new Map();
       state.streamLikePublishPending = false;
@@ -18559,8 +18315,6 @@
       state.chatOwnLikeEventByMessageId = new Map();
       state.chatMessageEventsById = new Map();
       state.chatLikePublishPendingByMessageId = new Set();
-      state.chatSendPending = false;
-      state.chatSendPendingSince = 0;
       if (state._chatProfileFetchTimer) { clearTimeout(state._chatProfileFetchTimer); state._chatProfileFetchTimer = null; }
       if (state._chatProfileEoseTimer) { clearTimeout(state._chatProfileEoseTimer); state._chatProfileEoseTimer = null; }
       if (state._chatProfileSubId && state.pool) {
@@ -18826,8 +18580,6 @@
 
   document.addEventListener('DOMContentLoaded', init);
 })();
-
-
 
 
 

@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sifaka Live</title>
+<link rel="icon" type="image/x-icon" href="/sifaka.ico">
+<link rel="shortcut icon" type="image/x-icon" href="/sifaka.ico">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles/app.css">
+<link rel="stylesheet" href="./styles/themes.css">
+<link rel="stylesheet" href="./communities/communities.css">
+</head>
+<body>
+
+<!-- ========= NAV ========= -->
+<nav>
+  <!-- Logo (left) -->
+  <div class="logo-wrap">
+    <button class="logo" id="logoBtn">
+      <img src="logo.png" alt="Sifaka" class="nav-logo-img">
+      <span class="logo-text-8bit">Sifaka</span>
+      <span class="logo-live-pill">LIVE</span>
+    </button>
+    <div class="nav-dropdown" id="logoDropdown">
+      <button class="dd-item" onclick="showPage('home');closeAllDD()"><span class="ddi">&#128308;</span>Live Now <span class="dd-count">24</span></button>
+      <button class="dd-item" onclick="showPage('videos',{videosFilter:'all'});closeAllDD()"><span class="ddi">&#127909;</span>Videos</button>
+      <button class="dd-item" onclick="showPage('feed');closeAllDD()"><span class="ddi">&#128225;</span>Nostr Feed</button>
+      <button class="dd-item" onclick="showCommunities();closeAllDD()"><span class="ddi">&#127970;</span>Communities</button>
+      <button class="dd-item" onclick="showPage('messages');closeAllDD()"><span class="ddi">&#128172;</span>Messages</button>
+      <button class="dd-item" onclick="showPage('faq');closeAllDD()"><span class="ddi">&#10067;</span>FAQ & Help</button>
+    </div>
+  </div>
+
+  <!-- Search (grows to fill space) -->
+  <div class="search-wrap">
+    <span class="search-icon"></span>
+    <input class="search-input" type="text" placeholder="Search streams, npubs, posts, videos..." oninput="handleSearch(this)">
+    <div class="search-results" id="searchResults">
+      <span class="sr-label">Live Streams</span>
+      <div class="sr-item" onclick="showVideoPage()"><div class="sr-av"></div><div><div class="sr-title">Indie Jazz Live Set</div><div class="sr-sub">wavesound</div></div><span class="sr-live">LIVE</span></div>
+      <div class="sr-item"><div class="sr-av"></div><div><div class="sr-title">Building P2P Relay in Rust</div><div class="sr-sub">fiatjaf</div></div><span class="sr-live">LIVE</span></div>
+      <div class="dd-sep"></div>
+      <span class="sr-label">Profiles</span>
+      <div class="sr-item" onclick="showProfile('fiatjaf','','npub1zl3...gz4','fiatjaf@nostr.com');document.getElementById('searchResults').classList.remove('open')"><div class="sr-av"></div><div><div class="sr-title">fiatjaf</div><div class="sr-sub">fiatjaf@nostr.com</div></div></div>
+      <div class="sr-item" onclick="showProfile('wavesound','','npub1abc...xyz','wave@bitcoin-cats.ca');document.getElementById('searchResults').classList.remove('open')"><div class="sr-av"></div><div><div class="sr-title">wavesound</div><div class="sr-sub">wave@bitcoin-cats.ca</div></div></div>
+      <div class="dd-sep"></div>
+      <span class="sr-label">Text Posts</span>
+      <div class="sr-item"><div class="sr-av rect" style="background:var(--surface3)"></div><div><div class="sr-title">"just set up my own RTMP server..."</div><div class="sr-sub">nostrdev - 2h ago</div></div></div>
+    </div>
+  </div>
+
+  <!-- Go Live / Live button -->
+  <button class="btn btn-ghost" id="goLiveBtn" onclick="openGoLive()">Go Live</button>
+
+  <!-- Spacer pushes profile pill to far right -->
+  <div class="nav-spacer"></div>
+
+  <!-- Logged OUT -->
+  <div class="nav-logged-out" id="navLoggedOut">
+    <button class="btn btn-primary" onclick="openLogin()">Login with Nostr</button>
+  </div>
+
+  <!-- Logged IN - profile pill pinned to far right -->
+  <div class="nav-logged-in" id="navLoggedIn">
+    <button class="nav-notif-btn" id="navNotifBtn" onclick="openNotificationsPage()" title="Notifications" aria-label="Open notifications">
+      <span class="nav-notif-icon">&#128276;</span>
+      <span class="nav-notif-count" id="navNotifCount" style="display:none">0</span>
+    </button>
+    <div class="nav-profile">
+      <div class="nav-user-pill" id="navUserPill">
+        <div class="nav-avatar" id="navAvatar"></div>
+        <span class="nip05-badge" id="navNip05Badge" style="display:none"></span>
+      </div>
+      <div class="nav-dropdown" id="profileDropdown">
+        <div class="pd-header">
+          <div class="pd-av-lg" id="pdAvLg"></div>
+          <div>
+            <div class="pd-name" id="pdName">wavesound <span class="nip05-badge" id="pdBadge" style="display:none"></span></div>
+            <div class="pd-sub" id="pdSub" style="color:var(--nip05)">wave@bitcoin-cats.ca</div>
+          </div>
+        </div>
+        <button class="pd-item" onclick="openMyProfile();closeAllDD()">&#128100; My Profile</button>
+        <button class="pd-item" onclick="showPage('notifications');closeAllDD()">&#128276; Notifications</button>
+        <button class="pd-item" onclick="openMyStreams();closeAllDD()">&#128250; My Streams</button>
+        <button class="pd-item" onclick="openSettings();closeAllDD()">&#9881;&#65039; Settings</button>
+        <div class="dd-sep"></div>
+        <button class="pd-item pd-signout" onclick="signOut();closeAllDD()">Sign Out</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ========= GO LIVE MODAL ========= -->
+<div class="modal-ov" id="goLiveModal">
+  <div class="modal">
+    <div id="mForm">
+      <div class="mhd"><div class="mtitle" id="goLiveModalTitle"><span class="mi"></span>Publish Your Stream</div><button class="mclose" onclick="closeGoLive()">x</button></div>
+      <div class="msub" id="goLiveModalSub">Broadcasts a <span style="color:var(--purple);font-family:'DM Mono',monospace">kind:30311</span> NIP-53 event to your relays.</div>
+      <div class="go-live-host-modes" id="goLiveHostModes">
+        <button class="go-live-host-btn on" id="goLiveHostSelfBtn" type="button" onclick="setGoLiveHostMode('self')">Self Host</button>
+        <button class="go-live-host-btn" id="goLiveHostThirdPartyBtn" type="button" onclick="setGoLiveHostMode('third-party')">Host via 3rd Party <span>Coming soon</span></button>
+      </div>
+      <div class="go-live-host-note" id="goLiveHostNote">Self host uses your own HLS/RTMP streaming URL.</div>
+      <div class="mbody">
+        <div class="go-live-self-wrap" id="goLiveSelfWrap">
+          <div class="go-live-create-grid" id="goLiveCreateGrid">
+            <div class="go-live-col go-live-col-form">
+              <div class="go-live-manage" id="goLiveManageWrap">
+                <div class="fg">
+                  <label id="goLiveManageLabel">Your Streams</label>
+                  <select id="goLiveStreamSelect" onchange="handleGoLiveStreamSelect(this.value)"></select>
+                  <div class="go-live-manage-help" id="goLiveManageHint">Select a stream to edit, then save updates.</div>
+                  <div class="go-live-manage-actions">
+                    <button class="btn btn-ghost" type="button" id="goLiveLoadTemplateBtn" onclick="loadGoLiveTemplate()" style="display:none;">Use Old Details</button>
+                  </div>
+                </div>
+              </div>
+              <div class="fg-grid go-live-form-grid">
+                <div class="fg" id="goLiveDTagWrap"><label>Stream ID (d-tag)</label><input id="goLiveDTag" type="text" value=""></div>
+                <div class="fg" id="goLiveEventIdWrap"><label>Event ID</label><input id="goLiveEventId" type="text" value="" readonly placeholder="Will appear after first publish"></div>
+                <div class="fg"><label>Title</label><input id="goLiveTitle" type="text" value="Late Night Nostr Build Session"></div>
+                <div class="fg"><label>Summary</label><textarea id="goLiveSummary">Building a Nostr client from scratch - open Q&amp;A, come hang out!</textarea></div>
+                <div class="fg"><label>Streaming URL (HLS .m3u8 or RTMP)</label><input id="goLiveStreamUrl" type="text" placeholder="https://your-server.com/live/stream.m3u8"></div>
+                <div class="fg">
+                  <label>Thumbnail Image URL</label>
+                  <input id="goLiveThumb" type="text" placeholder="https://your-server.com/thumb.jpg">
+                  <div class="go-live-thumb-preview" id="goLiveThumbPreviewWrap">
+                    <img id="goLiveThumbPreviewImg" alt="Thumbnail preview">
+                    <div class="go-live-thumb-preview-empty" id="goLiveThumbPreviewEmpty">Thumbnail preview will appear here.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="go-live-col go-live-col-preview">
+              <div class="go-live-col-title">Stream Preview</div>
+              <video id="goLiveStreamPreviewVideo" class="go-live-stream-preview-video" controls autoplay muted playsinline loop></video>
+              <div class="go-live-stream-preview-status" id="goLiveStreamPreviewStatus">Enter a streaming URL to preview.</div>
+              <div class="go-live-preview-controls">
+                <div class="fg" id="goLiveStartsWrap"><label>Starts (UTC)</label><input id="goLiveStarts" type="datetime-local" value="2026-02-27T20:00"></div>
+                <div class="fg"><label>Status</label><div class="srow" id="goLiveStatusRow"><button class="sc sl" type="button">Live</button><button class="sc" type="button">Planned</button><button class="sc" type="button">Ended</button></div></div>
+              </div>
+            </div>
+            <div class="go-live-col go-live-col-relays" id="goLiveRelayCol" style="display:none;">
+              <div class="go-live-col-title">Relay Health</div>
+              <div class="relay-bar" id="relayBar">Connected relays: 0/0</div>
+              <div class="go-live-relay-ping-help">Ping shows most recent connection latency.</div>
+              <div class="go-live-relay-list" id="goLiveRelayDetailList"></div>
+            </div>
+          </div>
+        </div>
+        <div class="go-live-third-party-wrap" id="goLiveThirdPartyWrap" style="display:none;">
+          <div class="go-live-third-party-grid">
+            <button class="go-live-third-party-btn" type="button" onclick="selectGoLiveThirdParty('Sifaka.Live')">Sifaka.Live</button>
+            <button class="go-live-third-party-btn" type="button" onclick="selectGoLiveThirdParty('Zap.Stream')">Zap.Stream</button>
+            <button class="go-live-third-party-btn" type="button" onclick="selectGoLiveThirdParty('Shosho.Live')">Shosho.Live</button>
+            <button class="go-live-third-party-btn" type="button" onclick="selectGoLiveThirdParty('Tunestr')">Tunestr</button>
+          </div>
+          <div class="go-live-third-party-help" id="goLiveThirdPartyHelp">Choose a provider. Direct launch integration is coming soon.</div>
+        </div>
+      </div>
+      <div class="mfooter">
+        <button class="btn btn-ghost" onclick="closeGoLive()">Cancel</button>
+        <button class="btn btn-ghost" id="goLiveRelaysToggleBtn" onclick="toggleGoLiveRelaysPanel()">Relays</button>
+        <button class="btn btn-ghost" id="goLiveRemoveBtn" style="display:none;" onclick="removeGoLiveStreamFromList()">Remove From List</button>
+        <button class="btn btn-live-pulse" id="goLivePublishBtn" onclick="publishStream()">Go Live Now</button>
+      </div>
+    </div>
+    <div class="msuccess" id="mSuccess">
+      <div class="succ-icon"></div>
+      <div class="succ-title">You're Live on Nostr!</div>
+      <div class="succ-text">Your NIP-53 event has been broadcast to 4 relays.</div>
+      <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:center;">
+        <button class="btn btn-primary" onclick="goToMyStream();closeGoLive()">View My Stream</button>
+        <button class="btn btn-ghost" onclick="closeGoLive()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= END STREAM CONFIRM ========= -->
+<div class="modal-ov" id="endModal">
+  <div class="end-confirm-modal">
+    <div style="font-size:2rem;margin-bottom:.6rem"></div>
+    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:1.05rem;margin-bottom:.4rem;">End Stream</div>
+    <div style="font-size:.82rem;color:var(--text2);margin-bottom:1.2rem;line-height:1.5;">This will publish a <span style="font-family:'DM Mono',monospace;color:var(--purple)">kind:30311</span> ended event to your relays.</div>
+    <div style="display:flex;gap:.55rem;justify-content:center;">
+      <button class="btn" style="background:var(--live);color:#fff;" onclick="confirmEndStream()">End Stream</button>
+      <button class="btn btn-ghost" onclick="closeEnd()">Keep Going</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========= LOGIN MODAL ========= -->
+<div class="modal-ov" id="loginModal">
+  <div class="login-modal">
+    <button class="lm-close" onclick="closeLogin()">x</button>
+    <div class="lm-hd">
+      <div class="lm-logo"><img src="logo.png" alt="" class="lm-logo-img"><span>Sifaka Live</span></div>
+      <div class="lm-sub">Sign in with your Nostr identity - you own your keys.</div>
+    </div>
+    <div class="lm-body">
+      <div class="login-grid">
+        <div class="login-col">
+          <div class="lm-col-title">Create Identity</div>
+          <div class="lo lo-col-btn" onclick="loginDemo('newnostr')" style="border-color:rgba(0,212,138,.2);">
+            <div class="lo-ico new"></div>
+            <div><div class="lo-t">Create New Identity</div><div class="lo-d">Generate a fresh keypair. No email, no phone - just cryptography.</div></div>
+            <div class="lo-arr"></div>
+          </div>
+        </div>
+
+        <div class="login-col">
+          <div class="lm-col-title">Signer Options</div>
+          <div class="lo lo-col-btn" onclick="loginDemo('wavesound','','npub1abc...xyz','wave@bitcoin-cats.ca')">
+            <div class="lo-ico ext"></div>
+            <div><div class="lo-t">Signer App or Extension</div><div class="lo-d">Alby, nos2x, Amber (Android), any NIP-07 extension.</div></div>
+            <div class="lo-arr"></div>
+          </div>
+          <div class="lo lo-col-btn" onclick="loginDemo('hardwareuser','','npub1hw1...abc','')">
+            <div class="lo-ico hw"></div>
+            <div><div class="lo-t">Hardware Signer</div><div class="lo-d">Coldcard, Keystone, or any NIP-46 bunker device.</div></div>
+            <div class="lo-arr"></div>
+          </div>
+          <div class="lo lo-col-btn" id="remoteLoginLaunchBtn" onclick="loginDemo('remote')">
+            <div class="lo-ico remote"></div>
+            <div><div class="lo-t">Remote Nostr Login</div><div class="lo-d">Scan a QR code with your signer app to connect.</div></div>
+            <div class="lo-arr"></div>
+          </div>
+          <div class="remote-login-wrap" id="remoteLoginWrap">
+            <div class="remote-qr-card" id="remoteQrCard" style="display:none;">
+              <img id="remoteLoginQrImg" class="remote-qr-img" src="" alt="Remote Nostr Login QR code">
+              <div class="remote-qr-text">Scan this QR code in your remote signer app.</div>
+              <div class="remote-login-actions">
+                <button id="remoteLoginCopyBtn" class="btn btn-ghost" type="button" onclick="copyRemoteLoginUri()">Copy Link</button>
+                <button id="remoteLoginCancelBtn" class="btn btn-ghost" type="button" onclick="cancelRemoteLogin()">Cancel</button>
+              </div>
+            </div>
+            <div id="remoteLoginStatus" class="remote-login-status" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div class="login-col">
+          <div class="lm-col-title">Enter Keys Manually</div>
+          <div class="key-wrap">
+            <input id="nsecLoginInput" class="key-inp" type="password" placeholder="nsec1... (stored locally only)">
+            <button class="btn btn-ghost" style="width:100%;justify-content:center;" onclick="loginDemo('keyuser','','npub1key...xyz','')">Sign In with nsec key</button>
+          </div>
+          <div class="lm-warn">Entering your private key is less secure. Sifaka Live never sends your key to any server.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= ONBOARDING MODAL ========= -->
+<div class="modal-ov" id="onboardingModal">
+  <div class="settings-modal onboard-modal">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;z-index:2;" onclick="closeOnboarding()">&#x2715;</button>
+
+    <!-- Step indicator -->
+    <div class="onboard-steps-bar">
+      <div class="onboard-step-dot active" id="onbDot1" data-n="1"></div>
+      <div class="onboard-step-line" id="onbStepLine"></div>
+      <div class="onboard-step-dot" id="onbDot2" data-n="2"></div>
+    </div>
+
+    <!-- ── STEP 1: Save your key ── -->
+    <div class="onboard-step active" id="onbStep1">
+      <div class="sm-hd" style="padding-bottom:.5rem">
+        <div class="sm-title">Save Your Private Key</div>
+        <div style="font-size:.78rem;color:var(--text2);margin-top:.2rem">This is your Nostr identity. Lose it and there's no recovery.</div>
+      </div>
+
+      <div class="onboard-key-hero">
+        <div class="onboard-key-label">Your nsec (private key)</div>
+        <div class="onboard-nsec-row">
+          <div class="onboard-nsec-text" id="onbNsecValue">nsec1...</div>
+          <div class="onboard-nsec-actions">
+            <button class="onboard-reveal-btn" id="onbRevealBtn" onclick="onbRevealNsec()">&#128065; Reveal</button>
+            <button class="onboard-copy-btn" id="onbCopyBtn" onclick="onbCopyNsec()">&#128203; Copy</button>
+          </div>
+        </div>
+        <div class="onboard-warn-box">
+          <strong>&#9888; Never share this key.</strong> Anyone who has it owns your identity forever. Sifaka Live never sends it to any server — it lives only in your browser.
+        </div>
+      </div>
+
+      <label class="onboard-confirm-row" id="onbConfirmRow">
+        <input type="checkbox" class="onboard-checkbox" id="onbSavedCheck" onchange="onbCheckSaved()">
+        <span class="onboard-confirm-label">I have saved my private key somewhere safe (password manager, paper, hardware wallet).</span>
+      </label>
+
+      <button class="onboard-continue-btn" id="onbContinueBtn" onclick="onbGoToProfile()">
+        Continue to Profile Setup &#8594;
+      </button>
+    </div>
+
+    <!-- ── STEP 2: Build your profile ── -->
+    <div class="onboard-step" id="onbStep2">
+      <div class="sm-hd" style="padding-bottom:.5rem">
+        <div class="sm-title">Build Your Profile</div>
+        <div style="font-size:.78rem;color:var(--text2);margin-top:.2rem">All fields optional — you can update anytime from Settings.</div>
+      </div>
+
+      <!-- Avatar preview + name row -->
+      <div class="onboard-avatar-preview-row">
+        <div class="onboard-avatar-circle" id="onbAvatarPreview">?</div>
+        <div class="onboard-avatar-fields">
+          <div class="fg" style="margin:0">
+            <label>Display Name</label>
+            <input id="onbDisplayName" type="text" placeholder="SatsStreamer" oninput="onbUpdatePreview()">
+          </div>
+          <div class="fg" style="margin:0">
+            <label>Avatar URL</label>
+            <input id="onbAvatar" type="url" placeholder="https://example.com/avatar.jpg" oninput="onbUpdatePreview()">
+            <div class="onboard-field-hint">Direct image link — paste from Imgur, Nostr.build, etc.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="onboard-form-grid">
+        <div class="fg full" style="margin:0">
+          <label>Bio</label>
+          <div class="nostr-markup-toolbar">
+            <button type="button" onclick="applyNostrMarkup('onbBio','h1')">H1</button>
+            <button type="button" onclick="applyNostrMarkup('onbBio','h2')">H2</button>
+            <button type="button" onclick="applyNostrMarkup('onbBio','h3')">H3</button>
+            <button type="button" onclick="applyNostrMarkup('onbBio','bold')">B</button>
+            <button type="button" onclick="applyNostrMarkup('onbBio','italic')">I</button>
+            <button type="button" onclick="applyNostrMarkup('onbBio','strike')">S</button>
+            <button type="button" onclick="applyNostrMarkup('onbBio','ul')">UL</button>
+            <button type="button" onclick="applyNostrMarkup('onbBio','ol')">OL</button>
+            <button type="button" onclick="applyNostrMarkup('onbBio','quote')">"</button>
+            <button type="button" onclick="applyNostrMarkup('onbBio','code')">&lt;/&gt;</button>
+          </div>
+          <textarea id="onbBio" placeholder="Tell people what you stream, build, or obsess over..." style="height:70px;resize:none;"></textarea>
+        </div>
+        <div class="fg" style="margin:0">
+          <label>Banner URL</label>
+          <input id="onbBanner" type="url" placeholder="https://example.com/banner.jpg">
+          <div class="onboard-field-hint">1500×500 recommended</div>
+        </div>
+        <div class="fg" style="margin:0">
+          <label>Website</label>
+          <input id="onbWebsite" type="url" placeholder="https://your-site.com">
+        </div>
+        <div class="fg" style="margin:0">
+          <label>Lightning Address (lud16)</label>
+          <input id="onbLud16" type="text" placeholder="you@getalby.com">
+          <div class="onboard-field-hint">For receiving Zaps &#9889;</div>
+        </div>
+        <div class="fg" style="margin:0">
+          <label>NIP-05 Identifier</label>
+          <input id="onbNip05" type="text" placeholder="you@yourdomain.com">
+          <div class="onboard-field-hint">Verifies your identity on Nostr</div>
+        </div>
+      </div>
+
+      <div class="onboard-footer-row">
+        <button class="btn btn-ghost" onclick="onbBackToKey()">&#8592; Back</button>
+        <button class="btn btn-ghost" onclick="skipOnboarding()">Skip</button>
+        <button class="btn btn-primary" id="onbSaveBtn" onclick="completeOnboarding()">&#10003; Save &amp; Enter Sifaka Live</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ========= SETTINGS MODAL V2 ========= -->
+<div class="modal-ov" id="settingsModal">
+  <div class="settings-modal-v2">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;z-index:2;" onclick="closeSettings()">&#x2715;</button>
+
+    <!-- Header -->
+    <div class="smv2-hd">
+      <div class="smv2-title">&#9881;&#65039; Settings</div>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="smv2-tabs">
+      <button class="smv2-tab tab-profile active" id="smTab-profile" onclick="switchSettingsTab('profile')">👤 Profile</button>
+      <button class="smv2-tab tab-relays" id="smTab-relays" onclick="switchSettingsTab('relays')">📡 Relays</button>
+      <button class="smv2-tab tab-app" id="smTab-app" onclick="switchSettingsTab('app')">🎨 App</button>
+    </div>
+
+    <!-- ── Panel: Profile ── -->
+    <div class="smv2-panel active" id="smPanelProfile">
+      <div class="smv2-panel-label">📋 NIP-01 kind:0 — your profile metadata published to relays</div>
+
+      <!-- Avatar preview + name/username -->
+      <div class="smv2-avatar-row">
+        <div class="smv2-avatar-preview" id="smAvatarPreview">?</div>
+        <div class="smv2-avatar-fields">
+          <div class="fg" style="margin:0">
+            <label>Display Name</label>
+            <input id="settingsDisplayName" type="text" placeholder="SatsStreamer">
+          </div>
+          <div class="fg" style="margin:0">
+            <label>Username (name)</label>
+            <input id="settingsUsername" type="text" placeholder="satsstreamer">
+          </div>
+        </div>
+      </div>
+
+      <!-- Bio -->
+      <div class="fg" style="margin-top:.7rem">
+        <label>Bio (about)</label>
+        <div class="nostr-markup-toolbar">
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','h1')">H1</button>
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','h2')">H2</button>
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','h3')">H3</button>
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','bold')">B</button>
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','italic')">I</button>
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','strike')">S</button>
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','ul')">UL</button>
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','ol')">OL</button>
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','quote')">"</button>
+          <button type="button" onclick="applyNostrMarkup('settingsAbout','code')">&lt;/&gt;</button>
+        </div>
+        <textarea id="settingsAbout" placeholder="Tell people what you stream, build, or obsess over..." style="min-height:80px;resize:vertical;"></textarea>
+      </div>
+
+      <!-- Avatar + Banner URLs -->
+      <div class="smv2-field-row">
+        <div class="fg" style="margin:0">
+          <label>Avatar URL (picture)</label>
+          <input id="settingsAvatarUrl" type="url" placeholder="https://example.com/avatar.jpg" oninput="previewSettingsAvatar(this.value)">
+          <div class="smv2-field-hint">Direct image link — Imgur, nostr.build, etc.</div>
+        </div>
+        <div class="fg" style="margin:0">
+          <label>Banner URL</label>
+          <input id="settingsBannerInput" type="url" placeholder="https://example.com/banner.jpg">
+          <div class="smv2-field-hint">Recommended 1500 × 500 px</div>
+        </div>
+      </div>
+
+      <!-- Website + Lightning -->
+      <div class="smv2-field-row">
+        <div class="fg" style="margin:0">
+          <label>Website</label>
+          <input id="settingsWebsiteInput" type="url" placeholder="https://your-site.com">
+        </div>
+        <div class="fg" style="margin:0">
+          <label>⚡ Lightning Address (lud16)</label>
+          <input id="settingsLud16Input" type="text" placeholder="you@getalby.com">
+        </div>
+      </div>
+
+      <!-- NIP-05 -->
+      <div class="fg" style="margin-top:.65rem">
+        <label>NIP-05 Identifier</label>
+        <input id="settingsNip05Input" type="text" placeholder="you@yourdomain.com">
+        <div class="smv2-field-hint">Nostr identity verification — host /.well-known/nostr.json on your domain</div>
+      </div>
+
+      <div class="smv2-save-row">
+        <button class="btn btn-primary" onclick="saveProfileSettings()">Save Profile →</button>
+      </div>
+    </div>
+
+    <!-- ── Panel: Relays ── -->
+    <div class="smv2-panel" id="smPanelRelays">
+      <div class="smv2-panel-label">📡 NIP-65 kind:10002 — your relay list is published to the network</div>
+      <div id="settingsRelayList2"></div>
+      <div class="relay-add-row">
+        <input type="text" id="settingsRelayInput" placeholder="wss://relay.example.com" style="font-family:'DM Mono',monospace;font-size:.75rem;">
+        <button class="btn btn-ghost" style="padding:.4rem .85rem;" onclick="addRelayFromSettings()">Add</button>
+      </div>
+      <div class="smv2-save-row">
+        <button class="btn btn-primary" onclick="saveRelaySettings()">Save Relays →</button>
+      </div>
+    </div>
+
+    <!-- ── Panel: App ── -->
+    <div class="smv2-panel" id="smPanelApp">
+      <div class="smv2-section">
+        <div class="smv2-section-title">Streaming</div>
+        <div class="sm-row"><div><div class="sm-row-label">Auto-publish NIP-53 event</div><div class="sm-row-desc">Broadcast stream info when you go live</div></div><div class="toggle setting-toggle on" id="setAutoPublishToggle" onclick="toggleSetting(this)"></div></div>
+        <div class="sm-row"><div><div class="sm-row-label">Mini player on navigation</div><div class="sm-row-desc">Show floating player when browsing away</div></div><div class="toggle setting-toggle on" id="setMiniPlayerToggle" onclick="toggleSetting(this)"></div></div>
+      </div>
+
+      <div class="smv2-section">
+        <div class="smv2-section-title">Zaps (NIP-57)</div>
+        <div class="sm-row"><div><div class="sm-row-label">Show zap notifications in chat</div><div class="sm-row-desc">Animated zap messages visible in live chat</div></div><div class="toggle setting-toggle on" id="setZapNoticeToggle" onclick="toggleSetting(this)"></div></div>
+        <div class="sm-row"><div><div class="sm-row-label">Animate zap notifications</div><div class="sm-row-desc">Slide-in animation for incoming zaps</div></div><div class="toggle setting-toggle on" id="setAnimateToggle" onclick="toggleSetting(this)"></div></div>
+      </div>
+
+      <div class="smv2-section">
+        <div class="smv2-section-title">Notifications</div>
+        <div class="sm-row"><div><div class="sm-row-label">Mentions</div><div class="sm-row-desc">When someone tags your pubkey in a note</div></div><div class="toggle setting-toggle on" id="setNotifMentionsToggle" onclick="toggleSetting(this)"></div></div>
+        <div class="sm-row"><div><div class="sm-row-label">Replies</div><div class="sm-row-desc">When someone replies to a thread that tags you</div></div><div class="toggle setting-toggle on" id="setNotifRepliesToggle" onclick="toggleSetting(this)"></div></div>
+        <div class="sm-row"><div><div class="sm-row-label">Likes</div><div class="sm-row-desc">When your notes receive heart reactions</div></div><div class="toggle setting-toggle on" id="setNotifLikesToggle" onclick="toggleSetting(this)"></div></div>
+        <div class="sm-row"><div><div class="sm-row-label">Reposts</div><div class="sm-row-desc">When your notes are reposted</div></div><div class="toggle setting-toggle on" id="setNotifRepostsToggle" onclick="toggleSetting(this)"></div></div>
+        <div class="sm-row"><div><div class="sm-row-label">Zaps</div><div class="sm-row-desc">When your posts or profile receive zaps</div></div><div class="toggle setting-toggle on" id="setNotifZapsToggle" onclick="toggleSetting(this)"></div></div>
+        <div class="sm-row"><div><div class="sm-row-label">Follows</div><div class="sm-row-desc">When someone adds you to their follow list</div></div><div class="toggle setting-toggle on" id="setNotifFollowsToggle" onclick="toggleSetting(this)"></div></div>
+      </div>
+
+      <div class="smv2-section">
+        <div class="smv2-section-title">Interface</div>
+        <div class="sm-row">
+          <div>
+            <div class="sm-row-label">Theme</div>
+            <div class="sm-row-desc">Choose default app theme</div>
+          </div>
+          <select id="settingsThemeSelect" style="max-width:180px;">
+            <option value="dark">Dark Gray (Default)</option>
+            <option value="midnight">Midnight Orange/Purple</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+        <div class="sm-row"><div><div class="sm-row-label">Show NIP-05 badges in chat</div><div class="sm-row-desc">Purple ✓ for verified identities</div></div><div class="toggle setting-toggle on" id="setNip05Toggle" onclick="toggleSetting(this)"></div></div>
+        <div class="sm-row"><div><div class="sm-row-label">Compact chat mode</div><div class="sm-row-desc">Denser message layout in stream chat</div></div><div class="toggle setting-toggle" id="setCompactToggle" onclick="toggleSetting(this)"></div></div>
+      </div>
+
+      <div class="smv2-section">
+        <div class="smv2-section-title">Cache</div>
+        <div class="sm-row">
+          <div>
+            <div class="sm-row-label">Query cache TTL (seconds)</div>
+            <div class="sm-row-desc">How long a relay query result stays fresh</div>
+          </div>
+          <input id="settingsCacheQueryTtlSec" type="number" min="1" max="600" step="1" style="max-width:120px;">
+        </div>
+        <div class="sm-row">
+          <div>
+            <div class="sm-row-label">Warm cache window (seconds)</div>
+            <div class="sm-row-desc">Serve stale cache while refreshing in background</div>
+          </div>
+          <input id="settingsCacheWarmSec" type="number" min="5" max="7200" step="1" style="max-width:120px;">
+        </div>
+        <div class="sm-row">
+          <div>
+            <div class="sm-row-label">Live feed cache TTL (seconds)</div>
+            <div class="sm-row-desc">How long live stream snapshots are reused on load</div>
+          </div>
+          <input id="settingsCacheLiveFeedTtlSec" type="number" min="10" max="1800" step="1" style="max-width:120px;">
+        </div>
+      </div>
+
+      <div class="smv2-save-row">
+        <button class="btn btn-primary" onclick="saveAppSettings()">Save App Settings →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= FAQ MODAL ========= -->
+<div class="modal-ov" id="faqModal">
+  <div class="settings-modal">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeFaq()">x</button>
+    <div class="sm-hd"><div class="sm-title">FAQ & Help</div></div>
+    <div class="sm-body">
+      <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)">What is NIP-53 <span class="faq-chevron">+</span></div><div class="faq-a">NIP-53 defines live streaming events on Nostr using <code style="font-family:'DM Mono',monospace;color:var(--purple)">kind:30311</code>. Fill in the Go Live form and Sifaka Live broadcasts your stream to relays - any NIP-53 compatible client can discover it.</div></div>
+      <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)">How do I self-host my stream <span class="faq-chevron">+</span></div><div class="faq-a">Install nginx-rtmp on any VPS ($5/mo). Point OBS to your RTMP endpoint. Sifaka Live publishes the HLS URL to Nostr relays. No third-party CDN needed.</div></div>
+      <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)">What is NIP-05 verification <span class="faq-chevron">+</span></div><div class="faq-a">NIP-05 links your npub to a domain (e.g. craig@bitcoin-cats.ca). You host a JSON file at your domain. Verified users get a purple badge in chat and on profiles.</div></div>
+      <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)">How do Zaps work (NIP-57) <span class="faq-chevron">+</span></div><div class="faq-a">Add your Lightning address (lud16) to your NIP-01 profile. Viewers click Zap, their wallet pays a Lightning invoice, and the proof is published as a <code style="font-family:'DM Mono',monospace;color:var(--purple)">kind:9735</code> event in chat.</div></div>
+      <div class="faq-item"><div class="faq-q" onclick="toggleFaq(this)">Which NIPs does Sifaka Live support <span class="faq-chevron">+</span></div><div class="faq-a">NIP-01 (profiles), NIP-05 (verification), NIP-07 (browser signing), NIP-25 (reactions/likes), NIP-46 (remote signing), NIP-53 (live streams), NIP-57 (zaps), NIP-65 (relay lists).</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= SHARE MODAL ========= -->
+<div class="modal-ov" id="shareModal">
+  <div class="settings-modal share-modal">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeShareModal()">x</button>
+    <div class="sm-hd"><div class="sm-title">Share Stream</div></div>
+    <div class="share-modal-body">
+      <div class="share-choice-grid">
+        <button class="share-choice-btn" onclick="shareStreamAction('boost')"><span>Boost</span><span class="sub">Post to Nostr</span></button>
+        <button class="share-choice-btn" onclick="shareStreamAction('copy')"><span>Copy Link</span><span class="sub">Web URL</span></button>
+        <button class="share-choice-btn" onclick="shareStreamAction('app')"><span>Share App</span><span class="sub">Text / App</span></button>
+      </div>
+      <div class="share-field">
+        <label>Web URL</label>
+        <div class="share-copy-row">
+          <input id="shareWebUrl" type="text" readonly>
+          <button class="btn btn-ghost" style="padding:.34rem .62rem;" onclick="copyShareField('shareWebUrl')">Copy</button>
+        </div>
+      </div>
+      <div class="share-field">
+        <label>Nostr naddr</label>
+        <div class="share-copy-row">
+          <input id="shareNaddr" type="text" readonly>
+          <button class="btn btn-ghost" style="padding:.34rem .62rem;" onclick="copyShareField('shareNaddr')">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= VIDEO POST POPUP ========= -->
+<div class="modal-ov video-post-modal-ov" id="videoPostModal">
+  <div class="video-post-modal">
+    <button class="mclose video-post-close" onclick="closeVideoPostModal()">x</button>
+    <div class="video-post-banner" id="videoPostBanner"></div>
+    <div class="video-post-host-row">
+      <div class="video-post-host-avatar" id="videoPostHostAvatar"></div>
+      <div class="video-post-host-meta">
+        <div class="video-post-title" id="videoPostTitle">Video</div>
+        <div class="video-post-host-name-row">
+          <div class="video-post-host-name" id="videoPostHostName">Unknown</div>
+          <span class="nip05-badge video-post-host-check" id="videoPostHostCheck" style="display:none">&#10003;</span>
+        </div>
+        <div class="video-post-host-id" id="videoPostHostNpub"></div>
+        <div class="video-post-host-id" id="videoPostHostNip05"></div>
+      </div>
+    </div>
+    <div class="video-post-body">
+      <section class="video-post-player-col">
+        <div class="video-post-player-wrap">
+          <video id="videoPostPlayer"></video>
+          <div class="video-post-player-status" id="videoPostPlayerStatus"></div>
+        </div>
+      </section>
+      <aside class="video-post-side-col">
+        <div class="video-post-side-block">
+          <div class="video-post-side-head">Post</div>
+          <div class="video-post-body-text" id="videoPostBodyText"></div>
+          <div class="video-post-body-media" id="videoPostBodyMedia"></div>
+        </div>
+        <div class="video-post-side-block">
+          <div class="video-post-side-head" id="videoPostCommentsHead">Comments</div>
+          <div class="video-post-comments-status" id="videoPostCommentsStatus"></div>
+          <div class="video-post-comments-list" id="videoPostCommentsList"></div>
+          <div class="profile-comment-form video-post-comment-form">
+            <textarea class="profile-comment-input" id="videoPostCommentInput" rows="1" maxlength="4096" placeholder="Write a comment..."></textarea>
+            <div class="profile-comment-tools">
+              <div class="profile-comment-row">
+                <button type="button" class="profile-comment-btn" id="videoPostCommentBtn">Comment</button>
+                <button type="button" class="profile-comment-attach-btn" id="videoPostCommentAttachBtn">Attach</button>
+              </div>
+              <div class="nostr-markup-toolbar nostr-markup-toolbar-chat profile-comment-markup video-post-comment-markup">
+                <button type="button" data-action="h1">H1</button>
+                <button type="button" data-action="h2">H2</button>
+                <button type="button" data-action="h3">H3</button>
+                <button type="button" data-action="bold">B</button>
+                <button type="button" data-action="italic">I</button>
+                <button type="button" data-action="strike">S</button>
+                <button type="button" data-action="ul">UL</button>
+                <button type="button" data-action="ol">OL</button>
+                <button type="button" data-action="quote">"</button>
+                <button type="button" data-action="code">&lt;/&gt;</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<!-- ========= REACTION PICKER ========= -->
+<div class="modal-ov" id="reactionPickerModal">
+  <div class="settings-modal share-modal">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeReactionPicker()">x</button>
+    <div class="sm-hd"><div class="sm-title">React With Emoji</div></div>
+    <div class="share-modal-body">
+      <div class="reaction-picker-grid" id="reactionPickerGrid"></div>
+      <div class="reaction-custom-row">
+        <input id="reactionPickerCode" type="text" placeholder="Emoji or :shortcode:">
+        <input id="reactionPickerUrl" type="text" placeholder="Custom emoji image URL (optional for :shortcode:)">
+      </div>
+      <div class="reaction-picker-foot">
+        <button class="btn btn-ghost" onclick="closeReactionPicker()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitCustomReactionPicker()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= COMPOSE UPLOAD ========= -->
+<div class="modal-ov" id="composeUploadModal">
+  <div class="settings-modal share-modal compose-upload-modal">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeComposeUploadModal()">x</button>
+    <div class="sm-hd"><div class="sm-title">Upload Media</div></div>
+    <div class="share-modal-body">
+      <div class="compose-upload-grid">
+        <button class="share-choice-btn" onclick="selectComposeUploadSource('blossom')"><span>Blossom Upload</span><span class="sub">Upload from this device</span></button>
+        <button class="share-choice-btn" onclick="promptComposeMediaUrl()"><span>Paste URL</span><span class="sub">Use an existing image, video, or audio link</span></button>
+      </div>
+      <div class="compose-upload-status" id="composeUploadStatus"></div>
+      <input id="composeUploadFileInput" type="file" accept="image/*,video/*,audio/*" style="display:none;" onchange="uploadComposeFile(event)">
+    </div>
+  </div>
+</div>
+
+<!-- ========= GIF PICKER ========= -->
+<div class="modal-ov" id="gifPickerModal">
+  <div class="settings-modal share-modal gif-picker-modal">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeGifPicker()">x</button>
+    <div class="sm-hd"><div class="sm-title">Choose a GIF</div></div>
+    <div class="share-modal-body">
+      <div class="gif-picker-controls">
+        <input id="gifPickerSearchInput" class="gif-picker-search" type="text" placeholder="Search GIFs">
+        <button id="gifPickerSearchBtn" class="btn btn-ghost" type="button" onclick="searchGifsFromPicker()">Search</button>
+      </div>
+      <div class="gif-picker-status" id="gifPickerStatus" aria-live="polite"></div>
+      <div class="gif-picker-results" id="gifPickerResults"></div>
+      <div class="gif-picker-foot">
+        <button id="gifPickerLoadMoreBtn" class="btn btn-ghost" type="button" onclick="loadMoreGifsFromPicker()" style="display:none;">Load More</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= HOME PAGE ========= -->
+<div class="page active" id="homePage">
+  <div class="hero-stream" id="heroStream">
+    <div class="hero-bg"></div>
+    <div class="hero-grid-ov"></div>
+
+    <!-- Sci-fi transition overlay -->
+    <div class="hero-transition-ov" id="heroTransitionOv">
+      <div class="hero-scan-line" id="heroScanLine" style="display:none"></div>
+      <div class="hero-glitch-a" id="heroGlitchA" style="display:none"></div>
+      <div class="hero-glitch-b" id="heroGlitchB" style="display:none"></div>
+      <div class="hero-grid-flash" id="heroGridFlash" style="display:none"></div>
+      <div class="hero-static" id="heroStatic" style="display:none"></div>
+    </div>
+
+    <!-- Prev / Next -->
+    <button class="hero-nav-btn hero-nav-prev" id="heroPrevBtn" onclick="event.stopPropagation();heroNav(-1)">&#8249;</button>
+    <button class="hero-nav-btn hero-nav-next" id="heroNextBtn" onclick="event.stopPropagation();heroNav(1)">&#8250;</button>
+
+    <!-- Dot indicators -->
+    <div class="hero-indicators" id="heroIndicators"></div>
+
+    <!-- Cycle progress bar -->
+    <div class="hero-cycle-bar-wrap"><div class="hero-cycle-bar-fill" id="heroCycleBarFill"></div></div>
+
+    <!-- Player -->
+    <div class="hero-player" id="heroPlayer">
+      <div class="hero-player-bg" id="heroPlayerBg"></div>
+      <div class="play-ov" id="heroPlayOv"><div class="play-btn-big">&#9654;</div></div>
+    </div>
+
+    <!-- Info panel -->
+    <div class="hero-info">
+      <div class="hero-live-badge"><span class="live-dot"></span><span id="heroStatusLabel">LIVE</span></div>
+      <div class="hero-title" id="heroTitle">Connecting to relays…</div>
+      <div class="hero-host">
+        <div class="hero-av" id="heroAv"></div>
+        <span style="font-weight:600;color:var(--text)" id="heroHostName">—</span>
+        <span class="nip05-badge" id="heroNip05" style="display:none">&#10003;</span>
+      </div>
+      <div class="hero-summary" id="heroSummary">Finding live streams on Nostr…</div>
+      <div class="hero-stats">
+        <div class="h-stat"><div class="val" id="heroViewers">—</div><div class="lbl">watching</div></div>
+        <div class="h-stat zap"><div class="val" id="heroSats">—</div><div class="lbl">sats</div></div>
+        <div class="h-stat"><div class="val" id="heroTime">—</div><div class="lbl">live</div></div>
+      </div>
+      <div class="hero-actions">
+        <button class="btn btn-primary" id="heroWatchBtn" onclick="event.stopPropagation();heroWatchCurrent()">Watch</button>
+        <button class="btn btn-zap" onclick="event.stopPropagation()">&#9889; Zap</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stream-main">
+    <!-- Live Now header with list filter -->
+    <div class="live-now-hd">
+      <h2>Live Now</h2>
+      <span class="live-count-pill" id="liveCountPill"></span>
+
+      <!-- List filter dropdown (moved here from Following Live) -->
+      <div class="list-filter-wrap" id="listFilterWrap">
+        <button class="list-filter-btn" id="listFilterBtn" onclick="toggleListFilterDD(event)">
+          <span class="list-filter-btn-label" id="listFilterLabel">All Live</span>
+          <span class="list-filter-caret">&#9660;</span>
+        </button>
+        <div class="list-filter-dd" id="listFilterDD">
+          <span class="lf-section-label">View</span>
+          <button class="lf-item active" id="lf-all" onclick="setListFilter('all',this)">
+            <span class="lf-dot"></span>
+            <span class="lf-item-name">All Live</span>
+          </button>
+          <button class="lf-item" id="lf-following" onclick="setListFilter('following',this)">
+            <span class="lf-dot"></span>
+            <span class="lf-item-name">My Following</span>
+            <span class="lf-item-count" id="lfFollowingCount"></span>
+          </button>
+          <div id="lf-nip51-section" style="display:none">
+            <div class="lf-sep"></div>
+            <span class="lf-section-label">My NIP-51 Lists</span>
+            <div id="lf-nip51-items"></div>
+          </div>
+          <div id="lf-saved-section" style="display:none">
+            <div class="lf-sep"></div>
+            <span class="lf-section-label">Saved Lists</span>
+            <div id="lf-saved-items"></div>
+          </div>
+          <div class="lf-sep"></div>
+          <span class="lf-section-label">Add Curated List</span>
+          <div class="lf-add-row">
+            <input class="lf-add-input" id="lfAddInput" placeholder="naddr1… or listr.lol URL" oninput="lfAddInputChange(this)">
+            <button class="lf-add-btn" onclick="lfAddList()">Add</button>
+          </div>
+          <div class="lf-add-hint">Paste a Liststr URL or NIP-51 naddr to load a curated list of streamers.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Infinite-scroll grid -->
+    <div class="live-grid" id="liveGrid">
+      <div class="live-grid-loading"><div class="lf-spinner"></div>Syncing streams from relays…</div>
+    </div>
+    <div class="live-grid-sentinel" id="liveGridSentinel"></div>
+  </div>
+</div>
+
+<!-- ========= VIDEOS PAGE ========= -->
+<div id="videosPage">
+  <div class="videos-page-wrap">
+    <div class="videos-page-head">
+      <div class="videos-page-title-wrap">
+        <h2>Videos</h2>
+        <p>Watch past streams and recorded uploads from across Nostr.</p>
+      </div>
+      <div class="videos-page-count" id="videosCountPill"></div>
+    </div>
+    <div class="videos-filter-row" id="videosFilterRow">
+      <button class="videos-filter-btn active" id="videosFilterAllBtn" onclick="setVideosFilter('all')">All Videos</button>
+      <button class="videos-filter-btn" id="videosFilterNip71VideosBtn" onclick="setVideosFilter('nip71-videos')">Videos</button>
+      <button class="videos-filter-btn" id="videosFilterNip71ReelsBtn" onclick="setVideosFilter('nip71-reels')">Nostr Reels</button>
+      <button class="videos-filter-btn" id="videosFilterWatchPartyBtn" onclick="setVideosFilter('watch-party')">Watch Party</button>
+      <button class="videos-filter-btn" id="videosFilterPastBtn" onclick="setVideosFilter('past')">Past Streams</button>
+    </div>
+    <div class="videos-grid" id="videosGrid">
+      <div class="live-grid-loading"><div class="lf-spinner"></div>Loading videos...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= NOSTR FEED PAGE ========= -->
+<div id="feedPage">
+  <div class="nostr-feed-wrap">
+    <div class="nostr-feed-head">
+      <div class="nostr-feed-title-wrap">
+        <h2>Nostr Feed</h2>
+        <p>View notes from your Following list, any saved Nostr list, or Global relay traffic.</p>
+      </div>
+      <div class="nostr-feed-filter-wrap">
+        <label for="nostrFeedListSelect">Feed List</label>
+        <select id="nostrFeedListSelect" onchange="setNostrFeedFilterFromSelect(this.value)">
+          <option value="following">Following</option>
+          <option value="global">Global</option>
+        </select>
+      </div>
+    </div>
+    <div class="nostr-feed-status" id="nostrFeedStatus" aria-live="polite"></div>
+    <div class="profile-feed-list nostr-feed-list" id="nostrFeedList" data-feed-limit="24">
+      <div class="profile-feed-empty">Open Nostr Feed to load notes.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= NOTIFICATIONS PAGE ========= -->
+<div id="notificationsPage">
+  <div class="notifications-wrap">
+    <div class="notifications-head">
+      <div class="notifications-title-wrap">
+        <h2>Notifications</h2>
+        <p>Mentions, replies, likes, reposts, zaps, and follows for your account.</p>
+      </div>
+      <div class="notifications-actions">
+        <button class="btn btn-ghost" onclick="refreshNotifications(true)">Refresh</button>
+        <button class="btn btn-primary" onclick="markNotificationsRead()">Mark all read</button>
+      </div>
+    </div>
+    <div class="notifications-status" id="notificationsStatus" aria-live="polite"></div>
+    <div class="notifications-list" id="notificationsList">
+      <div class="profile-feed-empty">Open Notifications to load activity.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= COMMUNITIES PAGE ========= -->
+<div id="communitiesPage">
+  <div id="communitiesRoot"></div>
+</div>
+
+<!-- ========= MESSAGES PAGE ========= -->
+<div id="messagesPage">
+  <div id="messagesRoot"></div>
+</div>
+
+<!-- ========= MY STREAMS PAGE ========= -->
+<div id="myStreamsPage">
+  <div class="my-streams-page-wrap">
+    <div class="my-streams-card">
+      <div class="my-streams-head">
+        <h2 id="myStreamsTitle">Edit Stream</h2>
+        <p id="myStreamsSub">You already have stream events. Edit details and publish updates.</p>
+      </div>
+      <div class="mbody my-streams-body">
+        <div class="go-live-manage" id="myStreamsManageWrap">
+          <div class="fg">
+            <label>Your Streams</label>
+            <select id="myStreamsStreamSelect" onchange="selectMyStreamsStream(this.value)"></select>
+            <div class="go-live-manage-help" id="myStreamsManageHint">Select a stream to edit, then save updates.</div>
+          </div>
+        </div>
+        <div class="fg-grid">
+          <div class="fg"><label>Stream ID (d-tag)</label><input id="myStreamsDTag" type="text" value=""></div>
+          <div class="fg"><label>Title</label><input id="myStreamsTitleInput" type="text" value=""></div>
+          <div class="fg full"><label>Event ID</label><input id="myStreamsEventId" type="text" value="" readonly placeholder="Will appear after first publish"></div>
+          <div class="fg full"><label>Summary</label><textarea id="myStreamsSummary"></textarea></div>
+          <div class="fg full"><label>Streaming URL (HLS .m3u8 or RTMP)</label><input id="myStreamsStreamUrl" type="text" placeholder="https://your-server.com/live/stream.m3u8"></div>
+          <div class="fg full"><label>Thumbnail Image URL</label><input id="myStreamsThumb" type="text" placeholder="https://your-server.com/thumb.jpg"></div>
+          <div class="fg"><label>Starts (UTC)</label><input id="myStreamsStarts" type="datetime-local" value=""></div>
+          <div class="fg"><label>Status</label><div class="srow" id="myStreamsStatusRow"><button class="sc sl" type="button">Live</button><button class="sc" type="button">Planned</button><button class="sc" type="button">Ended</button></div></div>
+        </div>
+        <div class="relay-bar" id="myStreamsRelayBar"></div>
+        <div class="my-streams-status" id="myStreamsStatus" aria-live="polite"></div>
+      </div>
+      <div class="mfooter">
+        <button class="btn btn-ghost" onclick="showPage('home')">Cancel</button>
+        <button class="btn btn-ghost" onclick="goToMyStreamFromPage()">View Stream</button>
+        <button class="btn btn-ghost" id="myStreamsRemoveBtn" style="display:none;" onclick="removeMyStreamFromList()">Remove From List</button>
+        <button class="btn btn-live-pulse" id="myStreamsPublishBtn" onclick="publishMyStreamUpdate()">Save Stream Update</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= FAQ PAGE ========= -->
+<div id="faqPage">
+  <div class="faq-page-wrap">
+    <section class="faq-page-hero faq-kid-hero">
+      <h1>FAQ and Help (Super Simple)</h1>
+      <p>You are in the right place.</p>
+      <p>If this is your first time, read from top to bottom.</p>
+      <p>Short version: Sifaka Live helps people find live streams on Nostr.</p>
+    </section>
+
+    <section class="faq-card">
+      <h2>What is Nostr?</h2>
+      <p>Nostr is an open social network.</p>
+      <p>Open means no single company owns it.</p>
+      <div class="faq-flow">
+        <span class="faq-flow-box">You own your account</span>
+        <span class="faq-flow-arrow">-&gt;</span>
+        <span class="faq-flow-box">Apps can change</span>
+        <span class="faq-flow-arrow">-&gt;</span>
+        <span class="faq-flow-box">You keep your followers</span>
+      </div>
+    </section>
+
+    <section class="faq-card">
+      <h2>What is Sifaka Live?</h2>
+      <p>Sifaka Live is a stream directory.</p>
+      <p>Think: TV guide for Nostr live streams.</p>
+      <p>Important: Sifaka Live helps discovery. It does not host the video.</p>
+    </section>
+
+    <section class="faq-card">
+      <h2>Why creators like this</h2>
+      <ul>
+        <li>Direct tips with zaps (Lightning payments)</li>
+        <li>No big platform middleman</li>
+        <li>You can run your own stream server</li>
+      </ul>
+      <div class="faq-simple-box">
+        <strong>Money flow:</strong>
+        <p>Old way: Viewer -&gt; Platform -&gt; Creator (fees taken)</p>
+        <p>Nostr way: Viewer -&gt; Creator (direct)</p>
+      </div>
+    </section>
+
+    <section class="faq-card">
+      <h2>Start streaming fast (Easy Way)</h2>
+      <p>Best for beginners. No server setup needed.</p>
+
+      <div class="faq-step-strip">
+        <div class="faq-step-item"><span class="faq-step-num">1</span><p>Make a Nostr account</p></div>
+        <div class="faq-step-item"><span class="faq-step-num">2</span><p>Install OBS</p></div>
+        <div class="faq-step-item"><span class="faq-step-num">3</span><p>Open zap.stream</p></div>
+        <div class="faq-step-item"><span class="faq-step-num">4</span><p>Paste Stream URL + Key in OBS</p></div>
+        <div class="faq-step-item"><span class="faq-step-num">5</span><p>Click Start Streaming</p></div>
+      </div>
+
+      <p class="faq-mini-title">Do this exactly:</p>
+      <ol class="faq-do-list">
+        <li>Open Primal (or Snort) and create your Nostr account.</li>
+        <li>Install OBS Studio on your computer.</li>
+        <li>Open zap.stream and sign in with your Nostr account.</li>
+        <li>On zap.stream click Start Streaming and copy Stream URL + Stream Key.</li>
+        <li>In OBS go to Settings -&gt; Stream, paste URL + Key, then click Start Streaming.</li>
+      </ol>
+
+      <h3>Open these websites</h3>
+      <div class="faq-link-grid">
+        <a class="faq-link-card" href="https://primal.net" target="_blank" rel="noopener noreferrer"><strong>Primal</strong><span>Create a Nostr account</span></a>
+        <a class="faq-link-card" href="https://snort.social" target="_blank" rel="noopener noreferrer"><strong>Snort</strong><span>Another Nostr client option</span></a>
+        <a class="faq-link-card" href="https://obsproject.com/download" target="_blank" rel="noopener noreferrer"><strong>OBS Studio</strong><span>Download streaming software</span></a>
+        <a class="faq-link-card" href="https://zap.stream" target="_blank" rel="noopener noreferrer"><strong>zap.stream</strong><span>Hosted way to go live fast</span></a>
+      </div>
+    </section>
+
+    <section class="faq-card">
+      <h2>Run your own server (Owncast)</h2>
+      <p>This gives you the most control.</p>
+      <p>You control your stream, chat, and website.</p>
+
+      <div class="faq-step-strip faq-step-strip-compact">
+        <div class="faq-step-item"><span class="faq-step-num">1</span><p>Get a small VPS server</p></div>
+        <div class="faq-step-item"><span class="faq-step-num">2</span><p>Install Owncast</p></div>
+        <div class="faq-step-item"><span class="faq-step-num">3</span><p>Open <code>/admin</code> and set password + stream key</p></div>
+        <div class="faq-step-item"><span class="faq-step-num">4</span><p>Paste stream key into OBS</p></div>
+        <div class="faq-step-item"><span class="faq-step-num">5</span><p>Start streaming and announce on Nostr</p></div>
+      </div>
+
+      <p class="faq-mini-title">Do this in order (click links below):</p>
+      <ol class="faq-do-list">
+        <li>Pick a server provider and launch a small VPS.</li>
+        <li>Install Owncast using the official quickstart page.</li>
+        <li>Open your Owncast <code>/admin</code> page and finish setup.</li>
+        <li>Copy your Owncast stream key into OBS Settings -&gt; Stream.</li>
+        <li>Start streaming from OBS, then share your stream on Nostr.</li>
+      </ol>
+
+      <h3>Owncast links (official)</h3>
+      <ul class="faq-link-list">
+        <li><a href="https://owncast.online/quickstart/installation/" target="_blank" rel="noopener noreferrer">Owncast Installation (Quickstart)</a></li>
+        <li><a href="https://owncast.online/quickstart/providers/" target="_blank" rel="noopener noreferrer">One-click providers (easy server setup)</a></li>
+        <li><a href="https://owncast.online/quickstart/configure/" target="_blank" rel="noopener noreferrer">Configure Owncast after install</a></li>
+        <li><a href="https://owncast.online/quickstart/nextsteps/" target="_blank" rel="noopener noreferrer">Next steps: SSL + auto-start service</a></li>
+        <li><a href="https://owncast.online/docs/directory/" target="_blank" rel="noopener noreferrer">Optional: list your stream in Owncast Directory</a></li>
+      </ul>
+    </section>
+
+    <section class="faq-card">
+      <h2>How streaming works (picture in words)</h2>
+      <div class="faq-flow faq-flow-big">
+        <span class="faq-flow-box">Streamer</span>
+        <span class="faq-flow-arrow">-&gt;</span>
+        <span class="faq-flow-box">Streaming Server</span>
+        <span class="faq-flow-arrow">-&gt;</span>
+        <span class="faq-flow-box">Nostr</span>
+        <span class="faq-flow-arrow">-&gt;</span>
+        <span class="faq-flow-box">Sifaka Live</span>
+        <span class="faq-flow-arrow">-&gt;</span>
+        <span class="faq-flow-box">Viewers</span>
+      </div>
+    </section>
+
+    <section class="faq-card faq-summary-card">
+      <h2>Simple summary</h2>
+      <p>Sifaka Live helps people find live streams on Nostr.</p>
+      <p>Creators can get paid directly and keep more control.</p>
+      <div class="faq-actions">
+        <button class="btn btn-primary" onclick="showPage('home')">Back to Live Now</button>
+        <button class="btn btn-ghost" onclick="showPage('communities')">Open Communities</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ========= VIDEO PAGE ========= -->
+<div id="videoPage">
+  <div class="video-layout">
+    <div class="video-col">
+      <!-- Player -->
+      <div class="player-wrap">
+        <div class="player-bg"></div>
+        <div class="player-ui">
+          <div class="pctrl-row">
+            <button class="pc"></button>
+            <button class="pc" style="font-size:.85rem"></button>
+            <div class="pvol"><div class="pvol-f"></div></div>
+            <div class="spacer"></div>
+            <button class="end-stream-btn visible" id="endStreamBtn" onclick="openEnd()">End Stream</button>
+            <div class="p-live" style="margin-left:.5rem"><span class="live-dot"></span>LIVE</div>
+            <button class="pc" style="font-size:.85rem;margin-left:.5rem"></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stream info -->
+      <div class="sib">
+        <!-- Top row: title left, action buttons flush right -->
+        <div class="sib-top-row">
+          <div class="sib-title-col">
+            <div class="editable-row">
+              <div class="sib-title">Indie Jazz Live Set - No Platform, No Rules</div>
+              <button class="edit-pencil owner-only visible" title="Edit title"></button>
+            </div>
+          </div>
+          <div class="sib-actions-row">
+            <button class="btn btn-follow" id="theaterFollowBtn" style="padding:.36rem .8rem;font-size:.79rem;" onclick="toggleTheaterFollow()">Follow</button>
+            <button class="btn btn-zap" id="theaterZapBtn" style="padding:.36rem .8rem;font-size:.79rem;" onclick="theaterZap()">Zap</button>
+            <button class="action-btn share-btn" id="theaterShareBtn" onclick="shareStream()">Share</button>
+            <button class="action-btn report-btn" title="Report stream">Report</button>
+          </div>
+        </div>
+        <!-- Host row (avatar + name/nip05 + hosted-via pill injected by JS) -->
+        <div class="sib-host-row">
+          <div class="sib-av" onclick="showProfile('wavesound','','npub1abc...xyz','wave@bitcoin-cats.ca')"></div>
+          <div class="sib-host-info">
+            <div class="sib-name">wavesound
+              <span class="nip05-badge" title="NIP-05 Verified: wave@bitcoin-cats.ca"></span>
+            </div>
+            <div class="sib-identity nip05-text">wave@bitcoin-cats.ca</div>
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="sib-stats-row">
+          <div class="ss fol"><span class="n" id="theaterFollowers">—</span> <span class="l">followers</span></div>
+          <div class="ss lv"><span class="n" id="theaterViewers">—</span> <span class="l">watching</span></div>
+          <div class="ss zap"><span class="n" id="theaterSats">—</span> <span class="l">sats</span></div>
+          <div class="ss"><span class="n" id="theaterRuntime">—</span> <span class="l">live</span></div>
+          <div class="ss"><span class="n" id="theaterRelays">—</span> <span class="l">relays</span></div>
+        </div>
+
+        <!-- Editable summary -->
+        <div class="editable-block" style="margin-top:.5rem">
+          <div class="sib-summary">Live jazz set from my home studio. Self-hosted on a $5 VPS - no middlemen, no censorship.</div>
+          <button class="block-pencil owner-only visible" title="Edit description"></button>
+        </div>
+        <div class="stream-reactions-row">
+          <button class="stream-emoji-add" id="streamEmojiAddBtn" onclick="openReactionPickerForStream()">+</button>
+          <div class="stream-emoji-list" id="streamEmojiList"></div>
+          <div class="stream-like-counter" id="streamLikeCounter">0 likes</div>
+          <div class="stream-zap-list" id="streamZapList"></div>
+        </div>
+      </div>
+
+      <!-- Recommended -->
+      <div class="reco">
+        <div class="reco-title">Also Live Now</div>
+        <div id="recoList"></div>
+      </div>
+    </div>
+
+    <!-- Chat sidebar -->
+    <div class="stream-sidebar">
+      <div class="stabs">
+        <div class="stab active" onclick="switchTab('chat')">Live Chat</div>
+      </div>
+      <div class="chat-scroll" id="chatScroll">
+        <div class="cmsg"><div class="c-av" onclick="showProfile('fiatjaf','','npub1zl3...gz4','fiatjaf@nostr.com')"></div><div class="c-body"><div class="c-name-row"><span class="c-name co" onclick="showProfile('fiatjaf','','npub1zl3...gz4','fiatjaf@nostr.com')">fiatjaf</span><span class="c-nip05" title="fiatjaf@nostr.com"></span></div><div class="c-text">incredible session wavesound </div></div><div class="chat-msg-actions"><button class="cma-btn" title="Reply"></button><button class="cma-btn like-cma" title="Like"></button><button class="cma-btn zap-cma" title="Zap"></button><button class="cma-btn" title="Share"></button></div></div>
+        <div class="cmsg"><div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name cp">satsoshi99</span></div><div class="c-text">this is why we build on nostr</div></div><div class="chat-msg-actions"><button class="cma-btn" title="Reply"></button><button class="cma-btn like-cma" title="Like"></button><button class="cma-btn zap-cma" title="Zap"></button><button class="cma-btn" title="Share"></button></div></div>
+        <div class="cmsg zap-ev"><div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name cz">ZAP - 1,000 sats</span></div><div class="c-text">beautiful chord at 42:10!</div></div></div>
+        <div class="cmsg"><div class="c-av" onclick="showProfile('relayrunner','','npub1ghi...rst','relay@nostr.run')"></div><div class="c-body"><div class="c-name-row"><span class="c-name cg" onclick="showProfile('relayrunner','','npub1ghi...rst','relay@nostr.run')">relayrunner</span><span class="c-nip05" title="relay@nostr.run"></span></div><div class="c-text">what's your RTMP setup</div></div><div class="chat-msg-actions"><button class="cma-btn" title="Reply"></button><button class="cma-btn like-cma" title="Like"></button><button class="cma-btn zap-cma" title="Zap"></button><button class="cma-btn" title="Share"></button></div></div>
+        <div class="cmsg"><div class="c-av" onclick="showProfile('wavesound','','npub1abc...xyz','wave@bitcoin-cats.ca')"></div><div class="c-body"><div class="c-name-row"><span class="c-name co" onclick="showProfile('wavesound','','npub1abc...xyz','wave@bitcoin-cats.ca')">wavesound</span><span class="c-nip05" title="wave@bitcoin-cats.ca"></span></div><div class="c-text">nginx-rtmp on a $5 Hetzner VPS!</div></div><div class="chat-msg-actions"><button class="cma-btn" title="Reply"></button><button class="cma-btn like-cma" title="Like"></button><button class="cma-btn zap-cma" title="Zap"></button><button class="cma-btn" title="Share"></button></div></div>
+        <div class="cmsg"><div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name">nostrdev</span></div><div class="c-text">NIP-53 is so underrated</div></div><div class="chat-msg-actions"><button class="cma-btn" title="Reply"></button><button class="cma-btn like-cma" title="Like"></button><button class="cma-btn zap-cma" title="Zap"></button><button class="cma-btn" title="Share"></button></div></div>
+        <div class="cmsg zap-ev"><div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name cz">ZAP - 21,000 sats</span></div><div class="c-text">WAGMI no platforms </div></div></div>
+        <div class="cmsg"><div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name cp">bitlover</span></div><div class="c-text">streaming from your own server is based</div></div><div class="chat-msg-actions"><button class="cma-btn" title="Reply"></button><button class="cma-btn like-cma" title="Like"></button><button class="cma-btn zap-cma" title="Zap"></button><button class="cma-btn" title="Share"></button></div></div>
+        <div class="cmsg zap-ev"><div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name cz">ZAP - 5,000 sats</span></div><div class="c-text">encore!</div></div></div>
+      </div>
+      <div class="viewers-panel" id="viewersPanel">
+        <div style="font-size:.71rem;color:var(--muted);font-family:'DM Mono',monospace;padding:.18rem .38rem;">2,105 watching</div>
+        <div class="vr" onclick="showProfile('fiatjaf','','npub1zl3...gz4','fiatjaf@nostr.com')"><div class="v-av"></div><div><div class="v-name">fiatjaf <span class="c-nip05"></span></div><div class="v-npub">fiatjaf@nostr.com</div></div><span class="v-badge vb-z">top</span></div>
+        <div class="vr"><div class="v-av"></div><div><div class="v-name">satsoshi99</div><div class="v-npub">npub1def...uvw</div></div></div>
+        <div class="vr" onclick="showProfile('relayrunner','','npub1ghi...rst','relay@nostr.run')"><div class="v-av"></div><div><div class="v-name">relayrunner <span class="c-nip05"></span></div><div class="v-npub">relay@nostr.run</div></div></div>
+        <div class="vr"><div class="v-av"></div><div><div class="v-name">nostrdev</div><div class="v-npub">npub1jkl...opq</div></div><span class="v-badge vb-l">live</span></div>
+      </div>
+      <div class="chat-bottom">
+        <div class="chat-iw">
+          <textarea class="chat-inp" id="chatInputText" placeholder="Send a message..." rows="2"></textarea>
+        </div>
+        <div class="chat-acts">
+          <div class="nostr-markup-toolbar nostr-markup-toolbar-chat">
+            <button type="button" onclick="applyNostrMarkup('chatInputText','h1')">H1</button>
+            <button type="button" onclick="applyNostrMarkup('chatInputText','h2')">H2</button>
+            <button type="button" onclick="applyNostrMarkup('chatInputText','h3')">H3</button>
+            <button type="button" onclick="applyNostrMarkup('chatInputText','bold')">B</button>
+            <button type="button" onclick="applyNostrMarkup('chatInputText','italic')">I</button>
+            <button type="button" onclick="applyNostrMarkup('chatInputText','strike')">S</button>
+            <button type="button" onclick="applyNostrMarkup('chatInputText','ul')">UL</button>
+            <button type="button" onclick="applyNostrMarkup('chatInputText','ol')">OL</button>
+            <button type="button" onclick="applyNostrMarkup('chatInputText','quote')">"</button>
+            <button type="button" onclick="applyNostrMarkup('chatInputText','code')">&lt;/&gt;</button>
+          </div>
+          <button class="ca-btn" id="chatAttachBtn" type="button" onclick="openComposeUploadModal('chat')">Attach</button>
+          <button class="chat-send-btn">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= PROFILE PAGE ========= -->
+<div id="profilePage">
+  <div class="profile-hero">
+    <img id="profBannerImg" class="profile-banner-img" alt="Profile banner" src="">
+  </div>
+  <div class="profile-content">
+    <div class="profile-top">
+      <div class="profile-left-stack">
+        <div class="profile-head-row">
+          <div class="profile-av-wrap"><div class="profile-av-big" id="profAv">U</div></div>
+          <div class="profile-identity-box" id="profileIdentityBox">
+            <div class="profile-name-row">
+              <div class="profile-name" id="profName">Profile</div>
+              <span class="nip05-badge" style="font-size:.95rem;display:none" id="profNip05Check">&#10003;</span>
+            </div>
+            <div class="profile-nip05" id="profNip05" style="display:none">NIP-05: not set</div>
+            <div class="profile-npub" id="profNpub">npub</div>
+            <div class="profile-kind30315-row" id="profKind30315Row">
+              <span id="profKind30315"></span>
+            </div>
+            <div class="profile-kind30315-edit" id="profKind30315Edit" style="display:none;">
+              <input class="profile-kind30315-input" id="profKind30315Input" type="text" maxlength="180" placeholder="Set status">
+              <button class="profile-kind30315-save" id="profKind30315SaveBtn" onclick="saveProfileKind30315Status()">Save</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-bio-box">
+          <div class="profile-bio-grid" id="profileBioGrid">
+            <div>
+                <div class="profile-bio clamped" id="profBio">No bio yet.</div>
+                <button class="profile-show-more" id="profBioToggle" style="display:none;" onclick="toggleProfileBio()">Show more</button>
+                <div class="profile-bio-links profile-bio-links-main" id="profBioLinksMain">
+                  <div class="profile-bio-meta" id="profTwitterRow" style="display:none;"><span class="lbl">Twitter</span><a id="profTwitterBio" href="#" target="_blank" rel="noopener noreferrer"></a></div>
+                  <div class="profile-bio-meta" id="profGithubRow" style="display:none;"><span class="lbl">GitHub</span><a id="profGithubBio" href="#" target="_blank" rel="noopener noreferrer"></a></div>
+                </div>
+                <div class="profile-bio-links profile-bio-links-bottom" id="profBioLinksBottom">
+                  <div class="profile-bio-meta" id="profWebsiteRow" style="display:none;"><span class="lbl">Website</span><a id="profWebsiteBio" href="#" target="_blank" rel="noopener noreferrer"></a></div>
+                  <div class="profile-bio-meta" id="profLud16Row" style="display:none;"><span class="lbl">Lightning</span><span class="val" id="profLud16Bio"></span></div>
+                </div>
+                <div class="profile-since" id="profNostrSince" style="display:none"></div>
+              </div>
+            <!-- Badges panel: shown only when badges are present -->
+            <div class="profile-badges-panel" id="profileBadgesPanel" style="display:none;">
+              <div class="profile-badges-title">&#127942; Badges</div>
+              <div class="profile-badges-grid" id="profileBadgesGrid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-right-stack">
+        <div class="profile-action-box">
+          <div class="profile-actions-row">
+            <button class="btn btn-ghost" id="profileMessageBtn" onclick="openProfileMessage()">Message</button>
+            <button class="btn btn-zap" id="profileZapBtn">Zap</button>
+            <button class="btn btn-follow" id="profileFollowBtn" onclick="toggleFollowProfile()">Follow</button>
+            <button class="btn btn-primary" id="profileEditBtn" onclick="openProfileEditSettings()" style="display:none;">Edit Profile</button>
+            <div class="atl-wrap" id="atlWrap">
+              <button class="btn btn-ghost" id="profileAddToListBtn" onclick="toggleAtlDropdown(event)">Add to List ▾</button>
+              <div class="atl-dropdown" id="atlDropdown">
+                <span class="atl-label">My NIP-51 Lists</span>
+                <div id="atlListItems"><div class="atl-empty">No lists yet — create one below.</div></div>
+                <button class="atl-item atl-create" onclick="atlShowCreateRow()">➕ Create new list</button>
+                <div class="atl-new-row" id="atlNewRow" style="display:none;">
+                  <input class="atl-new-input" id="atlNewInput" placeholder="List name…" onkeydown="if(event.key==='Enter')atlCreateList()">
+                  <button class="atl-new-btn" onclick="atlCreateList()">Create</button>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-ghost" id="profileShareBtn" onclick="shareProfile()">Share</button>
+            <button class="action-btn report-btn" title="Report">Report</button>
+          </div>
+        </div>
+
+        <div class="profile-inline-meta">
+          <div class="profile-inline-stats">
+            <div class="pis"><div class="iv" id="profFollowers">0</div><div class="il">Followers</div></div>
+            <div class="pis"><div class="iv" id="profFollowing">0</div><div class="il">Following</div></div>
+            <div class="pis"><div class="iv" id="profPostCount">0</div><div class="il">Post Count</div></div>
+            <div class="pis"><div class="iv" id="profStreams">0</div><div class="il">Stream Count</div></div>
+            <div class="pis"><div class="iv" id="profNostrAgeStat">-</div><div class="il">Time on Nostr</div></div>
+            <div class="pis"><div class="iv" id="profSats">0</div><div class="il">Total Sats Received</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-main-grid">
+      <div class="profile-col">
+
+        <!-- Compose box: only shown on own profile -->
+        <div class="profile-compose-box hidden" id="profileComposeBox">
+          <div class="profile-compose-header">
+            <div class="profile-compose-ident">
+              <div class="profile-compose-av" id="profileComposeAv">U</div>
+              <span class="profile-compose-label">Share a note</span>
+            </div>
+            <div class="profile-compose-toolbar">
+              <div class="nostr-markup-toolbar nostr-markup-toolbar-compose">
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','h1')">H1</button>
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','h2')">H2</button>
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','h3')">H3</button>
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','bold')">B</button>
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','italic')">I</button>
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','strike')">S</button>
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','ul')">UL</button>
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','ol')">OL</button>
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','quote')">"</button>
+                <button type="button" onclick="applyNostrMarkup('profileComposeText','code')">&lt;/&gt;</button>
+              </div>
+              <button class="profile-compose-gif-btn" id="profileComposeGifBtn" onclick="openGifPicker('profile')">GIF</button>
+              <button class="profile-compose-upload-btn" id="profileComposeUploadBtn" onclick="openComposeUploadModal('profile')">Attach</button>
+              <button class="profile-compose-btn" id="profileComposeBtn" onclick="publishProfileNote()">Post Note</button>
+            </div>
+          </div>
+          <textarea class="profile-compose-textarea" id="profileComposeText" placeholder="What's on your mind?" maxlength="4096"></textarea>
+        </div>
+
+        <div class="profile-card" id="profileLiveWrap" style="display:none;">
+          <div class="profile-sec-head">
+            <h3>Live Now</h3>
+            <span id="profLiveStatus">offline</span>
+          </div>
+          <div class="profile-live-player" id="profileLivePlayer">No live stream right now.</div>
+          <div class="profile-live-foot">
+            <button class="btn btn-primary" style="font-size:.78rem;padding:.38rem .72rem;" onclick="openStreamFromProfile()">Open in Theater</button>
+          </div>
+        </div>
+
+        <div class="profile-card" id="profilePostsLeft">
+          <div class="profile-sec-head">
+            <h3>Posts</h3>
+            <span id="profileFeedCount">0 notes</span>
+          </div>
+          <div id="profileFeedList" class="profile-feed-list">
+            <div class="profile-feed-empty">Loading notes from relays...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-side">
+        <div class="profile-card profile-media-card">
+          <div class="profile-tab-row">
+            <button class="profile-tab" id="profileTabBtnPosts" onclick="switchProfileTab('posts')" style="display:none;">Posts</button>
+            <button class="profile-tab active" id="profileTabBtnStreams" onclick="switchProfileTab('streams')">Past Streams</button>
+            <button class="profile-tab" id="profileTabBtnMedia" onclick="switchProfileTab('media')">Media</button>
+          </div>
+
+          <div class="profile-tab-pane" id="profileTabPosts">
+            <div id="profileFeedListSide" class="profile-feed-list">
+              <div class="profile-feed-empty">Loading notes from relays...</div>
+            </div>
+          </div>
+          <div class="profile-tab-pane on" id="profileTabStreams">
+            <div id="profilePastStreamsList" class="profile-media-list">
+              <div class="profile-feed-empty">Loading stream history...</div>
+            </div>
+          </div>
+          <div class="profile-tab-pane" id="profileTabMedia">
+            <div id="profileMediaList" class="profile-media-grid"></div>
+            <div id="profilePhotosList" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="padding:.65rem 1.5rem;border-top:1px solid var(--border);">
+    <button class="btn btn-ghost" onclick="goBackFromProfile()" style="font-size:.79rem;">Back</button>
+  </div>
+</div>
+
+<!-- ========= ALL BADGES POPUP ========= -->
+<div class="all-badges-popup-ov" id="allBadgesPopupOv">
+  <div class="all-badges-popup">
+    <div class="abp-hd">
+      <div class="abp-title">&#127942; All Badges</div>
+      <button class="badge-popup-close" onclick="closeAllBadgesPopup()">✕</button>
+    </div>
+    <div class="abp-body">
+      <div class="abp-grid" id="allBadgesGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= BADGE DETAIL POPUP ========= -->
+<div class="badge-popup-ov" id="badgePopupOv">
+  <div class="badge-popup">
+    <button class="badge-popup-close" onclick="closeBadgePopup()">✕</button>
+    <div class="badge-popup-img-wrap" id="badgePopupImgWrap">&#127942;</div>
+    <div class="badge-popup-body">
+      <div class="badge-popup-name" id="badgePopupName">Badge Name</div>
+      <div class="badge-popup-desc" id="badgePopupDesc"></div>
+      <div class="badge-popup-meta" id="badgePopupMeta"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= SCRIPTS ========= -->
+<script src="./scripts/theme-manager.js"></script>
+<script src="./scripts/communities-view.js"></script>
+<script src="./scripts/theater-view.js"></script>
+<script src="./scripts/profile-view.js"></script>
+<script src="./scripts/gif-provider.js"></script>
+<script type="module" src="./communities/boot.js"></script>
+<script src="./nostrflux-app.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
