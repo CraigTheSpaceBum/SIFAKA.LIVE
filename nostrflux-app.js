@@ -6,9 +6,128 @@
     'wss://nostr.wine',
     'wss://relay.primal.net',
     'wss://relay.nostr.band',
+    'wss://relay.nostr.net',
+    'wss://www.nostr.ltd',
+    'wss://relayable.org',
     'wss://nostr.fmt.wiz.biz',
     'wss://offchain.pub',
     'wss://nostr.mom'
+  ];
+  const RELAY_BUCKET_DEFS = [
+    {
+      id: 'public_outbox',
+      label: 'Public Outbox / Home Relays',
+      shortLabel: 'Outbox',
+      description: 'Primary publish relays for profile updates, notes, follows, and live events.',
+      accentA: '#4f8cff',
+      accentB: '#8b5cf6'
+    },
+    {
+      id: 'public_inbox',
+      label: 'Public Inbox Relays',
+      shortLabel: 'Inbox',
+      description: 'Read public notes, mentions, replies, follows, and timeline traffic here.',
+      accentA: '#22c55e',
+      accentB: '#14b8a6'
+    },
+    {
+      id: 'dm_inbox',
+      label: 'DM Inbox Relays',
+      shortLabel: 'DM',
+      description: 'Relays you want to keep in the mix for encrypted direct messages.',
+      accentA: '#f59e0b',
+      accentB: '#f97316'
+    },
+    {
+      id: 'private_home',
+      label: 'Private Home Relays',
+      shortLabel: 'Private',
+      description: 'Closer or private relay lanes for your own home feed and personal data.',
+      accentA: '#a855f7',
+      accentB: '#ec4899'
+    },
+    {
+      id: 'proxy',
+      label: 'Proxy Relays',
+      shortLabel: 'Proxy',
+      description: 'Gateway relays that front or proxy other relay infrastructure.',
+      accentA: '#06b6d4',
+      accentB: '#3b82f6'
+    },
+    {
+      id: 'broadcast',
+      label: 'Broadcast Relays',
+      shortLabel: 'Broadcast',
+      description: 'High-reach relays to keep in the loop for streams and broader event delivery.',
+      accentA: '#ef4444',
+      accentB: '#f97316'
+    },
+    {
+      id: 'indexer',
+      label: 'Indexer Relays',
+      shortLabel: 'Indexer',
+      description: 'Relays you lean on for archive, indexing, and discovery-style lookups.',
+      accentA: '#10b981',
+      accentB: '#0ea5e9'
+    },
+    {
+      id: 'search',
+      label: 'Search Relays',
+      shortLabel: 'Search',
+      description: 'Relays that are useful for relay-backed search and query-heavy lookups.',
+      accentA: '#eab308',
+      accentB: '#22c55e'
+    },
+    {
+      id: 'local',
+      label: 'Local Relays',
+      shortLabel: 'Local',
+      description: 'Relays on localhost, private LAN hosts, or other local environments.',
+      accentA: '#64748b',
+      accentB: '#475569'
+    },
+    {
+      id: 'trusted',
+      label: 'Trusted Relays',
+      shortLabel: 'Trusted',
+      description: 'Relays you personally trust and want surfaced as a dedicated bucket.',
+      accentA: '#14b8a6',
+      accentB: '#22c55e'
+    },
+    {
+      id: 'blocked',
+      label: 'Blocked Relays',
+      shortLabel: 'Blocked',
+      description: 'These relays stay saved in settings but are excluded from the active connection pool.',
+      accentA: '#dc2626',
+      accentB: '#7f1d1d'
+    },
+    {
+      id: 'current_connected',
+      label: 'Current Connected Relays',
+      shortLabel: 'Connected',
+      description: 'Live relay sockets that are currently open from the active app relay pool.',
+      accentA: '#22c55e',
+      accentB: '#14b8a6',
+      readOnly: true
+    }
+  ];
+  const RELAY_BUCKET_DEF_BY_ID = new Map(RELAY_BUCKET_DEFS.map((item) => [item.id, item]));
+  const EDITABLE_RELAY_BUCKET_IDS = RELAY_BUCKET_DEFS.filter((item) => !item.readOnly).map((item) => item.id);
+  const ACTIVE_RELAY_BUCKET_IDS = EDITABLE_RELAY_BUCKET_IDS.filter((id) => id !== 'blocked');
+  const RELAY_BUCKET_HINTS = [
+    { match: /relay\.damus\.io$/i, ids: ['public_outbox', 'public_inbox', 'broadcast', 'trusted'] },
+    { match: /nos\.lol$/i, ids: ['public_outbox', 'public_inbox', 'broadcast', 'trusted'] },
+    { match: /relay\.snort\.social$/i, ids: ['public_outbox', 'public_inbox', 'broadcast'] },
+    { match: /relay\.primal\.net$/i, ids: ['public_outbox', 'public_inbox', 'broadcast', 'trusted'] },
+    { match: /relay\.nostr\.band$/i, ids: ['public_inbox', 'indexer', 'search'] },
+    { match: /relay\.nostr\.net$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] },
+    { match: /www\.nostr\.ltd$/i, ids: ['public_outbox', 'public_inbox', 'search', 'trusted'] },
+    { match: /relayable\.org$/i, ids: ['public_outbox', 'public_inbox', 'broadcast', 'trusted'] },
+    { match: /nostr\.wine$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] },
+    { match: /nostr\.fmt\.wiz\.biz$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] },
+    { match: /offchain\.pub$/i, ids: ['public_outbox', 'public_inbox', 'broadcast'] },
+    { match: /nostr\.mom$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] }
   ];
 
   const KIND_PROFILE = 0;
@@ -67,10 +186,10 @@
   const NIP05_LOOKUP_ERROR_CACHE_TTL_MS = 1000 * 45;
   const NIP05_UNVERIFIED_CACHE_TTL_MS = 1000 * 60 * 2;
   const NIP05_LIVE_UI_MAX_AGE_MS = 1000 * 60 * 5;
-  const BLOSSOM_UPLOAD_ENDPOINTS = [
-    'https://blossom.nostr.build/upload',
-    'https://blossom.primal.net/upload'
-  ];
+  const BLOSSOM_UPLOAD_ORIGIN = 'https://blossom.nostr.build';
+  const BLOSSOM_UPLOAD_ENDPOINT = `${BLOSSOM_UPLOAD_ORIGIN}/upload`;
+  const BLOSSOM_UPLOAD_ENDPOINTS = [BLOSSOM_UPLOAD_ENDPOINT];
+  const BLOSSOM_AUTH_EXPIRATION_WINDOW_SEC = 60 * 5;
   const BLOSSOM_MEDIA_ACCEPT = 'image/*,video/*,audio/*';
   const BLOSSOM_MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
   const SUPPORTED_UPLOAD_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
@@ -95,6 +214,10 @@
   const VIDEOS_RENDER_CHUNK_SIZE = 24;
   const THEATER_CHAT_MAX_ROWS = 220;
   const THEATER_CHAT_MAX_ROWS_LIVE = 15;
+  const THEATER_CHAT_MAX_ROWS_ARCHIVE = 20;
+  const THEATER_CHAT_ZAP_MAX_AGE_SEC = 60 * 60 * 24;
+  const THEATER_CHAT_QUEUE_SOFT_CAP = 120;
+  const THEATER_REACTION_QUEUE_SOFT_CAP = 240;
   const THEATER_CHAT_RENDER_BATCH_SIZE = 28;
   const THEATER_CHAT_REALTIME_FLUSH_MS_LIVE = 140;
   const THEATER_CHAT_REALTIME_FLUSH_MS_ARCHIVE = 80;
@@ -120,6 +243,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   const DEFAULT_SETTINGS = {
     relays: [...DEFAULT_RELAYS],
+    relayBuckets: createDefaultRelayBuckets(DEFAULT_RELAYS),
     blossomUploadEndpoints: [...BLOSSOM_UPLOAD_ENDPOINTS],
     autoPublish: true,
     miniPlayer: true,
@@ -149,7 +273,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   const state = {
     relays: [...DEFAULT_RELAYS],
-    settings: { ...DEFAULT_SETTINGS },
+    settings: { ...DEFAULT_SETTINGS, relayBuckets: cloneRelayBuckets(DEFAULT_SETTINGS.relayBuckets) },
     pool: null,
     user: null,
     authMode: 'readonly',
@@ -295,6 +419,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     _chatCacheWarmAddress: '',
     _chatMessageQueueTimer: null,
     _chatReactionQueueTimer: null,
+    _chatLiveBootstrapTimer: null,
+    _chatReactionBootstrapTimer: null,
     dmSubId: null,
     dmOwnerPubkey: '',
     dmMessagesByPeer: new Map(),
@@ -620,6 +746,114 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       out.push(clean);
     });
     return out;
+  }
+
+  function hasAnyRelayBucketValues(input) {
+    if (!input || typeof input !== 'object') return false;
+    return EDITABLE_RELAY_BUCKET_IDS.some((id) => Array.isArray(input[id]) && input[id].some((value) => String(value || '').trim()));
+  }
+
+  function createEmptyRelayBuckets() {
+    return EDITABLE_RELAY_BUCKET_IDS.reduce((acc, id) => {
+      acc[id] = [];
+      return acc;
+    }, {});
+  }
+
+  function isLocalRelayUrl(url) {
+    try {
+      const parsed = new URL(String(url || '').trim());
+      const host = String(parsed.hostname || '').trim().toLowerCase();
+      if (!host) return false;
+      if (host === 'localhost' || host === '0.0.0.0' || host === '[::1]' || host === '::1') return true;
+      if (/^127\./.test(host)) return true;
+      if (/^10\./.test(host)) return true;
+      if (/^192\.168\./.test(host)) return true;
+      if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function relayLegacyBucketIds(url) {
+    const host = relayHostLabel(url).toLowerCase();
+    const ids = [];
+    RELAY_BUCKET_HINTS.forEach((hint) => {
+      if (hint.match.test(host)) ids.push(...hint.ids);
+    });
+    if (isLocalRelayUrl(url)) ids.push('local');
+    if (/nostr\.band|index|archive|atlas|search/.test(host)) {
+      ids.push('indexer', 'search', 'public_inbox');
+    } else if (!ids.length) {
+      ids.push('public_outbox', 'public_inbox');
+    }
+    if (/dm|message|inbox/.test(host)) ids.push('dm_inbox');
+    if (/proxy|cache|gateway/.test(host)) ids.push('proxy');
+    if (/broadcast|stream|cast/.test(host)) ids.push('broadcast');
+    return [...new Set(ids.length ? ids : ['public_outbox'])];
+  }
+
+  function createDefaultRelayBuckets(seedRelays = DEFAULT_RELAYS) {
+    const buckets = createEmptyRelayBuckets();
+    uniqueRelayUrls(seedRelays).forEach((url) => {
+      relayLegacyBucketIds(url).forEach((bucketId) => {
+        if (!buckets[bucketId] || buckets[bucketId].includes(url)) return;
+        buckets[bucketId].push(url);
+      });
+    });
+    return buckets;
+  }
+
+  function cloneRelayBuckets(input) {
+    const buckets = createEmptyRelayBuckets();
+    if (!input || typeof input !== 'object') return buckets;
+    EDITABLE_RELAY_BUCKET_IDS.forEach((id) => {
+      buckets[id] = uniqueRelayUrls(input[id] || []);
+    });
+    return buckets;
+  }
+
+  function normalizeRelayBuckets(input, legacyRelays = DEFAULT_RELAYS) {
+    const buckets = cloneRelayBuckets(input);
+    if (!hasAnyRelayBucketValues(input)) {
+      uniqueRelayUrls(legacyRelays).forEach((url) => {
+        relayLegacyBucketIds(url).forEach((bucketId) => {
+          if (!buckets[bucketId].includes(url)) buckets[bucketId].push(url);
+        });
+      });
+    }
+    return buckets;
+  }
+
+  function buildActiveRelayListFromBuckets(input) {
+    const buckets = cloneRelayBuckets(input);
+    const blocked = new Set(buckets.blocked || []);
+    const seen = new Set();
+    const out = [];
+    ACTIVE_RELAY_BUCKET_IDS.forEach((bucketId) => {
+      (buckets[bucketId] || []).forEach((url) => {
+        if (blocked.has(url)) return;
+        if (seen.has(url)) return;
+        seen.add(url);
+        out.push(url);
+      });
+    });
+    return out;
+  }
+
+  function relayAssignedBucketIds(url, buckets = state.settings && state.settings.relayBuckets) {
+    const clean = String(url || '').trim();
+    if (!clean) return [];
+    const source = cloneRelayBuckets(buckets);
+    return EDITABLE_RELAY_BUCKET_IDS.filter((bucketId) => source[bucketId].includes(clean));
+  }
+
+  function syncRelaySettingsBuckets() {
+    const buckets = normalizeRelayBuckets(state.settings && state.settings.relayBuckets, []);
+    state.settings.relayBuckets = buckets;
+    state.settings.relays = buildActiveRelayListFromBuckets(buckets);
+    return buckets;
   }
 
   function parseBunkerConnectionToken(tokenInput) {
@@ -2070,20 +2304,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const merged = { ...DEFAULT_SETTINGS, ...(saved || {}) };
-    if (!Array.isArray(merged.relays) || merged.relays.length === 0) {
-      merged.relays = [...DEFAULT_RELAYS];
-    }
-    merged.relays = [...new Set(merged.relays.map((r) => (r || '').trim()).filter((r) => /^wss:\/\//i.test(r)))];
-    if (!merged.relays.length) merged.relays = [...DEFAULT_RELAYS];
-    if (!Array.isArray(merged.blossomUploadEndpoints) || !merged.blossomUploadEndpoints.length) {
-      merged.blossomUploadEndpoints = [...BLOSSOM_UPLOAD_ENDPOINTS];
-    }
-    merged.blossomUploadEndpoints = [...new Set(
-      merged.blossomUploadEndpoints
-        .map((value) => String(value || '').trim())
-        .filter((value) => isLikelyUrl(value))
-    )];
-    if (!merged.blossomUploadEndpoints.length) merged.blossomUploadEndpoints = [...BLOSSOM_UPLOAD_ENDPOINTS];
+    const hasSavedRelayBuckets = !!(saved && typeof saved === 'object' && saved.relayBuckets && typeof saved.relayBuckets === 'object');
+    const relayBuckets = normalizeRelayBuckets(
+      hasSavedRelayBuckets ? saved.relayBuckets : merged.relayBuckets,
+      Array.isArray(saved && saved.relays) ? saved.relays : merged.relays
+    );
+    const derivedRelays = buildActiveRelayListFromBuckets(relayBuckets);
+    merged.relayBuckets = relayBuckets;
+    merged.relays = derivedRelays.length ? derivedRelays : (hasSavedRelayBuckets ? [] : [...DEFAULT_RELAYS]);
+    merged.blossomUploadEndpoints = normalizeBlossomUploadEndpointList(merged.blossomUploadEndpoints);
     merged.theme = normalizeThemeSetting(merged.theme);
     merged.notificationsMentions = merged.notificationsMentions !== false;
     merged.notificationsReplies = merged.notificationsReplies !== false;
@@ -2343,33 +2572,295 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     else if (window.SifakaTheme && typeof window.SifakaTheme.apply === 'function') window.SifakaTheme.apply(theme, false);
   }
 
+  function relayHashSeed(value) {
+    const text = String(value || '');
+    let hash = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      hash = ((hash << 5) - hash) + text.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  }
+
+  function relayAvatarText(url) {
+    const host = relayHostLabel(url);
+    const parts = host
+      .split(/[.\-]/)
+      .map((part) => String(part || '').trim())
+      .filter((part) => part && !['relay', 'wss', 'ws', 'www'].includes(part.toLowerCase()));
+    if (!parts.length) return 'RL';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0].slice(0, 1)}${parts[1].slice(0, 1)}`.toUpperCase();
+  }
+
+  function relayAvatarStyle(url, bucketId = '') {
+    const seed = relayHashSeed(`${url}|${bucketId}`);
+    const hueA = seed % 360;
+    const hueB = (seed + 54) % 360;
+    return `--relay-avatar-a:hsl(${hueA}deg 72% 54%);--relay-avatar-b:hsl(${hueB}deg 78% 44%);`;
+  }
+
+  function relayAvatarImageUrl(url) {
+    try {
+      const parsed = new URL(String(url || '').trim());
+      if (!parsed.host || isLocalRelayUrl(url)) return '';
+      return `https://${parsed.host}/favicon.ico`;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function relayConnectionSnapshot(urls = state.relays) {
+    const list = Array.isArray(urls) ? urls : [];
+    let open = 0;
+    let pingSum = 0;
+    let pingCount = 0;
+    list.forEach((url) => {
+      const ws = state.pool ? state.pool.sockets.get(url) : null;
+      const isOpen = !!(ws && ws.readyState === WebSocket.OPEN);
+      if (isOpen) open += 1;
+      const pingMs = Number(state.relayPingMsByUrl.get(url));
+      if (isOpen && Number.isFinite(pingMs) && pingMs > 0) {
+        pingSum += pingMs;
+        pingCount += 1;
+      }
+    });
+    return {
+      total: list.length,
+      open,
+      avgPing: pingCount ? Math.round(pingSum / pingCount) : null
+    };
+  }
+
+  function settingsRelayConnectionBarText() {
+    const snap = relayConnectionSnapshot(state.relays);
+    return `Current connected relays: ${snap.open}/${snap.total}${snap.avgPing != null ? ` | Avg ping: ${snap.avgPing}ms` : ''}`;
+  }
+
+  function relayBucketUrlsForRender(bucketId, buckets) {
+    if (bucketId === 'current_connected') {
+      return (state.relays || []).filter((url) => {
+        const ws = state.pool ? state.pool.sockets.get(url) : null;
+        return !!(ws && ws.readyState === WebSocket.OPEN);
+      });
+    }
+    return uniqueRelayUrls((buckets && buckets[bucketId]) || []);
+  }
+
+  function relayCategoryChipsHtml(url, currentBucketId, buckets) {
+    const assigned = relayAssignedBucketIds(url, buckets);
+    return assigned.map((bucketId) => {
+      const def = RELAY_BUCKET_DEF_BY_ID.get(bucketId);
+      if (!def) return '';
+      return `<span class="relay-role-chip${bucketId === currentBucketId ? ' current' : ''}">${escapeHtml(def.shortLabel || def.label)}</span>`;
+    }).join('');
+  }
+
+  function relayStatusMeta(url, bucketId, buckets) {
+    const ws = state.pool ? state.pool.sockets.get(url) : null;
+    const isOpen = !!(ws && ws.readyState === WebSocket.OPEN);
+    const pingMs = Number(state.relayPingMsByUrl.get(url));
+    const blocked = relayAssignedBucketIds(url, buckets).includes('blocked');
+    const activePending = buildActiveRelayListFromBuckets(buckets).includes(url);
+    const activeLive = (state.relays || []).includes(url);
+    if (bucketId === 'current_connected') {
+      return {
+        label: 'Connected',
+        tone: 'connected',
+        detail: Number.isFinite(pingMs) && pingMs > 0 ? `${Math.round(pingMs)}ms` : 'live'
+      };
+    }
+    if (blocked) {
+      return {
+        label: 'Blocked',
+        tone: 'blocked',
+        detail: 'Excluded from active pool'
+      };
+    }
+    if (!activeLive && activePending) {
+      return {
+        label: 'Will Connect',
+        tone: 'pending',
+        detail: 'Applies after save'
+      };
+    }
+    if (isOpen) {
+      return {
+        label: 'Connected',
+        tone: 'connected',
+        detail: Number.isFinite(pingMs) && pingMs > 0 ? `${Math.round(pingMs)}ms` : 'live'
+      };
+    }
+    if (activeLive) {
+      return {
+        label: 'Configured',
+        tone: 'configured',
+        detail: 'In active pool'
+      };
+    }
+    return {
+      label: 'Saved',
+      tone: 'saved',
+      detail: 'Bucket only'
+    };
+  }
+
+  function renderRelaySummaryCards(buckets) {
+    const pendingActive = buildActiveRelayListFromBuckets(buckets);
+    const connected = relayConnectionSnapshot(state.relays);
+    const blocked = uniqueRelayUrls((buckets && buckets.blocked) || []).length;
+    const trusted = uniqueRelayUrls((buckets && buckets.trusted) || []).length;
+    const cards = [
+      { label: 'Pending Active', value: String(pendingActive.length), tone: 'pending' },
+      { label: 'Connected Now', value: `${connected.open}/${connected.total}`, tone: 'connected' },
+      { label: 'Trusted', value: String(trusted), tone: 'trusted' },
+      { label: 'Blocked', value: String(blocked), tone: 'blocked' }
+    ];
+    return cards.map((card) => `
+      <div class="relay-summary-card ${card.tone}">
+        <div class="relay-summary-label">${escapeHtml(card.label)}</div>
+        <div class="relay-summary-value">${escapeHtml(card.value)}</div>
+      </div>
+    `).join('');
+  }
+
+  function renderRelayBucketCard(def, buckets) {
+    const urls = relayBucketUrlsForRender(def.id, buckets);
+    const rows = urls.map((url) => {
+      const host = relayHostLabel(url);
+      const avatarImage = relayAvatarImageUrl(url);
+      const meta = relayStatusMeta(url, def.id, buckets);
+      const actionLabel = def.id === 'blocked' ? 'Unblock' : 'Remove';
+      return `
+        <div class="relay-setting-row ${meta.tone}">
+          <div class="relay-setting-avatar${avatarImage ? '' : ' fallback'}" style="${relayAvatarStyle(url, def.id)}">
+            ${avatarImage ? `<img src="${escapeHtml(avatarImage)}" alt="${escapeHtml(host)}" loading="lazy" onerror="this.remove();this.parentElement.classList.add('fallback');">` : ''}
+            <span class="relay-setting-avatar-text">${escapeHtml(relayAvatarText(url))}</span>
+          </div>
+          <div class="relay-setting-main">
+            <div class="relay-setting-head">
+              <div class="relay-setting-host">${escapeHtml(host)}</div>
+              <div class="relay-setting-status-row">
+                <div class="relay-setting-state ${meta.tone}">${escapeHtml(meta.label)}</div>
+                <div class="relay-setting-detail">${escapeHtml(meta.detail)}</div>
+              </div>
+            </div>
+            <div class="relay-setting-url">${escapeHtml(url)}</div>
+            <div class="relay-setting-foot">
+              <div class="relay-setting-chips">${relayCategoryChipsHtml(url, def.id, buckets)}</div>
+            </div>
+          </div>
+          ${def.readOnly ? '' : `<button class="relay-setting-action" data-relay-remove-url="${escapeHtml(url)}" data-relay-remove-bucket="${escapeHtml(def.id)}">${escapeHtml(actionLabel)}</button>`}
+        </div>
+      `;
+    }).join('');
+    return `
+      <section class="relay-bucket-card" style="--relay-bucket-a:${escapeHtml(def.accentA)};--relay-bucket-b:${escapeHtml(def.accentB)};">
+        <div class="relay-bucket-head">
+          <div>
+            <div class="relay-bucket-title">${escapeHtml(def.label)}</div>
+            <div class="relay-bucket-desc">${escapeHtml(def.description)}</div>
+          </div>
+          <div class="relay-bucket-count">${urls.length}</div>
+        </div>
+        <div class="relay-bucket-list">
+          ${rows || '<div class="relay-bucket-empty">No relays in this bucket yet.</div>'}
+        </div>
+      </section>
+    `;
+  }
+
   function renderSettingsRelayList() {
     const wrap = qs('#settingsRelayList2') || qs('#settingsRelayList');
     if (!wrap) return;
-    wrap.innerHTML = '';
-
-    state.settings.relays.forEach((relay) => {
-      const tag = document.createElement('div');
-      tag.className = 'relay-tag';
-      tag.innerHTML = `${relay} <button class="rem" title="Remove">Ã—</button>`;
-      const btn = qs('.rem', tag);
-      if (btn) btn.addEventListener('click', () => removeRelayFromSettings(relay));
-      wrap.appendChild(tag);
+    const relayLabel = qs('#smPanelRelays .smv2-panel-label');
+    if (relayLabel) relayLabel.textContent = 'Relay directory for publish, inbox, DM, search, local, trust, and connection routing.';
+    const buckets = syncRelaySettingsBuckets();
+    const connectionBar = qs('#settingsRelayConnectionBar');
+    if (connectionBar) connectionBar.textContent = settingsRelayConnectionBarText();
+    const summary = qs('#settingsRelaySummary');
+    if (summary) summary.innerHTML = renderRelaySummaryCards(buckets);
+    wrap.innerHTML = `<div class="relay-bucket-grid">${RELAY_BUCKET_DEFS.map((def) => renderRelayBucketCard(def, buckets)).join('')}</div>`;
+    qsa('[data-relay-remove-url]', wrap).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        removeRelayFromSettings(btn.getAttribute('data-relay-remove-url') || '', btn.getAttribute('data-relay-remove-bucket') || '');
+      });
     });
   }
 
-  function removeRelayFromSettings(relay) {
-    state.settings.relays = state.settings.relays.filter((r) => r !== relay);
-    if (!state.settings.relays.length) state.settings.relays = [...DEFAULT_RELAYS];
+  function relayEditableBucketOptionsHtml(selectedBucketId = 'public_outbox') {
+    const selected = EDITABLE_RELAY_BUCKET_IDS.includes(String(selectedBucketId || '').trim())
+      ? String(selectedBucketId || '').trim()
+      : 'public_outbox';
+    return EDITABLE_RELAY_BUCKET_IDS.map((bucketId) => {
+      const def = RELAY_BUCKET_DEF_BY_ID.get(bucketId);
+      const label = def && def.label ? def.label : bucketId;
+      return `<option value="${escapeHtml(bucketId)}"${bucketId === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+  }
+
+  function relaySuggestionOptionsHtml(selectedUrl = '') {
+    const selected = String(selectedUrl || '').trim();
+    const options = ['<option value="">Suggested relays</option>'];
+    uniqueRelayUrls(DEFAULT_RELAYS).forEach((url) => {
+      const host = relayHostLabel(url);
+      options.push(`<option value="${escapeHtml(url)}"${url === selected ? ' selected' : ''}>${escapeHtml(`${host} - ${url}`)}</option>`);
+    });
+    return options.join('');
+  }
+
+  function preferredRelayBucketId(url) {
+    const preferred = relayLegacyBucketIds(url).find((bucketId) => bucketId !== 'blocked' && EDITABLE_RELAY_BUCKET_IDS.includes(bucketId));
+    return preferred || 'public_outbox';
+  }
+
+  function setRelayAddModalStatus(message, mode = 'info') {
+    const statusEl = qs('#settingsRelayModalStatus');
+    if (!statusEl) return;
+    const clean = String(message || '').trim();
+    statusEl.textContent = clean;
+    statusEl.classList.remove('is-loading', 'is-success', 'is-error', 'is-info', 'is-visible');
+    if (!clean) return;
+    statusEl.classList.add('is-visible');
+    statusEl.classList.add(mode === 'loading' || mode === 'success' || mode === 'error' ? `is-${mode}` : 'is-info');
+  }
+
+  function populateRelayAddModalForm(opts = {}) {
+    const relayValue = String(opts.relay || '').trim();
+    const bucketId = String(opts.bucketId || preferredRelayBucketId(relayValue)).trim() || 'public_outbox';
+    const presetEl = qs('#settingsRelayPresetInput');
+    const relayEl = qs('#settingsRelayInput');
+    const categoryEl = qs('#settingsRelayCategoryInput');
+    if (presetEl) presetEl.innerHTML = relaySuggestionOptionsHtml(relayValue);
+    if (relayEl) relayEl.value = relayValue;
+    if (categoryEl) categoryEl.innerHTML = relayEditableBucketOptionsHtml(bucketId);
+    setRelayAddModalStatus('');
+  }
+
+  function removeRelayFromSettings(relay, bucketId) {
+    const clean = String(relay || '').trim();
+    const targetBucket = String(bucketId || '').trim();
+    if (!clean || !EDITABLE_RELAY_BUCKET_IDS.includes(targetBucket)) return;
+    const buckets = syncRelaySettingsBuckets();
+    buckets[targetBucket] = (buckets[targetBucket] || []).filter((url) => url !== clean);
+    state.settings.relayBuckets = normalizeRelayBuckets(buckets, []);
+    state.settings.relays = buildActiveRelayListFromBuckets(state.settings.relayBuckets);
     renderSettingsRelayList();
   }
 
-  function addRelayToSettings(relay) {
+  function addRelayToSettings(relay, bucketId = 'public_outbox') {
     const clean = (relay || '').trim();
-    if (!/^wss:\/\//i.test(clean)) {
-      throw new Error('Relay URL must start with wss://');
+    const targetBucket = EDITABLE_RELAY_BUCKET_IDS.includes(String(bucketId || '').trim()) ? String(bucketId || '').trim() : 'public_outbox';
+    if (!/^wss?:\/\//i.test(clean)) {
+      throw new Error('Relay URL must start with wss:// or ws:// for local relays.');
     }
-    if (!state.settings.relays.includes(clean)) state.settings.relays.push(clean);
+    if (/^ws:\/\//i.test(clean) && !isLocalRelayUrl(clean)) {
+      throw new Error('Plain ws:// is only allowed for local relays.');
+    }
+    const buckets = syncRelaySettingsBuckets();
+    if (!buckets[targetBucket].includes(clean)) buckets[targetBucket].push(clean);
+    state.settings.relayBuckets = normalizeRelayBuckets(buckets, []);
+    state.settings.relays = buildActiveRelayListFromBuckets(state.settings.relayBuckets);
     renderSettingsRelayList();
   }
 
@@ -2510,6 +3001,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (avatarUrl) avatarUrl.value = (up && up.picture) || '';
     if (nip05) nip05.value = (up && up.nip05) || '';
     if (nwcInput) nwcInput.value = state.settings.nwcConnectionUri || '';
+    populateRelayAddModalForm({ bucketId: 'public_outbox' });
 
     if (up && up.picture) previewSettingsAvatar(up.picture);
     else previewSettingsAvatar('');
@@ -2557,7 +3049,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     return {
       ...state.settings,
-      relays: [...state.settings.relays],
+      relayBuckets: cloneRelayBuckets(state.settings.relayBuckets),
+      relays: [...buildActiveRelayListFromBuckets(state.settings.relayBuckets)],
       autoPublish: isToggleOn('setAutoPublishToggle'),
       miniPlayer: isToggleOn('setMiniPlayerToggle'),
       showZapNotifications: isToggleOn('setZapNoticeToggle'),
@@ -2633,9 +3126,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function applySettings(newSettings, opts = { reconnect: false }) {
     const safeCache = sanitizeCacheSettings(newSettings);
+    const relayBuckets = normalizeRelayBuckets(newSettings.relayBuckets, newSettings.relays);
+    const activeRelays = buildActiveRelayListFromBuckets(relayBuckets);
     state.settings = {
       ...newSettings,
-      relays: [...newSettings.relays],
+      relayBuckets,
+      relays: [...activeRelays],
       theme: normalizeThemeSetting(newSettings.theme),
       cacheQueryTtlSec: safeCache.cacheQueryTtlSec,
       cacheWarmSec: safeCache.cacheWarmSec,
@@ -2884,6 +3380,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return btoa(binary);
   }
 
+  function utf8ToBase64Url(input) {
+    return utf8ToBase64(input)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  }
+
   async function sha256HexFromArrayBuffer(buffer) {
     const digest = await crypto.subtle.digest('SHA-256', buffer);
     return bytesToHex(new Uint8Array(digest));
@@ -2979,6 +3482,35 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     return '';
+  }
+
+  function normalizeBlossomUploadEndpoint(candidate = '') {
+    const clean = String(candidate || '').trim();
+    if (!clean) return '';
+    try {
+      const parsed = new URL(clean);
+      if (!/^https?:$/i.test(parsed.protocol)) return '';
+      const hostname = String(parsed.hostname || '').trim().toLowerCase();
+      if (hostname === 'nostr.build' || hostname === 'www.nostr.build' || hostname === 'blossom.nostr.build') {
+        return BLOSSOM_UPLOAD_ENDPOINT;
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  function normalizeBlossomUploadEndpointList(values) {
+    const list = Array.isArray(values) ? values : [values];
+    const out = [];
+    const seen = new Set();
+    const push = (candidate) => {
+      const normalized = normalizeBlossomUploadEndpoint(candidate);
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      out.push(normalized);
+    };
+    list.forEach(push);
+    BLOSSOM_UPLOAD_ENDPOINTS.forEach(push);
+    return out.length ? out : [...BLOSSOM_UPLOAD_ENDPOINTS];
   }
 
   function setComposeUploadStatus(message, mode = 'info') {
@@ -3228,37 +3760,39 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function buildBlossomUploadTargets() {
-    const out = [];
-    const seen = new Set();
-    const push = (candidate) => {
-      const clean = String(candidate || '').trim();
-      if (!isLikelyUrl(clean) || seen.has(clean)) return;
-      seen.add(clean);
-      out.push(clean);
-    };
-    BLOSSOM_UPLOAD_ENDPOINTS.forEach(push);
     const fromSettings = Array.isArray(state.settings && state.settings.blossomUploadEndpoints)
       ? state.settings.blossomUploadEndpoints
       : [];
-    fromSettings.forEach(push);
-    return out;
+    return normalizeBlossomUploadEndpointList(fromSettings);
   }
 
-  async function buildNip98AuthorizationHeader(url, method, payloadHashHex = '') {
+  async function buildBlossomAuthorizationHeader(url, action = 'upload', payloadHashHex = '') {
     const cleanUrl = String(url || '').trim();
-    const cleanMethod = String(method || 'POST').trim().toUpperCase();
-    if (!cleanUrl || !isLikelyUrl(cleanUrl)) throw new Error('Invalid upload URL for NIP-98 auth.');
-    if (!state.user) throw new Error('Please login to sign NIP-98 auth.');
+    if (!cleanUrl || !isLikelyUrl(cleanUrl)) throw new Error('Invalid Blossom upload URL.');
+    if (!state.user) throw new Error('Please login to sign Blossom uploads.');
 
-    const tags = [
-      ['u', cleanUrl],
-      ['method', cleanMethod]
-    ];
-    if (/^[0-9a-f]{64}$/i.test(payloadHashHex || '')) {
-      tags.push(['payload', String(payloadHashHex).toLowerCase()]);
+    let server = '';
+    try {
+      server = String(new URL(cleanUrl).hostname || '').trim().toLowerCase();
+    } catch (_) {
+      server = '';
     }
-    const authEvent = await signEvent(27235, '', tags, { createdAt: Math.floor(Date.now() / 1000) });
-    return `Nostr ${utf8ToBase64(JSON.stringify(authEvent))}`;
+
+    const normalizedHash = /^[0-9a-f]{64}$/i.test(payloadHashHex || '')
+      ? String(payloadHashHex).trim().toLowerCase()
+      : '';
+    if (!normalizedHash) throw new Error('Could not prepare the upload hash for Blossom.');
+
+    const expiresAt = Math.floor(Date.now() / 1000) + BLOSSOM_AUTH_EXPIRATION_WINDOW_SEC;
+    const tags = [
+      ['t', String(action || 'upload').trim().toLowerCase() || 'upload'],
+      ['expiration', String(expiresAt)],
+      ['x', normalizedHash]
+    ];
+    if (server) tags.push(['server', server]);
+
+    const authEvent = await signEvent(24242, 'Upload Blob', tags, { createdAt: Math.floor(Date.now() / 1000) });
+    return `Nostr ${utf8ToBase64Url(JSON.stringify(authEvent))}`;
   }
 
   function uploadWithXhr(opts = {}) {
@@ -3327,71 +3861,52 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     } catch (_) {
       payloadHashHex = '';
     }
+    if (!/^[0-9a-f]{64}$/i.test(payloadHashHex || '')) {
+      throw new Error('Could not prepare the file for Blossom upload.');
+    }
 
+    const targetUrl = String(targets[0] || BLOSSOM_UPLOAD_ENDPOINT).trim() || BLOSSOM_UPLOAD_ENDPOINT;
     let lastError = null;
-    const variants = [
-      {
-        method: 'POST',
-        makeBody() {
-          const formData = new FormData();
-          formData.append('file', file, file.name || 'upload.bin');
-          return { body: formData, payloadHash: '' };
-        }
-      },
-      {
+    try {
+      const authorization = await buildBlossomAuthorizationHeader(targetUrl, 'upload', payloadHashHex);
+      const headers = {
+        Accept: 'application/json',
+        Authorization: authorization,
+        'Content-Type': String(file.type || 'application/octet-stream'),
+        'X-SHA-256': String(payloadHashHex).toLowerCase()
+      };
+      const response = await uploadWithXhr({
+        url: targetUrl,
         method: 'PUT',
-        makeBody() {
-          return { body: file, payloadHash: payloadHashHex || '' };
-        }
+        headers,
+        body: file,
+        onProgress
+      });
+
+      const parsed = parseJsonSafe(response.text);
+      if (!response.ok) {
+        const message = (parsed && (parsed.message || parsed.error || parsed.status)) || `Upload failed (${response.status})`;
+        throw new Error(String(message));
       }
-    ];
 
-    for (const targetUrl of targets) {
-      for (const variant of variants) {
-        try {
-          const payload = variant.makeBody();
-          const authorization = await buildNip98AuthorizationHeader(targetUrl, variant.method, payload.payloadHash || '');
-          const headers = {
-            Authorization: authorization
-          };
-          if (variant.method === 'PUT') {
-            headers['Content-Type'] = String(file.type || 'application/octet-stream');
-          }
-
-          const response = await uploadWithXhr({
-            url: targetUrl,
-            method: variant.method,
-            headers,
-            body: payload.body,
-            onProgress
-          });
-
-          const parsed = parseJsonSafe(response.text);
-          if (!response.ok) {
-            const message = (parsed && (parsed.message || parsed.error || parsed.status)) || `Upload failed (${response.status})`;
-            throw new Error(String(message));
-          }
-
-          const mediaUrl = extractBlossomUploadedUrl(parsed, response.text, response.headers, targetUrl);
-          if (!mediaUrl) throw new Error('Upload succeeded but no media URL was returned.');
-          if (onProgress) {
-            try { onProgress({ loaded: Number(file.size || 0), total: Number(file.size || 0), percent: 100 }); } catch (_) {}
-          }
-          return {
-            url: mediaUrl,
-            response: parsed || response.text,
-            endpoint: targetUrl,
-            method: variant.method
-          };
-        } catch (err) {
-          lastError = err;
-        }
+      const mediaUrl = extractBlossomUploadedUrl(parsed, response.text, response.headers, targetUrl);
+      if (!mediaUrl) throw new Error('Upload succeeded but no media URL was returned.');
+      if (onProgress) {
+        try { onProgress({ loaded: Number(file.size || 0), total: Number(file.size || 0), percent: 100 }); } catch (_) {}
       }
+      return {
+        url: mediaUrl,
+        response: parsed || response.text,
+        endpoint: targetUrl,
+        method: 'PUT'
+      };
+    } catch (err) {
+      lastError = err;
     }
 
     const rawMessage = lastError && lastError.message ? String(lastError.message) : 'Upload failed.';
     if (/network error|failed to fetch|cors/i.test(rawMessage)) {
-      throw new Error('Blossom upload endpoint is temporarily unavailable. Please use nostr.build Blossom API.');
+      throw new Error('nostr.build Blossom upload is temporarily unavailable. Please try again in a moment.');
     }
     throw new Error(rawMessage);
   }
@@ -3617,6 +4132,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return normalized.toLowerCase() === '/videos';
   }
 
+  function isCommunitiesRootPath(pathname) {
+    const raw = (pathname || '/').trim();
+    const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
+    return normalized.toLowerCase() === '/communities';
+  }
+
 
   function restoreRouteFromSpaFallbackQuery() {
     if (!window.location || !window.history || !window.history.replaceState) return;
@@ -3679,6 +4200,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function pathParts(pathname) {
     return (pathname || '').split('/').filter(Boolean).map((p) => decodePathPart(p).trim());
+  }
+
+  function isCommunitiesPath(pathname) {
+    const parts = pathParts(pathname);
+    return !!(parts[0] && parts[0].toLowerCase() === 'communities');
   }
 
   function extractNaddrFromPath(pathname) {
@@ -4066,6 +4592,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function syncCommunitiesRoute(mode = 'push') {
+    if (!window.history || !window.history.pushState) return;
+    if (isCommunitiesRootPath(window.location.pathname)) return;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try {
+      window.history[method]({ view: 'communities' }, '', '/communities');
+    } catch (_) {
+      // ignore
+    }
+  }
+
   function syncTheaterRoute(stream, mode = 'push') {
     if (!stream || !window.history || !window.history.pushState) return;
 
@@ -4177,6 +4714,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (window.showPage) window.showPage('videos', { routeMode: 'skip', videosFilter: 'all' });
   }
 
+  function showCommunitiesFromRoute() {
+    if (window.showPage) window.showPage('communities', { routeMode: 'skip' });
+  }
+
   async function syncViewFromLocation(opts = {}) {
     const fallbackMode = opts.fallbackMode || 'replace';
     if (isFaqPath(window.location.pathname)) {
@@ -4201,6 +4742,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (isVideosPath(window.location.pathname)) {
       showVideosFromRoute();
+      return;
+    }
+    if (isCommunitiesPath(window.location.pathname)) {
+      showCommunitiesFromRoute();
       return;
     }
     const naddr = extractNaddrFromPath(window.location.pathname);
@@ -4622,6 +5167,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     });
 
     persistLocalDmActivitiesForOwner(owner);
+  }
+
+  function hasRelayBackedDmMessages() {
+    for (const messages of state.dmMessagesByPeer.values()) {
+      if (!Array.isArray(messages) || !messages.length) continue;
+      if (messages.some((message) => message && !message.activity)) return true;
+    }
+    return false;
   }
 
   function getDmPeerFromEvent(ev, ownerPubkey) {
@@ -6098,7 +6651,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (isMessagesPageVisible()) {
         scheduleDmRender({ conversations: true, thread: true });
       }
-      if (!state.dmMessagesByPeer.size && oldestSince < recentSince) {
+      if (!hasRelayBackedDmMessages() && oldestSince < recentSince) {
         state.dmBackfilling = true;
         startDmBackfillSubscription(owner, oldestSince, Math.max(oldestSince, recentSince - 1));
       }
@@ -7292,26 +7845,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function updateRelayBar() {
     const bars = [qs('#relayBar'), qs('#myStreamsRelayBar')].filter(Boolean);
-    if (!bars.length) return;
-    let open = 0;
-    let pingSum = 0;
-    let pingCount = 0;
-    state.relays.forEach((url) => {
-      const ws = state.pool ? state.pool.sockets.get(url) : null;
-      const isOpen = !!(ws && ws.readyState === WebSocket.OPEN);
-      if (isOpen) open += 1;
-      const pingMs = Number(state.relayPingMsByUrl.get(url));
-      if (isOpen && Number.isFinite(pingMs) && pingMs > 0) {
-        pingSum += pingMs;
-        pingCount += 1;
-      }
-    });
-    const avgPing = pingCount ? Math.round(pingSum / pingCount) : null;
-    const text = `Connected relays: ${open}/${state.relays.length} (${state.relays.join(' | ')})${avgPing != null ? ` | Avg ping: ${avgPing}ms` : ''}`;
+    const snap = relayConnectionSnapshot(state.relays);
+    const relayListText = state.relays.length ? ` (${state.relays.join(' | ')})` : '';
+    const text = `Connected relays: ${snap.open}/${state.relays.length}${relayListText}${snap.avgPing != null ? ` | Avg ping: ${snap.avgPing}ms` : ''}`;
     bars.forEach((bar) => {
       bar.textContent = text;
     });
+    const settingsBar = qs('#settingsRelayConnectionBar');
+    if (settingsBar) settingsBar.textContent = settingsRelayConnectionBarText();
     renderGoLiveRelayDetails();
+    const settingsModal = qs('#settingsModal');
+    const relayPanel = qs('#smPanelRelays');
+    if (settingsModal && settingsModal.classList.contains('open') && relayPanel && relayPanel.classList.contains('active')) {
+      renderSettingsRelayList();
+    }
   }
 
   function rememberStreamEventId(address, eventId) {
@@ -8104,6 +8651,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function isWatchPartyStream(stream) {
+    const nip71Kind = Number(stream && stream.nip71Kind || 0);
+    // NIP-71 videos/reels are post-style events and should use comments, not live chat.
+    if (nip71Kind === KIND_NIP71_VIDEO || nip71Kind === KIND_NIP71_REEL) return false;
     return isDirectFileVideoUrl(stream && stream.streaming);
   }
 
@@ -8449,7 +8999,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const isWatchParty = isWatchPartyStream(stream);
     const isPastStream = status === 'ended';
     const directVideo = isDirectFileVideoUrl(url);
-    const hasImageThumb = !!sanitizeMediaUrl(stream.image || '');
+    const imageThumbUrl = sanitizeMediaUrl(stream.image || '');
+    const hasImageThumb = !!imageThumbUrl;
     const canUseVideoThumb = !hasImageThumb && !!url && /^https?:\/\//i.test(url);
     const badgeLabel = isNip71Reel
       ? 'NOSTR REEL'
@@ -8477,7 +9028,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     card.innerHTML = `
       <div class="video-archive-thumb-wrap">
         ${hasImageThumb
-          ? `<img class="video-archive-thumb" src="${stream.image}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fallback}\\'></div><div class=\\'video-archive-play\\'>&#9654;</div>'">`
+          ? `<img class="video-archive-thumb" src="${escapeHtml(imageThumbUrl)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fallback}\\'></div><div class=\\'video-archive-play\\'>&#9654;</div>'">`
           : (canUseVideoThumb
             ? `<video class="video-archive-thumb-video" data-thumb-src="${escapeHtml(url)}" data-thumb-fallback="${fallback}" muted playsinline preload="metadata"></video>`
             : `<div class="tc ${fallback}"></div>`)}
@@ -12295,13 +12846,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const platName = plat.display_name || plat.name || '';
       const hostName = host.display_name || host.name || '';
       if (platName && platName !== hostName) {
-        const platPic = (plat.picture || '').trim();
-        const avHtml = platPic
-          ? `<img src="${platPic}" alt="" onerror="this.style.display='none'">`
-          : `<span class="hosted-by-av-fallback">${platName.charAt(0).toUpperCase()}</span>`;
-        sibHostedBy.innerHTML = `<div class="hosted-by-box"><div class="hosted-by-av">${avHtml}</div><div class="hosted-by-inner"><span class="hosted-by-label">Hosted via</span><span class="hosted-by-name">${platName}</span></div></div>`;
-        const box = sibHostedBy.querySelector('.hosted-by-box');
-        if (box) box.addEventListener('click', () => showProfileByPubkey(stream.platformPubkey));
+        const fallbackText = platName.charAt(0).toUpperCase() || '?';
+        const box = document.createElement('div');
+        box.className = 'hosted-by-box';
+        const avatar = document.createElement('div');
+        avatar.className = 'hosted-by-av';
+        setAvatarEl(avatar, plat.picture || '', fallbackText);
+        if (!sanitizeMediaUrl(plat.picture || '')) avatar.classList.add('hosted-by-av-fallback');
+        const inner = document.createElement('div');
+        inner.className = 'hosted-by-inner';
+        const label = document.createElement('span');
+        label.className = 'hosted-by-label';
+        label.textContent = 'Hosted via';
+        const name = document.createElement('span');
+        name.className = 'hosted-by-name';
+        name.textContent = platName;
+        inner.appendChild(label);
+        inner.appendChild(name);
+        box.appendChild(avatar);
+        box.appendChild(inner);
+        box.addEventListener('click', () => showProfileByPubkey(stream.platformPubkey));
+        sibHostedBy.appendChild(box);
       }
     }
 
@@ -13379,6 +13944,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const parsed = parseStreamZapReceipt(ev, current);
     if (!parsed) return false;
+    const chatCutoffSec = Math.max(0, Math.floor(Date.now() / 1000) - THEATER_CHAT_ZAP_MAX_AGE_SEC);
+    const allowChatEntry = Number(parsed.created_at || 0) >= chatCutoffSec;
 
     if (!state.streamZapEventIdsByAddress.has(current.address)) {
       state.streamZapEventIdsByAddress.set(current.address, new Set());
@@ -13399,7 +13966,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       updateTheaterSatsDisplay(current);
       renderStreamZapList(current);
     }
-    if (!opts.suppressChatEntry) {
+    if (!opts.suppressChatEntry && allowChatEntry) {
       renderChatZapReceipt(parsed, {
         assumeChronological: !!opts.assumeChronological,
         autoScroll: opts.autoScroll !== false,
@@ -14193,6 +14760,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     pruneChatStateForMessageId(msgId);
   }
 
+  function theaterChatVisibleRowLimit(stream = state.streamsByAddress.get(state.selectedStreamAddress)) {
+    const current = stream || state.streamsByAddress.get(state.selectedStreamAddress);
+    if (!current) return THEATER_CHAT_MAX_ROWS_LIVE;
+    const status = normalizeStreamStatus(current.status);
+    const isArchive = status === 'ended' || isDirectFileVideoUrl(current && current.streaming);
+    return isArchive ? THEATER_CHAT_MAX_ROWS_ARCHIVE : THEATER_CHAT_MAX_ROWS_LIVE;
+  }
+
+  function pruneTheaterChatRows(sc, maxRows = theaterChatVisibleRowLimit()) {
+    if (!sc) return;
+    const limit = Math.max(1, Number(maxRows || theaterChatVisibleRowLimit()) || theaterChatVisibleRowLimit());
+    while (sc.children.length > limit) {
+      const oldest = sc.firstElementChild;
+      if (!oldest) break;
+      pruneChatStateForRemovedRow(oldest);
+      sc.removeChild(oldest);
+    }
+  }
+
   function removeChatMessageById(messageId) {
     const safeMsgId = String(messageId || '').trim();
     if (!safeMsgId) return;
@@ -14209,12 +14795,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     pruneChatStateForMessageId(safeMsgId);
   }
 
-  function renderChatMessage(ev) {
+  function renderChatMessage(ev, opts = {}) {
     const sc = qs('#chatScroll');
     if (!sc || !ev || !ev.id) return;
     if (state.chatMessageEventsById.has(ev.id)) return;
 
-    const wasNearBottom = (sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28;
+    const maxRows = Math.max(1, Number(opts.maxRows || theaterChatVisibleRowLimit()) || theaterChatVisibleRowLimit());
+    const autoScroll = opts.autoScroll !== false;
+    const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     state.chatMessageEventsById.set(ev.id, ev);
     const messagePubkey = normalizePubkeyHex(ev.pubkey || '') || String(ev.pubkey || '').trim();
     const p = profileFor(messagePubkey);
@@ -14249,10 +14837,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     insertChatRowChronological(sc, row, ev.id, ev.created_at);
 
     updateChatLikeUi(ev.id);
-    while (sc.children.length > THEATER_CHAT_MAX_ROWS) sc.removeChild(sc.firstChild);
-    if (wasNearBottom) sc.scrollTop = sc.scrollHeight;
+    pruneTheaterChatRows(sc, maxRows);
+    if (autoScroll && wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
-  function renderChatZapReceipt(entry) {
+  function renderChatZapReceipt(entry, opts = {}) {
     const sc = qs('#chatScroll');
     if (!sc || !entry || !entry.eventId) return;
     const eventId = String(entry.eventId || '').trim();
@@ -14260,7 +14848,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (state.chatMessageEventsById.has(eventId)) return;
     state.chatMessageEventsById.set(eventId, entry);
 
-    const wasNearBottom = (sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28;
+    const maxRows = Math.max(1, Number(opts.maxRows || theaterChatVisibleRowLimit()) || theaterChatVisibleRowLimit());
+    const autoScroll = opts.autoScroll !== false;
+    const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     const senderPubkey = normalizePubkeyHex(entry.senderPubkey || '');
     const profile = senderPubkey ? profileFor(senderPubkey) : null;
     const fallbackName = senderPubkey ? shortHex(senderPubkey) : 'Anon';
@@ -14313,8 +14903,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }).catch(() => {});
     }
 
-    while (sc.children.length > THEATER_CHAT_MAX_ROWS) sc.removeChild(sc.firstChild);
-    if (wasNearBottom) sc.scrollTop = sc.scrollHeight;
+    pruneTheaterChatRows(sc, maxRows);
+    if (autoScroll && wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
   function setLoggedInUi(on) {
     const out = qs('#navLoggedOut');
@@ -14595,6 +15185,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state._chatCacheWarmAddress = '';
     if (state._chatMessageQueueTimer) { clearTimeout(state._chatMessageQueueTimer); state._chatMessageQueueTimer = null; }
     if (state._chatReactionQueueTimer) { clearTimeout(state._chatReactionQueueTimer); state._chatReactionQueueTimer = null; }
+    if (state._chatLiveBootstrapTimer) { clearTimeout(state._chatLiveBootstrapTimer); state._chatLiveBootstrapTimer = null; }
+    if (state._chatReactionBootstrapTimer) { clearTimeout(state._chatReactionBootstrapTimer); state._chatReactionBootstrapTimer = null; }
     const sc = qs('#chatScroll');
     if (sc) sc.innerHTML = '';
     state.chatLikePubkeysByMessageId = new Map();
@@ -14618,7 +15210,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const seenIds = new Set();
     const seenReactionIds = new Set();
+    const historyZapIdsToSuppressChat = new Set();
     const unknownPubkeys = new Set(); // pubkeys seen in chat but not yet in profile cache
+    const chatLiveBootstrap = [];
+    const reactionLiveBootstrap = [];
+    let chatLiveBootstrapFlushed = false;
+    let reactionLiveBootstrapFlushed = false;
     const chatEventQueue = [];
     let chatQueueCursor = 0;
     const reactionEventQueue = [];
@@ -14703,6 +15300,55 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const streamStart = Number(stream.starts || stream.created_at || 0) || 0;
     const status = normalizeStreamStatus(stream && stream.status);
     const isArchive = status === 'ended' || isDirectFileVideoUrl(stream && stream.streaming);
+    const visibleChatRows = theaterChatVisibleRowLimit(stream);
+    const chatLiveBootstrapCap = Math.max(visibleChatRows * 4, 40);
+    const reactionLiveBootstrapCap = Math.max(visibleChatRows * 8, 96);
+    const sortEventsByCreatedAt = (a, b) => {
+      const byTime = Number(a && a.created_at || 0) - Number(b && b.created_at || 0);
+      return byTime || String(a && a.id || '').localeCompare(String(b && b.id || ''));
+    };
+    function bufferBootstrapEvent(buffer, ev, maxItems) {
+      if (!ev || !ev.id) return;
+      buffer.push(ev);
+      if (buffer.length <= maxItems * 2) return;
+      buffer.sort(sortEventsByCreatedAt);
+      buffer.splice(0, Math.max(0, buffer.length - maxItems));
+    }
+    function flushChatLiveBootstrap() {
+      if (chatLiveBootstrapFlushed) return;
+      chatLiveBootstrapFlushed = true;
+      if (state._chatLiveBootstrapTimer) {
+        clearTimeout(state._chatLiveBootstrapTimer);
+        state._chatLiveBootstrapTimer = null;
+      }
+      chatLiveBootstrap
+        .sort(sortEventsByCreatedAt)
+        .slice(-visibleChatRows)
+        .forEach((ev) => {
+          if (!ev || !ev.id || seenIds.has(ev.id)) return;
+          seenIds.add(ev.id);
+          queueChatEvent(ev);
+        });
+      chatLiveBootstrap.length = 0;
+      scheduleMissingChatProfiles(0);
+    }
+    function flushReactionLiveBootstrap() {
+      if (reactionLiveBootstrapFlushed) return;
+      reactionLiveBootstrapFlushed = true;
+      if (state._chatReactionBootstrapTimer) {
+        clearTimeout(state._chatReactionBootstrapTimer);
+        state._chatReactionBootstrapTimer = null;
+      }
+      reactionLiveBootstrap
+        .sort(sortEventsByCreatedAt)
+        .slice(-reactionLiveBootstrapCap)
+        .forEach((ev) => {
+          queueReactionEvent(ev);
+        });
+      reactionLiveBootstrap.length = 0;
+    }
+    state._chatLiveBootstrapTimer = setTimeout(flushChatLiveBootstrap, 1200);
+    state._chatReactionBootstrapTimer = setTimeout(flushReactionLiveBootstrap, 1400);
     const chatHistoryWindowSec = isArchive ? THEATER_CHAT_HISTORY_WINDOW_ARCHIVE_SEC : THEATER_CHAT_HISTORY_WINDOW_LIVE_SEC;
     const chatPaddingSec = isArchive ? 60 * 60 * 2 : 60 * 30;
     const chatSince = streamStart
@@ -14781,7 +15427,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         chatQueueCursor += 1;
         processed += 1;
         if (!ev || Number(ev.kind || 0) !== KIND_LIVE_CHAT || !ev.id) continue;
-        renderChatMessage(ev);
+        renderChatMessage(ev, { maxRows: visibleChatRows });
         const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
         if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) unknownPubkeys.add(senderPubkey);
       }
@@ -14797,6 +15443,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     function queueChatEvent(ev) {
       if (!ev || !ev.id) return;
       chatEventQueue.push(ev);
+      if (chatEventQueue.length > THEATER_CHAT_QUEUE_SOFT_CAP) {
+        chatEventQueue.splice(0, Math.max(0, chatEventQueue.length - THEATER_CHAT_QUEUE_SOFT_CAP));
+        chatQueueCursor = Math.min(chatQueueCursor, chatEventQueue.length);
+      }
       if (state._chatMessageQueueTimer) return;
       state._chatMessageQueueTimer = setTimeout(flushChatEventQueue, 8);
     }
@@ -14819,6 +15469,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
         const kTag = firstTagValue(ev.tags, 'k');
         if (kTag && kTag !== String(KIND_LIVE_CHAT)) return outcome;
+        if (!state.chatMessageEventsById.has(targetId)) return outcome;
         const reactionContent = (ev.content || '').trim();
         if (!reactionContent || reactionContent === '-') return outcome;
         applyChatLikeReaction(targetId, normalizePubkeyHex(ev.pubkey), ev.id);
@@ -14827,7 +15478,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
 
       if (ev.kind === KIND_ZAP_RECEIPT) {
-        if (addStreamZapReceipt(ev, stream, { deferUi: true })) {
+        const suppressChatEntry = historyZapIdsToSuppressChat.has(ev.id);
+        if (suppressChatEntry) historyZapIdsToSuppressChat.delete(ev.id);
+        if (addStreamZapReceipt(ev, stream, { deferUi: true, suppressChatEntry, maxRows: visibleChatRows })) {
           outcome.streamZapsDirty = true;
         }
         return outcome;
@@ -14886,6 +15539,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     function queueReactionEvent(ev) {
       if (!ev || !ev.id) return;
       reactionEventQueue.push(ev);
+      if (reactionEventQueue.length > THEATER_REACTION_QUEUE_SOFT_CAP) {
+        const retained = reactionEventQueue.filter((queued) => {
+          if (!queued) return false;
+          if (Number(queued.kind || 0) === KIND_ZAP_RECEIPT) return true;
+          if (Number(queued.kind || 0) === KIND_DELETION) return true;
+          if (Number(queued.kind || 0) !== KIND_REACTION) return true;
+          const targetId = firstTagValue(queued.tags, 'e');
+          return !!(targetId && targetId === stream.id);
+        });
+        const tail = reactionEventQueue.slice(-THEATER_REACTION_QUEUE_SOFT_CAP);
+        reactionEventQueue.length = 0;
+        [...retained, ...tail].forEach((queued) => {
+          if (!queued || !queued.id) return;
+          if (reactionEventQueue.find((entry) => entry && entry.id === queued.id)) return;
+          reactionEventQueue.push(queued);
+        });
+        if (reactionEventQueue.length > THEATER_REACTION_QUEUE_SOFT_CAP) {
+          reactionEventQueue.splice(0, Math.max(0, reactionEventQueue.length - THEATER_REACTION_QUEUE_SOFT_CAP));
+        }
+        reactionQueueCursor = Math.min(reactionQueueCursor, reactionEventQueue.length);
+      }
       if (state._chatReactionQueueTimer) return;
       state._chatReactionQueueTimer = setTimeout(flushReactionEventQueue, 10);
     }
@@ -14893,12 +15567,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.chatSubId = state.pool.subscribe(chatLiveFilters, {
       event: (ev) => {
         if (!ev || !ev.id) return;
+        if (!chatLiveBootstrapFlushed) {
+          bufferBootstrapEvent(chatLiveBootstrap, ev, chatLiveBootstrapCap);
+          return;
+        }
         if (seenIds.has(ev.id)) return;
         seenIds.add(ev.id);
         queueChatEvent(ev);
       },
       eose: () => {
-        scheduleMissingChatProfiles(0);
+        flushChatLiveBootstrap();
       }
     });
 
@@ -14917,7 +15595,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const byTime = Number(a.created_at || 0) - Number(b.created_at || 0);
           return byTime || String(a.id || '').localeCompare(String(b.id || ''));
         });
-      sorted.forEach((ev) => {
+      sorted.slice(-visibleChatRows).forEach((ev) => {
         if (seenIds.has(ev.id)) return;
         seenIds.add(ev.id);
         queueChatEvent(ev);
@@ -14929,7 +15607,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       reactionLiveFilters,
       {
         event: (ev) => {
+          if (!reactionLiveBootstrapFlushed) {
+            bufferBootstrapEvent(reactionLiveBootstrap, ev, reactionLiveBootstrapCap);
+            return;
+          }
           queueReactionEvent(ev);
+        },
+        eose: () => {
+          flushReactionLiveBootstrap();
         }
       }
     );
@@ -14953,7 +15638,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const byTime = Number(a.created_at || 0) - Number(b.created_at || 0);
           return byTime || String(a.id || '').localeCompare(String(b.id || ''));
         });
+      const visibleZapIds = new Set(
+        sorted
+          .filter((ev) => Number(ev.kind || 0) === KIND_ZAP_RECEIPT)
+          .slice(-visibleChatRows)
+          .map((ev) => String(ev.id || '').trim())
+          .filter(Boolean)
+      );
       sorted.forEach((ev) => {
+        if (Number(ev.kind || 0) === KIND_ZAP_RECEIPT && !visibleZapIds.has(String(ev.id || '').trim())) {
+          historyZapIdsToSuppressChat.add(String(ev.id || '').trim());
+        }
         queueReactionEvent(ev);
       });
     }).catch(() => {});
@@ -14992,6 +15687,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (state._chatReactionQueueTimer) {
       clearTimeout(state._chatReactionQueueTimer);
       state._chatReactionQueueTimer = null;
+    }
+    if (state._chatLiveBootstrapTimer) {
+      clearTimeout(state._chatLiveBootstrapTimer);
+      state._chatLiveBootstrapTimer = null;
+    }
+    if (state._chatReactionBootstrapTimer) {
+      clearTimeout(state._chatReactionBootstrapTimer);
+      state._chatReactionBootstrapTimer = null;
     }
   }
 
@@ -17860,7 +18563,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       getRelays: () => [...state.relays],
       getSettings: () => ({ ...state.settings }),
       openLogin: () => window.openLogin(),
+      showMessages: () => window.showMessages(),
+      showNotifications: () => window.showNotifications(),
       showProfileByPubkey: (pubkey) => showProfileByPubkey(pubkey),
+      renderNostrContent: (text) => renderNostrContent(text),
       getProfileByPubkey: (pubkeyInput) => {
         const raw = String(pubkeyInput || '').trim();
         const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
@@ -17896,6 +18602,49 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const candidate = fallbackNip05 || normalizeNip05Value(profile.nip05 || '');
         if (!candidate) return Promise.resolve(false);
         return ensureNip05Verification(decoded, candidate);
+      },
+      isFollowingPubkey: (pubkeyInput) => {
+        const raw = String(pubkeyInput || '').trim();
+        const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
+        if (!decoded) return false;
+        return isFollowingPubkey(decoded);
+      },
+      toggleFollowPubkey: (pubkeyInput, opts = {}) => {
+        const raw = String(pubkeyInput || '').trim();
+        const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
+        if (!decoded) return Promise.resolve(null);
+        return toggleFollowPubkey(decoded, {
+          silentErrors: opts.silentErrors !== false,
+          skipProfileUi: true
+        });
+      },
+      openMessagesWithPubkey: (pubkeyInput, opts = {}) => {
+        const raw = String(pubkeyInput || '').trim();
+        const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
+        if (!decoded) return Promise.resolve(false);
+        return openMessagesWithPeer(decoded, {
+          routeMode: opts.routeMode || 'push'
+        }).then(() => true);
+      },
+      zapPubkey: async (pubkeyInput, opts = {}) => {
+        const raw = String(pubkeyInput || '').trim();
+        const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
+        if (!decoded) throw new Error('Invalid pubkey.');
+        if (!state.user) {
+          window.openLogin();
+          throw new Error('Login required to zap this user.');
+        }
+        if (normalizePubkeyHex(state.user.pubkey) === decoded) {
+          throw new Error('You cannot zap your own account.');
+        }
+        const profile = profileFor(decoded);
+        const lud16 = String(profile.lud16 || '').trim();
+        if (!lud16) throw new Error('This profile has no valid Lightning address (lud16) for zaps.');
+        const zapAmountMsats = Math.max(1000, Number(opts.amountMsats || 21000));
+        const zapInfo = await fetchZapEndpointInfo(lud16, zapAmountMsats);
+        const zapTags = buildZapRequestTags(decoded, zapAmountMsats, zapInfo, []);
+        const zapRequest = await signEvent(9734, 'zap from Sifaka Live Communities', zapTags);
+        return payZapInvoiceForLud16(lud16, zapAmountMsats, zapRequest, { zapInfo });
       },
       getUploadAccept: () => BLOSSOM_MEDIA_ACCEPT,
       uploadMediaFile: (file, opts = {}) => uploadFileToBlossom(file, opts)
@@ -18035,6 +18784,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (p === 'faq' && routeMode !== 'skip') syncFaqRoute(routeMode);
       if (p === 'messages' && routeMode !== 'skip') syncMessagesRoute(routeMode);
       if (p === 'myStreams' && routeMode !== 'skip') syncMyStreamsRoute(routeMode);
+      if (p === 'communities' && routeMode !== 'skip') syncCommunitiesRoute(routeMode);
       if (home) home.classList.toggle('active', p === 'home');
       if (video) video.style.display = 'none';
       if (profile) profile.style.display = 'none';
@@ -18899,17 +19649,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     window.closeSettings = function () {
       stopWalletScanner({ keepStatus: true });
+      window.closeRelayAddModal();
       qs('#settingsModal').classList.remove('open');
     };
 
     window.switchSettingsTab = function (tab) {
       if (tab !== 'wallet') stopWalletScanner({ keepStatus: true });
+      if (tab !== 'relays') window.closeRelayAddModal();
       ['profile','wallet','relays','app'].forEach(t => {
         const btn = qs(`#smTab-${t}`);
         const panel = qs(`#smPanel${t.charAt(0).toUpperCase()+t.slice(1)}`);
         if (btn) btn.classList.toggle('active', t === tab);
         if (panel) panel.classList.toggle('active', t === tab);
       });
+      if (tab === 'relays') renderSettingsRelayList();
     };
 
     window.previewSettingsAvatar = function (url) {
@@ -19052,15 +19805,51 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (el) el.classList.toggle('on');
     };
 
+    window.openRelayAddModal = function (bucketId = 'public_outbox') {
+      populateRelayAddModalForm({ bucketId });
+      const modal = qs('#relayAddModal');
+      if (!modal) return;
+      modal.classList.add('open');
+      window.setTimeout(() => {
+        const input = qs('#settingsRelayInput');
+        if (input) input.focus();
+      }, 0);
+    };
+
+    window.closeRelayAddModal = function () {
+      const modal = qs('#relayAddModal');
+      if (modal) modal.classList.remove('open');
+      setRelayAddModalStatus('');
+    };
+
+    window.pickSuggestedRelayFromSettings = function () {
+      const presetEl = qs('#settingsRelayPresetInput');
+      const relayEl = qs('#settingsRelayInput');
+      const categoryEl = qs('#settingsRelayCategoryInput');
+      const relayValue = String(presetEl && presetEl.value || '').trim();
+      if (!relayValue) {
+        setRelayAddModalStatus('');
+        return;
+      }
+      if (relayEl) relayEl.value = relayValue;
+      if (categoryEl) categoryEl.innerHTML = relayEditableBucketOptionsHtml(preferredRelayBucketId(relayValue));
+      setRelayAddModalStatus(`Picked ${relayHostLabel(relayValue)}. Choose a relay type and add it.`, 'info');
+    };
+
     window.addRelayFromSettings = function () {
       try {
         const input = qs('#settingsRelayInput');
+        const categoryInput = qs('#settingsRelayCategoryInput');
         const value = (input && input.value.trim()) || '';
-        if (!value) return;
-        addRelayToSettings(value);
-        if (input) input.value = '';
+        const bucketId = (categoryInput && categoryInput.value) || 'public_outbox';
+        if (!value) {
+          setRelayAddModalStatus('Choose a suggested relay or paste a relay URL first.', 'error');
+          return;
+        }
+        addRelayToSettings(value, bucketId);
+        window.closeRelayAddModal();
       } catch (err) {
-        alert(err.message || 'Invalid relay URL.');
+        setRelayAddModalStatus(err.message || 'Invalid relay URL.', 'error');
       }
     };
 
@@ -19092,7 +19881,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     // Save relay settings only
     window.saveRelaySettings = function () {
       try {
-        const next = { ...state.settings, relays: [...state.settings.relays] };
+        const next = {
+          ...state.settings,
+          relayBuckets: cloneRelayBuckets(state.settings.relayBuckets),
+          relays: [...state.settings.relays]
+        };
         applySettings(next, { reconnect: true });
         window.closeSettings();
       } catch (err) {
@@ -19115,7 +19908,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     window.saveSettings = async function () {
       try {
         const next = collectSettingsFromModal();
-        const relaysChanged = next.relays.join('|') !== state.settings.relays.join('|');
+        const relaysChanged = next.relays.join('|') !== state.relays.join('|');
         applySettings(next, { reconnect: relaysChanged });
 
         if (state.user) {
@@ -20118,6 +20911,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         clearTimeout(state._chatReactionQueueTimer);
         state._chatReactionQueueTimer = null;
       }
+      if (state._chatLiveBootstrapTimer) {
+        clearTimeout(state._chatLiveBootstrapTimer);
+        state._chatLiveBootstrapTimer = null;
+      }
+      if (state._chatReactionBootstrapTimer) {
+        clearTimeout(state._chatReactionBootstrapTimer);
+        state._chatReactionBootstrapTimer = null;
+      }
       state.composeUploadSource = 'blossom';
       state.composeUploadPending = false;
       state.composeUploadTarget = 'profile';
@@ -20164,7 +20965,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         state.liveStreamCachePersistTimer = null;
       }
       window.closeAllDD();
-      ['goLiveModal','endModal','loginModal','settingsModal','faqModal','shareModal','videoPostModal','reactionPickerModal','composeUploadModal','gifPickerModal'].forEach((id) => {
+      ['goLiveModal','endModal','loginModal','settingsModal','relayAddModal','faqModal','shareModal','videoPostModal','reactionPickerModal','composeUploadModal','gifPickerModal'].forEach((id) => {
         const el = qs('#' + id); if (el) el.classList.remove('open');
       });
       setUserUi();

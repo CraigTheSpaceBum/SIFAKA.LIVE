@@ -2,7 +2,9 @@ import { cloneMockState } from './mock-data.js';
 import { computeEffectivePermissions, DEFAULT_ROLE_DEFS } from './permissions.js';
 
 const JOINED_STORAGE_PREFIX = 'sifaka_communities_joined_v2';
+const JOIN_REQUEST_STORAGE_PREFIX = 'sifaka_communities_join_requests_v1';
 const LOCAL_GRAPH_STORAGE_KEY = 'sifaka_communities_local_graph_v1';
+const INVITE_TOKEN_PREFIX = 'scinv1';
 
 function createEmitter() {
   const listeners = new Set();
@@ -73,6 +75,172 @@ function parseCsv(input) {
     .filter(Boolean);
 }
 
+const ROOM_CHANNEL_TYPES = new Set(['voice', 'video', 'stage']);
+const ROOM_PROVIDER_VALUES = new Set(['native_nostr', 'nostrnests', 'hivetalk', 'external']);
+const ROOM_STATUS_VALUES = new Set(['inactive', 'planned', 'live', 'ended']);
+
+function isRoomChannelType(value) {
+  return ROOM_CHANNEL_TYPES.has(String(value || '').trim().toLowerCase());
+}
+
+function normalizeRoomProvider(value, fallback = 'native_nostr') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (ROOM_PROVIDER_VALUES.has(raw)) return raw;
+  return ROOM_PROVIDER_VALUES.has(String(fallback || '').trim().toLowerCase())
+    ? String(fallback || '').trim().toLowerCase()
+    : 'native_nostr';
+}
+
+function normalizeRoomStatus(value, fallback = 'inactive') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (ROOM_STATUS_VALUES.has(raw)) return raw;
+  return ROOM_STATUS_VALUES.has(String(fallback || '').trim().toLowerCase())
+    ? String(fallback || '').trim().toLowerCase()
+    : 'inactive';
+}
+
+function normalizeTimestampMs(value, fallback = 0) {
+  const numeric = Number(value || 0);
+  if (Number.isFinite(numeric) && numeric > 0) return Math.round(numeric);
+  return Math.max(0, Number(fallback || 0));
+}
+
+function normalizePubkeyList(values) {
+  const list = Array.isArray(values)
+    ? values
+    : parseCsv(values);
+  return unique(list.map((value) => String(value || '').trim()).filter(Boolean));
+}
+
+function normalizeCommunityRoomDefaults(payload = {}, fallback = {}) {
+  return {
+    defaultRoomProvider: normalizeRoomProvider(
+      payload.defaultRoomProvider != null ? payload.defaultRoomProvider : fallback.defaultRoomProvider,
+      'native_nostr'
+    ),
+    nostrNestsUrl: String(
+      payload.nostrNestsUrl != null ? payload.nostrNestsUrl : (fallback.nostrNestsUrl || 'https://nostrnests.com')
+    ).trim(),
+    hiveTalkUrl: String(
+      payload.hiveTalkUrl != null ? payload.hiveTalkUrl : (fallback.hiveTalkUrl || 'https://vanilla.hivetalk.org')
+    ).trim()
+  };
+}
+
+function normalizeChannelRecord(payload = {}, fallback = {}, community = null) {
+  const channelType = String(
+    payload.channelType != null
+      ? payload.channelType
+      : (payload.type != null ? payload.type : (fallback.channelType || fallback.type || 'public'))
+  ).trim().toLowerCase() || 'public';
+  const isRoom = isRoomChannelType(channelType);
+  const roomDefaults = normalizeCommunityRoomDefaults(community || {}, community || {});
+  const roomProvider = isRoom
+    ? normalizeRoomProvider(
+      payload.roomProvider != null ? payload.roomProvider : fallback.roomProvider,
+      roomDefaults.defaultRoomProvider
+    )
+    : '';
+
+  return {
+    id: String(payload.id != null ? payload.id : (fallback.id || '')).trim(),
+    communityId: String(payload.communityId != null ? payload.communityId : (fallback.communityId || '')).trim(),
+    category: String(payload.category != null ? payload.category : (fallback.category || 'Channels')).trim() || 'Channels',
+    name: String(payload.name != null ? payload.name : (fallback.name || '')).trim(),
+    topic: String(payload.topic != null ? payload.topic : (payload.about != null ? payload.about : (fallback.topic || fallback.about || ''))).trim(),
+    channelType,
+    privacyLevel: String(
+      payload.privacyLevel != null ? payload.privacyLevel : (payload.privacy != null ? payload.privacy : (fallback.privacyLevel || fallback.privacy || 'public'))
+    ).trim() || 'public',
+    slowModeSec: Math.max(0, Number(
+      payload.slowModeSec != null ? payload.slowModeSec : (payload.slow_mode != null ? payload.slow_mode : (fallback.slowModeSec || fallback.slow_mode || 0))
+    ) || 0),
+    archived: payload.archived != null ? !!payload.archived : !!fallback.archived,
+    pinned: payload.pinned != null ? !!payload.pinned : !!fallback.pinned,
+    roleOverrides: Array.isArray(payload.roleOverrides)
+      ? clone(payload.roleOverrides)
+      : (Array.isArray(fallback.roleOverrides) ? clone(fallback.roleOverrides) : []),
+    roomId: isRoom
+      ? String(payload.roomId != null ? payload.roomId : (fallback.roomId || '')).trim()
+      : '',
+    roomProvider,
+    roomUrl: isRoom
+      ? String(payload.roomUrl != null ? payload.roomUrl : (fallback.roomUrl || '')).trim()
+      : '',
+    roomNaddr: isRoom
+      ? String(payload.roomNaddr != null ? payload.roomNaddr : (fallback.roomNaddr || '')).trim()
+      : '',
+    roomStatus: isRoom
+      ? normalizeRoomStatus(payload.roomStatus != null ? payload.roomStatus : fallback.roomStatus, 'planned')
+      : 'inactive',
+    roomHostPubkey: isRoom
+      ? String(payload.roomHostPubkey != null ? payload.roomHostPubkey : (fallback.roomHostPubkey || '')).trim()
+      : '',
+    roomStartsAt: isRoom
+      ? normalizeTimestampMs(payload.roomStartsAt != null ? payload.roomStartsAt : fallback.roomStartsAt, 0)
+      : 0,
+    roomEndsAt: isRoom
+      ? normalizeTimestampMs(payload.roomEndsAt != null ? payload.roomEndsAt : fallback.roomEndsAt, 0)
+      : 0,
+    roomCurrentParticipants: isRoom
+      ? Math.max(0, Number(payload.roomCurrentParticipants != null ? payload.roomCurrentParticipants : (fallback.roomCurrentParticipants || 0)) || 0)
+      : 0,
+    roomTotalParticipants: isRoom
+      ? Math.max(0, Number(payload.roomTotalParticipants != null ? payload.roomTotalParticipants : (fallback.roomTotalParticipants || 0)) || 0)
+      : 0,
+    roomRecordingUrl: isRoom
+      ? String(payload.roomRecordingUrl != null ? payload.roomRecordingUrl : (fallback.roomRecordingUrl || '')).trim()
+      : '',
+    roomSpeakers: isRoom
+      ? normalizePubkeyList(payload.roomSpeakers != null ? payload.roomSpeakers : fallback.roomSpeakers)
+      : [],
+    roomParticipants: isRoom
+      ? normalizePubkeyList(payload.roomParticipants != null ? payload.roomParticipants : fallback.roomParticipants)
+      : [],
+    source: payload.source || fallback.source || 'local',
+    createdAt: normalizeTimestampMs(payload.createdAt != null ? payload.createdAt : fallback.createdAt, nowMs())
+  };
+}
+
+function encodeBase64Url(input) {
+  const text = String(input || '');
+  if (!text) return '';
+  try {
+    if (typeof btoa === 'function') {
+      return btoa(text)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+    }
+  } catch (_) {}
+  try {
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(text, 'utf8')
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+    }
+  } catch (_) {}
+  return '';
+}
+
+function decodeBase64Url(input) {
+  const text = String(input || '').trim();
+  if (!text) return '';
+  const normalized = text
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  try {
+    if (typeof atob === 'function') return atob(padded);
+  } catch (_) {}
+  try {
+    if (typeof Buffer !== 'undefined') return Buffer.from(padded, 'base64').toString('utf8');
+  } catch (_) {}
+  return '';
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -94,6 +262,10 @@ function joinedStorageKey(pubkey) {
   return `${JOINED_STORAGE_PREFIX}:${String(pubkey || 'anon').slice(0, 128)}`;
 }
 
+function joinRequestStorageKey(pubkey) {
+  return `${JOIN_REQUEST_STORAGE_PREFIX}:${String(pubkey || 'anon').slice(0, 128)}`;
+}
+
 function readJoinedFromStorage(pubkey) {
   if (typeof window === 'undefined' || !window.localStorage) return [];
   try {
@@ -111,6 +283,26 @@ function writeJoinedToStorage(pubkey, ids) {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
     window.localStorage.setItem(joinedStorageKey(pubkey), JSON.stringify(unique(ids)));
+  } catch (_) {}
+}
+
+function readJoinRequestsFromStorage(pubkey) {
+  if (typeof window === 'undefined' || !window.localStorage) return [];
+  try {
+    const raw = window.localStorage.getItem(joinRequestStorageKey(pubkey));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return unique(parsed.map((id) => String(id || '').trim()));
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeJoinRequestsToStorage(pubkey, ids) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(joinRequestStorageKey(pubkey), JSON.stringify(unique(ids)));
   } catch (_) {}
 }
 
@@ -203,6 +395,7 @@ export function createCommunityStore(options = {}) {
     activeCommunityId: '',
     activeChannelId: '',
     joinedCommunityIds: new Set(),
+    pendingJoinRequestIds: new Set(),
     unreadByChannel: new Map(),
     draftsByChannel: new Map(),
     searchTerm: '',
@@ -324,6 +517,16 @@ export function createCommunityStore(options = {}) {
 
   function getCommunity(id = state.activeCommunityId) {
     return state.data.communities.find((c) => c.id === id) || null;
+  }
+
+  function getJoinMode(communityInput = state.activeCommunityId) {
+    const community = (communityInput && typeof communityInput === 'object')
+      ? communityInput
+      : getCommunity(communityInput);
+    if (!community) return 'open';
+    const raw = String(community.joinMode || '').trim().toLowerCase();
+    if (raw === 'approval' || raw === 'invite_only' || raw === 'open') return raw;
+    return String(community.type || '').trim().toLowerCase() === 'private' ? 'approval' : 'open';
   }
 
   function getChannels(communityId = state.activeCommunityId) {
@@ -591,6 +794,87 @@ export function createCommunityStore(options = {}) {
     writeJoinedToStorage(state.currentUserPubkey, Array.from(state.joinedCommunityIds));
   }
 
+  function persistPendingJoinRequests() {
+    writeJoinRequestsToStorage(state.currentUserPubkey, Array.from(state.pendingJoinRequestIds));
+  }
+
+  function buildInviteToken(communityId) {
+    const encoded = encodeBase64Url(communityId);
+    return encoded ? `${INVITE_TOKEN_PREFIX}-${encoded}` : '';
+  }
+
+  function resolveInviteToken(token, options = {}) {
+    const raw = String(token || '').trim();
+    if (!raw) return { ok: false, reason: 'missing_token', communityId: '', community: null };
+
+    let communityId = '';
+    const prefix = `${INVITE_TOKEN_PREFIX}-`;
+    if (raw.toLowerCase().startsWith(prefix)) {
+      const decoded = decodeBase64Url(raw.slice(prefix.length));
+      if (/^(n29|n72):[a-z0-9-]+$/i.test(decoded)) communityId = decoded.toLowerCase();
+    }
+
+    if (!communityId && /^(n29|n72):[a-z0-9-]+$/i.test(raw)) {
+      communityId = raw.toLowerCase();
+    }
+
+    if (!communityId) {
+      const existing = Array.from(state.inviteCodesByCommunity.entries())
+        .find(([, code]) => String(code || '').trim() === raw);
+      if (existing) communityId = String(existing[0] || '').trim().toLowerCase();
+    }
+
+    if (!communityId) {
+      return { ok: false, reason: 'invalid_token', communityId: '', community: null };
+    }
+
+    let community = getCommunity(communityId);
+    if (!community && options.hydratePlaceholder !== false) {
+      ingestCommunity({
+        id: communityId,
+        title: communityId.split(':')[1] || 'Community',
+        type: communityId.startsWith('n29:') ? 'private' : 'public',
+        joinMode: communityId.startsWith('n29:') ? 'approval' : 'open',
+        discoverable: !communityId.startsWith('n29:'),
+        source: 'invite'
+      });
+      community = getCommunity(communityId);
+    }
+
+    return {
+      ok: true,
+      reason: '',
+      communityId,
+      community: community || null
+    };
+  }
+
+  function inviteTokenMatchesCommunity(token, communityId) {
+    const resolved = resolveInviteToken(token, { hydratePlaceholder: false });
+    if (!resolved.ok) return false;
+    return String(resolved.communityId || '').trim().toLowerCase() === String(communityId || '').trim().toLowerCase();
+  }
+
+  function hasPendingJoinRequest(communityId) {
+    return state.pendingJoinRequestIds.has(String(communityId || '').trim());
+  }
+
+  function requestJoinCommunity(communityId, options = {}) {
+    const id = String(communityId || '').trim();
+    const community = getCommunity(id);
+    if (!community) return { ok: false, reason: 'missing_community', community: null };
+    if (!state.currentUserPubkey) return { ok: false, reason: 'auth_required', community };
+    if (state.joinedCommunityIds.has(id)) return { ok: true, alreadyJoined: true, community };
+
+    const alreadyRequested = state.pendingJoinRequestIds.has(id);
+    state.pendingJoinRequestIds.add(id);
+    persistPendingJoinRequests();
+    if (!alreadyRequested || !options.silent) {
+      emitter.emit({ type: 'community_join_requested', communityId: id, source: options.source || 'local' });
+    }
+    return { ok: true, requested: true, alreadyRequested, community };
+  }
+
   function sendMessage(payload) {
     const {
       channelId = state.activeChannelId,
@@ -778,15 +1062,42 @@ export function createCommunityStore(options = {}) {
   }
 
   function joinCommunity(communityId, options = {}) {
-    if (!communityId) return;
-    const already = state.joinedCommunityIds.has(communityId);
-    state.joinedCommunityIds.add(communityId);
-    if (state.currentUserPubkey) ensureMember(communityId, state.currentUserPubkey, ['member']);
+    const id = String(communityId || '').trim();
+    const community = getCommunity(id);
+    if (!community) return { ok: false, reason: 'missing_community', community: null };
+    if (!state.currentUserPubkey && !options.bypassJoinMode) {
+      return { ok: false, reason: 'auth_required', community };
+    }
+
+    const already = state.joinedCommunityIds.has(id);
+    if (already) return { ok: true, alreadyJoined: true, community };
+
+    const joinMode = getJoinMode(community);
+    const acceptedInvite = !!options.acceptedInviteToken && inviteTokenMatchesCommunity(options.acceptedInviteToken, id);
+    if (!options.bypassJoinMode && !acceptedInvite) {
+      if (joinMode === 'approval') {
+        return requestJoinCommunity(id, options);
+      }
+      if (joinMode === 'invite_only') {
+        return { ok: false, reason: 'invite_required', community };
+      }
+    }
+
+    state.joinedCommunityIds.add(id);
+    state.pendingJoinRequestIds.delete(id);
+    if (state.currentUserPubkey) ensureMember(id, state.currentUserPubkey, ['member']);
     ensureActiveSelection();
     persistJoined();
+    persistPendingJoinRequests();
     if (!already || !options.silent) {
-      emitter.emit({ type: 'community_joined', communityId, source: options.source || 'local' });
+      emitter.emit({ type: 'community_joined', communityId: id, source: options.source || 'local' });
     }
+    return {
+      ok: true,
+      joined: true,
+      usedInvite: acceptedInvite,
+      community
+    };
   }
 
   function leaveCommunity(communityId, options = {}) {
@@ -802,15 +1113,18 @@ export function createCommunityStore(options = {}) {
 
   function setJoinedCommunities(communityIds, options = {}) {
     state.joinedCommunityIds = new Set(unique((communityIds || []).map((id) => String(id || '').trim()).filter(Boolean)));
+    state.pendingJoinRequestIds = new Set(
+      Array.from(state.pendingJoinRequestIds).filter((id) => !state.joinedCommunityIds.has(id))
+    );
     persistJoined();
+    persistPendingJoinRequests();
     ensureActiveSelection();
     emitter.emit({ type: 'joined_set', ids: Array.from(state.joinedCommunityIds), source: options.source || 'nostr' });
   }
 
   function createInvite(communityId = state.activeCommunityId) {
     if (!communityId) return '';
-    const slug = (communityId.split(':')[1] || 'community').slice(0, 20);
-    const code = `${slug}-${Math.random().toString(36).slice(2, 8)}`;
+    const code = buildInviteToken(communityId);
     state.inviteCodesByCommunity.set(communityId, code);
     emitter.emit({ type: 'invite_created', communityId, code });
     return code;
@@ -868,21 +1182,34 @@ export function createCommunityStore(options = {}) {
       i += 1;
     }
 
-    const channel = {
+    const channel = normalizeChannelRecord({
       id: channelId,
       communityId,
-      category: String(payload.category || 'Channels').trim() || 'Channels',
       name,
-      topic: String(payload.topic || '').trim(),
-      channelType: String(payload.channelType || 'public').trim() || 'public',
-      privacyLevel: String(payload.privacyLevel || 'public').trim() || 'public',
-      slowModeSec: Math.max(0, Number(payload.slowModeSec || 0)),
-      archived: !!payload.archived,
-      pinned: !!payload.pinned,
-      roleOverrides: Array.isArray(payload.roleOverrides) ? clone(payload.roleOverrides) : [],
+      category: payload.category,
+      topic: payload.topic,
+      channelType: payload.channelType,
+      privacyLevel: payload.privacyLevel,
+      slowModeSec: payload.slowModeSec,
+      archived: payload.archived,
+      pinned: payload.pinned,
+      roleOverrides: payload.roleOverrides,
+      roomId: payload.roomId,
+      roomProvider: payload.roomProvider,
+      roomUrl: payload.roomUrl,
+      roomNaddr: payload.roomNaddr,
+      roomStatus: payload.roomStatus,
+      roomHostPubkey: payload.roomHostPubkey,
+      roomStartsAt: payload.roomStartsAt,
+      roomEndsAt: payload.roomEndsAt,
+      roomCurrentParticipants: payload.roomCurrentParticipants,
+      roomTotalParticipants: payload.roomTotalParticipants,
+      roomRecordingUrl: payload.roomRecordingUrl,
+      roomSpeakers: payload.roomSpeakers,
+      roomParticipants: payload.roomParticipants,
       source: payload.source || 'local',
       createdAt: nowMs()
-    };
+    }, {}, community);
 
     ensureCommunityContainers(communityId);
     state.data.channelsByCommunity[communityId].push(channel);
@@ -900,16 +1227,13 @@ export function createCommunityStore(options = {}) {
     if (!channel || !community) return { ok: false, reason: 'missing_channel' };
     if (!can('manage_channels', channel, community)) return { ok: false, reason: 'permission_denied' };
 
-    Object.assign(channel, {
-      name: patch.name != null ? String(patch.name).trim() : channel.name,
-      topic: patch.topic != null ? String(patch.topic).trim() : channel.topic,
-      category: patch.category != null ? String(patch.category).trim() : channel.category,
-      privacyLevel: patch.privacyLevel != null ? String(patch.privacyLevel).trim() : channel.privacyLevel,
-      channelType: patch.channelType != null ? String(patch.channelType).trim() : channel.channelType,
-      slowModeSec: patch.slowModeSec != null ? Math.max(0, Number(patch.slowModeSec || 0)) : channel.slowModeSec,
-      archived: patch.archived != null ? !!patch.archived : channel.archived,
-      pinned: patch.pinned != null ? !!patch.pinned : channel.pinned
-    });
+    Object.assign(channel, normalizeChannelRecord({
+      ...channel,
+      ...patch,
+      id: channel.id,
+      communityId: channel.communityId,
+      createdAt: channel.createdAt
+    }, channel, community));
 
     if (isLocallyPersistedCommunity(community.id)) persistLocalGraph();
     emitter.emit({ type: 'channel_updated', channelId, patch });
@@ -965,6 +1289,7 @@ export function createCommunityStore(options = {}) {
     const relays = Array.isArray(payload.allowedRelays) ? unique(payload.allowedRelays) : parseCsv(payload.allowedRelays);
     const joinMode = String(payload.joinMode || payload.membershipMode || (type === 'private' ? 'approval' : 'open')).trim();
     const image = String(payload.image || payload.banner || payload.icon || '').trim();
+    const roomDefaults = normalizeCommunityRoomDefaults(payload, {});
 
     const community = {
       id,
@@ -987,6 +1312,9 @@ export function createCommunityStore(options = {}) {
       serverDefaultAllow: type === 'public' ? ['view_channels'] : [],
       serverDefaultDeny: type === 'private' ? ['view_channels'] : [],
       postingPolicy: String(payload.postingPolicy || 'members').trim() || 'members',
+      defaultRoomProvider: roomDefaults.defaultRoomProvider,
+      nostrNestsUrl: roomDefaults.nostrNestsUrl,
+      hiveTalkUrl: roomDefaults.hiveTalkUrl,
       createdAt: nowMs(),
       updatedAt: nowMs(),
       source: 'local'
@@ -1020,6 +1348,42 @@ export function createCommunityStore(options = {}) {
     if (payload.includeForum) {
       seedChannels.push({ name: 'forum', category: 'Discussion', topic: 'Threaded conversations', channelType: 'forum', privacyLevel: 'public' });
     }
+    if (payload.includeVoiceLounge) {
+      seedChannels.push({
+        name: 'lounge',
+        category: 'Rooms',
+        topic: 'Drop in for live voice conversation.',
+        channelType: 'voice',
+        privacyLevel: 'public',
+        roomProvider: roomDefaults.defaultRoomProvider,
+        roomStatus: 'planned',
+        roomHostPubkey: state.currentUserPubkey
+      });
+    }
+    if (payload.includeVideoRoom) {
+      seedChannels.push({
+        name: 'screen-share',
+        category: 'Rooms',
+        topic: 'Video room for demos, co-working, and streams.',
+        channelType: 'video',
+        privacyLevel: 'public',
+        roomProvider: roomDefaults.defaultRoomProvider,
+        roomStatus: 'planned',
+        roomHostPubkey: state.currentUserPubkey
+      });
+    }
+    if (payload.includeStageRoom) {
+      seedChannels.push({
+        name: 'town-hall',
+        category: 'Rooms',
+        topic: 'Stage-style room for community talks and events.',
+        channelType: 'stage',
+        privacyLevel: 'public',
+        roomProvider: roomDefaults.defaultRoomProvider,
+        roomStatus: 'planned',
+        roomHostPubkey: state.currentUserPubkey
+      });
+    }
     if (payload.includeStaff || type === 'private') {
       seedChannels.push({
         name: 'staff',
@@ -1050,7 +1414,7 @@ export function createCommunityStore(options = {}) {
       }
     });
 
-    joinCommunity(id, { source: 'local' });
+    joinCommunity(id, { source: 'local', bypassJoinMode: true });
     setActiveCommunity(id);
     persistLocalGraph();
     emitter.emit({ type: 'community_created', community, channels: createdChannels });
@@ -1097,7 +1461,9 @@ export function createCommunityStore(options = {}) {
     state.lastActiveByCommunity.delete(id);
     state.inviteCodesByCommunity.delete(id);
     state.joinedCommunityIds.delete(id);
+    state.pendingJoinRequestIds.delete(id);
     persistJoined();
+    persistPendingJoinRequests();
     persistLocalGraph();
     ensureActiveSelection();
 
@@ -1128,6 +1494,9 @@ export function createCommunityStore(options = {}) {
     if (patch.rules != null) community.rules = Array.isArray(patch.rules) ? unique(patch.rules) : parseLines(patch.rules);
     if (patch.topics != null) community.topics = Array.isArray(patch.topics) ? unique(patch.topics) : parseCsv(patch.topics);
     if (patch.allowedRelays != null) community.allowedRelays = Array.isArray(patch.allowedRelays) ? unique(patch.allowedRelays) : parseCsv(patch.allowedRelays);
+    if (patch.defaultRoomProvider != null) community.defaultRoomProvider = normalizeRoomProvider(patch.defaultRoomProvider, community.defaultRoomProvider);
+    if (patch.nostrNestsUrl != null) community.nostrNestsUrl = String(patch.nostrNestsUrl || '').trim();
+    if (patch.hiveTalkUrl != null) community.hiveTalkUrl = String(patch.hiveTalkUrl || '').trim();
     if (patch.moderatorPubkeys != null) {
       community.moderatorPubkeys = Array.isArray(patch.moderatorPubkeys) ? unique(patch.moderatorPubkeys) : parseCsv(patch.moderatorPubkeys);
       syncRoleAssignments(communityId, 'moderator', community.moderatorPubkeys);
@@ -1167,6 +1536,7 @@ export function createCommunityStore(options = {}) {
 
     let community = getCommunity(id);
     if (!community) {
+      const roomDefaults = normalizeCommunityRoomDefaults(payload, {});
       community = {
         id,
         type: String(payload.type || (id.startsWith('n29:') ? 'private' : 'public')),
@@ -1188,6 +1558,9 @@ export function createCommunityStore(options = {}) {
         serverDefaultAllow: payload.serverDefaultAllow || [],
         serverDefaultDeny: payload.serverDefaultDeny || [],
         postingPolicy: String(payload.postingPolicy || 'members'),
+        defaultRoomProvider: roomDefaults.defaultRoomProvider,
+        nostrNestsUrl: roomDefaults.nostrNestsUrl,
+        hiveTalkUrl: roomDefaults.hiveTalkUrl,
         createdAt: Number(payload.createdAt || nowMs()),
         updatedAt: Number(payload.updatedAt || nowMs()),
         source: payload.source || 'nostr'
@@ -1205,6 +1578,9 @@ export function createCommunityStore(options = {}) {
         discoverable: payload.discoverable != null ? !!payload.discoverable : community.discoverable,
         defaultChannelId: payload.defaultChannelId != null ? String(payload.defaultChannelId) : community.defaultChannelId,
         postingPolicy: payload.postingPolicy != null ? String(payload.postingPolicy) : community.postingPolicy,
+        defaultRoomProvider: payload.defaultRoomProvider != null ? normalizeRoomProvider(payload.defaultRoomProvider, community.defaultRoomProvider) : community.defaultRoomProvider,
+        nostrNestsUrl: payload.nostrNestsUrl != null ? String(payload.nostrNestsUrl) : community.nostrNestsUrl,
+        hiveTalkUrl: payload.hiveTalkUrl != null ? String(payload.hiveTalkUrl) : community.hiveTalkUrl,
         updatedAt: Number(payload.updatedAt || nowMs())
       });
       if (payload.rules != null) community.rules = Array.isArray(payload.rules) ? unique(payload.rules) : parseLines(payload.rules);
@@ -1242,40 +1618,29 @@ export function createCommunityStore(options = {}) {
     ensureCommunityContainers(communityId);
     const list = state.data.channelsByCommunity[communityId] || [];
     const existing = list.find((channel) => channel.id === id);
+    const community = getCommunity(communityId);
 
     if (existing) {
-      Object.assign(existing, {
-        name: payload.name != null ? String(payload.name) : existing.name,
-        topic: payload.topic != null ? String(payload.topic) : existing.topic,
-        category: payload.category != null ? String(payload.category) : existing.category,
-        channelType: payload.channelType != null ? String(payload.channelType) : existing.channelType,
-        privacyLevel: payload.privacyLevel != null ? String(payload.privacyLevel) : existing.privacyLevel,
-        slowModeSec: payload.slowModeSec != null ? Math.max(0, Number(payload.slowModeSec || 0)) : existing.slowModeSec,
-        archived: payload.archived != null ? !!payload.archived : existing.archived,
-        pinned: payload.pinned != null ? !!payload.pinned : existing.pinned,
-        source: payload.source || existing.source || 'nostr'
-      });
-    } else {
-      list.push({
+      Object.assign(existing, normalizeChannelRecord({
+        ...existing,
+        ...payload,
         id,
         communityId,
-        category: String(payload.category || 'Channels'),
-        name: String(payload.name || id),
-        topic: String(payload.topic || ''),
-        channelType: String(payload.channelType || 'public'),
-        privacyLevel: String(payload.privacyLevel || 'public'),
-        slowModeSec: Math.max(0, Number(payload.slowModeSec || 0)),
-        archived: !!payload.archived,
-        pinned: !!payload.pinned,
-        roleOverrides: Array.isArray(payload.roleOverrides) ? clone(payload.roleOverrides) : [],
+        createdAt: existing.createdAt
+      }, existing, community));
+    } else {
+      list.push(normalizeChannelRecord({
+        id,
+        communityId,
         source: payload.source || 'nostr',
         createdAt: Number(payload.createdAt || nowMs())
-      });
+      }, {
+        name: id
+      }, community));
     }
 
     state.data.channelsByCommunity[communityId] = list;
     if (!state.data.messagesByChannel[id]) state.data.messagesByChannel[id] = [];
-    const community = getCommunity(communityId);
     if (community && !community.defaultChannelId) community.defaultChannelId = id;
 
     ensureActiveSelection();
@@ -1348,7 +1713,11 @@ export function createCommunityStore(options = {}) {
     }
 
     refreshLeadershipLists(communityId);
-    if (members.includes(state.currentUserPubkey)) joinCommunity(communityId, { source: 'nostr', silent: true });
+    if (members.includes(state.currentUserPubkey)) {
+      state.pendingJoinRequestIds.delete(communityId);
+      persistPendingJoinRequests();
+      joinCommunity(communityId, { source: 'nostr', silent: true, bypassJoinMode: true });
+    }
     emitter.emit({ type: 'community_members_ingested', communityId, count: members.length });
     return true;
   }
@@ -1414,6 +1783,13 @@ export function createCommunityStore(options = {}) {
       state.joinedCommunityIds = new Set();
     }
 
+    const pendingRequests = readJoinRequestsFromStorage(next);
+    if (pendingRequests.length) {
+      state.pendingJoinRequestIds = new Set(pendingRequests);
+    } else {
+      state.pendingJoinRequestIds = new Set();
+    }
+
     ensureActiveSelection();
     emitter.emit({ type: 'user_changed', pubkey: next });
   }
@@ -1452,6 +1828,7 @@ export function createCommunityStore(options = {}) {
     return {
       ...state,
       joinedCommunityIds: Array.from(state.joinedCommunityIds),
+      pendingJoinRequestIds: Array.from(state.pendingJoinRequestIds),
       unreadByChannel: new Map(state.unreadByChannel),
       draftsByChannel: new Map(state.draftsByChannel),
       inviteCodesByCommunity: new Map(state.inviteCodesByCommunity),
@@ -1487,6 +1864,13 @@ export function createCommunityStore(options = {}) {
     state.joinedCommunityIds = new Set();
   }
 
+  const pendingJoinRequestsFromStorage = readJoinRequestsFromStorage(state.currentUserPubkey);
+  if (pendingJoinRequestsFromStorage.length) {
+    state.pendingJoinRequestIds = new Set(pendingJoinRequestsFromStorage);
+  } else {
+    state.pendingJoinRequestIds = new Set();
+  }
+
   ensureActiveSelection();
 
   return {
@@ -1502,6 +1886,7 @@ export function createCommunityStore(options = {}) {
     profile,
     getMember,
     getMemberRoles,
+    getJoinMode,
     getPermissionContext,
     can,
     markRead,
@@ -1513,9 +1898,13 @@ export function createCommunityStore(options = {}) {
     setActiveCommunity,
     setActiveChannel,
     joinCommunity,
+    requestJoinCommunity,
     leaveCommunity,
     setJoinedCommunities,
     createInvite,
+    resolveInviteToken,
+    inviteTokenMatchesCommunity,
+    hasPendingJoinRequest,
     setMemberRole,
     moderateMember,
     createCommunity,

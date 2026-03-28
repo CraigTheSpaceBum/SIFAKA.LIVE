@@ -490,6 +490,131 @@
   -webkit-user-select: text;
 }
 
+.sc-room-panel {
+  margin-bottom: .7rem;
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(232,70,10,.16), rgba(255,255,255,.03)),
+    var(--surface2);
+  padding: .8rem;
+}
+
+.sc-room-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .6rem;
+}
+
+.sc-room-panel-head strong {
+  display: block;
+  color: var(--text);
+  font-size: .85rem;
+}
+
+.sc-room-panel-head small,
+.sc-room-meta span,
+.sc-room-panel-stats span,
+.sc-room-preview code {
+  color: var(--text2);
+  font-size: .67rem;
+  font-family: 'DM Mono', monospace;
+}
+
+.sc-room-panel-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+.sc-room-panel-body p {
+  margin: .5rem 0;
+}
+
+.sc-room-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+.sc-room-speakers {
+  margin-top: .55rem;
+}
+
+.sc-room-speakers strong {
+  display: block;
+  color: var(--text);
+  font-size: .72rem;
+  margin-bottom: .28rem;
+}
+
+.sc-room-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+}
+
+.sc-room-chip {
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  font-size: .65rem;
+  padding: .18rem .48rem;
+  cursor: pointer;
+}
+
+.sc-room-chip:hover {
+  border-color: var(--accent);
+}
+
+.sc-room-actions {
+  margin-top: .65rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+.sc-room-actions button {
+  border: 1px solid var(--border2);
+  border-radius: 9px;
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  padding: .35rem .65rem;
+  cursor: pointer;
+  font-size: .68rem;
+}
+
+.sc-room-actions button:hover {
+  border-color: var(--accent);
+}
+
+.sc-room-fields {
+  margin-top: .7rem;
+  border-top: 1px solid var(--border);
+  padding-top: .7rem;
+}
+
+.sc-room-fields h5 {
+  margin: 0 0 .55rem;
+  color: var(--text);
+}
+
+.sc-room-preview {
+  border: 1px dashed var(--border2);
+  border-radius: 10px;
+  padding: .55rem;
+  background: rgba(255,255,255,.03);
+}
+
+.sc-room-preview strong {
+  display: block;
+  color: var(--text);
+  font-size: .72rem;
+  margin-bottom: .3rem;
+}
+
 .sc-attachments {
   margin-top: .34rem;
   display: flex;

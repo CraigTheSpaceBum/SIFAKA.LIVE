@@ -61,6 +61,25 @@ function unique(values) {
   return Array.from(new Set((values || []).filter(Boolean)));
 }
 
+const ROOM_PROVIDER_VALUES = new Set(['native_nostr', 'nostrnests', 'hivetalk', 'external']);
+const ROOM_STATUS_VALUES = new Set(['inactive', 'planned', 'live', 'ended']);
+
+function normalizeRoomProvider(value, fallback = 'native_nostr') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (ROOM_PROVIDER_VALUES.has(raw)) return raw;
+  return ROOM_PROVIDER_VALUES.has(String(fallback || '').trim().toLowerCase())
+    ? String(fallback || '').trim().toLowerCase()
+    : 'native_nostr';
+}
+
+function normalizeRoomStatus(value, fallback = 'planned') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (ROOM_STATUS_VALUES.has(raw)) return raw;
+  return ROOM_STATUS_VALUES.has(String(fallback || '').trim().toLowerCase())
+    ? String(fallback || '').trim().toLowerCase()
+    : 'planned';
+}
+
 function shortStableHash(value) {
   const text = String(value || 'community');
   let hash = 0;
@@ -97,6 +116,14 @@ function parseJson(content) {
   } catch (_) {
     return null;
   }
+}
+
+function parseTimestampMs(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 0;
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return raw.length <= 10 ? numeric * 1000 : numeric;
 }
 
 function firstTagValue(tags, key) {
@@ -217,6 +244,19 @@ function parseCommunityEvent(event) {
         channelType: String(item.channelType || item.type || 'public'),
         privacyLevel: String(item.privacyLevel || item.privacy || 'public'),
         slowModeSec: Math.max(0, Number(item.slowModeSec || item.slow_mode || 0)),
+        roomId: String(item.roomId || item.room_id || ''),
+        roomProvider: normalizeRoomProvider(item.roomProvider || item.room_provider || content.default_room_provider || 'native_nostr'),
+        roomUrl: String(item.roomUrl || item.room_url || ''),
+        roomNaddr: String(item.roomNaddr || item.room_naddr || ''),
+        roomStatus: normalizeRoomStatus(item.roomStatus || item.room_status || 'planned'),
+        roomHostPubkey: String(item.roomHostPubkey || item.room_host_pubkey || ''),
+        roomStartsAt: parseTimestampMs(item.roomStartsAt || item.room_starts_at || 0),
+        roomEndsAt: parseTimestampMs(item.roomEndsAt || item.room_ends_at || 0),
+        roomCurrentParticipants: Math.max(0, Number(item.roomCurrentParticipants || item.room_current_participants || 0)),
+        roomTotalParticipants: Math.max(0, Number(item.roomTotalParticipants || item.room_total_participants || 0)),
+        roomRecordingUrl: String(item.roomRecordingUrl || item.room_recording_url || ''),
+        roomSpeakers: unique((Array.isArray(item.roomSpeakers) ? item.roomSpeakers : (Array.isArray(item.room_speakers) ? item.room_speakers : [])).map((value) => String(value || '').trim()).filter(Boolean)),
+        roomParticipants: unique((Array.isArray(item.roomParticipants) ? item.roomParticipants : (Array.isArray(item.room_participants) ? item.room_participants : [])).map((value) => String(value || '').trim()).filter(Boolean)),
         source: 'nostr',
         createdAt: Number(event.created_at || nowSec()) * 1000,
         eventId: event.id
@@ -264,6 +304,9 @@ function parseCommunityEvent(event) {
     discoverable: type === 'public' ? firstTagValue(tags, 'discoverable') !== '0' : false,
     defaultChannelId,
     allowedRelays: unique([...tagValues(tags, 'relay'), ...tagValues(tags, 'r')]),
+    defaultRoomProvider: normalizeRoomProvider(firstTagValue(tags, 'default_room_provider') || content.default_room_provider || 'native_nostr'),
+    nostrNestsUrl: String(firstTagValue(tags, 'nostrnests') || content.nostrnests_url || 'https://nostrnests.com'),
+    hiveTalkUrl: String(firstTagValue(tags, 'hivetalk') || content.hivetalk_url || 'https://vanilla.hivetalk.org'),
     embeddedChannels,
     embeddedMembers,
     embeddedRolesByPubkey,
@@ -353,6 +396,19 @@ function parseChannelEvent(event) {
     channelType: String(firstTagValue(tags, 'type') || content.type || 'public'),
     privacyLevel: String(firstTagValue(tags, 'privacy') || content.privacy || 'public'),
     slowModeSec: Number(firstTagValue(tags, 'slow') || content.slow_mode || 0),
+    roomId: String(firstTagValue(tags, 'room_id') || content.room_id || ''),
+    roomProvider: normalizeRoomProvider(firstTagValue(tags, 'room_provider') || content.room_provider || 'native_nostr'),
+    roomUrl: String(firstTagValue(tags, 'room_url') || content.room_url || firstTagValue(tags, 'streaming') || ''),
+    roomNaddr: String(firstTagValue(tags, 'room_naddr') || content.room_naddr || ''),
+    roomStatus: normalizeRoomStatus(firstTagValue(tags, 'room_status') || content.room_status || 'planned'),
+    roomHostPubkey: String(firstTagValue(tags, 'room_host') || content.room_host_pubkey || ''),
+    roomStartsAt: parseTimestampMs(firstTagValue(tags, 'room_starts') || content.room_starts_at || firstTagValue(tags, 'starts') || 0),
+    roomEndsAt: parseTimestampMs(firstTagValue(tags, 'room_ends') || content.room_ends_at || firstTagValue(tags, 'ends') || 0),
+    roomCurrentParticipants: Math.max(0, Number(firstTagValue(tags, 'room_current_participants') || content.room_current_participants || 0)),
+    roomTotalParticipants: Math.max(0, Number(firstTagValue(tags, 'room_total_participants') || content.room_total_participants || 0)),
+    roomRecordingUrl: String(firstTagValue(tags, 'room_recording') || content.room_recording_url || firstTagValue(tags, 'recording') || ''),
+    roomSpeakers: unique(tagValues(tags, 'room_speaker').concat(Array.isArray(content.room_speakers) ? content.room_speakers.map((value) => String(value || '').trim()) : []).filter(Boolean)),
+    roomParticipants: unique(tagValues(tags, 'room_participant').concat(Array.isArray(content.room_participants) ? content.room_participants.map((value) => String(value || '').trim()) : []).filter(Boolean)),
     source: 'nostr',
     createdAt: Number(event.created_at || nowSec()) * 1000,
     eventId: event.id
@@ -776,14 +832,29 @@ export function createNostrBridge(options = {}) {
         const name = String(item.name || '').trim();
         const idValue = String(item.id || '').trim();
         if (!name || !idValue) return null;
+        const channelType = String(item.channelType || item.type || 'public').trim().toLowerCase() || 'public';
+        const isRoom = ['voice', 'video', 'stage'].includes(channelType);
         return {
           id: idValue,
           name,
           category: String(item.category || 'Channels'),
           topic: String(item.topic || ''),
-          channelType: String(item.channelType || item.type || 'public'),
+          channelType,
           privacyLevel: String(item.privacyLevel || item.privacy || 'public'),
-          slowModeSec: Math.max(0, Number(item.slowModeSec || item.slow_mode || 0))
+          slowModeSec: Math.max(0, Number(item.slowModeSec || item.slow_mode || 0)),
+          roomId: isRoom ? String(item.roomId || item.room_id || '') : '',
+          roomProvider: isRoom ? normalizeRoomProvider(item.roomProvider || item.room_provider || input.defaultRoomProvider || 'native_nostr') : '',
+          roomUrl: isRoom ? String(item.roomUrl || item.room_url || '') : '',
+          roomNaddr: isRoom ? String(item.roomNaddr || item.room_naddr || '') : '',
+          roomStatus: isRoom ? normalizeRoomStatus(item.roomStatus || item.room_status || 'planned') : 'inactive',
+          roomHostPubkey: isRoom ? String(item.roomHostPubkey || item.room_host_pubkey || '') : '',
+          roomStartsAt: isRoom ? Math.max(0, Number(item.roomStartsAt || item.room_starts_at || 0)) : 0,
+          roomEndsAt: isRoom ? Math.max(0, Number(item.roomEndsAt || item.room_ends_at || 0)) : 0,
+          roomCurrentParticipants: isRoom ? Math.max(0, Number(item.roomCurrentParticipants || item.room_current_participants || 0)) : 0,
+          roomTotalParticipants: isRoom ? Math.max(0, Number(item.roomTotalParticipants || item.room_total_participants || 0)) : 0,
+          roomRecordingUrl: isRoom ? String(item.roomRecordingUrl || item.room_recording_url || '') : '',
+          roomSpeakers: isRoom ? unique((Array.isArray(item.roomSpeakers) ? item.roomSpeakers : (Array.isArray(item.room_speakers) ? item.room_speakers : [])).map((value) => String(value || '').trim()).filter(Boolean)) : [],
+          roomParticipants: isRoom ? unique((Array.isArray(item.roomParticipants) ? item.roomParticipants : (Array.isArray(item.room_participants) ? item.room_participants : [])).map((value) => String(value || '').trim()).filter(Boolean)) : []
         };
       })
       .filter(Boolean);
@@ -819,12 +890,15 @@ export function createNostrBridge(options = {}) {
       ['posting_policy', String(input.postingPolicy || 'members')],
       ['discoverable', type === 'public' && input.discoverable !== false ? '1' : '0'],
       ['default_channel', defaultChannelId],
+      ['default_room_provider', normalizeRoomProvider(input.defaultRoomProvider || 'native_nostr')],
       ['client', 'sifaka.live']
     ];
 
     const imageUrl = String(input.image || input.banner || input.icon || '').trim();
     if (imageUrl) tags.push(['image', imageUrl]);
     if (input.icon) tags.push(['icon', String(input.icon)]);
+    if (input.nostrNestsUrl) tags.push(['nostrnests', String(input.nostrNestsUrl)]);
+    if (input.hiveTalkUrl) tags.push(['hivetalk', String(input.hiveTalkUrl)]);
 
     unique(input.topics || []).forEach((topic) => tags.push(['t', String(topic)]));
     unique(input.rules || []).forEach((rule) => tags.push(['rule', String(rule)]));
@@ -838,7 +912,10 @@ export function createNostrBridge(options = {}) {
       image: imageUrl,
       rules: unique(input.rules || []),
       topics: unique(input.topics || []),
-      posting_policy: String(input.postingPolicy || 'members')
+      posting_policy: String(input.postingPolicy || 'members'),
+      default_room_provider: normalizeRoomProvider(input.defaultRoomProvider || 'native_nostr'),
+      nostrnests_url: String(input.nostrNestsUrl || ''),
+      hivetalk_url: String(input.hiveTalkUrl || '')
     };
     if (defaultChannelId) contentPayload.default_channel = defaultChannelId;
     if (normalizedChannels.length) contentPayload.channels = normalizedChannels;
@@ -944,6 +1021,7 @@ export function createNostrBridge(options = {}) {
     const channelSlug = slugify(input.slug || channelName);
     const communitySlug = communityId.split(':')[1] || 'community';
     const channelId = String(input.channelId || `ch:${communitySlug}:${channelSlug}`);
+    const isRoomChannel = ['voice', 'video', 'stage'].includes(String(input.channelType || '').trim().toLowerCase());
 
     const tags = [
       ['h', communityId],
@@ -957,16 +1035,68 @@ export function createNostrBridge(options = {}) {
       ['client', 'sifaka.live']
     ];
 
+    const roomProvider = isRoomChannel ? normalizeRoomProvider(input.roomProvider || 'native_nostr') : '';
+    const roomStatus = isRoomChannel ? normalizeRoomStatus(input.roomStatus || 'planned') : 'inactive';
+    const roomId = isRoomChannel ? String(input.roomId || '').trim() : '';
+    const roomUrl = isRoomChannel ? String(input.roomUrl || '').trim() : '';
+    const roomNaddr = isRoomChannel ? String(input.roomNaddr || '').trim() : '';
+    const roomHostPubkey = isRoomChannel ? String(input.roomHostPubkey || '').trim() : '';
+    const roomStartsAt = isRoomChannel ? Math.max(0, Number(input.roomStartsAt || 0)) : 0;
+    const roomEndsAt = isRoomChannel ? Math.max(0, Number(input.roomEndsAt || 0)) : 0;
+    const roomRecordingUrl = isRoomChannel ? String(input.roomRecordingUrl || '').trim() : '';
+    const roomCurrentParticipants = isRoomChannel ? Math.max(0, Number(input.roomCurrentParticipants || 0)) : 0;
+    const roomTotalParticipants = isRoomChannel ? Math.max(0, Number(input.roomTotalParticipants || 0)) : 0;
+    const roomSpeakers = isRoomChannel
+      ? unique((Array.isArray(input.roomSpeakers) ? input.roomSpeakers : []).map((value) => String(value || '').trim()).filter(Boolean))
+      : [];
+    const roomParticipants = isRoomChannel
+      ? unique((Array.isArray(input.roomParticipants) ? input.roomParticipants : []).map((value) => String(value || '').trim()).filter(Boolean))
+      : [];
+
+    if (roomId) tags.push(['room_id', roomId]);
+    if (roomUrl) tags.push(['room_url', roomUrl], ['streaming', roomUrl]);
+    if (roomNaddr) tags.push(['room_naddr', roomNaddr]);
+    if (roomHostPubkey) tags.push(['room_host', roomHostPubkey]);
+    if (roomStartsAt > 0) tags.push(['room_starts', String(roomStartsAt)]);
+    if (roomEndsAt > 0) tags.push(['room_ends', String(roomEndsAt)]);
+    if (roomRecordingUrl) tags.push(['room_recording', roomRecordingUrl], ['recording', roomRecordingUrl]);
+    if (roomCurrentParticipants > 0) tags.push(['room_current_participants', String(roomCurrentParticipants)]);
+    if (roomTotalParticipants > 0) tags.push(['room_total_participants', String(roomTotalParticipants)]);
+    if (isRoomChannel) {
+      tags.push(['room_provider', roomProvider], ['room_status', roomStatus]);
+    }
+    roomSpeakers.forEach((pubkeyValue) => tags.push(['room_speaker', pubkeyValue]));
+    roomParticipants.forEach((pubkeyValue) => tags.push(['room_participant', pubkeyValue]));
+
+    const contentPayload = {
+      name: channelName,
+      about: String(input.topic || ''),
+      image: String(input.image || '')
+    };
+    if (isRoomChannel) {
+      Object.assign(contentPayload, {
+        room_id: roomId,
+        room_provider: roomProvider,
+        room_url: roomUrl,
+        room_naddr: roomNaddr,
+        room_status: roomStatus,
+        room_host_pubkey: roomHostPubkey,
+        room_starts_at: roomStartsAt,
+        room_ends_at: roomEndsAt,
+        room_current_participants: roomCurrentParticipants,
+        room_total_participants: roomTotalParticipants,
+        room_recording_url: roomRecordingUrl,
+        room_speakers: roomSpeakers,
+        room_participants: roomParticipants
+      });
+    }
+
     const unsigned = {
       kind: KIND_CHANNEL_CREATE,
       created_at: nowSec(),
       pubkey,
       tags,
-      content: JSON.stringify({
-        name: channelName,
-        about: String(input.topic || ''),
-        image: String(input.image || '')
-      })
+      content: JSON.stringify(contentPayload)
     };
 
     const signed = await signEvent(unsigned);

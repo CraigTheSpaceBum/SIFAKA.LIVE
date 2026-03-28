@@ -495,11 +495,16 @@
     <!-- ── Panel: Relays ── -->
     <div class="smv2-panel" id="smPanelRelays">
       <div class="smv2-panel-label">📡 NIP-65 kind:10002 — your relay list is published to the network</div>
-      <div id="settingsRelayList2"></div>
-      <div class="relay-add-row">
-        <input type="text" id="settingsRelayInput" placeholder="wss://relay.example.com" style="font-family:'DM Mono',monospace;font-size:.75rem;">
-        <button class="btn btn-ghost" style="padding:.4rem .85rem;" onclick="addRelayFromSettings()">Add</button>
+      <div class="relay-directory-toolbar">
+        <div class="relay-directory-copy">Sort relays by job. Saving reconnects the app with every non-blocked relay bucket.</div>
+        <div class="relay-bar relay-bar-settings" id="settingsRelayConnectionBar">Current connected relays: 0/0</div>
       </div>
+      <div class="relay-directory-summary" id="settingsRelaySummary"></div>
+      <div class="relay-directory-actions">
+        <div class="relay-directory-help">Use the blocked bucket to exclude a relay from the active pool even if it also appears in another bucket.</div>
+        <button class="btn btn-ghost relay-add-launch" onclick="openRelayAddModal()">Add Relay</button>
+      </div>
+      <div id="settingsRelayList2"></div>
       <div class="smv2-save-row">
         <button class="btn btn-primary" onclick="saveRelaySettings()">Save Relays →</button>
       </div>
@@ -573,6 +578,33 @@
 
       <div class="smv2-save-row">
         <button class="btn btn-primary" onclick="saveAppSettings()">Save App Settings →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========= ADD RELAY MODAL ========= -->
+<div class="modal-ov relay-add-modal-ov" id="relayAddModal">
+  <div class="settings-modal share-modal relay-add-modal">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeRelayAddModal()">x</button>
+    <div class="sm-hd"><div class="sm-title">Add Relay</div></div>
+    <div class="share-modal-body relay-add-modal-body">
+      <div class="share-field">
+        <label for="settingsRelayPresetInput">Suggested Relay</label>
+        <select id="settingsRelayPresetInput" onchange="pickSuggestedRelayFromSettings()"></select>
+      </div>
+      <div class="share-field">
+        <label for="settingsRelayInput">Relay URL</label>
+        <input id="settingsRelayInput" type="text" placeholder="wss://relay.example.com or ws://localhost:10547">
+      </div>
+      <div class="share-field">
+        <label for="settingsRelayCategoryInput">Relay Type</label>
+        <select id="settingsRelayCategoryInput"></select>
+      </div>
+      <div id="settingsRelayModalStatus" class="remote-login-status" aria-live="polite"></div>
+      <div class="relay-add-modal-foot">
+        <button class="btn btn-ghost" onclick="closeRelayAddModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="addRelayFromSettings()">Add Relay</button>
       </div>
     </div>
   </div>

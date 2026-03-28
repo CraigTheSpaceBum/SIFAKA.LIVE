@@ -28,6 +28,126 @@ function shortPubkey(pubkey, left = 12, right = 8) {
   return `${value.slice(0, left)}...${value.slice(-right)}`;
 }
 
+function isRoomChannel(channel) {
+  const type = String(channel && channel.channelType || '').trim().toLowerCase();
+  return type === 'voice' || type === 'video' || type === 'stage';
+}
+
+function channelTypeLabel(type) {
+  const key = String(type || '').trim().toLowerCase();
+  if (key === 'announcement') return 'Announcement';
+  if (key === 'forum') return 'Forum';
+  if (key === 'private') return 'Private';
+  if (key === 'voice') return 'Voice Room';
+  if (key === 'video') return 'Video Room';
+  if (key === 'stage') return 'Stage Room';
+  return 'Text Channel';
+}
+
+function roomProviderLabel(provider) {
+  const key = String(provider || '').trim().toLowerCase();
+  if (key === 'nostrnests') return 'NostrNests';
+  if (key === 'hivetalk') return 'HiveTalk';
+  if (key === 'external') return 'Custom Room';
+  return 'Nostr Room';
+}
+
+function roomStatusLabel(status) {
+  const key = String(status || '').trim().toLowerCase();
+  if (key === 'live') return 'Live';
+  if (key === 'ended') return 'Ended';
+  if (key === 'inactive') return 'Inactive';
+  return 'Planned';
+}
+
+function fmtDateTime(ts) {
+  const date = new Date(Number(ts || 0));
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function datetimeLocalValue(ts) {
+  const date = new Date(Number(ts || 0));
+  if (!Number.isFinite(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function parseDateTimeLocalValue(value) {
+  const text = String(value || '').trim();
+  if (!text) return 0;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function roomJoinUrl(channel, community, viewerName = '') {
+  if (!channel || !isRoomChannel(channel)) return '';
+  const direct = String(channel.roomUrl || '').trim();
+  if (direct) return direct;
+
+  const naddr = String(channel.roomNaddr || '').trim();
+  const provider = String(channel.roomProvider || community && community.defaultRoomProvider || 'native_nostr').trim().toLowerCase();
+  if (naddr) return `https://njump.me/${encodeURIComponent(naddr)}`;
+
+  if (provider === 'hivetalk') {
+    const base = String((community && community.hiveTalkUrl) || 'https://vanilla.hivetalk.org').trim().replace(/\/+$/, '');
+    const roomId = slugify(String(channel.roomId || channel.id || channel.name || 'room').trim());
+    if (!base || !roomId) return '';
+    try {
+      const url = new URL('/join', base);
+      url.searchParams.set('room', roomId);
+      if (viewerName) url.searchParams.set('name', viewerName);
+      url.searchParams.set('audio', '1');
+      url.searchParams.set('video', channel.channelType === 'voice' ? '0' : '1');
+      url.searchParams.set('notify', '0');
+      return url.toString();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  return '';
+}
+
+async function copyTextToClipboard(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) {
+    // Fall through to the DOM-based fallback when clipboard permissions are blocked.
+  }
+
+  try {
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', 'readonly');
+    field.style.position = 'fixed';
+    field.style.top = '-9999px';
+    field.style.left = '-9999px';
+    document.body.appendChild(field);
+    field.focus();
+    field.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(field);
+    return !!copied;
+  } catch (_) {
+    return false;
+  }
+}
+
 function groupedChannels(channels) {
   const map = new Map();
   (channels || []).forEach((channel) => {
@@ -162,7 +282,8 @@ export function createCommunitiesUI(input) {
     discoveryLoading: false,
     attachUploadPending: false,
     attachUploadProgress: 0,
-    nip05LookupRequested: new Set()
+    nip05LookupRequested: new Set(),
+    lastRouteKey: ''
   };
 
   function defaultCreateCommunityDraft(state) {
@@ -187,7 +308,13 @@ export function createCommunitiesUI(input) {
       discoverable: true,
       includeAnnouncements: true,
       includeForum: true,
-      includeStaff: true
+      includeStaff: true,
+      includeVoiceLounge: true,
+      includeVideoRoom: true,
+      includeStageRoom: false,
+      defaultRoomProvider: 'native_nostr',
+      nostrNestsUrl: 'https://nostrnests.com',
+      hiveTalkUrl: 'https://vanilla.hivetalk.org'
     };
   }
 
@@ -235,7 +362,13 @@ export function createCommunitiesUI(input) {
       discoverable: !!((root.querySelector('#scCreateDiscoverable') || {}).checked),
       includeAnnouncements: !!((root.querySelector('#scCreateIncludeAnnouncements') || {}).checked),
       includeForum: !!((root.querySelector('#scCreateIncludeForum') || {}).checked),
-      includeStaff: !!((root.querySelector('#scCreateIncludeStaff') || {}).checked)
+      includeStaff: !!((root.querySelector('#scCreateIncludeStaff') || {}).checked),
+      includeVoiceLounge: !!((root.querySelector('#scCreateIncludeVoiceLounge') || {}).checked),
+      includeVideoRoom: !!((root.querySelector('#scCreateIncludeVideoRoom') || {}).checked),
+      includeStageRoom: !!((root.querySelector('#scCreateIncludeStageRoom') || {}).checked),
+      defaultRoomProvider: (root.querySelector('#scCreateDefaultRoomProvider') || {}).value || 'native_nostr',
+      nostrNestsUrl: (root.querySelector('#scCreateNostrNestsUrl') || {}).value || 'https://nostrnests.com',
+      hiveTalkUrl: (root.querySelector('#scCreateHiveTalkUrl') || {}).value || 'https://vanilla.hivetalk.org'
     };
 
     return ui.createDraft;
@@ -255,7 +388,10 @@ export function createCommunitiesUI(input) {
       discoverable: !!community.discoverable,
       rules: String((community.rules || []).join('\n')),
       topics: String((community.topics || []).join(', ')),
-      allowedRelays: String((community.allowedRelays || []).join(', '))
+      allowedRelays: String((community.allowedRelays || []).join(', ')),
+      defaultRoomProvider: String(community.defaultRoomProvider || 'native_nostr'),
+      nostrNestsUrl: String(community.nostrNestsUrl || 'https://nostrnests.com'),
+      hiveTalkUrl: String(community.hiveTalkUrl || 'https://vanilla.hivetalk.org')
     };
   }
 
@@ -286,7 +422,10 @@ export function createCommunitiesUI(input) {
       discoverable: !!((root.querySelector('#scSettingsDiscoverable') || {}).checked),
       rules: (root.querySelector('#scSettingsRules') || {}).value || '',
       topics: (root.querySelector('#scSettingsTopics') || {}).value || '',
-      allowedRelays: (root.querySelector('#scSettingsRelays') || {}).value || ''
+      allowedRelays: (root.querySelector('#scSettingsRelays') || {}).value || '',
+      defaultRoomProvider: (root.querySelector('#scSettingsDefaultRoomProvider') || {}).value || 'native_nostr',
+      nostrNestsUrl: (root.querySelector('#scSettingsNostrNestsUrl') || {}).value || 'https://nostrnests.com',
+      hiveTalkUrl: (root.querySelector('#scSettingsHiveTalkUrl') || {}).value || 'https://vanilla.hivetalk.org'
     };
     return ui.settingsDraft;
   }
@@ -357,10 +496,61 @@ export function createCommunitiesUI(input) {
   }
 
   function setSession(next = {}) {
+    const prevPubkey = String((ui.session.user && ui.session.user.pubkey) || '').trim();
+    const nextPubkey = String((next.user && next.user.pubkey) || '').trim();
+    const authChanged = (!!next.isAuthenticated !== !!ui.session.isAuthenticated) || prevPubkey !== nextPubkey;
     ui.session = {
       user: next.user || null,
       isAuthenticated: !!next.isAuthenticated
     };
+    if (authChanged) ui.lastRouteKey = '';
+  }
+
+  function parseCommunitiesRouteFromLocation() {
+    if (typeof window === 'undefined' || !window.location) {
+      return { isCommunities: false, inviteToken: '', routeKey: '' };
+    }
+
+    const parts = String(window.location.pathname || '')
+      .split('/')
+      .filter(Boolean)
+      .map((part) => {
+        try { return decodeURIComponent(part || ''); } catch (_) { return part || ''; }
+      })
+      .map((part) => String(part || '').trim());
+
+    if (!parts.length || parts[0].toLowerCase() !== 'communities') {
+      return { isCommunities: false, inviteToken: '', routeKey: '' };
+    }
+
+    const inviteToken = parts[1] && parts[1].toLowerCase() === 'invite'
+      ? String(parts[2] || '').trim()
+      : '';
+
+    return {
+      isCommunities: true,
+      inviteToken,
+      routeKey: inviteToken ? `invite:${inviteToken}` : 'communities'
+    };
+  }
+
+  function communityJoinAction(community, stateSnapshot, routeState = parseCommunitiesRouteFromLocation()) {
+    const joinedCommunityIds = new Set((stateSnapshot && stateSnapshot.joinedCommunityIds) || []);
+    const joined = !!(community && joinedCommunityIds.has(community.id));
+    const requested = !!(community && store.hasPendingJoinRequest && store.hasPendingJoinRequest(community.id));
+    const mode = community && store.getJoinMode ? store.getJoinMode(community) : 'open';
+    const hasInvite = !!(community
+      && routeState
+      && routeState.inviteToken
+      && store.inviteTokenMatchesCommunity
+      && store.inviteTokenMatchesCommunity(routeState.inviteToken, community.id));
+
+    if (joined) return { label: 'Open', joined: true, requested: false, mode, hasInvite };
+    if (requested) return { label: 'Requested', joined: false, requested: true, mode, hasInvite };
+    if (hasInvite) return { label: 'Join Invite', joined: false, requested: false, mode, hasInvite };
+    if (mode === 'approval') return { label: 'Request', joined: false, requested: false, mode, hasInvite };
+    if (mode === 'invite_only') return { label: 'Invite Only', joined: false, requested: false, mode, hasInvite };
+    return { label: 'Join', joined: false, requested: false, mode, hasInvite };
   }
 
   function normalizePubkey(value) {
@@ -671,15 +861,88 @@ export function createCommunitiesUI(input) {
       node.textContent = raw;
     });
   }
+
+  function joinResultMessage(result, community) {
+    const title = community && community.title ? `"${community.title}"` : 'this community';
+    if (!result || !result.ok) {
+      if (result && result.reason === 'auth_required') return 'Login required to join communities.';
+      if (result && result.reason === 'invite_required') return `Invite required to join ${title}. Open it from a valid invite link.`;
+      if (result && result.reason === 'missing_community') return 'This community is unavailable right now.';
+      return `Could not join ${title}.`;
+    }
+    if (result.requested) return `Join request saved locally for ${title}. A moderator still needs to approve you.`;
+    if (result.alreadyJoined) return `Opened ${title}.`;
+    return `Joined ${title}.`;
+  }
+
+  async function syncMembershipAfterJoin(community, options = {}) {
+    const title = community && community.title ? `"${community.title}"` : 'this community';
+    const membershipPublish = await publishMembershipList();
+    if (!membershipPublish.ok) {
+      return {
+        ok: false,
+        message: options.failureMessage || `Joined ${title} locally, but could not sync membership list to relays.`
+      };
+    }
+    return {
+      ok: true,
+      message: options.successMessage || `Joined ${title}.`
+    };
+  }
+
+  function processCommunitiesRouteIntent() {
+    const routeState = parseCommunitiesRouteFromLocation();
+    if (!routeState.routeKey || routeState.routeKey === ui.lastRouteKey) return routeState;
+    ui.lastRouteKey = routeState.routeKey;
+
+    if (!routeState.inviteToken || !store.resolveInviteToken) return routeState;
+
+    const resolved = store.resolveInviteToken(routeState.inviteToken);
+    if (!resolved.ok || !resolved.communityId) {
+      setStatus('Invite link is invalid or unavailable.');
+      return routeState;
+    }
+
+    const community = store.getCommunity(resolved.communityId) || resolved.community;
+    if (community) store.setActiveCommunity(community.id);
+    if (!ui.session.isAuthenticated || !community) return routeState;
+
+    const joinResult = store.joinCommunity(community.id, {
+      source: 'invite_link',
+      acceptedInviteToken: routeState.inviteToken
+    });
+    if (!joinResult.ok) {
+      setStatus(joinResultMessage(joinResult, community));
+      return routeState;
+    }
+    if (joinResult.alreadyJoined || joinResult.requested) return routeState;
+
+    Promise.resolve()
+      .then(() => syncMembershipAfterJoin(community, {
+        successMessage: `Joined "${community.title}" from invite.`,
+        failureMessage: `Joined "${community.title}" from invite, but could not sync membership list to relays.`
+      }))
+      .then((result) => {
+        if (result && result.message) setStatus(result.message);
+      })
+      .catch(() => {
+        setStatus(`Joined "${community.title}" from invite, but could not sync membership list to relays.`);
+      });
+
+    return routeState;
+  }
+
   function render() {
     try {
     const focusSnapshot = captureFocusSnapshot();
+    processCommunitiesRouteIntent();
     if (!ui.session.isAuthenticated) {
       renderLoginGate();
       return;
     }
 
     const state = store.getState();
+    const routeState = parseCommunitiesRouteFromLocation();
     const community = store.getCommunity();
     const channel = store.getChannel();
     const joinedCommunityIds = new Set(state.joinedCommunityIds);
@@ -706,7 +969,9 @@ export function createCommunitiesUI(input) {
         return String(a.title || '').localeCompare(String(b.title || ''));
       });
     const suggestions = store.getDiscoverySuggestions(6);
-    const channels = community ? store.getChannels(community.id) : [];
+    const channels = community
+      ? store.getChannels(community.id).filter((entry) => store.can('view_channels', entry, community))
+      : [];
     const messages = channel ? store.filteredMessages(channel.id) : [];
     const pins = channel ? store.getPinnedMessages(channel.id) : [];
     const draft = channel ? (draftsByChannel.get(channel.id) || '') : '';
@@ -721,6 +986,7 @@ export function createCommunitiesUI(input) {
     const railCommunities = communities.filter((entry) => joinedCommunityIds.has(entry.id));
     const hasJoinedCommunities = railCommunities.length > 0;
     const hasActiveCommunity = !!(community && joinedCommunityIds.has(community.id));
+    const activeJoinAction = community ? communityJoinAction(community, state, routeState) : null;
 
     const railHtml = railCommunities.map((entry) => {
       const active = community && entry.id === community.id;
@@ -734,16 +1000,22 @@ export function createCommunitiesUI(input) {
       `;
     }).join('');
 
+    const roomPanelHtml = channel && isRoomChannel(channel)
+      ? renderRoomPanel(channel, community, profiles, state)
+      : '';
+
     const channelHtml = groupedChannels(channels).map(([category, items]) => `
       <section class="sc-category">
         <header>${esc(category)}</header>
         ${items.map((entry) => {
           const unread = Number(unreadByChannel.get(entry.id) || 0);
           const locked = entry.privacyLevel !== 'public';
+          const room = isRoomChannel(entry);
+          const roomStatus = room ? String(entry.roomStatus || 'planned').trim().toLowerCase() : '';
           return `
             <button class="sc-channel-btn${channel && entry.id === channel.id ? ' active' : ''}" data-channel="${esc(entry.id)}" title="${esc(entry.topic || '')}">
-              <span class="sc-channel-name"># ${esc(entry.name)}</span>
-              <span class="sc-channel-meta">${locked ? 'private' : ''}${unread ? `<b>${unread}</b>` : ''}</span>
+              <span class="sc-channel-name">${esc(room ? channelTypeLabel(entry.channelType) : '#')} ${esc(entry.name)}</span>
+              <span class="sc-channel-meta">${locked ? 'private' : ''}${room && roomStatus === 'live' ? '<b>live</b>' : ''}${unread ? `<b>${unread}</b>` : ''}</span>
             </button>
           `;
         }).join('')}
@@ -853,7 +1125,7 @@ export function createCommunitiesUI(input) {
 
             <footer class="sc-channel-footer">
               <button id="scInviteBtn" ${community ? '' : 'disabled'}>Invite</button>
-              <button id="scJoinLeaveBtn" ${community && !joinedCommunityIds.has(community.id) ? '' : 'disabled'}>${community && joinedCommunityIds.has(community.id) ? 'Joined' : 'Join'}</button>
+              <button id="scJoinLeaveBtn" ${community && !joinedCommunityIds.has(community.id) && !(activeJoinAction && activeJoinAction.requested) ? '' : 'disabled'}>${community && joinedCommunityIds.has(community.id) ? 'Joined' : esc(activeJoinAction ? activeJoinAction.label : 'Join')}</button>
               <button id="scCreateChannelBtn" ${(community && joinedCommunityIds.has(community.id) && store.can('manage_channels', channel, community)) ? '' : 'disabled'}>New Channel</button>
             </footer>
           ` : `
@@ -873,6 +1145,7 @@ export function createCommunitiesUI(input) {
             <div class="sc-main-actions">
               ${hasJoinedCommunities
                 ? `<button id="scPinnedBtn" ${channel ? '' : 'disabled'}>Pinned (${pins.length})</button>
+                   <button id="scJoinRoomBtn" ${(channel && isRoomChannel(channel) && roomJoinUrl(channel, community, displayNameForProfile(store.profile(state.currentUserPubkey), state.currentUserPubkey))) ? '' : 'disabled'}>${channel && isRoomChannel(channel) ? 'Join Room' : 'Room'}</button>
                    <button id="scChannelSettingsBtn" ${(channel && store.can('manage_channels', channel, community)) ? '' : 'disabled'}>Channel Settings</button>
                    <button id="scNotifBtn">Notifications${notificationUnread ? ` (${notificationUnread})` : ''}</button>`
                 : ``}
@@ -880,7 +1153,7 @@ export function createCommunitiesUI(input) {
           </header>
 
           ${hasJoinedCommunities
-            ? `<section class="sc-feed" id="scFeed">${messageHtml || '<div class="sc-empty">No messages yet.</div>'}</section>
+            ? `<section class="sc-feed" id="scFeed">${roomPanelHtml}${messageHtml || '<div class="sc-empty">No messages yet.</div>'}</section>
 
                <section class="sc-composer">
                  <div class="sc-draft-tools">
@@ -892,7 +1165,13 @@ export function createCommunitiesUI(input) {
                  ${replyTarget ? `<div class="sc-replying">Replying to <code>${esc(shortPubkey(replyTarget, 10, 8))}</code><button id="scClearReplyBtn" type="button">Clear</button></div>` : ''}
                  <textarea id="scComposer" placeholder="${channel ? `Message #${esc(channel.name)}` : 'Select a channel'}" ${channel ? '' : 'disabled'}>${esc(draft)}</textarea>
                  <div class="sc-compose-foot">
-                   <small>${channel ? (store.can('post_messages', channel, community) ? 'Ready to publish via Nostr relays' : 'You do not have permission to post in this channel') : 'Pick a channel to start typing'}</small>
+                   <small>${channel
+                     ? (store.can('post_messages', channel, community)
+                       ? (isRoomChannel(channel)
+                         ? 'Room backchannel is ready on Nostr. Join the linked room for live audio or video.'
+                         : 'Ready to publish via Nostr relays')
+                       : 'You do not have permission to post in this channel')
+                     : 'Pick a channel to start typing'}</small>
                    <button id="scSendBtn" ${(channel && store.can('post_messages', channel, community)) ? '' : 'disabled'}>Send</button>
                  </div>
                  ${ui.emojiOpen ? `<div class="sc-emoji-pop" id="scEmojiPop">${['😀', '😂', '🔥', '⚡', '💜', '🚀', '👏', '❤️', '🤝', '🎉'].map((emoji) => `<button data-emoji="${esc(emoji)}">${esc(emoji)}</button>`).join('')}</div>` : ''}
@@ -921,7 +1200,7 @@ export function createCommunitiesUI(input) {
 
         ${ui.statusMsg ? `<div class="sc-toast">${esc(ui.statusMsg)}</div>` : ''}
         ${ui.selectedMember ? renderProfilePopout(ui.selectedMember, profiles, members, community, store) : ''}
-        ${ui.openModal ? renderModal(ui.openModal, state, community, channel, members, profiles, store, suggestions, publicCommunities) : ''}
+        ${ui.openModal ? renderModal(ui.openModal, state, community, channel, members, profiles, store, suggestions, publicCommunities, routeState) : ''}
         ${ui.contextMessageId ? renderContextMenu(ui.contextMessageId, ui.contextX, ui.contextY) : ''}
       </div>
     `;
@@ -942,6 +1221,14 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
     const name = displayNameForProfile(profile, pubkey);
     const verifiedNip05 = verifiedNip05ForProfile(profile, pubkey);
     const avatarClass = `sc-avatar big${hasAvatar ? ' has-image' : ''}${verifiedNip05 ? ' nip05-square' : ''}`;
+    const stateSnapshot = storeRef && typeof storeRef.getState === 'function' ? storeRef.getState() : {};
+    const currentUserPubkey = normalizePubkey((stateSnapshot && stateSnapshot.currentUserPubkey) || '');
+    const memberPubkey = normalizePubkey(pubkey);
+    const isSelf = !!(currentUserPubkey && memberPubkey && currentUserPubkey === memberPubkey);
+    const canModerate = !!(community && storeRef.can('mute_timeout_ban', null, community)) && !isSelf;
+    const canManageRoles = !!(community && storeRef.can('manage_roles', null, community)) && !isSelf;
+    const ctx = getAppContext();
+    const isFollowing = !!(ctx && typeof ctx.isFollowingPubkey === 'function' && ctx.isFollowingPubkey(pubkey));
 
     return `
       <div class="sc-popout" id="scProfilePopout">
@@ -959,12 +1246,69 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
           <span>${esc(community ? community.id : '')}</span>
         </div>
         <div class="sc-pop-actions">
-          <button data-member-action="mute" data-member="${esc(pubkey)}">Mute</button>
-          <button data-member-action="timeout_5m" data-member="${esc(pubkey)}">Timeout</button>
-          <button data-member-action="ban" data-member="${esc(pubkey)}">Ban</button>
-          <button data-member-action="roles" data-member="${esc(pubkey)}">Roles</button>
+          <button data-profile-action="view" data-member="${esc(pubkey)}">View Profile</button>
+          ${!isSelf && ctx && typeof ctx.openMessagesWithPubkey === 'function' ? `<button data-profile-action="message" data-member="${esc(pubkey)}">Message</button>` : ''}
+          ${!isSelf && ctx && typeof ctx.toggleFollowPubkey === 'function' ? `<button data-profile-action="follow" data-member="${esc(pubkey)}">${isFollowing ? 'Following' : 'Follow'}</button>` : ''}
+          ${!isSelf && ctx && typeof ctx.zapPubkey === 'function' ? `<button data-profile-action="zap" data-member="${esc(pubkey)}">Zap</button>` : ''}
+          ${canModerate ? `<button data-member-action="mute" data-member="${esc(pubkey)}">Mute</button>` : ''}
+          ${canModerate ? `<button data-member-action="timeout_5m" data-member="${esc(pubkey)}">Timeout</button>` : ''}
+          ${canModerate ? `<button data-member-action="ban" data-member="${esc(pubkey)}">Ban</button>` : ''}
+          ${canManageRoles ? `<button data-member-action="roles" data-member="${esc(pubkey)}">Roles</button>` : ''}
         </div>
       </div>
+    `;
+  }
+
+  function renderRoomPanel(channel, community, profiles, stateSnapshot) {
+    if (!channel || !community || !isRoomChannel(channel)) return '';
+    const roomHostPubkey = String(channel.roomHostPubkey || community.ownerPubkey || '').trim();
+    const hostProfile = roomHostPubkey ? resolveProfileRecord(profiles, roomHostPubkey, store) : null;
+    const hostName = roomHostPubkey ? displayNameForProfile(hostProfile, roomHostPubkey) : 'Community host';
+    const viewerProfile = stateSnapshot && stateSnapshot.currentUserPubkey
+      ? resolveProfileRecord(profiles, stateSnapshot.currentUserPubkey, store)
+      : null;
+    const viewerName = viewerProfile ? displayNameForProfile(viewerProfile, stateSnapshot.currentUserPubkey) : '';
+    const joinUrl = roomJoinUrl(channel, community, viewerName);
+    const roomStatus = String(channel.roomStatus || 'planned').trim().toLowerCase();
+    const schedule = [];
+    if (channel.roomStartsAt) schedule.push(`Starts ${fmtDateTime(channel.roomStartsAt)}`);
+    if (channel.roomEndsAt) schedule.push(`Ends ${fmtDateTime(channel.roomEndsAt)}`);
+    const speakerPubkeys = uniqueValues([
+      ...(Array.isArray(channel.roomSpeakers) ? channel.roomSpeakers : []),
+      ...(roomHostPubkey ? [roomHostPubkey] : [])
+    ]);
+    const speakerHtml = speakerPubkeys.map((pubkey) => {
+      const speakerProfile = resolveProfileRecord(profiles, pubkey, store);
+      return `<button class="sc-room-chip" type="button" data-member="${esc(pubkey)}">${esc(displayNameForProfile(speakerProfile, pubkey))}</button>`;
+    }).join('');
+
+    return `
+      <section class="sc-room-panel sc-room-${esc(roomStatus)}">
+        <header class="sc-room-panel-head">
+          <div>
+            <strong>${esc(channelTypeLabel(channel.channelType))}</strong>
+            <small>${esc(roomProviderLabel(channel.roomProvider || community.defaultRoomProvider || 'native_nostr'))} | ${esc(roomStatusLabel(roomStatus))}</small>
+          </div>
+          <div class="sc-room-panel-stats">
+            ${channel.roomCurrentParticipants ? `<span>${esc(String(channel.roomCurrentParticipants))} live now</span>` : ''}
+            ${channel.roomTotalParticipants ? `<span>${esc(String(channel.roomTotalParticipants))} total</span>` : ''}
+          </div>
+        </header>
+        <div class="sc-room-panel-body">
+          <p>${esc(channel.topic || 'Join the linked room for live audio or video and keep text chat here on Nostr.')}</p>
+          <div class="sc-room-meta">
+            <span>Host: ${esc(hostName)}</span>
+            ${channel.roomId ? `<span>Room ID: ${esc(channel.roomId)}</span>` : ''}
+            ${schedule.map((entry) => `<span>${esc(entry)}</span>`).join('')}
+          </div>
+          ${speakerHtml ? `<div class="sc-room-speakers"><strong>Speakers</strong><div class="sc-room-chip-row">${speakerHtml}</div></div>` : ''}
+          <div class="sc-room-actions">
+            <button type="button" data-room-action="join" data-room-url="${esc(joinUrl)}" ${joinUrl ? '' : 'disabled'}>${joinUrl ? 'Join Room' : 'Add Room Link'}</button>
+            <button type="button" data-room-action="copy" data-room-url="${esc(joinUrl)}" ${joinUrl ? '' : 'disabled'}>Copy Link</button>
+            ${channel.roomNaddr ? `<button type="button" data-room-action="copy-naddr" data-room-naddr="${esc(channel.roomNaddr)}">Copy naddr</button>` : ''}
+          </div>
+        </div>
+      </section>
     `;
   }
 
@@ -1121,11 +1465,36 @@ function renderProfilePopout(pubkey, profiles, members, community, storeRef) {
             </div>
           </section>
 
+          <section class="sc-create-section">
+            <h5>Room Integrations</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label>Default room provider
+                <select id="scCreateDefaultRoomProvider">
+                  <option value="native_nostr" ${draft.defaultRoomProvider === 'native_nostr' ? 'selected' : ''}>Nostr-native room metadata</option>
+                  <option value="nostrnests" ${draft.defaultRoomProvider === 'nostrnests' ? 'selected' : ''}>NostrNests</option>
+                  <option value="hivetalk" ${draft.defaultRoomProvider === 'hivetalk' ? 'selected' : ''}>HiveTalk</option>
+                  <option value="external" ${draft.defaultRoomProvider === 'external' ? 'selected' : ''}>Custom external room</option>
+                </select>
+              </label>
+              <label>NostrNests base URL
+                <input id="scCreateNostrNestsUrl" value="${esc(draft.nostrNestsUrl)}" placeholder="https://nostrnests.com">
+                <small>Used for room discovery and join handoff when you attach Nostr room addresses.</small>
+              </label>
+              <label>HiveTalk base URL
+                <input id="scCreateHiveTalkUrl" value="${esc(draft.hiveTalkUrl)}" placeholder="https://vanilla.hivetalk.org">
+                <small>Voice and video rooms can generate direct HiveTalk join links from this base.</small>
+              </label>
+            </div>
+          </section>
+
           <div class="sc-check-grid">
             <label><input type="checkbox" id="scCreateDiscoverable" ${draft.discoverable ? 'checked' : ''}> Show in public discovery</label>
             <label><input type="checkbox" id="scCreateIncludeAnnouncements" ${draft.includeAnnouncements ? 'checked' : ''}> Add #announcements channel</label>
             <label><input type="checkbox" id="scCreateIncludeForum" ${draft.includeForum ? 'checked' : ''}> Add #forum channel</label>
             <label><input type="checkbox" id="scCreateIncludeStaff" ${draft.includeStaff ? 'checked' : ''}> Add private #staff channel</label>
+            <label><input type="checkbox" id="scCreateIncludeVoiceLounge" ${draft.includeVoiceLounge ? 'checked' : ''}> Add lounge voice room</label>
+            <label><input type="checkbox" id="scCreateIncludeVideoRoom" ${draft.includeVideoRoom ? 'checked' : ''}> Add video room</label>
+            <label><input type="checkbox" id="scCreateIncludeStageRoom" ${draft.includeStageRoom ? 'checked' : ''}> Add stage room</label>
           </div>
 
           <div class="sc-modal-foot">
@@ -1223,6 +1592,26 @@ function renderCommunitySettingsModal(community) {
             </div>
           </section>
 
+          <section class="sc-create-section">
+            <h5>Room Integrations</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label>Default room provider
+                <select id="scSettingsDefaultRoomProvider" ${disableAttr}>
+                  <option value="native_nostr" ${draft.defaultRoomProvider === 'native_nostr' ? 'selected' : ''}>Nostr-native room metadata</option>
+                  <option value="nostrnests" ${draft.defaultRoomProvider === 'nostrnests' ? 'selected' : ''}>NostrNests</option>
+                  <option value="hivetalk" ${draft.defaultRoomProvider === 'hivetalk' ? 'selected' : ''}>HiveTalk</option>
+                  <option value="external" ${draft.defaultRoomProvider === 'external' ? 'selected' : ''}>Custom external room</option>
+                </select>
+              </label>
+              <label>NostrNests base URL
+                <input id="scSettingsNostrNestsUrl" value="${esc(draft.nostrNestsUrl || '')}" placeholder="https://nostrnests.com" ${disableAttr}>
+              </label>
+              <label>HiveTalk base URL
+                <input id="scSettingsHiveTalkUrl" value="${esc(draft.hiveTalkUrl || '')}" placeholder="https://vanilla.hivetalk.org" ${disableAttr}>
+              </label>
+            </div>
+          </section>
+
           <details class="sc-settings-advanced">
             <summary>Advanced Permission Matrix</summary>
             ${permissionsSummary()}
@@ -1244,21 +1633,25 @@ function renderCommunitySettingsModal(community) {
   }
 
   function renderCreateChannelModal(community) {
+    const defaultRoomProvider = String(community.defaultRoomProvider || 'native_nostr');
     return `
       <div class="sc-modal-ov" data-close="modal">
-        <div class="sc-modal">
+        <div class="sc-modal sc-modal-wide">
           <h4>Create Channel</h4>
           <p>${esc(community.title)}</p>
-          <div class="sc-form-grid">
+          <div class="sc-form-grid sc-form-grid-2">
             <label>Name<input id="scCreateChannelName" placeholder="support"></label>
             <label>Category<input id="scCreateChannelCategory" value="Channels"></label>
-            <label>Topic<textarea id="scCreateChannelTopic" placeholder="Channel purpose"></textarea></label>
+            <label class="full">Topic<textarea id="scCreateChannelTopic" placeholder="Channel purpose"></textarea></label>
             <label>Channel Type
               <select id="scCreateChannelType">
-                <option value="public">Public</option>
+                <option value="public">Text</option>
                 <option value="private">Private</option>
                 <option value="announcement">Announcement</option>
                 <option value="forum">Forum</option>
+                <option value="voice">Voice Room</option>
+                <option value="video">Video Room</option>
+                <option value="stage">Stage Room</option>
               </select>
             </label>
             <label>Privacy
@@ -1269,6 +1662,52 @@ function renderCommunitySettingsModal(community) {
             </label>
             <label>Slow Mode (seconds)<input id="scCreateChannelSlow" type="number" min="0" value="0"></label>
           </div>
+
+          <section class="sc-room-fields" id="scCreateRoomFields" hidden>
+            <h5>Room Link and Presence</h5>
+            <div class="sc-form-grid sc-form-grid-2">
+              <label>Room provider
+                <select id="scCreateChannelRoomProvider">
+                  <option value="native_nostr" ${defaultRoomProvider === 'native_nostr' ? 'selected' : ''}>Nostr-native room metadata</option>
+                  <option value="nostrnests" ${defaultRoomProvider === 'nostrnests' ? 'selected' : ''}>NostrNests</option>
+                  <option value="hivetalk" ${defaultRoomProvider === 'hivetalk' ? 'selected' : ''}>HiveTalk</option>
+                  <option value="external" ${defaultRoomProvider === 'external' ? 'selected' : ''}>Custom external room</option>
+                </select>
+              </label>
+              <label>Provider room ID
+                <input id="scCreateChannelRoomId" placeholder="builders-lounge">
+                <small>Used for direct providers like HiveTalk.</small>
+              </label>
+              <label class="full">Direct join URL
+                <input id="scCreateChannelRoomUrl" placeholder="https://vanilla.hivetalk.org/join?room=builders-lounge">
+                <small>Paste a provider URL to send members straight into the room.</small>
+              </label>
+              <label class="full">Nostr room address (naddr)
+                <input id="scCreateChannelRoomNaddr" placeholder="naddr1...">
+                <small>Useful for NostrNests and other NIP-53 compatible rooms.</small>
+              </label>
+              <label>Room status
+                <select id="scCreateChannelRoomStatus">
+                  <option value="planned">Planned</option>
+                  <option value="live">Live</option>
+                  <option value="ended">Ended</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+              <label>Host pubkey
+                <input id="scCreateChannelRoomHost" value="${esc(community.ownerPubkey || '')}" placeholder="npub or hex pubkey">
+              </label>
+              <label>Starts at
+                <input id="scCreateChannelRoomStartsAt" type="datetime-local">
+              </label>
+              <label>Ends at
+                <input id="scCreateChannelRoomEndsAt" type="datetime-local">
+              </label>
+              <label class="full">Recording URL
+                <input id="scCreateChannelRoomRecordingUrl" placeholder="https://example.com/recording">
+              </label>
+            </div>
+          </section>
           <div class="sc-modal-foot">
             <button data-close="modal">Cancel</button>
             <button id="scCreateChannelSubmit">Create Channel</button>
@@ -1287,11 +1726,11 @@ function renderCommunitySettingsModal(community) {
           <div class="sc-hub-actions">
             <button class="sc-hub-card" id="scHubCreateBtn">
               <strong>Create Community</strong>
-              <small>Set up channels, permissions, moderators, and admins.</small>
+              <small>Set up text channels, voice/video rooms, permissions, moderators, and admins.</small>
             </button>
             <button class="sc-hub-card" id="scHubJoinBtn">
               <strong>Join Community</strong>
-              <small>Browse discoverable public communities and join instantly.</small>
+              <small>Browse discoverable public communities and join, request access, or use an invite link.</small>
             </button>
           </div>
           <div class="sc-modal-foot">
@@ -1302,7 +1741,7 @@ function renderCommunitySettingsModal(community) {
     `;
   }
 
-  function renderJoinCommunityModal(state, discoveryCommunities = []) {
+  function renderJoinCommunityModal(state, discoveryCommunities = [], routeState = parseCommunitiesRouteFromLocation()) {
     const joinedCommunityIds = new Set(state.joinedCommunityIds || []);
     const max = Math.max(ui.discoveryChunk, ui.discoveryLimit);
     const visible = (discoveryCommunities || []).slice(0, max);
@@ -1310,8 +1749,16 @@ function renderCommunitySettingsModal(community) {
 
     const cards = visible.map((entry) => {
       const members = resolveMemberCount(state, entry);
+      const joinAction = communityJoinAction(entry, state, routeState);
       const joined = joinedCommunityIds.has(entry.id);
       const media = normalizeAvatarUrl(entry.image || entry.banner || '');
+      const joinHint = joinAction.requested
+        ? 'Request pending'
+        : (joinAction.hasInvite
+          ? 'Invite link ready'
+          : (joinAction.mode === 'approval'
+            ? 'Approval required'
+            : (joinAction.mode === 'invite_only' ? 'Invite only' : 'Open join')));
       const mediaHtml = media
         ? `<span class="sc-community-card-banner has-image"><img src="${esc(media)}" alt="${esc(entry.title)} banner" loading="lazy" referrerpolicy="no-referrer"></span>`
         : `<span class="sc-community-card-banner">${esc(entry.icon || initials(entry.title))}</span>`;
@@ -1322,9 +1769,9 @@ function renderCommunitySettingsModal(community) {
           <span class="sc-community-card-main">
             <strong>${esc(entry.title)}</strong>
             <small>${esc(entry.description || 'No description yet.')}</small>
-            <i>${members} member${members === 1 ? '' : 's'}</i>
+            <i>${members} member${members === 1 ? '' : 's'} · ${esc(joinHint)}</i>
           </span>
-          <span class="sc-community-card-cta">${joined ? 'Open' : 'Join'}</span>
+          <span class="sc-community-card-cta">${esc(joinAction.label)}</span>
         </button>
       `;
     }).join('');
@@ -1333,7 +1780,7 @@ function renderCommunitySettingsModal(community) {
       <div class="sc-modal-ov" data-close="modal">
         <div class="sc-modal sc-modal-wide">
           <h4>Join Community</h4>
-          <p>Public communities discovered from relays. Scroll to load more.</p>
+          <p>Public communities discovered from relays. Open communities join instantly, approval communities save a request, and invite-only communities need a direct invite link.</p>
           <div class="sc-discovery-grid-scroll${hasMore ? ' has-bottom' : ''}" id="scDiscoveryScroll" data-total="${(discoveryCommunities || []).length}">
             <div class="sc-discovery-grid">${cards || '<div class="sc-empty">No public communities available yet.</div>'}</div>
             ${hasMore ? '<div class="sc-discovery-sentinel" id="scDiscoverySentinel" aria-hidden="true"></div>' : ''}
@@ -1344,7 +1791,7 @@ function renderCommunitySettingsModal(community) {
     `;
   }
 
-  function renderModal(key, state, community, channel, members, profiles, storeRef, suggestions, publicCommunities) {
+  function renderModal(key, state, community, channel, members, profiles, storeRef, suggestions, publicCommunities, routeState) {
     if (key === 'communityHub') {
       return renderCommunityHubModal();
     }
@@ -1367,12 +1814,13 @@ function renderCommunitySettingsModal(community) {
           .map((entry) => String(entry.category || 'Channels').trim() || 'Channels')
       )
         .sort((a, b) => String(a).localeCompare(String(b)));
+      const roomJoinPreview = roomJoinUrl(channel, community, displayNameForProfile(store.profile(store.getState().currentUserPubkey), store.getState().currentUserPubkey));
       return `
         <div class="sc-modal-ov" data-close="modal">
-          <div class="sc-modal">
+          <div class="sc-modal sc-modal-wide">
             <h4>Channel Settings</h4>
             <p>#${esc(channel.name)}</p>
-            <div class="sc-form-grid">
+            <div class="sc-form-grid sc-form-grid-2">
               <label>Name<input id="scChannelName" value="${esc(channel.name)}"></label>
               <label>Category
                 <input id="scChannelCategory" list="scChannelCategoryList" value="${esc(channel.category || 'Channels')}">
@@ -1380,7 +1828,7 @@ function renderCommunitySettingsModal(community) {
               </label>
               <datalist id="scChannelCategoryList">${categoryOptions.map((item) => `<option value="${esc(item)}"></option>`).join('')}</datalist>
               <label class="sc-inline-check full"><input id="scChannelRenameCategoryAll" type="checkbox">Rename this category for all channels in this community</label>
-              <label>Topic<textarea id="scChannelTopic">${esc(channel.topic || '')}</textarea></label>
+              <label class="full">Topic<textarea id="scChannelTopic">${esc(channel.topic || '')}</textarea></label>
               <label>Privacy
                 <select id="scChannelPrivacy">
                   <option value="public" ${channel.privacyLevel === 'public' ? 'selected' : ''}>Public</option>
@@ -1389,14 +1837,60 @@ function renderCommunitySettingsModal(community) {
               </label>
               <label>Type
                 <select id="scChannelType">
-                  <option value="public" ${channel.channelType === 'public' ? 'selected' : ''}>Public</option>
+                  <option value="public" ${channel.channelType === 'public' ? 'selected' : ''}>Text</option>
                   <option value="private" ${channel.channelType === 'private' ? 'selected' : ''}>Private</option>
                   <option value="announcement" ${channel.channelType === 'announcement' ? 'selected' : ''}>Announcement</option>
                   <option value="forum" ${channel.channelType === 'forum' ? 'selected' : ''}>Forum</option>
+                  <option value="voice" ${channel.channelType === 'voice' ? 'selected' : ''}>Voice Room</option>
+                  <option value="video" ${channel.channelType === 'video' ? 'selected' : ''}>Video Room</option>
+                  <option value="stage" ${channel.channelType === 'stage' ? 'selected' : ''}>Stage Room</option>
                 </select>
               </label>
               <label>Slow mode (seconds)<input id="scChannelSlow" type="number" min="0" value="${esc(channel.slowModeSec || 0)}"></label>
             </div>
+            <section class="sc-room-fields" id="scChannelRoomFields" ${isRoomChannel(channel) ? '' : 'hidden'}>
+              <h5>Room Link and Presence</h5>
+              <div class="sc-form-grid sc-form-grid-2">
+                <label>Room provider
+                  <select id="scChannelRoomProvider">
+                    <option value="native_nostr" ${channel.roomProvider === 'native_nostr' ? 'selected' : ''}>Nostr-native room metadata</option>
+                    <option value="nostrnests" ${channel.roomProvider === 'nostrnests' ? 'selected' : ''}>NostrNests</option>
+                    <option value="hivetalk" ${channel.roomProvider === 'hivetalk' ? 'selected' : ''}>HiveTalk</option>
+                    <option value="external" ${channel.roomProvider === 'external' ? 'selected' : ''}>Custom external room</option>
+                  </select>
+                </label>
+                <label>Provider room ID
+                  <input id="scChannelRoomId" value="${esc(channel.roomId || '')}" placeholder="builders-lounge">
+                </label>
+                <label class="full">Direct join URL
+                  <input id="scChannelRoomUrl" value="${esc(channel.roomUrl || '')}" placeholder="https://vanilla.hivetalk.org/join?room=builders-lounge">
+                </label>
+                <label class="full">Nostr room address (naddr)
+                  <input id="scChannelRoomNaddr" value="${esc(channel.roomNaddr || '')}" placeholder="naddr1...">
+                </label>
+                <label>Room status
+                  <select id="scChannelRoomStatus">
+                    <option value="planned" ${channel.roomStatus === 'planned' ? 'selected' : ''}>Planned</option>
+                    <option value="live" ${channel.roomStatus === 'live' ? 'selected' : ''}>Live</option>
+                    <option value="ended" ${channel.roomStatus === 'ended' ? 'selected' : ''}>Ended</option>
+                    <option value="inactive" ${channel.roomStatus === 'inactive' ? 'selected' : ''}>Inactive</option>
+                  </select>
+                </label>
+                <label>Host pubkey
+                  <input id="scChannelRoomHost" value="${esc(channel.roomHostPubkey || '')}" placeholder="npub or hex pubkey">
+                </label>
+                <label>Starts at
+                  <input id="scChannelRoomStartsAt" type="datetime-local" value="${esc(datetimeLocalValue(channel.roomStartsAt || 0))}">
+                </label>
+                <label>Ends at
+                  <input id="scChannelRoomEndsAt" type="datetime-local" value="${esc(datetimeLocalValue(channel.roomEndsAt || 0))}">
+                </label>
+                <label class="full">Recording URL
+                  <input id="scChannelRoomRecordingUrl" value="${esc(channel.roomRecordingUrl || '')}" placeholder="https://example.com/recording">
+                </label>
+                ${roomJoinPreview ? `<div class="sc-room-preview full"><strong>Preview join link</strong><code>${esc(roomJoinPreview)}</code></div>` : ''}
+              </div>
+            </section>
             <div class="sc-modal-foot">
               <button data-close="modal">Cancel</button>
               <button id="scSaveChannelSettingsBtn">Save Channel</button>
@@ -1424,7 +1918,7 @@ function renderCommunitySettingsModal(community) {
     }
 
     if (key === 'joinCommunity' || key === 'discovery') {
-      return renderJoinCommunityModal(state, publicCommunities || suggestions || []);
+      return renderJoinCommunityModal(state, publicCommunities || suggestions || [], routeState);
     }
 
     if (key === 'notifications') {
@@ -1484,7 +1978,7 @@ function renderCommunitySettingsModal(community) {
       <div class="sc-context" style="left:${Number(x)}px;top:${Number(y)}px" data-context-menu>
         <button data-context-action="reply" data-message="${esc(messageId)}">Reply</button>
         <button data-context-action="pin" data-message="${esc(messageId)}">Toggle Pin</button>
-        <button data-context-action="report" data-message="${esc(messageId)}">Report (NIP-56)</button>
+        <button data-context-action="copy-id" data-message="${esc(messageId)}">Copy Event ID</button>
       </div>
     `;
   }
@@ -1600,6 +2094,12 @@ function renderCommunitySettingsModal(community) {
     bindInputField('#scCreateIncludeAnnouncements', 'includeAnnouncements', 'checkbox');
     bindInputField('#scCreateIncludeForum', 'includeForum', 'checkbox');
     bindInputField('#scCreateIncludeStaff', 'includeStaff', 'checkbox');
+    bindInputField('#scCreateIncludeVoiceLounge', 'includeVoiceLounge', 'checkbox');
+    bindInputField('#scCreateIncludeVideoRoom', 'includeVideoRoom', 'checkbox');
+    bindInputField('#scCreateIncludeStageRoom', 'includeStageRoom', 'checkbox');
+    bindInputField('#scCreateDefaultRoomProvider', 'defaultRoomProvider', 'change');
+    bindInputField('#scCreateNostrNestsUrl', 'nostrNestsUrl');
+    bindInputField('#scCreateHiveTalkUrl', 'hiveTalkUrl');
 
     const imageInput = root.querySelector('#scCreateImage');
     if (imageInput) {
@@ -1653,6 +2153,14 @@ function renderCommunitySettingsModal(community) {
     bindRoleContainer('#scCreateAdminsSearch');
   }
 
+  function syncRoomFieldsVisibility(typeSelector, fieldsSelector) {
+    const typeField = root.querySelector(typeSelector);
+    const fields = root.querySelector(fieldsSelector);
+    if (!fields) return;
+    const isVisible = !!(typeField && isRoomChannel({ channelType: typeField.value }));
+    fields.hidden = !isVisible;
+  }
+
   function bindHandlers() {
     disconnectDiscoveryObserver();
 
@@ -1678,6 +2186,72 @@ function renderCommunitySettingsModal(community) {
       });
     });
 
+    root.querySelectorAll('[data-profile-action]').forEach((el) => {
+      el.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const action = el.getAttribute('data-profile-action') || '';
+        const pubkey = el.getAttribute('data-member') || '';
+        const ctx = getAppContext();
+        if (!pubkey || !ctx) return;
+        try {
+          if (action === 'view' && typeof ctx.showProfileByPubkey === 'function') {
+            ctx.showProfileByPubkey(pubkey);
+            ui.selectedMember = '';
+            return;
+          }
+          if (action === 'message' && typeof ctx.openMessagesWithPubkey === 'function') {
+            await ctx.openMessagesWithPubkey(pubkey, { routeMode: 'push' });
+            ui.selectedMember = '';
+            return;
+          }
+          if (action === 'follow' && typeof ctx.toggleFollowPubkey === 'function') {
+            const next = await ctx.toggleFollowPubkey(pubkey, { silentErrors: false });
+            if (next === true) setStatus('Now following this profile.');
+            else if (next === false) setStatus('Removed follow from this profile.');
+            ui.selectedMember = '';
+            render();
+            return;
+          }
+          if (action === 'zap' && typeof ctx.zapPubkey === 'function') {
+            await ctx.zapPubkey(pubkey, { amountMsats: 21000 });
+            setStatus('Opened wallet to zap this profile.');
+            ui.selectedMember = '';
+          }
+        } catch (err) {
+          setStatus(err && err.message ? err.message : 'Could not complete that profile action.');
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-room-action]').forEach((el) => {
+      el.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const action = el.getAttribute('data-room-action') || '';
+        if (action === 'join') {
+          const url = el.getAttribute('data-room-url') || '';
+          if (!url) {
+            setStatus('Add a room link or Nostr room address in channel settings first.');
+            return;
+          }
+          window.open(url, '_blank', 'noopener');
+          return;
+        }
+        if (action === 'copy') {
+          const url = el.getAttribute('data-room-url') || '';
+          if (!url) return;
+          const copied = await copyTextToClipboard(url);
+          setStatus(copied ? 'Room link copied.' : 'Could not copy the room link.');
+          return;
+        }
+        if (action === 'copy-naddr') {
+          const naddr = el.getAttribute('data-room-naddr') || '';
+          if (!naddr) return;
+          const copied = await copyTextToClipboard(naddr);
+          setStatus(copied ? 'Room naddr copied.' : 'Could not copy the room naddr.');
+        }
+      });
+    });
+
     root.querySelectorAll('[data-close="member"]').forEach((el) => {
       el.addEventListener('click', () => {
         ui.selectedMember = '';
@@ -1695,6 +2269,12 @@ function renderCommunitySettingsModal(community) {
 
     if (ui.openModal === 'createCommunity') {
       bindCreateCommunityForm();
+    }
+    if (ui.openModal === 'createChannel') {
+      syncRoomFieldsVisibility('#scCreateChannelType', '#scCreateRoomFields');
+    }
+    if (ui.openModal === 'channelSettings') {
+      syncRoomFieldsVisibility('#scChannelType', '#scChannelRoomFields');
     }
 
     const search = root.querySelector('#scSearchInput');
@@ -1936,7 +2516,7 @@ function renderCommunitySettingsModal(community) {
     });
 
     root.querySelectorAll('[data-context-action]').forEach((el) => {
-      el.addEventListener('click', () => {
+      el.addEventListener('click', async () => {
         const action = el.getAttribute('data-context-action');
         const messageId = el.getAttribute('data-message');
         const channelId = store.getState().activeChannelId;
@@ -1950,7 +2530,10 @@ function renderCommunitySettingsModal(community) {
           ui.replyTargetByChannel.set(channelId, messageId || '');
           requestRender();
         }
-        if (action === 'report') setStatus('Report flow queued (NIP-56).');
+        if (action === 'copy-id') {
+          const copied = await copyTextToClipboard(messageId);
+          setStatus(copied ? 'Event ID copied.' : 'Could not copy the event ID.');
+        }
         ui.contextMessageId = '';
         render();
       });
@@ -2033,14 +2616,52 @@ function renderCommunitySettingsModal(community) {
     const pinnedBtn = root.querySelector('#scPinnedBtn');
     if (pinnedBtn) pinnedBtn.addEventListener('click', () => { ui.openModal = 'pinned'; render(); });
 
+    const joinRoomBtn = root.querySelector('#scJoinRoomBtn');
+    if (joinRoomBtn) {
+      joinRoomBtn.addEventListener('click', () => {
+        const state = store.getState();
+        const activeChannel = store.getChannel(state.activeChannelId);
+        const activeCommunity = store.getCommunity(state.activeCommunityId);
+        const viewer = state.currentUserPubkey ? store.profile(state.currentUserPubkey) : null;
+        const joinUrl = roomJoinUrl(
+          activeChannel,
+          activeCommunity,
+          viewer ? displayNameForProfile(viewer, state.currentUserPubkey) : ''
+        );
+        if (!joinUrl) {
+          setStatus('Add a room link or Nostr room address in channel settings first.');
+          return;
+        }
+        window.open(joinUrl, '_blank', 'noopener');
+      });
+    }
+
     const notifBtn = root.querySelector('#scNotifBtn');
     if (notifBtn) notifBtn.addEventListener('click', () => { ui.openModal = 'notifications'; render(); });
+
+    const dmHintBtn = root.querySelector('#scDmHintBtn');
+    if (dmHintBtn) {
+      dmHintBtn.addEventListener('click', () => {
+        const ctx = getAppContext();
+        if (ctx && typeof ctx.showMessages === 'function') {
+          ctx.showMessages();
+          return;
+        }
+        setStatus('Encrypted community DM handoff is not wired yet. Use Messages for one-to-one chats right now.');
+      });
+    }
 
     const inviteBtn = root.querySelector('#scInviteBtn');
     if (inviteBtn) inviteBtn.addEventListener('click', () => { ui.openModal = 'invites'; render(); });
 
     const createChannelBtn = root.querySelector('#scCreateChannelBtn');
     if (createChannelBtn) createChannelBtn.addEventListener('click', () => { ui.openModal = 'createChannel'; render(); });
+
+    const createChannelType = root.querySelector('#scCreateChannelType');
+    if (createChannelType) createChannelType.addEventListener('change', () => syncRoomFieldsVisibility('#scCreateChannelType', '#scCreateRoomFields'));
+
+    const channelTypeField = root.querySelector('#scChannelType');
+    if (channelTypeField) channelTypeField.addEventListener('change', () => syncRoomFieldsVisibility('#scChannelType', '#scChannelRoomFields'));
 
     const generateInviteBtn = root.querySelector('#scGenerateInviteBtn');
     if (generateInviteBtn) {
@@ -2055,17 +2676,26 @@ function renderCommunitySettingsModal(community) {
     if (joinLeaveBtn) {
       joinLeaveBtn.addEventListener('click', async () => {
         const state = store.getState();
+        const community = store.getCommunity(state.activeCommunityId);
+        if (!community) return;
         const joined = new Set(state.joinedCommunityIds);
         if (joined.has(state.activeCommunityId)) {
           ui.openModal = 'communitySettings';
           render();
           return;
         }
-        store.joinCommunity(state.activeCommunityId);
-        const membershipPublish = await publishMembershipList();
-        if (!membershipPublish.ok) {
-          setStatus('Joined locally, but could not sync membership list to relays.');
+        const routeState = parseCommunitiesRouteFromLocation();
+        const joinResult = store.joinCommunity(state.activeCommunityId, {
+          source: 'active_join',
+          acceptedInviteToken: routeState.inviteToken || ''
+        });
+        if (!joinResult.ok || joinResult.requested) {
+          setStatus(joinResultMessage(joinResult, community));
+          render();
+          return;
         }
+        const membershipResult = await syncMembershipAfterJoin(community);
+        if (membershipResult.message) setStatus(membershipResult.message);
       });
     }
 
@@ -2074,14 +2704,26 @@ function renderCommunitySettingsModal(community) {
         const communityId = el.getAttribute('data-discovery-community');
         if (!communityId) return;
         const alreadyJoined = el.getAttribute('data-discovery-joined') === '1';
-        store.setActiveCommunity(communityId);
+        const community = store.getCommunity(communityId);
+        if (!community) return;
         if (!alreadyJoined) {
-          store.joinCommunity(communityId);
-          const membershipPublish = await publishMembershipList();
-          if (!membershipPublish.ok) {
-            setStatus('Joined locally, but could not sync membership list to relays.');
+          const routeState = parseCommunitiesRouteFromLocation();
+          const joinResult = store.joinCommunity(communityId, {
+            source: 'discovery_join',
+            acceptedInviteToken: routeState.inviteToken || ''
+          });
+          if (!joinResult.ok || joinResult.requested) {
+            setStatus(joinResultMessage(joinResult, community));
+            if (joinResult.requested) {
+              ui.openModal = '';
+              render();
+            }
+            return;
           }
+          const membershipResult = await syncMembershipAfterJoin(community);
+          if (membershipResult.message) setStatus(membershipResult.message);
         }
+        store.setActiveCommunity(communityId);
         ui.openModal = '';
         render();
       });
@@ -2148,7 +2790,13 @@ function renderCommunitySettingsModal(community) {
           discoverable: !!form.discoverable,
           includeAnnouncements: !!form.includeAnnouncements,
           includeForum: !!form.includeForum,
-          includeStaff: !!form.includeStaff
+          includeStaff: !!form.includeStaff,
+          includeVoiceLounge: !!form.includeVoiceLounge,
+          includeVideoRoom: !!form.includeVideoRoom,
+          includeStageRoom: !!form.includeStageRoom,
+          defaultRoomProvider: form.defaultRoomProvider || 'native_nostr',
+          nostrNestsUrl: form.nostrNestsUrl || 'https://nostrnests.com',
+          hiveTalkUrl: form.hiveTalkUrl || 'https://vanilla.hivetalk.org'
         };
 
         const created = store.createCommunity(payload);
@@ -2184,7 +2832,20 @@ function renderCommunitySettingsModal(community) {
               topic: String(channel.topic || ''),
               channelType: String(channel.channelType || 'public'),
               privacyLevel: String(channel.privacyLevel || 'public'),
-              slowModeSec: Math.max(0, Number(channel.slowModeSec || 0))
+              slowModeSec: Math.max(0, Number(channel.slowModeSec || 0)),
+              roomId: String(channel.roomId || ''),
+              roomProvider: String(channel.roomProvider || ''),
+              roomUrl: String(channel.roomUrl || ''),
+              roomNaddr: String(channel.roomNaddr || ''),
+              roomStatus: String(channel.roomStatus || ''),
+              roomHostPubkey: String(channel.roomHostPubkey || ''),
+              roomStartsAt: Number(channel.roomStartsAt || 0),
+              roomEndsAt: Number(channel.roomEndsAt || 0),
+              roomCurrentParticipants: Number(channel.roomCurrentParticipants || 0),
+              roomTotalParticipants: Number(channel.roomTotalParticipants || 0),
+              roomRecordingUrl: String(channel.roomRecordingUrl || ''),
+              roomSpeakers: Array.isArray(channel.roomSpeakers) ? channel.roomSpeakers.slice() : [],
+              roomParticipants: Array.isArray(channel.roomParticipants) ? channel.roomParticipants.slice() : []
             })).filter((channel) => channel.id && channel.name);
 
             const publishedCommunity = await nostrBridge.publishCommunityCreate({
@@ -2247,6 +2908,12 @@ function renderCommunitySettingsModal(community) {
     if (settingsTopicsInput) settingsTopicsInput.addEventListener('input', () => { syncCommunitySettingsDraftFromDom(); });
     const settingsRelaysInput = root.querySelector('#scSettingsRelays');
     if (settingsRelaysInput) settingsRelaysInput.addEventListener('input', () => { syncCommunitySettingsDraftFromDom(); });
+    const settingsDefaultRoomProvider = root.querySelector('#scSettingsDefaultRoomProvider');
+    if (settingsDefaultRoomProvider) settingsDefaultRoomProvider.addEventListener('change', () => { syncCommunitySettingsDraftFromDom(); });
+    const settingsNostrNestsUrl = root.querySelector('#scSettingsNostrNestsUrl');
+    if (settingsNostrNestsUrl) settingsNostrNestsUrl.addEventListener('input', () => { syncCommunitySettingsDraftFromDom(); });
+    const settingsHiveTalkUrl = root.querySelector('#scSettingsHiveTalkUrl');
+    if (settingsHiveTalkUrl) settingsHiveTalkUrl.addEventListener('input', () => { syncCommunitySettingsDraftFromDom(); });
 
     if (saveSettingsBtn) {
       saveSettingsBtn.addEventListener('click', async () => {
@@ -2271,7 +2938,10 @@ function renderCommunitySettingsModal(community) {
           discoverable: !!draft.discoverable,
           rules: parseLines(draft.rules || ''),
           topics: parseCsv(draft.topics || ''),
-          allowedRelays: parseCsv(draft.allowedRelays || '')
+          allowedRelays: parseCsv(draft.allowedRelays || ''),
+          defaultRoomProvider: draft.defaultRoomProvider || community.defaultRoomProvider || 'native_nostr',
+          nostrNestsUrl: draft.nostrNestsUrl || community.nostrNestsUrl || 'https://nostrnests.com',
+          hiveTalkUrl: draft.hiveTalkUrl || community.hiveTalkUrl || 'https://vanilla.hivetalk.org'
         };
 
         const updated = store.updateCommunity(community.id, patch);
@@ -2373,7 +3043,16 @@ function renderCommunitySettingsModal(community) {
           topic: (root.querySelector('#scCreateChannelTopic') || {}).value || '',
           channelType: (root.querySelector('#scCreateChannelType') || {}).value || 'public',
           privacyLevel: (root.querySelector('#scCreateChannelPrivacy') || {}).value || 'public',
-          slowModeSec: Number((root.querySelector('#scCreateChannelSlow') || {}).value || 0)
+          slowModeSec: Number((root.querySelector('#scCreateChannelSlow') || {}).value || 0),
+          roomProvider: (root.querySelector('#scCreateChannelRoomProvider') || {}).value || 'native_nostr',
+          roomId: (root.querySelector('#scCreateChannelRoomId') || {}).value || '',
+          roomUrl: (root.querySelector('#scCreateChannelRoomUrl') || {}).value || '',
+          roomNaddr: (root.querySelector('#scCreateChannelRoomNaddr') || {}).value || '',
+          roomStatus: (root.querySelector('#scCreateChannelRoomStatus') || {}).value || 'planned',
+          roomHostPubkey: (root.querySelector('#scCreateChannelRoomHost') || {}).value || '',
+          roomStartsAt: parseDateTimeLocalValue((root.querySelector('#scCreateChannelRoomStartsAt') || {}).value || ''),
+          roomEndsAt: parseDateTimeLocalValue((root.querySelector('#scCreateChannelRoomEndsAt') || {}).value || ''),
+          roomRecordingUrl: (root.querySelector('#scCreateChannelRoomRecordingUrl') || {}).value || ''
         };
 
         const created = store.createChannel(payload);
@@ -2393,7 +3072,16 @@ function renderCommunitySettingsModal(community) {
               topic: created.channel.topic,
               channelType: created.channel.channelType,
               privacyLevel: created.channel.privacyLevel,
-              slowModeSec: created.channel.slowModeSec
+              slowModeSec: created.channel.slowModeSec,
+              roomProvider: created.channel.roomProvider,
+              roomId: created.channel.roomId,
+              roomUrl: created.channel.roomUrl,
+              roomNaddr: created.channel.roomNaddr,
+              roomStatus: created.channel.roomStatus,
+              roomHostPubkey: created.channel.roomHostPubkey,
+              roomStartsAt: created.channel.roomStartsAt,
+              roomEndsAt: created.channel.roomEndsAt,
+              roomRecordingUrl: created.channel.roomRecordingUrl
             });
           } catch (_) {}
         }
@@ -2409,8 +3097,11 @@ function renderCommunitySettingsModal(community) {
       saveChannelBtn.addEventListener('click', async () => {
         const channel = store.getChannel();
         if (!channel) return;
+        const channelCommunity = store.getCommunity(channel.communityId);
         const previousCategory = String(channel.category || 'Channels').trim() || 'Channels';
         const renameCategoryAll = !!((root.querySelector('#scChannelRenameCategoryAll') || {}).checked);
+        const roomStartsValue = (root.querySelector('#scChannelRoomStartsAt') || {}).value || '';
+        const roomEndsValue = (root.querySelector('#scChannelRoomEndsAt') || {}).value || '';
 
         const patch = {
           name: (root.querySelector('#scChannelName') || {}).value || channel.name,
@@ -2418,7 +3109,16 @@ function renderCommunitySettingsModal(community) {
           topic: (root.querySelector('#scChannelTopic') || {}).value || channel.topic,
           privacyLevel: (root.querySelector('#scChannelPrivacy') || {}).value || channel.privacyLevel,
           channelType: (root.querySelector('#scChannelType') || {}).value || channel.channelType,
-          slowModeSec: Number((root.querySelector('#scChannelSlow') || {}).value || channel.slowModeSec || 0)
+          slowModeSec: Number((root.querySelector('#scChannelSlow') || {}).value || channel.slowModeSec || 0),
+          roomProvider: (root.querySelector('#scChannelRoomProvider') || {}).value || channel.roomProvider || (channelCommunity && channelCommunity.defaultRoomProvider) || 'native_nostr',
+          roomId: (root.querySelector('#scChannelRoomId') || {}).value || channel.roomId || '',
+          roomUrl: (root.querySelector('#scChannelRoomUrl') || {}).value || channel.roomUrl || '',
+          roomNaddr: (root.querySelector('#scChannelRoomNaddr') || {}).value || channel.roomNaddr || '',
+          roomStatus: (root.querySelector('#scChannelRoomStatus') || {}).value || channel.roomStatus || 'planned',
+          roomHostPubkey: (root.querySelector('#scChannelRoomHost') || {}).value || channel.roomHostPubkey || '',
+          roomStartsAt: roomStartsValue ? parseDateTimeLocalValue(roomStartsValue) : 0,
+          roomEndsAt: roomEndsValue ? parseDateTimeLocalValue(roomEndsValue) : 0,
+          roomRecordingUrl: (root.querySelector('#scChannelRoomRecordingUrl') || {}).value || channel.roomRecordingUrl || ''
         };
 
         const updated = store.updateChannel(channel.id, patch);
@@ -2457,7 +3157,16 @@ function renderCommunitySettingsModal(community) {
                 topic: entry.topic,
                 channelType: entry.channelType,
                 privacyLevel: entry.privacyLevel,
-                slowModeSec: entry.slowModeSec
+                slowModeSec: entry.slowModeSec,
+                roomProvider: entry.roomProvider,
+                roomId: entry.roomId,
+                roomUrl: entry.roomUrl,
+                roomNaddr: entry.roomNaddr,
+                roomStatus: entry.roomStatus,
+                roomHostPubkey: entry.roomHostPubkey,
+                roomStartsAt: entry.roomStartsAt,
+                roomEndsAt: entry.roomEndsAt,
+                roomRecordingUrl: entry.roomRecordingUrl
               });
             }
           } catch (_) {}
@@ -2503,7 +3212,10 @@ function renderCommunitySettingsModal(community) {
   }
 
   function mount() {
-    if (mounted) return;
+    if (mounted) {
+      render();
+      return;
+    }
     mounted = true;
     render();
     dispose = store.subscribe((evt) => {
