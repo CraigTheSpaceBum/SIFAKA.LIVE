@@ -148,7 +148,11 @@
   const LOCAL_NSEC_STORAGE_KEY = 'nostrflux_local_nsec';
   const REMOTE_SIGNER_STORAGE_KEY = 'nostrflux_remote_signer_v1';
   const NOSTR_TOOLS_SRC = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
-  const HLS_JS_SRC = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
+  const HLS_JS_SOURCES = [
+    'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
+    'https://unpkg.com/hls.js@1.5.17/dist/hls.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js'
+  ];
   const NOSTR_CONNECT_KIND = 24133;
   const NWC_INFO_KIND = 13194;
   const NWC_REQUEST_KIND = 23194;
@@ -386,6 +390,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     liveGridObserver: null,
     GRID_PAGE_SIZE: 20,
     scriptPromises: {},
+    mediaUrlStatusByKey: new Map(),
+    failedMediaUrls: new Set(),
     streamZapTotals: new Map(),
     streamRecentZapsByAddress: new Map(),
     streamZapEventIdsByAddress: new Map(),
@@ -655,6 +661,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.scriptPromises[key] = new Promise((resolve, reject) => {
       const existing = qsa(`script[src="${src}"]`)[0];
+      const fail = (err, scriptEl = null) => {
+        if (scriptEl && scriptEl.parentNode) {
+          try { scriptEl.parentNode.removeChild(scriptEl); } catch (_) {}
+        }
+        reject(err);
+      };
       if (existing) {
         const started = Date.now();
         const timer = setInterval(() => {
@@ -663,7 +675,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             resolve(window[globalName]);
           } else if (Date.now() - started > timeoutMs) {
             clearInterval(timer);
-            reject(new Error(`Timed out loading ${src}`));
+            fail(new Error(`Timed out loading ${src}`), existing);
           }
         }, 100);
         return;
@@ -672,15 +684,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const s = document.createElement('script');
       s.src = src;
       s.async = true;
+      s.crossOrigin = 'anonymous';
+      s.referrerPolicy = 'no-referrer';
       s.onload = () => {
         if (globalName && !window[globalName]) {
-          reject(new Error(`${globalName} did not load from ${src}`));
+          fail(new Error(`${globalName} did not load from ${src}`), s);
           return;
         }
         resolve(globalName ? window[globalName] : true);
       };
-      s.onerror = () => reject(new Error(`Failed to load ${src}`));
+      s.onerror = () => fail(new Error(`Failed to load ${src}`), s);
       document.head.appendChild(s);
+    });
+
+    state.scriptPromises[key] = state.scriptPromises[key].catch((err) => {
+      delete state.scriptPromises[key];
+      throw err;
     });
 
     return state.scriptPromises[key];
@@ -693,7 +712,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   async function ensureHlsJs() {
     if (window.Hls) return window.Hls;
-    return loadExternalScript(HLS_JS_SRC, 'Hls');
+    let lastErr = null;
+    for (let i = 0; i < HLS_JS_SOURCES.length; i += 1) {
+      const src = String(HLS_JS_SOURCES[i] || '').trim();
+      if (!src) continue;
+      try {
+        return await loadExternalScript(src, 'Hls');
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (lastErr) throw lastErr;
+    return null;
   }
 
   function hexToBytes(hex) {
@@ -2189,6 +2219,32 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       .trim();
   }
 
+  function mediaUrlCacheKey(value) {
+    const raw = sanitizeMediaUrl(value);
+    if (!raw) return '';
+    try {
+      const parsed = new URL(raw, (typeof window !== 'undefined' && window.location && window.location.href) ? window.location.href : 'https://sifaka.live/');
+      const protocol = String(parsed.protocol || '').toLowerCase();
+      if (protocol === 'http:' || protocol === 'https:') {
+        return `${protocol}//${String(parsed.host || '').toLowerCase()}${parsed.pathname || ''}`;
+      }
+    } catch (_) {}
+    return raw;
+  }
+
+  function shouldSkipHotlinkBlockedAvatar(url) {
+    const raw = sanitizeMediaUrl(url);
+    if (!raw) return false;
+    try {
+      const parsed = new URL(raw, (typeof window !== 'undefined' && window.location && window.location.href) ? window.location.href : 'https://sifaka.live/');
+      const host = String(parsed.hostname || '').toLowerCase();
+      if (!host) return false;
+      if (/(\.|^)scontent\./.test(host) && /\.fbcdn\.net$/.test(host)) return true;
+      if (host.endsWith('.fbsbx.com') || host === 'fbsbx.com') return true;
+    } catch (_) {}
+    return false;
+  }
+
   function isLikelyUrl(v) {
     const clean = sanitizeMediaUrl(v);
     return !!clean && /^https?:\/\//i.test(clean);
@@ -2233,10 +2289,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function setAvatarEl(el, pictureValue, fallbackText) {
     if (!el) return;
     const raw = sanitizeMediaUrl(pictureValue);
+    const cacheKey = mediaUrlCacheKey(raw);
     el.innerHTML = '';
+
+    if (raw && shouldSkipHotlinkBlockedAvatar(raw)) {
+      if (cacheKey && state.mediaUrlStatusByKey) state.mediaUrlStatusByKey.set(cacheKey, 'failed');
+      if (state.failedMediaUrls) state.failedMediaUrls.add(raw);
+      el.textContent = fallbackText;
+      return;
+    }
+
+    const mediaStatus = cacheKey && state.mediaUrlStatusByKey ? state.mediaUrlStatusByKey.get(cacheKey) : '';
+    if ((raw && state.failedMediaUrls && state.failedMediaUrls.has(raw)) || mediaStatus === 'failed' || mediaStatus === 'pending') {
+      el.textContent = fallbackText;
+      return;
+    }
 
     if (isLikelyUrl(raw)) {
       const img = document.createElement('img');
+      if (cacheKey && state.mediaUrlStatusByKey) state.mediaUrlStatusByKey.set(cacheKey, 'pending');
       img.src = raw;
       img.alt = 'avatar';
       img.loading = 'lazy';
@@ -2245,7 +2316,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       img.style.width = '100%';
       img.style.height = '100%';
       img.style.objectFit = 'cover';
-      img.onerror = () => { el.textContent = fallbackText; };
+      img.onload = () => {
+        if (cacheKey && state.mediaUrlStatusByKey) state.mediaUrlStatusByKey.set(cacheKey, 'loaded');
+      };
+      img.onerror = () => {
+        if (cacheKey && state.mediaUrlStatusByKey) state.mediaUrlStatusByKey.set(cacheKey, 'failed');
+        if (state.failedMediaUrls) state.failedMediaUrls.add(raw);
+        el.textContent = fallbackText;
+      };
       el.appendChild(img);
       return;
     }
@@ -4302,7 +4380,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function refreshNip05DependentUi(pubkey) {
     const normalized = normalizePubkeyHex(pubkey);
     if (!normalized) return;
-    renderLiveGrid();
+    if (isHomeViewActive()) {
+      renderLiveGrid();
+    }
 
     const selected = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
     if (selected) {
@@ -4400,6 +4480,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const key = normalizePubkeyHex(pubkey);
     const nip05 = normalizeNip05Value(nip05Input);
     if (!key) return false;
+    if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
+      return false;
+    }
     if (!nip05) {
       const prev = state.nip05VerificationByPubkey.get(key);
       state.nip05VerificationByPubkey.delete(key);
@@ -12158,8 +12241,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const video = document.createElement('video');
-    // Start muted so browser allows autoplay, then unmute immediately
+    // Keep the hero player muted unless the user has already interacted.
     video.muted = true;
+    video.defaultMuted = true;
     video.autoplay = true;
     video.playsInline = true;
     video.preload = 'auto';
@@ -12170,13 +12254,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let heroNetworkRecoveries = 0;
     let heroMediaRecoveries = 0;
 
-    // On media loaded / playing -> unmute for audio
+    // Once ready, keep autoplay stable and only restore audio after user activation.
     const onCanPlay = () => {
       if (token !== state.heroPlaybackToken) return;
       setActiveHeroViewerAddress(stream.address);
       markStreamPlaybackOnline(stream.address);
-      video.muted = false; // restore audio
-      video.volume = 0.8;
+      const hasUserActivation = !!(navigator.userActivation && navigator.userActivation.hasBeenActive);
+      if (hasUserActivation) {
+        video.muted = false;
+        video.defaultMuted = false;
+        video.volume = 0.8;
+        video.play().catch(() => {
+          video.muted = true;
+          video.defaultMuted = true;
+        });
+      }
       if (ovEl) ovEl.style.display = 'none';
     };
     video.addEventListener('canplay', onCanPlay, { once: true });
@@ -12606,6 +12698,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let lastProgressAt = Date.now();
     let lastPlaybackTime = 0;
     let recoveryInFlight = false;
+    let mediaErrorCount = 0;
+    let lastMediaErrorAt = 0;
+    let mediaErrorRetryTimerId = null;
     const markProgress = () => {
       lastProgressAt = Date.now();
       lastPlaybackTime = Number(video.currentTime || 0);
@@ -12649,6 +12744,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         clearInterval(stallWatchdogId);
         stallWatchdogId = null;
       }
+      if (mediaErrorRetryTimerId) {
+        clearTimeout(mediaErrorRetryTimerId);
+        mediaErrorRetryTimerId = null;
+      }
       if (opts && opts.markOffline && status !== 'ended') markStreamPlaybackOffline(address);
       clearPlayback();
       renderPlaybackFallback(message, url);
@@ -12657,13 +12756,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const attemptPlaybackRecovery = async (reason = 'watchdog') => {
       if (recoveryInFlight || isStale() || fallbackShown) return false;
       if (video.ended) return false;
-      if (video.paused && !video.seeking && reason !== 'error') return false;
+      const forceRecovery = reason === 'error' || reason === 'media-error' || reason === 'native-hls-error';
+      if (video.paused && !video.seeking && !forceRecovery) return false;
 
       const now = Date.now();
       const currentTime = Number(video.currentTime || 0);
       const stalledLongEnough = (now - lastProgressAt) > 9000;
       const timeMoved = Math.abs(currentTime - lastPlaybackTime) > 0.04;
-      if (reason !== 'error' && (!stalledLongEnough || timeMoved)) return false;
+      if (!forceRecovery && (!stalledLongEnough || timeMoved)) return false;
 
       recoveryInFlight = true;
       try {
@@ -12680,13 +12780,34 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               try { video.currentTime = Math.max(0, liveEdge - 0.35); } catch (_) {}
             }
           }
-          if ((now - lastProgressAt) > 12000) {
+          if (reason === 'media-error' || reason === 'native-hls-error' || (now - lastProgressAt) > 12000) {
             try { state.hlsInstance.recoverMediaError(); } catch (_) {}
           }
-        } else if (sourceAssigned && (video.readyState || 0) < 2) {
+        } else if (sourceAssigned && (((video.readyState || 0) < 2) || forceRecovery)) {
           const sourceUrl = video.currentSrc || url;
           if (sourceUrl) {
             try {
+              const seekable = video.seekable;
+              let resumeAt = 0;
+              if (shouldPreferHls && seekable && seekable.length) {
+                resumeAt = Math.max(0, Number(seekable.end(seekable.length - 1) || 0) - 0.35);
+              } else if (looksLikeDirectFileVideo) {
+                resumeAt = Math.max(0, Number(video.currentTime || 0) - 1);
+              }
+              if (resumeAt > 0) {
+                const restorePosition = () => {
+                  try {
+                    const duration = Number(video.duration || 0);
+                    const target = duration > 0 ? Math.min(resumeAt, Math.max(0, duration - 0.25)) : resumeAt;
+                    video.currentTime = Math.max(0, target);
+                  } catch (_) {}
+                };
+                video.addEventListener('loadedmetadata', restorePosition, { once: true });
+                video.addEventListener('canplay', restorePosition, { once: true });
+              }
+              try { video.pause(); } catch (_) {}
+              try { video.removeAttribute('src'); } catch (_) {}
+              try { video.load(); } catch (_) {}
               video.src = sourceUrl;
               video.load();
             } catch (_) {}
@@ -12749,15 +12870,45 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     };
 
+    const resetMediaErrorBudget = () => {
+      mediaErrorCount = 0;
+      lastMediaErrorAt = 0;
+      if (mediaErrorRetryTimerId) {
+        clearTimeout(mediaErrorRetryTimerId);
+        mediaErrorRetryTimerId = null;
+      }
+    };
+    video.addEventListener('playing', resetMediaErrorBudget);
+
     video.addEventListener('error', () => {
       if (isStale()) return;
       (async () => {
+        const now = Date.now();
+        if ((now - lastMediaErrorAt) > 15000) {
+          mediaErrorCount = 0;
+        }
+        lastMediaErrorAt = now;
+        mediaErrorCount += 1;
+
         if (!hlsAttached && !video.canPlayType('application/vnd.apple.mpegurl') && (shouldPreferHls || !looksLikeDirectFileVideo)) {
           const attached = await attachHls();
           if (attached) return;
         }
-        const recovered = await attemptPlaybackRecovery('error');
+        const recovered = await attemptPlaybackRecovery(hlsAttached ? 'media-error' : 'error');
         if (recovered) return;
+        if (mediaErrorCount < 3) {
+          if (mediaErrorRetryTimerId) clearTimeout(mediaErrorRetryTimerId);
+          mediaErrorRetryTimerId = window.setTimeout(() => {
+            mediaErrorRetryTimerId = null;
+            if (isStale() || fallbackShown) return;
+            attemptPlaybackRecovery(hlsAttached ? 'media-error' : 'error')
+              .then((ok) => {
+                if (ok) resetMediaErrorBudget();
+              })
+              .catch(() => {});
+          }, 900 * mediaErrorCount);
+          return;
+        }
         showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.');
       })().catch(() => {
         showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.');
@@ -20790,6 +20941,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       state.playbackAddress = ''; state.playbackUrl = '';
       state.profilePlaybackAddress = ''; state.profilePlaybackUrl = '';
       state.followedPubkeys = new Set(); state.contactListPubkeys = new Set();
+      state.mediaUrlStatusByKey = new Map();
+      state.failedMediaUrls = new Set();
       state.contactsLatestCreatedAt = 0; state.contactsContent = '';
       state.contactsPTagByPubkey = new Map(); state.contactsOtherTags = [];
       state.followPublishPending = false;

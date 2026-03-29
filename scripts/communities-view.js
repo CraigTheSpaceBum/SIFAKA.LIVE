@@ -12,6 +12,11 @@
       root.innerHTML = '<div class="live-grid-loading" style="padding:1rem;">Unable to load Communities right now.</div>';
     };
 
+    if (window.location && window.location.protocol === 'file:') {
+      showFallback();
+      return Promise.resolve(false);
+    }
+
     const tryMountExisting = () => {
       if (!window.SifakaCommunities || typeof window.SifakaCommunities.mount !== 'function') return false;
       try {
