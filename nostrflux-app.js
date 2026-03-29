@@ -12642,14 +12642,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       return true;
     };
 
-    const showFailure = (message) => {
+    const showFailure = (message, opts = {}) => {
       if (fallbackShown || isStale()) return;
       fallbackShown = true;
       if (stallWatchdogId) {
         clearInterval(stallWatchdogId);
         stallWatchdogId = null;
       }
-      if (status !== 'ended') markStreamPlaybackOffline(address);
+      if (opts && opts.markOffline && status !== 'ended') markStreamPlaybackOffline(address);
       clearPlayback();
       renderPlaybackFallback(message, url);
     };
@@ -12728,7 +12728,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           isStale,
           onAttach: (instance) => { state.hlsInstance = instance; },
           onFatal: () => {
-            showFailure('Playback failed after multiple retries. The stream may be offline, blocked by CORS, or unsupported.');
+            showFailure('Playback failed after multiple retries. The stream may be offline, blocked by CORS, or unsupported in this browser.');
           },
           hlsConfig: {
             xhrSetup: (xhr) => { xhr.withCredentials = false; },
@@ -12758,9 +12758,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
         const recovered = await attemptPlaybackRecovery('error');
         if (recovered) return;
-        showFailure('Playback failed. The stream URL may be offline or unsupported.');
+        showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.');
       })().catch(() => {
-        showFailure('Playback failed. The stream URL may be offline or unsupported.');
+        showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.');
       });
     });
     if (shouldPreferHls) {

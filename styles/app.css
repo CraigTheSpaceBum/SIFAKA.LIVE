@@ -2912,6 +2912,7 @@ nav .btn{
 #goLiveModal .go-live-third-party-btn.on{border-color:var(--accent);background:linear-gradient(145deg,rgba(232,70,10,.2),rgba(247,183,49,.1));}
 #goLiveModal .go-live-third-party-help{margin-top:.58rem;font-size:.7rem;color:var(--muted);line-height:1.5;}
 label{font-size:.67rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-family:'DM Mono',monospace;}
+.fg-static-label{font-size:.67rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-family:'DM Mono',monospace;}
 input,select,textarea{background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:.5rem .8rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.83rem;outline:none;transition:border-color .18s,box-shadow .18s;width:100%;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
 input::placeholder,textarea::placeholder{color:var(--muted);}
@@ -2930,6 +2931,7 @@ textarea{resize:vertical;min-height:65px;line-height:1.5;}
 .mfooter{padding:.85rem 1.35rem 1.35rem;display:flex;gap:.55rem;justify-content:flex-end;border-top:1px solid var(--border);}
 #goLiveModal .mfooter{padding:.58rem 1.1rem .95rem;flex-wrap:wrap;}
 #goLiveModal label{font-size:.62rem;}
+#goLiveModal .fg-static-label{font-size:.62rem;}
 #goLiveModal input,#goLiveModal select,#goLiveModal textarea{padding:.42rem .66rem;font-size:.79rem;}
 #goLiveModal textarea{min-height:52px;}
 #goLiveModal .sc{padding:.26rem .62rem;}

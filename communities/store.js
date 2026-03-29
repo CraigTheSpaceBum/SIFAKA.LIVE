@@ -147,6 +147,20 @@ function normalizePubkeyList(values) {
   return unique(list.map((value) => String(value || '').trim()).filter(Boolean));
 }
 
+function normalizeStringList(values) {
+  const list = Array.isArray(values)
+    ? values
+    : parseCsv(values);
+  return unique(list.map((value) => String(value || '').trim()).filter(Boolean));
+}
+
+function normalizeRoleDefs(value, fallback = DEFAULT_ROLE_DEFS) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return clone(value);
+  }
+  return clone(fallback || DEFAULT_ROLE_DEFS);
+}
+
 function normalizeCommunityRoomDefaults(payload = {}, fallback = {}) {
   return {
     defaultRoomProvider: normalizeRoomProvider(
@@ -159,6 +173,46 @@ function normalizeCommunityRoomDefaults(payload = {}, fallback = {}) {
     hiveTalkUrl: String(
       payload.hiveTalkUrl != null ? payload.hiveTalkUrl : (fallback.hiveTalkUrl || 'https://vanilla.hivetalk.org')
     ).trim()
+  };
+}
+
+function normalizeCommunityRecord(payload = {}, fallback = {}) {
+  const roomDefaults = normalizeCommunityRoomDefaults(payload, fallback);
+  const communityId = String(payload.id != null ? payload.id : (fallback.id || '')).trim();
+  const type = String(payload.type != null ? payload.type : (fallback.type || (communityId.startsWith('n29:') ? 'private' : 'public'))).trim() || 'public';
+  const title = String(payload.title != null ? payload.title : (payload.name != null ? payload.name : (fallback.title || fallback.name || communityId))).trim() || communityId || 'Community';
+  return {
+    id: communityId,
+    type,
+    title,
+    icon: String(payload.icon != null ? payload.icon : (fallback.icon || '')).trim(),
+    image: String(payload.image != null ? payload.image : (fallback.image || '')).trim(),
+    banner: String(payload.banner != null ? payload.banner : (fallback.banner || '')).trim(),
+    description: String(payload.description != null ? payload.description : (fallback.description || '')).trim(),
+    rules: payload.rules != null
+      ? (Array.isArray(payload.rules) ? unique(payload.rules) : parseLines(payload.rules))
+      : (Array.isArray(fallback.rules) ? unique(fallback.rules) : parseLines(fallback.rules)),
+    topics: payload.topics != null
+      ? (Array.isArray(payload.topics) ? unique(payload.topics) : parseCsv(payload.topics))
+      : (Array.isArray(fallback.topics) ? unique(fallback.topics) : parseCsv(fallback.topics)),
+    ownerPubkey: String(payload.ownerPubkey != null ? payload.ownerPubkey : (fallback.ownerPubkey || '')).trim(),
+    moderatorPubkeys: normalizePubkeyList(payload.moderatorPubkeys != null ? payload.moderatorPubkeys : fallback.moderatorPubkeys),
+    adminPubkeys: normalizePubkeyList(payload.adminPubkeys != null ? payload.adminPubkeys : fallback.adminPubkeys),
+    joinMode: String(payload.joinMode != null ? payload.joinMode : (fallback.joinMode || 'open')).trim() || 'open',
+    discoverable: payload.discoverable != null ? !!payload.discoverable : fallback.discoverable !== false,
+    defaultChannelId: String(payload.defaultChannelId != null ? payload.defaultChannelId : (fallback.defaultChannelId || '')).trim(),
+    allowedRelays: normalizeStringList(payload.allowedRelays != null ? payload.allowedRelays : fallback.allowedRelays),
+    channelCategories: normalizeCategoryList(payload.channelCategories != null ? payload.channelCategories : fallback.channelCategories),
+    roleDefs: normalizeRoleDefs(payload.roleDefs != null ? payload.roleDefs : fallback.roleDefs),
+    serverDefaultAllow: normalizeStringList(payload.serverDefaultAllow != null ? payload.serverDefaultAllow : fallback.serverDefaultAllow),
+    serverDefaultDeny: normalizeStringList(payload.serverDefaultDeny != null ? payload.serverDefaultDeny : fallback.serverDefaultDeny),
+    postingPolicy: String(payload.postingPolicy != null ? payload.postingPolicy : (fallback.postingPolicy || 'members')).trim() || 'members',
+    defaultRoomProvider: roomDefaults.defaultRoomProvider,
+    nostrNestsUrl: roomDefaults.nostrNestsUrl,
+    hiveTalkUrl: roomDefaults.hiveTalkUrl,
+    createdAt: normalizeTimestampMs(payload.createdAt != null ? payload.createdAt : fallback.createdAt, nowMs()),
+    updatedAt: normalizeTimestampMs(payload.updatedAt != null ? payload.updatedAt : fallback.updatedAt, nowMs()),
+    source: String(payload.source != null ? payload.source : (fallback.source || 'local')).trim() || 'local'
   };
 }
 
@@ -234,6 +288,59 @@ function normalizeChannelRecord(payload = {}, fallback = {}, community = null) {
       : [],
     source: payload.source || fallback.source || 'local',
     createdAt: normalizeTimestampMs(payload.createdAt != null ? payload.createdAt : fallback.createdAt, nowMs())
+  };
+}
+
+function normalizeMemberRecord(payload = {}, fallback = {}) {
+  return {
+    pubkey: String(payload.pubkey != null ? payload.pubkey : (fallback.pubkey || '')).trim(),
+    roles: normalizeRoleIds(payload.roles != null ? payload.roles : (fallback.roles || ['member'])),
+    joinedAt: normalizeTimestampMs(payload.joinedAt != null ? payload.joinedAt : fallback.joinedAt, 0),
+    muted: payload.muted != null ? !!payload.muted : !!fallback.muted,
+    banned: payload.banned != null ? !!payload.banned : !!fallback.banned,
+    timeoutUntil: normalizeTimestampMs(payload.timeoutUntil != null ? payload.timeoutUntil : fallback.timeoutUntil, 0)
+  };
+}
+
+function normalizeReactionMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out = {};
+  Object.keys(value).forEach((key) => {
+    const reactionKey = String(key || '').trim();
+    if (!reactionKey) return;
+    out[reactionKey] = normalizePubkeyList(value[key]);
+  });
+  return out;
+}
+
+function normalizeAttachmentList(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry, index) => ({
+      id: String(entry.id || `attachment:${index}`).trim(),
+      name: String(entry.name || 'attachment').trim() || 'attachment',
+      kind: String(entry.kind || 'file').trim() || 'file',
+      url: String(entry.url || '').trim()
+    }));
+}
+
+function normalizeMessageRecord(payload = {}, fallback = {}) {
+  return {
+    id: String(payload.id != null ? payload.id : (fallback.id || '')).trim(),
+    channelId: String(payload.channelId != null ? payload.channelId : (fallback.channelId || '')).trim(),
+    communityId: String(payload.communityId != null ? payload.communityId : (fallback.communityId || '')).trim(),
+    authorPubkey: String(payload.authorPubkey != null ? payload.authorPubkey : (fallback.authorPubkey || '')).trim(),
+    content: String(payload.content != null ? payload.content : (fallback.content || '')),
+    createdAt: normalizeTimestampMs(payload.createdAt != null ? payload.createdAt : fallback.createdAt, nowMs()),
+    createdAtIso: String(payload.createdAtIso != null ? payload.createdAtIso : (fallback.createdAtIso || nowIso())).trim() || nowIso(),
+    replyTo: String(payload.replyTo != null ? payload.replyTo : (fallback.replyTo || '')).trim(),
+    threadRoot: String(payload.threadRoot != null ? payload.threadRoot : (fallback.threadRoot || '')).trim(),
+    pinned: payload.pinned != null ? !!payload.pinned : !!fallback.pinned,
+    pending: payload.pending != null ? !!payload.pending : !!fallback.pending,
+    reactions: normalizeReactionMap(payload.reactions != null ? payload.reactions : fallback.reactions),
+    attachments: normalizeAttachmentList(payload.attachments != null ? payload.attachments : fallback.attachments),
+    source: String(payload.source != null ? payload.source : (fallback.source || 'local')).trim() || 'local'
   };
 }
 
@@ -352,7 +459,7 @@ function readLocalGraphFromStorage() {
     const communities = Array.isArray(parsed.communities)
       ? parsed.communities
         .filter((community) => community && typeof community === 'object' && community.id)
-        .map((community) => clone(community))
+        .map((community) => normalizeCommunityRecord(community, { source: 'local' }))
       : [];
     const channelsByCommunity = {};
     const membersByCommunity = {};
@@ -364,7 +471,7 @@ function readLocalGraphFromStorage() {
         const list = Array.isArray(parsed.channelsByCommunity[communityId]) ? parsed.channelsByCommunity[communityId] : [];
         channelsByCommunity[communityId] = list
           .filter((channel) => channel && typeof channel === 'object' && channel.id)
-          .map((channel) => clone(channel));
+          .map((channel) => normalizeChannelRecord(channel));
       });
     }
 
@@ -373,7 +480,8 @@ function readLocalGraphFromStorage() {
         const list = Array.isArray(parsed.membersByCommunity[communityId]) ? parsed.membersByCommunity[communityId] : [];
         membersByCommunity[communityId] = list
           .filter((member) => member && typeof member === 'object' && member.pubkey)
-          .map((member) => clone(member));
+          .map((member) => normalizeMemberRecord(member))
+          .filter((member) => member.pubkey);
       });
     }
 
@@ -382,7 +490,8 @@ function readLocalGraphFromStorage() {
         const list = Array.isArray(parsed.messagesByChannel[channelId]) ? parsed.messagesByChannel[channelId] : [];
         messagesByChannel[channelId] = list
           .filter((message) => message && typeof message === 'object' && message.id)
-          .map((message) => clone(message));
+          .map((message) => normalizeMessageRecord(message))
+          .filter((message) => message.id);
       });
     }
 
@@ -548,26 +657,29 @@ export function createCommunityStore(options = {}) {
 
     (snapshot.communities || []).forEach((storedCommunity) => {
       if (!storedCommunity || !storedCommunity.id) return;
-      const community = {
-        ...clone(storedCommunity),
-        source: 'local'
-      };
+      const community = normalizeCommunityRecord(storedCommunity, { source: 'local' });
       const existingIndex = state.data.communities.findIndex((entry) => entry.id === community.id);
       if (existingIndex >= 0) {
-        state.data.communities[existingIndex] = {
+        state.data.communities[existingIndex] = normalizeCommunityRecord(community, {
           ...state.data.communities[existingIndex],
-          ...community
-        };
+          source: 'local'
+        });
       } else {
         state.data.communities.push(community);
       }
 
       ensureCommunityContainers(community.id);
-      state.data.channelsByCommunity[community.id] = clone(snapshot.channelsByCommunity[community.id] || []);
-      state.data.membersByCommunity[community.id] = clone(snapshot.membersByCommunity[community.id] || []);
+      state.data.channelsByCommunity[community.id] = (snapshot.channelsByCommunity[community.id] || [])
+        .map((channel) => normalizeChannelRecord(channel, {}, community))
+        .filter((channel) => channel && channel.id);
+      state.data.membersByCommunity[community.id] = (snapshot.membersByCommunity[community.id] || [])
+        .map((member) => normalizeMemberRecord(member))
+        .filter((member) => member.pubkey);
       (state.data.channelsByCommunity[community.id] || []).forEach((channel) => {
         if (!channel || !channel.id) return;
-        const channelMessages = clone((snapshot.messagesByChannel && snapshot.messagesByChannel[channel.id]) || []);
+        const channelMessages = ((snapshot.messagesByChannel && snapshot.messagesByChannel[channel.id]) || [])
+          .map((message) => normalizeMessageRecord(message, { channelId: channel.id, communityId: community.id }))
+          .filter((message) => message && message.id);
         state.data.messagesByChannel[channel.id] = channelMessages;
         state.pinnedByChannel.set(channel.id, channelMessages.filter((message) => message && message.pinned).map((message) => message.id));
         channelMessages.forEach((message) => {
@@ -682,8 +794,8 @@ export function createCommunityStore(options = {}) {
       .filter((member) => Array.isArray(member.roles) && member.roles.includes('admin'))
       .map((member) => member.pubkey));
     if (options.preserveExisting) {
-      community.moderatorPubkeys = unique([...(community.moderatorPubkeys || []), ...moderatorPubkeys]);
-      community.adminPubkeys = unique([...(community.adminPubkeys || []), ...adminPubkeys]);
+      community.moderatorPubkeys = unique([...(Array.isArray(community.moderatorPubkeys) ? community.moderatorPubkeys : normalizePubkeyList(community.moderatorPubkeys)), ...moderatorPubkeys]);
+      community.adminPubkeys = unique([...(Array.isArray(community.adminPubkeys) ? community.adminPubkeys : normalizePubkeyList(community.adminPubkeys)), ...adminPubkeys]);
       return;
     }
     community.moderatorPubkeys = moderatorPubkeys;
@@ -741,8 +853,8 @@ export function createCommunityStore(options = {}) {
     });
 
     if (community.ownerPubkey) upsert(community.ownerPubkey, ['owner']);
-    (community.adminPubkeys || []).forEach((pubkey) => upsert(pubkey, ['admin']));
-    (community.moderatorPubkeys || []).forEach((pubkey) => upsert(pubkey, ['moderator']));
+    (Array.isArray(community.adminPubkeys) ? community.adminPubkeys : normalizePubkeyList(community.adminPubkeys)).forEach((pubkey) => upsert(pubkey, ['admin']));
+    (Array.isArray(community.moderatorPubkeys) ? community.moderatorPubkeys : normalizePubkeyList(community.moderatorPubkeys)).forEach((pubkey) => upsert(pubkey, ['moderator']));
     if (state.joinedCommunityIds.has(id) && state.currentUserPubkey) upsert(state.currentUserPubkey, ['member']);
 
     return Array.from(merged.values()).sort(compareMembers);
@@ -754,7 +866,7 @@ export function createCommunityStore(options = {}) {
   }
 
   function getPermissionContext(channel = getChannel(), community = getCommunity()) {
-    const roleDefs = (community && community.roleDefs) || DEFAULT_ROLE_DEFS;
+    const roleDefs = normalizeRoleDefs(community && community.roleDefs, DEFAULT_ROLE_DEFS);
     const roleIds = getMemberRoles(community && community.id, state.currentUserPubkey);
     const isOwner = roleIds.includes('owner') || (community && community.ownerPubkey === state.currentUserPubkey);
     const channelRoleOverrides = getRoleOverridesForChannel(channel, roleIds);

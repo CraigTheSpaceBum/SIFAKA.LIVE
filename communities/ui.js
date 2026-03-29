@@ -772,7 +772,12 @@ export function createCommunitiesUI(input) {
       for (let i = 0; i < candidates.length; i += 1) {
         const key = String(candidates[i] || '').trim();
         if (!key) continue;
-        const profile = ctx.getProfileByPubkey(key);
+        let profile = null;
+        try {
+          profile = ctx.getProfileByPubkey(key);
+        } catch (_) {
+          profile = null;
+        }
         if (profile && typeof profile === 'object') {
           external = profile;
           break;
@@ -795,7 +800,12 @@ export function createCommunitiesUI(input) {
 
     const ctx = getAppContext();
     if (ctx && typeof ctx.getVerifiedNip05ForPubkey === 'function' && key) {
-      const verified = ctx.getVerifiedNip05ForPubkey(key, claimed);
+      let verified = '';
+      try {
+        verified = ctx.getVerifiedNip05ForPubkey(key, claimed);
+      } catch (_) {
+        verified = '';
+      }
       if (verified) return String(verified).trim();
     }
 
@@ -1095,7 +1105,9 @@ export function createCommunitiesUI(input) {
     const relayStatusByUrl = state.relayStatusByUrl instanceof Map
       ? state.relayStatusByUrl
       : new Map(Object.entries(state.relayStatusByUrl || {}));
-    const communities = state.data.communities || [];
+    const communities = Array.isArray(state && state.data && state.data.communities)
+      ? state.data.communities
+      : [];
     const publicCommunities = communities
       .filter((entry) => entry.type !== 'private' && entry.discoverable !== false)
       .slice()
@@ -1107,15 +1119,15 @@ export function createCommunitiesUI(input) {
       });
     const suggestions = store.getDiscoverySuggestions(6);
     const channels = community
-      ? store.getChannels(community.id).filter((entry) => store.can('view_channels', entry, community))
+      ? (Array.isArray(store.getChannels(community.id)) ? store.getChannels(community.id) : []).filter((entry) => store.can('view_channels', entry, community))
       : [];
-    const messages = channel ? store.filteredMessages(channel.id) : [];
-    const pins = channel ? store.getPinnedMessages(channel.id) : [];
+    const messages = channel ? (Array.isArray(store.filteredMessages(channel.id)) ? store.filteredMessages(channel.id) : []) : [];
+    const pins = channel ? (Array.isArray(store.getPinnedMessages(channel.id)) ? store.getPinnedMessages(channel.id) : []) : [];
     const draft = channel ? (draftsByChannel.get(channel.id) || '') : '';
     const replyTarget = channel ? getReplyTarget(channel.id) : '';
     const profiles = store.getProfiles();
     const members = community && typeof store.getCommunityMembers === 'function'
-      ? store.getCommunityMembers(community.id)
+      ? (Array.isArray(store.getCommunityMembers(community.id)) ? store.getCommunityMembers(community.id) : [])
       : (community ? (state.data.membersByCommunity[community.id] || []) : []);
     const memberCount = community ? resolveMemberCount(state, community) : 0;
 
@@ -1170,7 +1182,10 @@ export function createCommunitiesUI(input) {
       const memberVerifiedNip05 = verifiedNip05ForProfile(profileData, member.pubkey);
       const hasMemberAvatar = !!memberAvatar;
       const memberAvatarClass = `sc-avatar${hasMemberAvatar ? ' has-image' : ''}${memberVerifiedNip05 ? ' nip05-square' : ''}`;
-      const memberRoleFlags = `${(member.roles || ['guest']).join(', ')}${member.muted ? ' | muted' : ''}${timedOut ? ' | timeout' : ''}${member.banned ? ' | banned' : ''}`;
+      const memberRoles = Array.isArray(member.roles)
+        ? member.roles.filter(Boolean)
+        : [String(member.roles || '').trim()].filter(Boolean);
+      const memberRoleFlags = `${(memberRoles.length ? memberRoles : ['guest']).join(', ')}${member.muted ? ' | muted' : ''}${timedOut ? ' | timeout' : ''}${member.banned ? ' | banned' : ''}`;
       return `
         <button class="sc-member-row" data-member="${esc(member.pubkey)}">
           <span class="${memberAvatarClass}"${hasMemberAvatar ? ` style="background-image:url('${esc(memberAvatar)}')"` : ''}>${hasMemberAvatar ? '' : esc(initials(memberName))}</span>
