@@ -148,10 +148,36 @@ async function copyTextToClipboard(value) {
   }
 }
 
-function groupedChannels(channels) {
-  const map = new Map();
+function normalizeCategoryName(value, fallback = 'Channels') {
+  const clean = String(value || '').trim();
+  return clean || String(fallback || 'Channels').trim() || 'Channels';
+}
+
+function communityCategoryNames(community, channels = []) {
+  const communityId = community && community.id ? community.id : '';
+  const ordered = typeof store.getCommunityCategories === 'function'
+    ? store.getCommunityCategories(communityId)
+    : [];
+  const seen = new Set((ordered || []).map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean));
   (channels || []).forEach((channel) => {
-    const key = channel.category || 'Channels';
+    const name = normalizeCategoryName(channel && channel.category);
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    ordered.push(name);
+  });
+  if (!ordered.length) ordered.push('Channels');
+  return ordered;
+}
+
+function groupedChannels(channels, categories = []) {
+  const map = new Map();
+  (categories || []).forEach((category) => {
+    const key = normalizeCategoryName(category);
+    if (!map.has(key)) map.set(key, []);
+  });
+  (channels || []).forEach((channel) => {
+    const key = normalizeCategoryName(channel.category);
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(channel);
   });
@@ -276,6 +302,7 @@ export function createCommunitiesUI(input) {
     discoveryChunk: 18,
     discoveryObserver: null,
     createDraft: null,
+    createChannelDraft: null,
     settingsDraft: null,
     createRoleSearch: { moderators: '', admins: '' },
     replyTargetByChannel: new Map(),
@@ -389,6 +416,7 @@ export function createCommunitiesUI(input) {
       rules: String((community.rules || []).join('\n')),
       topics: String((community.topics || []).join(', ')),
       allowedRelays: String((community.allowedRelays || []).join(', ')),
+      channelCategories: String((communityCategoryNames(community, store.getChannels(community.id) || []) || []).join(', ')),
       defaultRoomProvider: String(community.defaultRoomProvider || 'native_nostr'),
       nostrNestsUrl: String(community.nostrNestsUrl || 'https://nostrnests.com'),
       hiveTalkUrl: String(community.hiveTalkUrl || 'https://vanilla.hivetalk.org')
@@ -401,6 +429,96 @@ export function createCommunitiesUI(input) {
       ui.settingsDraft = defaultCommunitySettingsDraft(community);
     }
     return ui.settingsDraft;
+  }
+
+  function normalizeCreateChannelMode(value) {
+    return String(value || '').trim().toLowerCase() === 'conference' ? 'conference' : 'chat';
+  }
+
+  function createChannelTypeOptions(mode = 'chat') {
+    if (normalizeCreateChannelMode(mode) === 'conference') {
+      return [
+        { value: 'voice', label: 'Audio Conference' },
+        { value: 'video', label: 'Video Conference' },
+        { value: 'stage', label: 'Stage / Panel Room' }
+      ];
+    }
+    return [
+      { value: 'public', label: 'Text Chat' },
+      { value: 'private', label: 'Private Chat' },
+      { value: 'announcement', label: 'Announcements' },
+      { value: 'forum', label: 'Forum / Threads' }
+    ];
+  }
+
+  function normalizeCreateChannelType(mode = 'chat', value = '') {
+    const options = createChannelTypeOptions(mode);
+    const clean = String(value || '').trim().toLowerCase();
+    const match = options.find((entry) => entry.value === clean);
+    return match ? match.value : options[0].value;
+  }
+
+  function defaultCreateChannelDraft(community) {
+    const categoryOptions = communityCategoryNames(community, store.getChannels(community.id) || []);
+    const mode = 'chat';
+    return {
+      communityId: community.id,
+      mode,
+      name: '',
+      category: categoryOptions[0] || 'Channels',
+      topic: '',
+      channelType: normalizeCreateChannelType(mode, 'public'),
+      privacyLevel: 'public',
+      slowModeSec: 0,
+      roomProvider: String(community.defaultRoomProvider || 'native_nostr'),
+      roomId: '',
+      roomUrl: '',
+      roomNaddr: '',
+      roomStatus: 'planned',
+      roomHostPubkey: String(community.ownerPubkey || ''),
+      roomStartsAt: '',
+      roomEndsAt: '',
+      roomRecordingUrl: ''
+    };
+  }
+
+  function ensureCreateChannelDraft(community) {
+    if (!community) return null;
+    if (!ui.createChannelDraft || ui.createChannelDraft.communityId !== community.id) {
+      ui.createChannelDraft = defaultCreateChannelDraft(community);
+    }
+    ui.createChannelDraft.mode = normalizeCreateChannelMode(ui.createChannelDraft.mode);
+    ui.createChannelDraft.channelType = normalizeCreateChannelType(ui.createChannelDraft.mode, ui.createChannelDraft.channelType);
+    ui.createChannelDraft.category = normalizeCategoryName(ui.createChannelDraft.category);
+    return ui.createChannelDraft;
+  }
+
+  function syncCreateChannelDraftFromDom(community) {
+    if (ui.openModal !== 'createChannel') return ui.createChannelDraft;
+    if (!community) return null;
+    const current = ensureCreateChannelDraft(community) || defaultCreateChannelDraft(community);
+    const mode = normalizeCreateChannelMode((root.querySelector('#scCreateChannelMode') || {}).value || current.mode);
+    ui.createChannelDraft = {
+      ...current,
+      communityId: community.id,
+      mode,
+      name: (root.querySelector('#scCreateChannelName') || {}).value || '',
+      category: (root.querySelector('#scCreateChannelCategory') || {}).value || current.category || 'Channels',
+      topic: (root.querySelector('#scCreateChannelTopic') || {}).value || '',
+      channelType: normalizeCreateChannelType(mode, (root.querySelector('#scCreateChannelType') || {}).value || current.channelType),
+      privacyLevel: (root.querySelector('#scCreateChannelPrivacy') || {}).value || 'public',
+      slowModeSec: Number((root.querySelector('#scCreateChannelSlow') || {}).value || 0),
+      roomProvider: (root.querySelector('#scCreateChannelRoomProvider') || {}).value || current.roomProvider || 'native_nostr',
+      roomId: (root.querySelector('#scCreateChannelRoomId') || {}).value || '',
+      roomUrl: (root.querySelector('#scCreateChannelRoomUrl') || {}).value || '',
+      roomNaddr: (root.querySelector('#scCreateChannelRoomNaddr') || {}).value || '',
+      roomStatus: (root.querySelector('#scCreateChannelRoomStatus') || {}).value || 'planned',
+      roomHostPubkey: (root.querySelector('#scCreateChannelRoomHost') || {}).value || '',
+      roomStartsAt: (root.querySelector('#scCreateChannelRoomStartsAt') || {}).value || '',
+      roomEndsAt: (root.querySelector('#scCreateChannelRoomEndsAt') || {}).value || '',
+      roomRecordingUrl: (root.querySelector('#scCreateChannelRoomRecordingUrl') || {}).value || ''
+    };
+    return ui.createChannelDraft;
   }
 
   function syncCommunitySettingsDraftFromDom() {
@@ -423,6 +541,7 @@ export function createCommunitiesUI(input) {
       rules: (root.querySelector('#scSettingsRules') || {}).value || '',
       topics: (root.querySelector('#scSettingsTopics') || {}).value || '',
       allowedRelays: (root.querySelector('#scSettingsRelays') || {}).value || '',
+      channelCategories: current.channelCategories || '',
       defaultRoomProvider: (root.querySelector('#scSettingsDefaultRoomProvider') || {}).value || 'native_nostr',
       nostrNestsUrl: (root.querySelector('#scSettingsNostrNestsUrl') || {}).value || 'https://nostrnests.com',
       hiveTalkUrl: (root.querySelector('#scSettingsHiveTalkUrl') || {}).value || 'https://vanilla.hivetalk.org'
@@ -695,6 +814,9 @@ export function createCommunitiesUI(input) {
 
   function resolveMemberCount(state, community) {
     if (!community || !state) return 0;
+    if (store && typeof store.getCommunityMembers === 'function') {
+      return store.getCommunityMembers(community.id).filter((member) => !member.banned).length;
+    }
     const seen = new Set();
     const members = ((state.data && state.data.membersByCommunity) ? state.data.membersByCommunity[community.id] : []) || [];
     members.forEach((member) => {
@@ -784,6 +906,21 @@ export function createCommunitiesUI(input) {
       const alwaysRender = new Set(['user_changed', 'community_removed', 'community_selected']);
       if (alwaysRender.has(type)) return true;
       return false;
+    }
+
+    if (ui.openModal === 'createChannel') {
+      const noisyTypes = new Set([
+        'message_ingested',
+        'message_sent',
+        'reaction_ingested',
+        'reaction_toggled',
+        'deletion_ingested',
+        'draft_changed',
+        'read',
+        'search_changed',
+        'relay_status'
+      ]);
+      if (noisyTypes.has(type)) return false;
     }
 
     return true;
@@ -977,7 +1114,9 @@ export function createCommunitiesUI(input) {
     const draft = channel ? (draftsByChannel.get(channel.id) || '') : '';
     const replyTarget = channel ? getReplyTarget(channel.id) : '';
     const profiles = store.getProfiles();
-    const members = community ? (state.data.membersByCommunity[community.id] || []) : [];
+    const members = community && typeof store.getCommunityMembers === 'function'
+      ? store.getCommunityMembers(community.id)
+      : (community ? (state.data.membersByCommunity[community.id] || []) : []);
     const memberCount = community ? resolveMemberCount(state, community) : 0;
 
     const relayStatuses = Array.from(relayStatusByUrl.values());
@@ -1004,10 +1143,11 @@ export function createCommunitiesUI(input) {
       ? renderRoomPanel(channel, community, profiles, state)
       : '';
 
-    const channelHtml = groupedChannels(channels).map(([category, items]) => `
+    const categoryNames = community ? communityCategoryNames(community, channels) : [];
+    const channelHtml = groupedChannels(channels, categoryNames).map(([category, items]) => `
       <section class="sc-category">
         <header>${esc(category)}</header>
-        ${items.map((entry) => {
+        ${items.length ? items.map((entry) => {
           const unread = Number(unreadByChannel.get(entry.id) || 0);
           const locked = entry.privacyLevel !== 'public';
           const room = isRoomChannel(entry);
@@ -1018,7 +1158,7 @@ export function createCommunitiesUI(input) {
               <span class="sc-channel-meta">${locked ? 'private' : ''}${room && roomStatus === 'live' ? '<b>live</b>' : ''}${unread ? `<b>${unread}</b>` : ''}</span>
             </button>
           `;
-        }).join('')}
+        }).join('') : '<div class="sc-category-empty">No channels in this category yet.</div>'}
       </section>
     `).join('');
 
@@ -1126,7 +1266,6 @@ export function createCommunitiesUI(input) {
             <footer class="sc-channel-footer">
               <button id="scInviteBtn" ${community ? '' : 'disabled'}>Invite</button>
               <button id="scJoinLeaveBtn" ${community && !joinedCommunityIds.has(community.id) && !(activeJoinAction && activeJoinAction.requested) ? '' : 'disabled'}>${community && joinedCommunityIds.has(community.id) ? 'Joined' : esc(activeJoinAction ? activeJoinAction.label : 'Join')}</button>
-              <button id="scCreateChannelBtn" ${(community && joinedCommunityIds.has(community.id) && store.can('manage_channels', channel, community)) ? '' : 'disabled'}>New Channel</button>
             </footer>
           ` : `
             <div class="sc-no-community-panel">
@@ -1510,6 +1649,8 @@ function renderCommunitySettingsModal(community) {
     const access = resolveCommunitySettingsAccess(community, store.getState());
     const readOnly = !access.canManageServer;
     const disableAttr = readOnly ? 'disabled' : '';
+    const categoryNames = communityCategoryNames(community, store.getChannels(community.id) || []);
+    const categoryChips = categoryNames.map((category) => `<span class="sc-settings-chip">${esc(category)}</span>`).join('');
     const saveButton = access.canManageServer
       ? '<button id="scSaveCommunitySettingsBtn">Save Settings</button>'
       : '<button class="sc-settings-owner-only" type="button" disabled>Owner Settings Only</button>';
@@ -1578,6 +1719,31 @@ function renderCommunitySettingsModal(community) {
           </section>
 
           <section class="sc-create-section">
+            <h5>Channels</h5>
+            <div class="sc-settings-category-meta">
+              <strong>Categories</strong>
+              <small>${access.canManageChannels ? 'Admins and moderators can add categories and create channels from here.' : 'Admins and moderators manage category and channel structure.'}</small>
+            </div>
+            <div class="sc-settings-chip-row">${categoryChips || '<span class="sc-settings-chip sc-settings-chip-muted">No categories yet</span>'}</div>
+            ${access.canManageChannels ? `
+              <div class="sc-settings-action-row">
+                <button id="scSettingsAddCategoryBtn" type="button">Add Category</button>
+                <button id="scSettingsCreateChannelBtn" type="button">New Channel</button>
+              </div>
+              <div class="sc-settings-inline-editor" id="scSettingsCategoryEditor" hidden>
+                <label class="full">Category name
+                  <input id="scSettingsNewCategoryName" placeholder="Support">
+                  <small>Create a visible channel group before adding channels to it.</small>
+                </label>
+                <div class="sc-modal-foot">
+                  <button id="scSettingsCancelCategoryBtn" type="button">Cancel</button>
+                  <button id="scSettingsSaveCategoryBtn" type="button">Add Category</button>
+                </div>
+              </div>
+            ` : ''}
+          </section>
+
+          <section class="sc-create-section">
             <h5>Rules and Relays</h5>
             <div class="sc-form-grid sc-form-grid-2">
               <label class="full">Community rules (one per line)
@@ -1633,37 +1799,48 @@ function renderCommunitySettingsModal(community) {
   }
 
   function renderCreateChannelModal(community) {
-    const defaultRoomProvider = String(community.defaultRoomProvider || 'native_nostr');
+    const draft = ensureCreateChannelDraft(community) || defaultCreateChannelDraft(community);
+    const defaultRoomProvider = String(draft.roomProvider || community.defaultRoomProvider || 'native_nostr');
+    const categoryOptions = communityCategoryNames(community, store.getChannels(community.id) || []);
+    const defaultCategory = draft.category || categoryOptions[0] || 'Channels';
+    const mode = normalizeCreateChannelMode(draft.mode);
+    const typeOptions = createChannelTypeOptions(mode);
+    const typeLabel = mode === 'conference' ? 'Conference Type' : 'Chat Type';
     return `
       <div class="sc-modal-ov" data-close="modal">
         <div class="sc-modal sc-modal-wide">
           <h4>Create Channel</h4>
           <p>${esc(community.title)}</p>
           <div class="sc-form-grid sc-form-grid-2">
-            <label>Name<input id="scCreateChannelName" placeholder="support"></label>
-            <label>Category<input id="scCreateChannelCategory" value="Channels"></label>
-            <label class="full">Topic<textarea id="scCreateChannelTopic" placeholder="Channel purpose"></textarea></label>
-            <label>Channel Type
+            <label>Channel Style
+              <select id="scCreateChannelMode">
+                <option value="chat" ${mode === 'chat' ? 'selected' : ''}>Chat</option>
+                <option value="conference" ${mode === 'conference' ? 'selected' : ''}>Audio / Video Conference</option>
+              </select>
+              <small>Pick a normal chat space or a live conference room.</small>
+            </label>
+            <label>Name<input id="scCreateChannelName" placeholder="support" value="${esc(draft.name || '')}"></label>
+            <label>Category
+              <input id="scCreateChannelCategory" list="scCreateChannelCategoryList" value="${esc(defaultCategory)}">
+              <small>Choose an existing category or type a new one.</small>
+            </label>
+            <datalist id="scCreateChannelCategoryList">${categoryOptions.map((item) => `<option value="${esc(item)}"></option>`).join('')}</datalist>
+            <label class="full">Topic<textarea id="scCreateChannelTopic" placeholder="Channel purpose">${esc(draft.topic || '')}</textarea></label>
+            <label>${esc(typeLabel)}
               <select id="scCreateChannelType">
-                <option value="public">Text</option>
-                <option value="private">Private</option>
-                <option value="announcement">Announcement</option>
-                <option value="forum">Forum</option>
-                <option value="voice">Voice Room</option>
-                <option value="video">Video Room</option>
-                <option value="stage">Stage Room</option>
+                ${typeOptions.map((option) => `<option value="${esc(option.value)}" ${draft.channelType === option.value ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}
               </select>
             </label>
             <label>Privacy
               <select id="scCreateChannelPrivacy">
-                <option value="public">Public</option>
-                <option value="invite_only">Invite only</option>
+                <option value="public" ${draft.privacyLevel === 'public' ? 'selected' : ''}>Public</option>
+                <option value="invite_only" ${draft.privacyLevel === 'invite_only' ? 'selected' : ''}>Invite only</option>
               </select>
             </label>
-            <label>Slow Mode (seconds)<input id="scCreateChannelSlow" type="number" min="0" value="0"></label>
+            <label>Slow Mode (seconds)<input id="scCreateChannelSlow" type="number" min="0" value="${esc(String(draft.slowModeSec || 0))}"></label>
           </div>
 
-          <section class="sc-room-fields" id="scCreateRoomFields" hidden>
+          <section class="sc-room-fields" id="scCreateRoomFields" ${isRoomChannel({ channelType: draft.channelType }) ? '' : 'hidden'}>
             <h5>Room Link and Presence</h5>
             <div class="sc-form-grid sc-form-grid-2">
               <label>Room provider
@@ -1675,36 +1852,36 @@ function renderCommunitySettingsModal(community) {
                 </select>
               </label>
               <label>Provider room ID
-                <input id="scCreateChannelRoomId" placeholder="builders-lounge">
+                <input id="scCreateChannelRoomId" placeholder="builders-lounge" value="${esc(draft.roomId || '')}">
                 <small>Used for direct providers like HiveTalk.</small>
               </label>
               <label class="full">Direct join URL
-                <input id="scCreateChannelRoomUrl" placeholder="https://vanilla.hivetalk.org/join?room=builders-lounge">
+                <input id="scCreateChannelRoomUrl" placeholder="https://vanilla.hivetalk.org/join?room=builders-lounge" value="${esc(draft.roomUrl || '')}">
                 <small>Paste a provider URL to send members straight into the room.</small>
               </label>
               <label class="full">Nostr room address (naddr)
-                <input id="scCreateChannelRoomNaddr" placeholder="naddr1...">
+                <input id="scCreateChannelRoomNaddr" placeholder="naddr1..." value="${esc(draft.roomNaddr || '')}">
                 <small>Useful for NostrNests and other NIP-53 compatible rooms.</small>
               </label>
               <label>Room status
                 <select id="scCreateChannelRoomStatus">
-                  <option value="planned">Planned</option>
-                  <option value="live">Live</option>
-                  <option value="ended">Ended</option>
-                  <option value="inactive">Inactive</option>
+                  <option value="planned" ${draft.roomStatus === 'planned' ? 'selected' : ''}>Planned</option>
+                  <option value="live" ${draft.roomStatus === 'live' ? 'selected' : ''}>Live</option>
+                  <option value="ended" ${draft.roomStatus === 'ended' ? 'selected' : ''}>Ended</option>
+                  <option value="inactive" ${draft.roomStatus === 'inactive' ? 'selected' : ''}>Inactive</option>
                 </select>
               </label>
               <label>Host pubkey
-                <input id="scCreateChannelRoomHost" value="${esc(community.ownerPubkey || '')}" placeholder="npub or hex pubkey">
+                <input id="scCreateChannelRoomHost" value="${esc(draft.roomHostPubkey || community.ownerPubkey || '')}" placeholder="npub or hex pubkey">
               </label>
               <label>Starts at
-                <input id="scCreateChannelRoomStartsAt" type="datetime-local">
+                <input id="scCreateChannelRoomStartsAt" type="datetime-local" value="${esc(draft.roomStartsAt || '')}">
               </label>
               <label>Ends at
-                <input id="scCreateChannelRoomEndsAt" type="datetime-local">
+                <input id="scCreateChannelRoomEndsAt" type="datetime-local" value="${esc(draft.roomEndsAt || '')}">
               </label>
               <label class="full">Recording URL
-                <input id="scCreateChannelRoomRecordingUrl" placeholder="https://example.com/recording">
+                <input id="scCreateChannelRoomRecordingUrl" placeholder="https://example.com/recording" value="${esc(draft.roomRecordingUrl || '')}">
               </label>
             </div>
           </section>
@@ -1809,10 +1986,7 @@ function renderCommunitySettingsModal(community) {
     }
 
     if (key === 'channelSettings' && channel) {
-      const categoryOptions = uniqueValues(
-        (storeRef.getChannels(channel.communityId) || [])
-          .map((entry) => String(entry.category || 'Channels').trim() || 'Channels')
-      )
+      const categoryOptions = communityCategoryNames(community || storeRef.getCommunity(channel.communityId), storeRef.getChannels(channel.communityId) || [])
         .sort((a, b) => String(a).localeCompare(String(b)));
       const roomJoinPreview = roomJoinUrl(channel, community, displayNameForProfile(store.profile(store.getState().currentUserPubkey), store.getState().currentUserPubkey));
       return `
@@ -2020,6 +2194,9 @@ function renderCommunitySettingsModal(community) {
       ui.createDraft = null;
       ui.createRoleSearch = { moderators: '', admins: '' };
     }
+    if (ui.openModal === 'createChannel') {
+      ui.createChannelDraft = null;
+    }
     if (ui.openModal === 'communitySettings') {
       ui.settingsDraft = null;
     }
@@ -2153,6 +2330,52 @@ function renderCommunitySettingsModal(community) {
     bindRoleContainer('#scCreateAdminsSearch');
   }
 
+  function bindCreateChannelForm() {
+    const state = store.getState();
+    const community = store.getCommunity(state.activeCommunityId);
+    if (!community) return;
+
+    const bindSync = (selector, eventName = 'input') => {
+      const el = root.querySelector(selector);
+      if (!el) return;
+      el.addEventListener(eventName, () => {
+        syncCreateChannelDraftFromDom(community);
+      });
+    };
+
+    const modeField = root.querySelector('#scCreateChannelMode');
+    if (modeField) {
+      modeField.addEventListener('change', () => {
+        const draft = syncCreateChannelDraftFromDom(community) || ensureCreateChannelDraft(community);
+        if (draft) draft.channelType = normalizeCreateChannelType(draft.mode, draft.channelType);
+        render();
+      });
+    }
+
+    const typeField = root.querySelector('#scCreateChannelType');
+    if (typeField) {
+      typeField.addEventListener('change', () => {
+        syncCreateChannelDraftFromDom(community);
+        syncRoomFieldsVisibility('#scCreateChannelType', '#scCreateRoomFields');
+      });
+    }
+
+    bindSync('#scCreateChannelName');
+    bindSync('#scCreateChannelCategory');
+    bindSync('#scCreateChannelTopic');
+    bindSync('#scCreateChannelPrivacy', 'change');
+    bindSync('#scCreateChannelSlow');
+    bindSync('#scCreateChannelRoomProvider', 'change');
+    bindSync('#scCreateChannelRoomId');
+    bindSync('#scCreateChannelRoomUrl');
+    bindSync('#scCreateChannelRoomNaddr');
+    bindSync('#scCreateChannelRoomStatus', 'change');
+    bindSync('#scCreateChannelRoomHost');
+    bindSync('#scCreateChannelRoomStartsAt', 'change');
+    bindSync('#scCreateChannelRoomEndsAt', 'change');
+    bindSync('#scCreateChannelRoomRecordingUrl');
+  }
+
   function syncRoomFieldsVisibility(typeSelector, fieldsSelector) {
     const typeField = root.querySelector(typeSelector);
     const fields = root.querySelector(fieldsSelector);
@@ -2271,6 +2494,7 @@ function renderCommunitySettingsModal(community) {
       bindCreateCommunityForm();
     }
     if (ui.openModal === 'createChannel') {
+      bindCreateChannelForm();
       syncRoomFieldsVisibility('#scCreateChannelType', '#scCreateRoomFields');
     }
     if (ui.openModal === 'channelSettings') {
@@ -2654,9 +2878,6 @@ function renderCommunitySettingsModal(community) {
     const inviteBtn = root.querySelector('#scInviteBtn');
     if (inviteBtn) inviteBtn.addEventListener('click', () => { ui.openModal = 'invites'; render(); });
 
-    const createChannelBtn = root.querySelector('#scCreateChannelBtn');
-    if (createChannelBtn) createChannelBtn.addEventListener('click', () => { ui.openModal = 'createChannel'; render(); });
-
     const createChannelType = root.querySelector('#scCreateChannelType');
     if (createChannelType) createChannelType.addEventListener('change', () => syncRoomFieldsVisibility('#scCreateChannelType', '#scCreateRoomFields'));
 
@@ -2914,6 +3135,62 @@ function renderCommunitySettingsModal(community) {
     if (settingsNostrNestsUrl) settingsNostrNestsUrl.addEventListener('input', () => { syncCommunitySettingsDraftFromDom(); });
     const settingsHiveTalkUrl = root.querySelector('#scSettingsHiveTalkUrl');
     if (settingsHiveTalkUrl) settingsHiveTalkUrl.addEventListener('input', () => { syncCommunitySettingsDraftFromDom(); });
+    const settingsAddCategoryBtn = root.querySelector('#scSettingsAddCategoryBtn');
+    const settingsCreateChannelBtn = root.querySelector('#scSettingsCreateChannelBtn');
+    const settingsCategoryEditor = root.querySelector('#scSettingsCategoryEditor');
+    const settingsNewCategoryInput = root.querySelector('#scSettingsNewCategoryName');
+    const settingsCancelCategoryBtn = root.querySelector('#scSettingsCancelCategoryBtn');
+    const settingsSaveCategoryBtn = root.querySelector('#scSettingsSaveCategoryBtn');
+    if (settingsAddCategoryBtn && settingsCategoryEditor) {
+      settingsAddCategoryBtn.addEventListener('click', () => {
+        syncCommunitySettingsDraftFromDom();
+        settingsCategoryEditor.hidden = false;
+        if (settingsNewCategoryInput) settingsNewCategoryInput.focus();
+      });
+    }
+    if (settingsCancelCategoryBtn && settingsCategoryEditor) {
+      settingsCancelCategoryBtn.addEventListener('click', () => {
+        settingsCategoryEditor.hidden = true;
+        if (settingsNewCategoryInput) settingsNewCategoryInput.value = '';
+      });
+    }
+    if (settingsCreateChannelBtn) {
+      settingsCreateChannelBtn.addEventListener('click', () => {
+        syncCommunitySettingsDraftFromDom();
+        ui.openModal = 'createChannel';
+        render();
+      });
+    }
+    if (settingsSaveCategoryBtn) {
+      const submitCategory = () => {
+        const state = store.getState();
+        const community = store.getCommunity(state.activeCommunityId);
+        if (!community) return;
+        if (!store.can('manage_channels', null, community)) {
+          setStatus('Only admins and moderators can add categories.');
+          return;
+        }
+        syncCommunitySettingsDraftFromDom();
+        const created = store.addChannelCategory(community.id, (settingsNewCategoryInput || {}).value || '');
+        if (!created.ok) {
+          if (created.reason === 'missing_category') setStatus('Category name is required.');
+          else if (created.reason === 'duplicate_category') setStatus('That category already exists.');
+          else if (created.reason === 'permission_denied') setStatus('Only admins and moderators can add categories.');
+          else setStatus('Could not add category.');
+          return;
+        }
+        render();
+        setStatus(`Category "${created.category}" added.`);
+      };
+      settingsSaveCategoryBtn.addEventListener('click', submitCategory);
+      if (settingsNewCategoryInput) {
+        settingsNewCategoryInput.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          submitCategory();
+        });
+      }
+    }
 
     if (saveSettingsBtn) {
       saveSettingsBtn.addEventListener('click', async () => {
@@ -3036,23 +3313,26 @@ function renderCommunitySettingsModal(community) {
     if (createChannelSubmit) {
       createChannelSubmit.addEventListener('click', async () => {
         const state = store.getState();
+        const community = store.getCommunity(state.activeCommunityId);
+        if (!community) return;
+        const draft = syncCreateChannelDraftFromDom(community) || ensureCreateChannelDraft(community) || defaultCreateChannelDraft(community);
         const payload = {
           communityId: state.activeCommunityId,
-          name: (root.querySelector('#scCreateChannelName') || {}).value || '',
-          category: (root.querySelector('#scCreateChannelCategory') || {}).value || 'Channels',
-          topic: (root.querySelector('#scCreateChannelTopic') || {}).value || '',
-          channelType: (root.querySelector('#scCreateChannelType') || {}).value || 'public',
-          privacyLevel: (root.querySelector('#scCreateChannelPrivacy') || {}).value || 'public',
-          slowModeSec: Number((root.querySelector('#scCreateChannelSlow') || {}).value || 0),
-          roomProvider: (root.querySelector('#scCreateChannelRoomProvider') || {}).value || 'native_nostr',
-          roomId: (root.querySelector('#scCreateChannelRoomId') || {}).value || '',
-          roomUrl: (root.querySelector('#scCreateChannelRoomUrl') || {}).value || '',
-          roomNaddr: (root.querySelector('#scCreateChannelRoomNaddr') || {}).value || '',
-          roomStatus: (root.querySelector('#scCreateChannelRoomStatus') || {}).value || 'planned',
-          roomHostPubkey: (root.querySelector('#scCreateChannelRoomHost') || {}).value || '',
-          roomStartsAt: parseDateTimeLocalValue((root.querySelector('#scCreateChannelRoomStartsAt') || {}).value || ''),
-          roomEndsAt: parseDateTimeLocalValue((root.querySelector('#scCreateChannelRoomEndsAt') || {}).value || ''),
-          roomRecordingUrl: (root.querySelector('#scCreateChannelRoomRecordingUrl') || {}).value || ''
+          name: draft.name || '',
+          category: draft.category || 'Channels',
+          topic: draft.topic || '',
+          channelType: draft.channelType || 'public',
+          privacyLevel: draft.privacyLevel || 'public',
+          slowModeSec: Number(draft.slowModeSec || 0),
+          roomProvider: draft.roomProvider || 'native_nostr',
+          roomId: draft.roomId || '',
+          roomUrl: draft.roomUrl || '',
+          roomNaddr: draft.roomNaddr || '',
+          roomStatus: draft.roomStatus || 'planned',
+          roomHostPubkey: draft.roomHostPubkey || '',
+          roomStartsAt: parseDateTimeLocalValue(draft.roomStartsAt || ''),
+          roomEndsAt: parseDateTimeLocalValue(draft.roomEndsAt || ''),
+          roomRecordingUrl: draft.roomRecordingUrl || ''
         };
 
         const created = store.createChannel(payload);

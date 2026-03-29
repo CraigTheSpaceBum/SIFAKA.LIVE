@@ -3,6 +3,30 @@ import { createCommunityStore } from '../store.js';
 
 const ownerPubkey = '1'.repeat(64);
 const guestPubkey = '2'.repeat(64);
+const moderatorPubkey = '3'.repeat(64);
+const adminPubkey = '4'.repeat(64);
+
+function createMemoryStorage() {
+  const memory = new Map();
+  return {
+    getItem(key) {
+      return memory.has(key) ? memory.get(key) : null;
+    },
+    setItem(key, value) {
+      memory.set(String(key), String(value));
+    },
+    removeItem(key) {
+      memory.delete(String(key));
+    },
+    clear() {
+      memory.clear();
+    }
+  };
+}
+
+globalThis.window = {
+  localStorage: createMemoryStorage()
+};
 
 const store = createCommunityStore({ currentUserPubkey: ownerPubkey });
 
@@ -94,6 +118,20 @@ assert.equal(stageRoom.channel.channelType, 'stage');
 assert.equal(stageRoom.channel.roomProvider, 'nostrnests');
 assert.equal(stageRoom.channel.roomUrl, 'https://njump.me/naddr1townhallroom');
 
+const addedCategory = store.addChannelCategory(roomCreated.community.id, 'Town Square');
+assert.equal(addedCategory.ok, true);
+assert.equal(store.getCommunityCategories(roomCreated.community.id).includes('Town Square'), true);
+
+const categorizedChannel = store.createChannel({
+  communityId: roomCreated.community.id,
+  name: 'office-hours',
+  category: 'Town Square',
+  channelType: 'public',
+  privacyLevel: 'public'
+});
+assert.equal(categorizedChannel.ok, true);
+assert.equal(categorizedChannel.channel.category, 'Town Square');
+
 store.setCurrentUser(guestPubkey);
 
 const openJoin = store.joinCommunity(openCreated.community.id);
@@ -132,5 +170,49 @@ const freshResolved = freshStore.resolveInviteToken(inviteToken);
 assert.equal(freshResolved.ok, true);
 assert.equal(freshResolved.communityId, inviteCreated.community.id);
 assert.equal(freshStore.getCommunity(inviteCreated.community.id).id, inviteCreated.community.id);
+
+const memberStateStore = createCommunityStore({ currentUserPubkey: guestPubkey });
+memberStateStore.ingestCommunity({
+  id: 'n72:member-sync-check',
+  title: 'Member Sync Check',
+  ownerPubkey,
+  moderatorPubkeys: [moderatorPubkey],
+  adminPubkeys: [adminPubkey],
+  joinMode: 'open',
+  discoverable: true
+});
+memberStateStore.joinCommunity('n72:member-sync-check', { bypassJoinMode: true });
+memberStateStore.ingestCommunityMembers({
+  communityId: 'n72:member-sync-check',
+  members: [guestPubkey],
+  replace: true
+});
+
+const resolvedMembers = memberStateStore.getCommunityMembers('n72:member-sync-check');
+assert.equal(resolvedMembers.some((member) => member.pubkey === ownerPubkey), true);
+assert.equal(resolvedMembers.some((member) => member.pubkey === moderatorPubkey), true);
+assert.equal(resolvedMembers.some((member) => member.pubkey === adminPubkey), true);
+assert.equal(resolvedMembers.some((member) => member.pubkey === guestPubkey), true);
+
+const persistedStore = createCommunityStore({ currentUserPubkey: ownerPubkey });
+const persistedCommunity = persistedStore.createCommunity({
+  name: 'Persistence Check',
+  type: 'public',
+  joinMode: 'open',
+  includeAnnouncements: false,
+  includeForum: false,
+  includeStaff: false
+});
+assert.equal(persistedCommunity.ok, true);
+
+const persistedSend = persistedStore.sendMessage({
+  channelId: persistedCommunity.community.defaultChannelId,
+  content: 'Persistent community hello'
+});
+assert.equal(persistedSend.ok, true);
+
+const reloadedStore = createCommunityStore({ currentUserPubkey: ownerPubkey });
+const reloadedMessages = reloadedStore.getMessages(persistedCommunity.community.defaultChannelId);
+assert.equal(reloadedMessages.some((message) => message.content === 'Persistent community hello'), true);
 
 console.log('store checks passed');

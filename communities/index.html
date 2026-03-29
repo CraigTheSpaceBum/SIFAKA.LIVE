@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redirecting to Communities...</title>
+<script>
+(function () {
+  var loc = window.location;
+  var path = (loc.pathname || '/communities').replace(/\/+$/, '') || '/communities';
+  var search = loc.search || '';
+  var hash = loc.hash || '';
+  var target = path + search + hash;
+  var fallback = '/?__sifaka_route=' + encodeURIComponent(target);
+  window.location.replace(fallback);
+})();
+</script>
+</head>
+<body>
+<noscript>
+<p>Communities is loading. If you are not redirected, <a href="/?__sifaka_route=%2Fcommunities">open it here</a>.</p>
+</noscript>
+</body>
+</html>

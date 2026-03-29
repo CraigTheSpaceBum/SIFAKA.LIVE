@@ -256,6 +256,16 @@
   padding: .28rem .48rem;
 }
 
+.sc-category-empty {
+  margin: 0 .48rem .28rem;
+  padding: .42rem .5rem;
+  border: 1px dashed rgba(255,255,255,.12);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: .67rem;
+  background: rgba(255,255,255,.02);
+}
+
 .sc-channel-btn {
   width: 100%;
   display: flex;
@@ -972,6 +982,60 @@
 .sc-settings-access.sc-role-guest {
   border-color: rgba(120,214,173,.28);
   background: rgba(0,212,138,.08);
+}
+
+.sc-settings-category-meta {
+  display: flex;
+  flex-direction: column;
+  gap: .18rem;
+  margin-bottom: .58rem;
+}
+
+.sc-settings-category-meta strong {
+  color: var(--text);
+  font-size: .76rem;
+}
+
+.sc-settings-category-meta small {
+  color: var(--muted);
+  font-size: .65rem;
+  line-height: 1.4;
+}
+
+.sc-settings-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.sc-settings-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: .22rem .58rem;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: rgba(255,255,255,.05);
+  color: var(--text2);
+  font-size: .68rem;
+  font-family: 'DM Mono', monospace;
+}
+
+.sc-settings-chip-muted {
+  color: var(--muted);
+}
+
+.sc-settings-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  margin-top: .72rem;
+}
+
+.sc-settings-inline-editor {
+  margin-top: .72rem;
+  padding-top: .72rem;
+  border-top: 1px solid rgba(255,255,255,.08);
 }
 
 .sc-form-grid {
