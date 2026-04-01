@@ -4192,6 +4192,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return normalized.toLowerCase() === '/my-streams';
   }
 
+  function isWidgetsPath(pathname) {
+    const raw = (pathname || '/').trim();
+    const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
+    return normalized.toLowerCase() === '/widgets';
+  }
+
   function isFeedPath(pathname) {
     const raw = (pathname || '/').trim();
     const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
@@ -4642,6 +4648,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function syncWidgetsRoute(mode = 'push') {
+    if (!window.history || !window.history.pushState) return;
+    if (isWidgetsPath(window.location.pathname)) return;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try {
+      window.history[method]({ view: 'widgets' }, '', '/widgets');
+    } catch (_) {
+      // ignore
+    }
+  }
+
   function syncFeedRoute(mode = 'push') {
     if (!window.history || !window.history.pushState) return;
     if (isFeedPath(window.location.pathname)) return;
@@ -4785,6 +4802,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (window.showPage) window.showPage('home', { routeMode: 'replace' });
   }
 
+  function showWidgetsFromRoute() {
+    if (typeof window.openWidgets === 'function') {
+      window.openWidgets({ routeMode: 'skip' });
+      return;
+    }
+    if (window.showPage) window.showPage('widgets', { routeMode: 'skip' });
+  }
+
   function showFeedFromRoute() {
     if (window.showPage) window.showPage('feed', { routeMode: 'skip' });
   }
@@ -4813,6 +4838,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (isMyStreamsPath(window.location.pathname)) {
       showMyStreamsFromRoute();
+      return;
+    }
+    if (isWidgetsPath(window.location.pathname)) {
+      showWidgetsFromRoute();
       return;
     }
     if (isFeedPath(window.location.pathname)) {
@@ -18709,20 +18738,91 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     // Communities integration context:
     // exposes dynamic getters so the Communities module can reuse current app auth/relay state.
-    window.__SIFAKA_CONTEXT = {
-      getUser: () => (state.user ? { ...state.user } : null),
-      getRelays: () => [...state.relays],
-      getSettings: () => ({ ...state.settings }),
-      openLogin: () => window.openLogin(),
-      showMessages: () => window.showMessages(),
-      showNotifications: () => window.showNotifications(),
-      showProfileByPubkey: (pubkey) => showProfileByPubkey(pubkey),
-      renderNostrContent: (text) => renderNostrContent(text),
-      getProfileByPubkey: (pubkeyInput) => {
-        const raw = String(pubkeyInput || '').trim();
-        const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
-        if (!decoded) return null;
-        const profile = profileFor(decoded);
+      window.__SIFAKA_CONTEXT = {
+        getUser: () => (state.user ? { ...state.user } : null),
+        getRelays: () => [...state.relays],
+        getSettings: () => ({ ...state.settings }),
+        openLogin: () => window.openLogin(),
+        showMessages: () => window.showMessages(),
+        showNotifications: () => window.showNotifications(),
+        showProfileByPubkey: (pubkey) => showProfileByPubkey(pubkey),
+        renderNostrContent: (text) => renderNostrContent(text),
+        searchProfiles: async (queryInput, limit = 8) => {
+          const query = String(queryInput || '').trim();
+          const lower = query.toLowerCase();
+          const max = Math.max(1, Math.min(Number(limit) || 8, 12));
+          if (!query) return [];
+
+          const resultsByPubkey = new Map();
+          const pushResult = (pubkeyInput, score = 100, resolvedNip05 = '') => {
+            const pubkey = normalizePubkeyHex(pubkeyInput);
+            if (!pubkey) return;
+            const profile = profileFor(pubkey) || {};
+            const claimedNip05 = normalizeNip05Value(resolvedNip05 || profile.nip05 || '');
+            const verifiedNip05 = claimedNip05 ? getVerifiedNip05ForPubkey(pubkey, claimedNip05) : '';
+            if (claimedNip05 && !verifiedNip05) ensureNip05Verification(pubkey, claimedNip05).catch(() => {});
+            const existing = resultsByPubkey.get(pubkey);
+            if (existing && Number(existing._score || 0) >= score) return;
+            resultsByPubkey.set(pubkey, {
+              pubkey,
+              name: String(profile.display_name || profile.name || '').trim(),
+              displayName: String(profile.display_name || profile.name || '').trim(),
+              avatar: String(profile.picture || '').trim(),
+              nip05: claimedNip05,
+              verifiedNip05: !!verifiedNip05,
+              verifiedNip05Value: verifiedNip05 || (resolvedNip05 || ''),
+              npub: formatNpubForDisplay(pubkey),
+              bio: String(profile.about || '').trim(),
+              _score: score
+            });
+          };
+
+          const exactPubkey = normalizePubkeyHex(query);
+          if (exactPubkey) pushResult(exactPubkey, 1200);
+
+          const normalizedNip05 = normalizeNip05Value(query);
+          if (normalizedNip05) {
+            const resolvedNip05Pubkey = await resolveProfileTokenToPubkey(normalizedNip05);
+            if (resolvedNip05Pubkey) pushResult(resolvedNip05Pubkey, 1180, normalizedNip05);
+          } else if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(lower)) {
+            const resolvedNpubPubkey = await resolveProfileTokenToPubkey(lower);
+            if (resolvedNpubPubkey) pushResult(resolvedNpubPubkey, 1170);
+          }
+
+          Array.from(state.profilesByPubkey.entries()).forEach(([pubkey, profile]) => {
+            const current = profile || {};
+            const displayName = String(current.display_name || current.name || '').trim();
+            const name = String(current.name || '').trim();
+            const nip05 = normalizeNip05Value(current.nip05 || '');
+            const npub = formatNpubForDisplay(pubkey).toLowerCase();
+            let score = 0;
+
+            if (displayName && displayName.toLowerCase() === lower) score = Math.max(score, 1100);
+            if (name && name.toLowerCase() === lower) score = Math.max(score, 1080);
+            if (nip05 && nip05 === lower) score = Math.max(score, 1160);
+            if (displayName && displayName.toLowerCase().includes(lower)) score = Math.max(score, 900);
+            if (name && name.toLowerCase().includes(lower)) score = Math.max(score, 860);
+            if (nip05 && nip05.includes(lower)) score = Math.max(score, 920);
+            if (npub && npub.includes(lower)) score = Math.max(score, 780);
+            if (String(pubkey).toLowerCase().includes(lower)) score = Math.max(score, 760);
+            if (score) pushResult(pubkey, score);
+          });
+
+          return Array.from(resultsByPubkey.values())
+            .sort((a, b) => {
+              const scoreDiff = Number(b._score || 0) - Number(a._score || 0);
+              if (scoreDiff) return scoreDiff;
+              return String(a.displayName || a.name || a.npub || a.pubkey)
+                .localeCompare(String(b.displayName || b.name || b.npub || b.pubkey));
+            })
+            .slice(0, max)
+            .map(({ _score, ...rest }) => rest);
+        },
+        getProfileByPubkey: (pubkeyInput) => {
+          const raw = String(pubkeyInput || '').trim();
+          const decoded = normalizePubkeyHex(raw) || normalizePubkeyHex(parseNpubMaybe(raw));
+          if (!decoded) return null;
+          const profile = profileFor(decoded);
         const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
         const verifiedNip05 = getVerifiedNip05ForPubkey(decoded, claimedNip05);
         return {
@@ -18919,6 +19019,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
       const myStreams = qs('#myStreamsPage');
+      const widgets = qs('#widgetsPage');
       const faq = qs('#faqPage');
       if (p !== 'video') setActiveViewerAddress('');
       if (p !== 'video') stopChatSubscription();
@@ -18935,6 +19036,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (p === 'faq' && routeMode !== 'skip') syncFaqRoute(routeMode);
       if (p === 'messages' && routeMode !== 'skip') syncMessagesRoute(routeMode);
       if (p === 'myStreams' && routeMode !== 'skip') syncMyStreamsRoute(routeMode);
+      if (p === 'widgets' && routeMode !== 'skip') syncWidgetsRoute(routeMode);
       if (p === 'communities' && routeMode !== 'skip') syncCommunitiesRoute(routeMode);
       if (home) home.classList.toggle('active', p === 'home');
       if (video) video.style.display = 'none';
@@ -18945,6 +19047,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (communities) communities.style.display = p === 'communities' ? 'block' : 'none';
       if (messages) messages.style.display = p === 'messages' ? 'block' : 'none';
       if (myStreams) myStreams.style.display = p === 'myStreams' ? 'block' : 'none';
+      if (widgets) widgets.style.display = p === 'widgets' ? 'block' : 'none';
       if (faq) faq.style.display = p === 'faq' ? 'block' : 'none';
       // Communities/home router behavior:
       // - home keeps hero playback and cycling
@@ -18992,6 +19095,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       } else {
         setMyStreamsStatus('');
       }
+      if (p === 'widgets') {
+        refreshWidgetsPageData();
+      }
       if (state.settings.miniPlayer && state.selectedStreamAddress) window.showMini();
       else window.hideMini();
       window.scrollTo(0, 0);
@@ -19009,6 +19115,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
       const myStreams = qs('#myStreamsPage');
+      const widgets = qs('#widgetsPage');
       const faq = qs('#faqPage');
       const selected = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
       setActiveViewerAddress(selected ? selected.address : '');
@@ -19022,6 +19129,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (communities) communities.style.display = 'none';
       if (messages) messages.style.display = 'none';
       if (myStreams) myStreams.style.display = 'none';
+      if (widgets) widgets.style.display = 'none';
       if (faq) faq.style.display = 'none';
       teardownDmSubscription();
       stopLiveSubscription();
@@ -19051,6 +19159,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
       const myStreams = qs('#myStreamsPage');
+      const widgets = qs('#widgetsPage');
       const faq = qs('#faqPage');
       setActiveViewerAddress('');
       stopChatSubscription();
@@ -19063,6 +19172,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (communities) communities.style.display = 'none';
       if (messages) messages.style.display = 'none';
       if (myStreams) myStreams.style.display = 'none';
+      if (widgets) widgets.style.display = 'none';
       if (faq) faq.style.display = 'none';
       teardownDmSubscription();
       stopLiveSubscription();
@@ -19451,6 +19561,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     window.closeMini = window.hideMini;
     window.returnToStream = function () { window.showVideoPage({ routeMode: 'push' }); };
+
+    function refreshWidgetsPageData() {
+      if (typeof window.syncWidgetBuilderStreams !== 'function') return;
+      const streams = ownManageableStreams().map((stream) => ({
+        address: stream.address,
+        title: stream.title,
+        status: normalizeStreamStatus(stream.status),
+        source: encodeStreamNaddr(stream) || stream.address
+      }));
+      const preferredAddress = (state.goLiveSelectedAddress || state.selectedStreamAddress || '').trim();
+      window.syncWidgetBuilderStreams(streams, preferredAddress);
+    }
+
+    window.openWidgets = function (opts = {}) {
+      const routeMode = opts.routeMode || 'push';
+      refreshWidgetsPageData();
+      window.showPage('widgets', { routeMode });
+      return true;
+    };
 
     window.openMyStreams = function (opts = {}) {
       const routeMode = opts.routeMode || 'push';
@@ -21191,6 +21320,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (notifications) notifications.style.display = 'none';
           const myStreams = qs('#myStreamsPage');
           if (myStreams) myStreams.style.display = 'none';
+          const widgets = qs('#widgetsPage');
+          if (widgets) widgets.style.display = 'none';
           views.showTheaterLayout({
             opts,
             qs,

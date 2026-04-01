@@ -83,6 +83,7 @@
         <button class="pd-item" onclick="openMyProfile();closeAllDD()">&#128100; My Profile</button>
         <button class="pd-item" onclick="showPage('notifications');closeAllDD()">&#128276; Notifications</button>
         <button class="pd-item" onclick="openMyStreams();closeAllDD()">&#128250; My Streams</button>
+        <button class="pd-item" onclick="openWidgets();closeAllDD()">&#129513; Widgets</button>
         <button class="pd-item" onclick="openSettings();closeAllDD()">&#9881;&#65039; Settings</button>
         <div class="dd-sep"></div>
         <button class="pd-item pd-signout" onclick="signOut();closeAllDD()">Sign Out</button>
@@ -989,6 +990,269 @@
   </div>
 </div>
 
+<!-- ========= WIDGETS PAGE ========= -->
+<div id="widgetsPage">
+  <div class="widgets-page-wrap">
+    <div class="widgets-shell">
+      <section class="widgets-hero">
+        <div class="widgets-eyebrow">OBS Browser Sources</div>
+        <h2>Build live widgets for your stream</h2>
+        <p>Pick a widget first, then generate a browser source URL. Name tags use profile identity references, while chat, zap alerts, and viewer counters use live stream references.</p>
+        <div class="widgets-hero-pills" id="widgetPicker">
+          <button class="widget-picker-btn" type="button" data-widget-pick="name-tag">Name Tag</button>
+          <button class="widget-picker-btn" type="button" data-widget-pick="zap-alerts">Zap Alerts</button>
+          <button class="widget-picker-btn" type="button" data-widget-pick="stream-chat">Stream Chat</button>
+          <button class="widget-picker-btn" type="button" data-widget-pick="viewer-counter">Viewer Counter</button>
+        </div>
+        <div class="widgets-picker-note">Choose a widget above to open its generator and preview card.</div>
+      </section>
+
+      <section class="widgets-builder-card" id="widgetsBuilderCard" hidden>
+        <div class="widgets-builder-head">
+          <div>
+            <h3 id="widgetsBuilderTitle">Widget Generator</h3>
+            <p id="widgetsBuilderDescription">Use one of your own live events or paste any public live stream reference.</p>
+          </div>
+          <a class="btn btn-ghost widgets-doc-link" href="./widget-overlay.html" target="_blank" rel="noopener">Open Overlay Page</a>
+        </div>
+
+        <div class="widgets-builder-grid">
+          <div class="fg" id="widgetStreamSelectField" hidden>
+            <label for="widgetStreamSelect">Your Streams</label>
+            <select id="widgetStreamSelect">
+              <option value="">Select one of your streams</option>
+            </select>
+            <div class="go-live-manage-help" id="widgetStreamSelectHelp">Signed-in stream shortcuts show up here automatically.</div>
+          </div>
+          <div class="fg" id="widgetRelayField" hidden>
+            <label for="widgetRelayInput">Optional Relay Override</label>
+            <input id="widgetRelayInput" type="text" placeholder="wss://relay.damus.io,wss://relay.primal.net">
+            <div class="go-live-manage-help">Leave blank to use the app's default relay mix inside the overlay.</div>
+          </div>
+          <div class="fg full">
+            <label for="widgetSourceInput" id="widgetSourceLabel">Live URL / Nostr Address</label>
+            <div class="widget-source-row">
+              <input id="widgetSourceInput" type="text" placeholder="https://sifaka.live/naddr1... or 30311:pubkey:d-tag">
+              <button class="btn btn-ghost widget-search-btn" id="widgetProfileSearchBtn" type="button" hidden>Search</button>
+            </div>
+            <div class="widget-profile-search-results" id="widgetProfileSearchResults" hidden></div>
+          </div>
+          <div class="fg full" id="widgetNameTagStyleField" hidden>
+            <div class="widget-name-style-card">
+              <div class="widget-url-label">Name Tag Style</div>
+              <div class="widget-name-style-grid">
+                <div class="fg">
+                  <label for="widgetNameTagTheme">Color Theme</label>
+                  <select id="widgetNameTagTheme">
+                    <option value="retro-night">Retro Night</option>
+                    <option value="sunset-pop">Sunset Pop</option>
+                    <option value="emerald-glow">Emerald Glow</option>
+                    <option value="rose-bloom">Rose Bloom</option>
+                    <option value="ice-blue">Ice Blue</option>
+                    <option value="midnight-gold">Midnight Gold</option>
+                    <option value="ocean-flare">Ocean Flare</option>
+                    <option value="candy-neon">Candy Neon</option>
+                    <option value="graphite-ember">Graphite Ember</option>
+                  </select>
+                </div>
+                <div class="fg">
+                  <label for="widgetNameTagFont">Font</label>
+                  <select id="widgetNameTagFont">
+                    <option value="arcade">Arcade</option>
+                    <option value="broadcast">Broadcast Sans</option>
+                    <option value="grotesk">Space Grotesk</option>
+                    <option value="mono">Mono</option>
+                    <option value="orbitron">Orbitron</option>
+                    <option value="oswald">Oswald</option>
+                    <option value="syne">Syne</option>
+                  </select>
+                </div>
+                <div class="fg">
+                  <label for="widgetNameTagAvatarSide">Profile Picture</label>
+                  <select id="widgetNameTagAvatarSide">
+                    <option value="left">Left Side</option>
+                    <option value="right">Right Side</option>
+                    <option value="none">Hide Picture</option>
+                  </select>
+                </div>
+                <div class="fg full">
+                  <label for="widgetNameTagIdentityOverride">Replace npub / nip-05</label>
+                  <input id="widgetNameTagIdentityOverride" type="text" placeholder="Optional custom identity line">
+                  <div class="go-live-manage-help">Leave blank to keep the verified nip-05 or fallback npub line automatically.</div>
+                </div>
+                <div class="fg full">
+                  <label for="widgetNameTagSubtext">Extra Line Under Identity</label>
+                  <input id="widgetNameTagSubtext" type="text" placeholder="Optional custom subtext">
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="fg full" id="widgetZapStyleField" hidden>
+            <div class="widget-zap-style-card">
+              <div class="widget-url-label">Zap Alert Style</div>
+              <div class="widget-zap-style-grid">
+                <div class="fg">
+                  <label for="widgetZapTheme">Color Theme</label>
+                  <select id="widgetZapTheme">
+                    <option value="amber-burst">Amber Burst</option>
+                    <option value="violet-night">Violet Night</option>
+                    <option value="mint-pop">Mint Pop</option>
+                    <option value="glacier">Glacier</option>
+                    <option value="rose-spark">Rose Spark</option>
+                    <option value="graphite-ember">Graphite Ember</option>
+                  </select>
+                </div>
+                <div class="fg">
+                  <label for="widgetZapFont">Font</label>
+                  <select id="widgetZapFont">
+                    <option value="broadcast">Broadcast Sans</option>
+                    <option value="grotesk">Space Grotesk</option>
+                    <option value="mono">Mono</option>
+                    <option value="orbitron">Orbitron</option>
+                    <option value="oswald">Oswald</option>
+                    <option value="syne">Syne</option>
+                    <option value="arcade">Arcade</option>
+                  </select>
+                </div>
+                <div class="fg">
+                  <label for="widgetZapEffect">Transition Effect</label>
+                  <select id="widgetZapEffect">
+                    <option value="slide">Slide</option>
+                    <option value="fade">Fade</option>
+                    <option value="pop">Pop</option>
+                    <option value="none">None</option>
+                  </select>
+                </div>
+                <div class="fg">
+                  <label for="widgetZapMotionMs">Transition Length (ms)</label>
+                  <input id="widgetZapMotionMs" type="number" min="100" max="2000" step="50" value="450">
+                  <div class="go-live-manage-help">Controls both the alert entrance and exit animation speed.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="fg full" id="widgetStatusField" hidden>
+            <div class="widget-url-label">Generator Status</div>
+            <div class="widgets-source-hint" id="widgetSourceHint">Paste a live page URL or choose one of your streams to generate widget URLs.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="widgets-grid" id="widgetsGrid" hidden>
+        <article class="widget-tool-card" data-widget-kind="name-tag" hidden>
+          <div class="widget-tool-preview name-tag">
+            <div class="widget-live-preview-shell">
+              <iframe
+                id="widgetPreviewFrame-name-tag"
+                class="widget-live-preview-frame"
+                title="Name tag live preview"
+                loading="lazy"
+                scrolling="no"
+                referrerpolicy="no-referrer"
+                hidden
+              ></iframe>
+            </div>
+          </div>
+          <div class="widget-tool-body">
+            <div class="widget-tool-meta">
+              <h3>Name Tag</h3>
+              <span>720 x 120</span>
+            </div>
+            <p>Retro lower-third with a full-height avatar panel and verified identity line.</p>
+            <label class="widget-url-label" for="widgetUrl-name-tag">Browser source URL</label>
+            <div class="widget-url-row">
+              <input id="widgetUrl-name-tag" class="widget-url-input" type="text" readonly>
+              <button class="btn btn-ghost widget-copy-btn" type="button" data-copy-target="widgetUrl-name-tag">Copy URL</button>
+            </div>
+            <div class="widget-actions">
+              <a class="btn btn-primary widget-open-btn" data-open-kind="name-tag" href="./widget-overlay.html?type=name-tag" target="_blank" rel="noopener">Open Preview</a>
+              <span class="widget-status-note">Best for lower thirds and scene intros.</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="widget-tool-card" data-widget-kind="zap-alerts" hidden>
+          <div class="widget-tool-preview zap-alerts">
+            <div class="widget-preview-alert" id="widgetPreviewAlert-zap">
+              <strong>⚡ 210 sats</strong>
+              <span>New zap alert pops in here.</span>
+              <em>just now</em>
+            </div>
+          </div>
+          <div class="widget-tool-body">
+            <div class="widget-tool-meta">
+              <h3>Zap Alerts</h3>
+              <span>420 x 320</span>
+            </div>
+            <p>Floating alert stack for new zaps with sender names, sats, and notes.</p>
+            <label class="widget-url-label" for="widgetUrl-zap-alerts">Browser source URL</label>
+            <div class="widget-url-row">
+              <input id="widgetUrl-zap-alerts" class="widget-url-input" type="text" readonly>
+              <button class="btn btn-ghost widget-copy-btn" type="button" data-copy-target="widgetUrl-zap-alerts">Copy URL</button>
+            </div>
+            <div class="widget-actions">
+              <a class="btn btn-primary widget-open-btn" data-open-kind="zap-alerts" href="./widget-overlay.html?type=zap-alerts" target="_blank" rel="noopener">Open Preview</a>
+              <a class="btn btn-ghost widget-open-btn" data-test-preview-kind="zap-alerts" href="./widget-overlay.html?type=zap-alerts&testPreview=1" target="_blank" rel="noopener">Test Preview</a>
+              <span class="widget-status-note">Shows new zaps as animated toasts.</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="widget-tool-card" data-widget-kind="stream-chat" hidden>
+          <div class="widget-tool-preview stream-chat">
+            <div class="widget-preview-chat">
+              <div><strong>wavesound</strong> That entrance is perfect.</div>
+              <div><strong>nostrfan</strong> Audio sounds great.</div>
+              <div><strong>zapmonkey</strong> Dropping sats now.</div>
+            </div>
+          </div>
+          <div class="widget-tool-body">
+            <div class="widget-tool-meta">
+              <h3>Stream Chat</h3>
+              <span>420 x 720</span>
+            </div>
+            <p>Transparent live chat rail for recent stream messages with avatars and timestamps.</p>
+            <label class="widget-url-label" for="widgetUrl-stream-chat">Browser source URL</label>
+            <div class="widget-url-row">
+              <input id="widgetUrl-stream-chat" class="widget-url-input" type="text" readonly>
+              <button class="btn btn-ghost widget-copy-btn" type="button" data-copy-target="widgetUrl-stream-chat">Copy URL</button>
+            </div>
+            <div class="widget-actions">
+              <a class="btn btn-primary widget-open-btn" data-open-kind="stream-chat" href="./widget-overlay.html?type=stream-chat" target="_blank" rel="noopener">Open Preview</a>
+              <span class="widget-status-note">Shows recent live chat and keeps updating.</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="widget-tool-card" data-widget-kind="viewer-counter" hidden>
+          <div class="widget-tool-preview viewer-counter">
+            <div class="widget-preview-counter">
+              <span>👁 VIEWERS</span>
+              <strong>128</strong>
+            </div>
+          </div>
+          <div class="widget-tool-body">
+            <div class="widget-tool-meta">
+              <h3>Viewer Counter</h3>
+              <span>320 x 96</span>
+            </div>
+            <p>Compact audience counter using the live event's current participant count.</p>
+            <label class="widget-url-label" for="widgetUrl-viewer-counter">Browser source URL</label>
+            <div class="widget-url-row">
+              <input id="widgetUrl-viewer-counter" class="widget-url-input" type="text" readonly>
+              <button class="btn btn-ghost widget-copy-btn" type="button" data-copy-target="widgetUrl-viewer-counter">Copy URL</button>
+            </div>
+            <div class="widget-actions">
+              <a class="btn btn-primary widget-open-btn" data-open-kind="viewer-counter" href="./widget-overlay.html?type=viewer-counter" target="_blank" rel="noopener">Open Preview</a>
+              <span class="widget-status-note">Great for corners, stingers, and scene frames.</span>
+            </div>
+          </div>
+        </article>
+      </section>
+    </div>
+  </div>
+</div>
+
 <!-- ========= FAQ PAGE ========= -->
 <div id="faqPage">
   <div class="faq-page-wrap">
@@ -1452,6 +1716,7 @@
 <script src="./scripts/theater-view.js"></script>
 <script src="./scripts/profile-view.js"></script>
 <script src="./scripts/gif-provider.js"></script>
+<script src="./scripts/widgets-builder.js"></script>
 <script>
   (function () {
     if (window.location && window.location.protocol === 'file:') return;
