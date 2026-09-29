@@ -223,7 +223,7 @@
   const THEATER_CHAT_ZAP_MAX_AGE_SEC = 60 * 60 * 24;
   const THEATER_CHAT_QUEUE_SOFT_CAP = 120;
   const THEATER_REACTION_QUEUE_SOFT_CAP = 240;
-  const THEATER_CHAT_RENDER_BATCH_SIZE = 28;
+  const THEATER_CHAT_RENDER_BATCH_SIZE = 8;
   const THEATER_CHAT_REALTIME_FLUSH_MS_LIVE = 140;
   const THEATER_CHAT_REALTIME_FLUSH_MS_ARCHIVE = 80;
   const THEATER_CHAT_REALTIME_BATCH_LIVE = 8;
@@ -15699,16 +15699,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         chatQueueCursor = 0;
         return;
       }
-      const batchSize = 28;
+      const batchSize = THEATER_CHAT_RENDER_BATCH_SIZE;
       let processed = 0;
+      const wasNearBottom = (() => {
+        const sc = qs('#chatScroll');
+        return !!sc && ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
+      })();
       while (chatQueueCursor < chatEventQueue.length && processed < batchSize) {
         const ev = chatEventQueue[chatQueueCursor];
         chatQueueCursor += 1;
         processed += 1;
         if (!ev || Number(ev.kind || 0) !== KIND_LIVE_CHAT || !ev.id) continue;
-        renderChatMessage(ev, { maxRows: visibleChatRows });
+        renderChatMessage(ev, { maxRows: visibleChatRows, autoScroll: false });
         const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
         if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) unknownPubkeys.add(senderPubkey);
+      }
+      if (wasNearBottom && processed) {
+        const sc = qs('#chatScroll');
+        if (sc) sc.scrollTop = sc.scrollHeight;
       }
       if (chatQueueCursor >= chatEventQueue.length) {
         chatEventQueue.length = 0;
@@ -15716,7 +15724,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (unknownPubkeys.size) scheduleMissingChatProfiles(0);
         return;
       }
-      state._chatMessageQueueTimer = setTimeout(flushChatEventQueue, 8);
+      state._chatMessageQueueTimer = setTimeout(flushChatEventQueue, 16);
     }
 
     function queueChatEvent(ev) {
@@ -15759,7 +15767,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (ev.kind === KIND_ZAP_RECEIPT) {
         const suppressChatEntry = historyZapIdsToSuppressChat.has(ev.id);
         if (suppressChatEntry) historyZapIdsToSuppressChat.delete(ev.id);
-        if (addStreamZapReceipt(ev, stream, { deferUi: true, suppressChatEntry, maxRows: visibleChatRows })) {
+        if (addStreamZapReceipt(ev, stream, { deferUi: true, suppressChatEntry, maxRows: visibleChatRows, autoScroll: false })) {
           outcome.streamZapsDirty = true;
         }
         return outcome;
@@ -15788,18 +15796,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         reactionQueueCursor = 0;
         return;
       }
-      const batchSize = 20;
+      const batchSize = 12;
       let processed = 0;
       let streamReactionsDirty = false;
       let streamZapsDirty = false;
+      const dirtyChatLikeIds = new Set();
       while (reactionQueueCursor < reactionEventQueue.length && processed < batchSize) {
         const ev = reactionEventQueue[reactionQueueCursor];
         reactionQueueCursor += 1;
         processed += 1;
         const outcome = handleChatReactionEvent(ev);
+        if (ev && ev.kind === KIND_REACTION) {
+          const targetId = firstTagValue(ev.tags, 'e');
+          if (targetId && state.chatMessageEventsById.has(targetId)) dirtyChatLikeIds.add(targetId);
+        }
         if (outcome && outcome.streamReactionsDirty) streamReactionsDirty = true;
         if (outcome && outcome.streamZapsDirty) streamZapsDirty = true;
       }
+      dirtyChatLikeIds.forEach((messageId) => updateChatLikeUi(messageId));
       if (streamReactionsDirty) {
         renderStreamReactionsUi(stream);
       }
@@ -15812,7 +15826,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         reactionQueueCursor = 0;
         return;
       }
-      state._chatReactionQueueTimer = setTimeout(flushReactionEventQueue, 10);
+      state._chatReactionQueueTimer = setTimeout(flushReactionEventQueue, 16);
     }
 
     function queueReactionEvent(ev) {
