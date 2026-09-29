@@ -16622,7 +16622,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         return;
       }
 
-      if (ev.kind === 1 && !isTopLevelProfilePost(ev, pubkey)) {
+      if ((ev.kind === 1 || ev.kind === KIND_COMMENT) && !isTopLevelProfilePost(ev, pubkey)) {
         const list = commentsByPost.get(ref);
         if (list) list.push(ev);
       }
