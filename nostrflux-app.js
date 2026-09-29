@@ -17224,9 +17224,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         obs.disconnect();
         const newLimit = limit + 6;
         listEl.dataset.feedLimit = String(newLimit);
-        // Re-render with higher limit using current data
         const map = state.profileNotesByPubkey.get(pubkey) || new Map();
         const isFeedView = isNostrFeedVirtualProfile(pubkey);
+        const loadedNotes = Array.from(map.values()).filter((ev) => {
+          if (!ev) return false;
+          if (isFeedView) return isTopLevelNostrFeedPost(ev);
+          if (ev.pubkey !== pubkey) return false;
+          if (ev.kind === 6) return true;
+          return isTopLevelProfilePost(ev, pubkey);
+        });
+        if (newLimit >= loadedNotes.length && loadedNotes.length) {
+          const oldest = loadedNotes.reduce((min, ev) => Math.min(min, Number(ev.created_at || Infinity)), Infinity);
+          if (Number.isFinite(oldest) && oldest > 1) startProfileFeedBackfill(pubkey, oldest - 1);
+        }
+        // Render immediately; the backfill performs a targeted refresh when ready.
         const freshNotes = Array.from(map.values())
           .filter((ev) => {
             if (!ev) return false;
@@ -17943,6 +17954,74 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function stopProfileFeedBackfills() {
+    if (!(state.profileFeedBackfillSubIds instanceof Map)) state.profileFeedBackfillSubIds = new Map();
+    state.profileFeedBackfillSubIds.forEach((subId) => {
+      try { if (subId && state.pool) state.pool.unsubscribe(subId); } catch (_) {}
+    });
+    state.profileFeedBackfillSubIds.clear();
+    if (!(state.profileFeedBackfillInFlight instanceof Map)) state.profileFeedBackfillInFlight = new Map();
+    state.profileFeedBackfillInFlight.clear();
+  }
+
+  function startProfileFeedBackfill(pubkey, beforeSec) {
+    if (!pubkey || !state.pool) return;
+    const selectedKey = normalizePubkeyHex(pubkey) || pubkey;
+    const before = Math.max(1, Math.floor(Number(beforeSec || 0)));
+    if (!before) return;
+
+    if (!(state.profileFeedBackfillSubIds instanceof Map)) state.profileFeedBackfillSubIds = new Map();
+    if (!(state.profileFeedBackfillInFlight instanceof Map)) state.profileFeedBackfillInFlight = new Map();
+    if (state.profileFeedBackfillInFlight.has(selectedKey)) return;
+
+    const map = state.profileNotesByPubkey.get(pubkey) || new Map();
+    const loaded = Array.from(map.values()).filter((ev) => Number(ev && ev.created_at || 0) > 0);
+    const oldestLoaded = loaded.reduce((min, ev) => Math.min(min, Number(ev.created_at || 0)), Infinity);
+    const until = Math.min(before, Number.isFinite(oldestLoaded) ? oldestLoaded - 1 : before);
+    if (until < 1) return;
+
+    const promise = new Promise((resolve) => {
+      let subId = null;
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        try { if (subId && state.pool) state.pool.unsubscribe(subId); } catch (_) {}
+        state.profileFeedBackfillSubIds.delete(selectedKey);
+        state.profileFeedBackfillInFlight.delete(selectedKey);
+        resolve();
+      };
+
+      subId = state.pool.subscribe(
+        [
+          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], until, limit: 320 },
+          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], until, limit: 620 }
+        ],
+        {
+          event: (ev) => {
+            const targetMap = state.profileNotesByPubkey.get(pubkey) || new Map();
+            const current = targetMap.get(ev.id);
+            if (!current || (current.created_at || 0) <= (ev.created_at || 0)) {
+              targetMap.set(ev.id, ev);
+              state.profileNotesByPubkey.set(pubkey, targetMap);
+            }
+          },
+          eose: finish
+        }
+      );
+      state.profileFeedBackfillSubIds.set(selectedKey, subId);
+      setTimeout(finish, 8000);
+    });
+
+    state.profileFeedBackfillInFlight.set(selectedKey, promise);
+    promise.then(() => {
+      if ((normalizePubkeyHex(state.selectedProfilePubkey) || state.selectedProfilePubkey) === selectedKey) {
+        renderProfileFeed(pubkey);
+        renderProfileCollections(pubkey);
+      }
+    }).catch(() => {});
+  }
+
   function subscribeProfileFeed(pubkey) {
     if (!pubkey) return;
     if (state.profileFeedSubId) state.pool.unsubscribe(state.profileFeedSubId);
@@ -17979,8 +18058,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.profileFeedSubId = state.pool.subscribe(
       [
-        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 320, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 },
-        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 620, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 }
+        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 320 },
+        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 620 }
       ],
       {
         event: (ev) => {
