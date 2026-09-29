@@ -13325,15 +13325,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     // Sats total for this stream from zap receipts.
     updateTheaterSatsDisplay(stream);
 
-    // Followers ? fetch from profileStats if already loaded
+    // Followers: initialize the profile-stats subscription when theater opens.
     const followersEl = qs('#theaterFollowers');
+    const statsTargetPubkey = normalizePubkeyHex(stream.hostPubkey || '') || normalizePubkeyHex(stream.pubkey || '');
     if (followersEl) {
-      const statsTargetPubkey = normalizePubkeyHex(stream.hostPubkey || '') || normalizePubkeyHex(stream.pubkey || '');
       const stats = statsTargetPubkey && state.profileStatsByPubkey
         ? state.profileStatsByPubkey.get(statsTargetPubkey)
         : null;
-      followersEl.textContent = stats ? formatCount(stats.followers || 0) : '-';
+      followersEl.textContent = stats ? formatCount(stats.followers || 0) : '0';
     }
+    if (statsTargetPubkey && state.pool) subscribeProfileStats(statsTargetPubkey);
 
     // Runtime counter ? ticks every second from stream.starts
     clearInterval(state._theaterRuntimeInterval);
@@ -15959,16 +15960,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const reactionLiveSince = Math.max(0, nowSec - THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC);
     const reactionHistoryFilters = [
       { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince },
+      { kinds: [KIND_REACTION, KIND_DELETION], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince },
       { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince }
     ];
-    // Keep high-volume reactions/deletions out of the real-time theater path.
-// Likes/reactions remain available through bounded history; stream zaps stay live.
+    // Stream reactions can target the NIP-53 address (#a) or event id (#e).
+    // Listen for both so theater likes/reactions populate on a fresh open.
     const reactionLiveFilters = [
-      { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], since: reactionLiveSince }
+      { kinds: [KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#a': [stream.address], since: reactionLiveSince }
     ];
     if (stream.id) {
-      reactionHistoryFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
-      reactionLiveFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], since: reactionLiveSince });
+      reactionLiveFilters.push({ kinds: [KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#e': [stream.id], since: reactionLiveSince });
     }
     // Do not query creator-wide #p zap traffic here. It can dwarf stream-specific
     // traffic and compete with the video/chat rendering path. Stream zaps are
@@ -16054,8 +16055,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       if (ev.kind === KIND_REACTION) {
         const targetId = firstTagValue(ev.tags, 'e');
-        if (!/^[0-9a-f]{64}$/i.test(targetId || '')) return outcome;
-        if (targetId === stream.id) {
+        const targetAddress = firstTagValue(ev.tags, 'a');
+        const targetsStream =
+          (targetId && stream.id && targetId === stream.id) ||
+          (targetAddress && stream.address && targetAddress === stream.address);
+        if (targetsStream) {
           const reactionMeta = parseReactionMeta(ev.content, ev.tags);
           if (!reactionMeta) return outcome;
           applyStreamReaction(reactionMeta, normalizePubkeyHex(ev.pubkey), ev.id);
@@ -16142,8 +16146,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const kind = Number(ev.kind || 0);
       if (kind === KIND_REACTION) {
         const targetId = firstTagValue(ev.tags, 'e');
+        const targetAddress = firstTagValue(ev.tags, 'a');
+        const isStreamReaction =
+          (targetId && stream.id && targetId === stream.id) ||
+          (targetAddress && stream.address && targetAddress === stream.address);
         // Ignore likes for messages that are no longer visible.
-        if (targetId && targetId !== stream.id && !state.chatMessageEventsById.has(targetId)) return;
+        if (!isStreamReaction && targetId && !state.chatMessageEventsById.has(targetId)) return;
       }
       reactionEventQueue.push(ev);
       if (reactionEventQueue.length > THEATER_REACTION_QUEUE_SOFT_CAP) {
@@ -17473,6 +17481,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 
     if (count) count.textContent = `${notes.length} notes`;
+    const postCountEl = qs('#profPostCount');
+    const normalizedProfileKey = normalizePubkeyHex(pubkey) || pubkey;
+    const postCount = Array.from(map.values()).filter((ev) =>
+      ev && Number(ev.kind || 0) === 1 &&
+      (normalizePubkeyHex(ev.pubkey) || ev.pubkey) === normalizedProfileKey &&
+      isTopLevelProfilePost(ev, ev.pubkey)
+    ).length;
+    if (postCountEl) postCountEl.textContent = formatCount(postCount);
 
     const aggregates = buildProfilePostAggregates(pubkey, notes);
     const profile = profileFor(pubkey);
