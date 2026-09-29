@@ -2353,6 +2353,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!el) return;
     const raw = sanitizeMediaUrl(pictureValue);
     const cacheKey = mediaUrlCacheKey(raw);
+    const existingImg = el.querySelector('img[data-sifaka-avatar-src]');
+    if (raw && existingImg && existingImg.dataset.sifakaAvatarSrc === raw) return;
+    if (!raw && !existingImg && String(el.textContent || '') === String(fallbackText || '')) return;
     el.innerHTML = '';
 
     if (raw && shouldSkipHotlinkBlockedAvatar(raw)) {
@@ -2371,6 +2374,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (isLikelyUrl(raw)) {
       const img = document.createElement('img');
       if (cacheKey && state.mediaUrlStatusByKey) state.mediaUrlStatusByKey.set(cacheKey, 'pending');
+      img.dataset.sifakaAvatarSrc = raw;
       img.src = raw;
       img.alt = 'avatar';
       img.loading = 'lazy';
@@ -4226,6 +4230,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (sameCore) return false;
     if (!existing || incomingCreatedAt >= existingCreatedAt) {
       state.nip71VideosByEventId.set(eventId, video);
+      if (state.nip71VideosByEventId.size > 500) pruneRuntimeMemoryCaches();
       return true;
     }
     return false;
@@ -8072,6 +8077,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function pruneRuntimeMemoryCaches() {
+    const cap=(map,limit,getTs)=>{if(!(map instanceof Map)||map.size<=limit)return;Array.from(map.entries()).sort((a,b)=>Number(getTs(b[1])||0)-Number(getTs(a[1])||0)).slice(limit).forEach(([k])=>map.delete(k));};
+    if(state.streamsByAddress.size>420){const keep=Array.from(state.streamsByAddress.values()).sort((a,b)=>Number(b&&b.created_at||0)-Number(a&&a.created_at||0)).slice(0,420);const ids=new Set(keep.map(s=>s&&s.address).filter(Boolean));if(state.selectedStreamAddress)ids.add(state.selectedStreamAddress);Array.from(state.streamsByAddress.keys()).forEach(k=>{if(ids.has(k))return;state.streamsByAddress.delete(k);state.streamEventIdsByAddress.delete(k);state.streamZapTotals.delete(k);state.streamRecentZapsByAddress.delete(k);state.streamZapEventIdsByAddress.delete(k);});}
+    if(state.nip71VideosByEventId.size>500){const keep=Array.from(state.nip71VideosByEventId.values()).sort((a,b)=>Number(b&&b.created_at||0)-Number(a&&a.created_at||0)).slice(0,500);const ids=new Set(keep.map(v=>v&&v.id).filter(Boolean));Array.from(state.nip71VideosByEventId.keys()).forEach(k=>{if(!ids.has(k))state.nip71VideosByEventId.delete(k);});}
+    cap(state.profilesByPubkey,2500,v=>v&&v.created_at);cap(state.profileStatusByPubkey,1200,v=>v&&v.created_at);
+    if(state.mediaUrlStatusByKey.size>1600)state.mediaUrlStatusByKey=new Map(Array.from(state.mediaUrlStatusByKey.entries()).slice(-1200));
+    if(state.failedMediaUrls.size>900)state.failedMediaUrls=new Set(Array.from(state.failedMediaUrls).slice(-700));
+  }
+
   function rememberStreamEventId(address, eventId) {
     const key = String(address || '').trim();
     const id = String(eventId || '').trim().toLowerCase();
@@ -8148,6 +8162,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     }
     if (didStore) updateGoLiveButtonState();
+    if (didStore) pruneRuntimeMemoryCaches();
     return didStore;
   }
 
@@ -19515,8 +19530,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const myStreams = qs('#myStreamsPage');
       const widgets = qs('#widgetsPage');
       const faq = qs('#faqPage');
-      if (p !== 'video') setActiveViewerAddress('');
-      if (p !== 'video') stopChatSubscription();
+      if (p !== 'video') {
+        setActiveViewerAddress('');
+        stopViewerPresence();
+        stopLivePresenceTracker();
+        stopChatSubscription();
+      }
       if (p === 'home' && routeMode !== 'skip') syncHomeRoute(routeMode);
       if (p === 'videos' && routeMode !== 'skip') syncVideosRoute(routeMode);
       if (p === 'videos' && Object.prototype.hasOwnProperty.call(opts, 'videosFilter')) {
@@ -19613,6 +19632,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const faq = qs('#faqPage');
       const selected = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
       setActiveViewerAddress(selected ? selected.address : '');
+      stopViewerPresence();
+      stopLivePresenceTracker();
       if (selected && routeMode !== 'skip') syncTheaterRoute(selected, routeMode);
       if (home) home.classList.remove('active');
       if (video) video.style.display = 'block';
@@ -21559,6 +21580,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       try { localStorage.clear(); } catch (_) {}
       state.user = null; state.authMode = 'readonly'; state.localSecretKey = null;
       state.remoteSignerSession = null; state.remoteLoginPending = false; state.remoteLoginAbortController = null; state.remoteLoginUri = '';
+      stopViewerPresence();
+      stopLivePresenceTracker();
       state.pendingOnboardingNsec = ''; state.selectedStreamAddress = null;
       state.selectedProfilePubkey = null; state.selectedProfileLiveAddress = null;
       state.playbackAddress = ''; state.playbackUrl = '';
@@ -21861,7 +21884,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     rebuildRelayPool();
   }
 
+  const APP_BOOT_MIN_MS=650, APP_BOOT_MAX_MS=6500;
+  let appBootStartedAt=Date.now(), appBootHideTimer=null, appBootReady=false;
+  function setAppBootStatus(message){const el=qs('#appBootStatus');if(el)el.textContent=String(message||'Loading Sifaka Live...');}
+  function finishAppBoot(force=false){if(appBootReady)return;const elapsed=Date.now()-appBootStartedAt;if(!force&&elapsed<APP_BOOT_MIN_MS){if(appBootHideTimer)clearTimeout(appBootHideTimer);appBootHideTimer=setTimeout(()=>finishAppBoot(false),APP_BOOT_MIN_MS-elapsed);return;}appBootReady=true;if(appBootHideTimer){clearTimeout(appBootHideTimer);appBootHideTimer=null;}const screen=qs('#appBootScreen');if(!screen)return;screen.classList.add('is-ready');window.setTimeout(()=>screen.remove(),420);}
+  function startAppBootTimeout(){window.setTimeout(()=>finishAppBoot(true),APP_BOOT_MAX_MS);}
+
   async function init() {
+    appBootStartedAt=Date.now();
+    setAppBootStatus('Preparing your local settings...');
+    startAppBootTimeout();
     loadSettingsFromStorage();
     loadFollowedPubkeys();
     loadSavedExternalLists();
@@ -21894,9 +21926,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (pill) pill.addEventListener('click', (e) => { e.stopPropagation(); window.toggleDD('profile'); });
 
     if (state.streamsByAddress.size) renderLiveGrid();
+    setAppBootStatus('Connecting to Nostr relays...');
     initRelay();
     const restoredRemote = await tryRestoreRemoteLogin();
-    if (!restoredRemote) await tryRestoreLocalLogin();
+    if (!restoredRemote) {
+      setAppBootStatus('Restoring your Nostr identity...');
+      await tryRestoreLocalLogin();
+    }
+    setAppBootStatus('Loading live Nostr data...');
     setUserUi();
     syncViewFromLocation({ fallbackMode: 'replace' });
 
@@ -21904,6 +21941,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     renderListFilterDD();
     renderNostrFeedFilterSelect();
     renderLiveGrid();
+    setAppBootStatus('Sifaka Live is ready.');
+    finishAppBoot();
   }
 
   document.addEventListener('DOMContentLoaded', init);
