@@ -245,6 +245,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   const VIDEO_POST_LIVE_CHAT_MAX_MESSAGES = 160;
   const VIDEO_POST_LIVE_CHAT_FETCH_MAX_EVENTS = 260;
   const VIDEO_POST_LIVE_CHAT_RENDER_DEBOUNCE_MS = 90;
+  // High-volume theater traffic only needs a small redundant read set.
+  // Core feeds and normal queries still use the full configured relay pool.
+  const THEATER_HIGH_VOLUME_RELAY_COUNT = 5;
 
   const DEFAULT_SETTINGS = {
     relays: [...DEFAULT_RELAYS],
@@ -550,6 +553,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
         this.onStatus(url, 'open');
         this.subscriptions.forEach((sub, id) => {
+          const relayUrls = Array.isArray(sub.relayUrls) ? sub.relayUrls : this.urls;
+          if (!relayUrls.includes(url)) return;
           this.send(url, ['REQ', id, ...sub.filters]);
         });
       });
@@ -615,16 +620,26 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     }
 
-    subscribe(filters, handlers) {
+    subscribe(filters, handlers, opts = {}) {
       const id = `sub_${Math.random().toString(36).slice(2, 10)}`;
-      this.subscriptions.set(id, { filters, handlers, seenEventIds: new Set() });
-      this.urls.forEach((url) => this.send(url, ['REQ', id, ...filters]));
+      const requestedRelays = Array.isArray(opts.relayUrls) ? opts.relayUrls : this.urls;
+      const relayUrls = [...new Set(requestedRelays)].filter((url) => this.urls.includes(url));
+      const activeRelayUrls = relayUrls.length ? relayUrls : this.urls;
+      this.subscriptions.set(id, {
+        filters,
+        handlers,
+        relayUrls: activeRelayUrls,
+        seenEventIds: new Set()
+      });
+      activeRelayUrls.forEach((url) => this.send(url, ['REQ', id, ...filters]));
       return id;
     }
 
     unsubscribe(id) {
+      const sub = this.subscriptions.get(id);
       this.subscriptions.delete(id);
-      this.urls.forEach((url) => this.send(url, ['CLOSE', id]));
+      const relayUrls = sub && Array.isArray(sub.relayUrls) ? sub.relayUrls : this.urls;
+      relayUrls.forEach((url) => this.send(url, ['CLOSE', id]));
     }
 
     publish(event) {
@@ -15704,6 +15719,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       return state.selectedStreamAddress === stream.address;
     }
 
+    const theaterRelayUrls = (state.pool && Array.isArray(state.pool.urls))
+      ? state.pool.urls.slice(0, THEATER_HIGH_VOLUME_RELAY_COUNT)
+      : [];
+
     function flushChatEventQueue() {
       state._chatMessageQueueTimer = null;
       if (!isSameSelectedStream()) {
@@ -15883,7 +15902,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       eose: () => {
         flushChatLiveBootstrap();
       }
-    });
+    }, { relayUrls: theaterRelayUrls });
 
     fetchEventsCached(chatHistoryFilters, {
       scope: 'theater-chat-history',
@@ -15921,7 +15940,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         eose: () => {
           flushReactionLiveBootstrap();
         }
-      }
+      },
+      { relayUrls: theaterRelayUrls }
     );
 
     fetchEventsCached(reactionHistoryFilters, {
