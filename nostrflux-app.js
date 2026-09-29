@@ -505,6 +505,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       this.sockets = new Map();
       this.subscriptions = new Map();
       this.reconnectTimers = new Map();
+      this.subscriptionEventDedupeLimit = 3000;
       this.connectTimers = new Set();
       this.destroyed = false;
       this.connectAll();
@@ -560,9 +561,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const type = data[0];
         if (type === 'EVENT') {
           const sub = this.subscriptions.get(data[1]);
-          if (sub && sub.handlers && typeof sub.handlers.event === 'function') {
-            sub.handlers.event(data[2], url);
+          const ev = data[2];
+          if (!sub || !sub.handlers || typeof sub.handlers.event !== 'function' || !ev || !ev.id) return;
+
+          // The same event commonly arrives from several relays. Drop duplicate
+          // deliveries before application code does any parsing, DOM work, or
+          // queueing. This is especially important for high-volume live chat.
+          if (!sub.seenEventIds) sub.seenEventIds = new Set();
+          if (sub.seenEventIds.has(ev.id)) return;
+          sub.seenEventIds.add(ev.id);
+          if (sub.seenEventIds.size > this.subscriptionEventDedupeLimit) {
+            const oldest = sub.seenEventIds.values().next().value;
+            if (oldest) sub.seenEventIds.delete(oldest);
           }
+          sub.handlers.event(ev, url);
         } else if (type === 'EOSE') {
           const sub = this.subscriptions.get(data[1]);
           if (sub && sub.handlers && typeof sub.handlers.eose === 'function') {
@@ -605,7 +617,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     subscribe(filters, handlers) {
       const id = `sub_${Math.random().toString(36).slice(2, 10)}`;
-      this.subscriptions.set(id, { filters, handlers });
+      this.subscriptions.set(id, { filters, handlers, seenEventIds: new Set() });
       this.urls.forEach((url) => this.send(url, ['REQ', id, ...filters]));
       return id;
     }
@@ -15877,7 +15889,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       scope: 'theater-chat-history',
       cacheKey: `theater-chat-history:${stream.address}:${chatSince}:${chatHistoryLimit}`,
       timeoutMs: 2400,
-      maxEvents: Math.max(180, chatHistoryLimit * 4),
+      maxEvents: Math.max(240, chatHistoryLimit * 2),
       ttlMs: THEATER_CHAT_CACHE_TTL_MS,
       warmMs: THEATER_CHAT_CACHE_WARM_MS
     }).then((events) => {
@@ -15916,7 +15928,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       scope: 'theater-reaction-history',
       cacheKey: `theater-reaction-history:${stream.address}:${reactionSince}:${reactionHistoryLimit}`,
       timeoutMs: 2600,
-      maxEvents: Math.max(220, reactionHistoryLimit * 4),
+      maxEvents: Math.max(240, reactionHistoryLimit * 2),
       ttlMs: THEATER_CHAT_CACHE_TTL_MS,
       warmMs: THEATER_CHAT_CACHE_WARM_MS
     }).then((events) => {
