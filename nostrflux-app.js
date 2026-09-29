@@ -304,7 +304,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     profileNotesByPubkey: new Map(),
     profileStatsByPubkey: new Map(),
     liveSubId: null,
-    liveGridRenderTimer: null,
+
+    liveGridRenderSignature: '',    liveGridRenderTimer: null,
     profileSubId: null,
     chatSubId: null,
     profileFeedSubId: null,
@@ -12312,6 +12313,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const allStreams = sortedLiveStreams();
+
+    const renderSignature = state.activeListFilter + '::' + streams.map((stream) => [stream.address, stream.id, stream.status, stream.streaming, stream.image, stream.title, stream.summary, stream.participants].join('|')).join('||');
+    if (grid.querySelector('.stream-card') && state.liveGridRenderSignature === renderSignature) return;
+    state.liveGridRenderSignature = renderSignature;
     const streams = getFilteredStreams();
 
     // Update count pill
