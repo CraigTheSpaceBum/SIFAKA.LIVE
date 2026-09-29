@@ -9789,7 +9789,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             showFailure('Video playback failed after retries. Try opening the source URL directly.');
           },
           hlsConfig: {
-            xhrSetup: (xhr) => { xhr.withCredentials = false; }
+            xhrSetup: (xhr) => { xhr.withCredentials = false; },
+            // Keep a healthy live buffer without allowing long-lived playback
+            // to accumulate excessive media in mobile/low-memory browsers.
+            backBufferLength: 20,
+            maxBufferLength: 30,
+            maxMaxBufferLength: 90,
+            liveSyncDurationCount: 3,
+            liveMaxLatencyDurationCount: 9,
+            maxBufferHole: 0.5,
+            capLevelToPlayerSize: true,
+            startLevel: -1
           },
           maxNetworkRecoveries: 4,
           maxMediaRecoveries: 2
@@ -12981,14 +12991,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let mediaErrorCount = 0;
     let lastMediaErrorAt = 0;
     let mediaErrorRetryTimerId = null;
+    // Only count actual playback movement as progress. HLS can continue firing
+    // network/progress/canplay events while the media timestamp is frozen; treating
+    // those events as playback progress can keep the stall watchdog from recovering.
     const markProgress = () => {
-      lastProgressAt = Date.now();
-      lastPlaybackTime = Number(video.currentTime || 0);
+      const currentTime = Number(video.currentTime || 0);
+      if (Math.abs(currentTime - lastPlaybackTime) > 0.04 || video.readyState >= 3) {
+        lastProgressAt = Date.now();
+        lastPlaybackTime = currentTime;
+      }
     };
     video.addEventListener('timeupdate', markProgress);
-    video.addEventListener('progress', markProgress);
     video.addEventListener('playing', markProgress);
-    video.addEventListener('canplay', markProgress);
 
     const tryRestoreAudio = async () => {
       if (isStale()) return false;
@@ -13120,7 +13134,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         return;
       }
       attemptPlaybackRecovery('watchdog').catch(() => {});
-    }, 6000);
+    }, 5000);
 
     const attachHls = async () => {
       if (hlsAttached || isStale()) return false;
