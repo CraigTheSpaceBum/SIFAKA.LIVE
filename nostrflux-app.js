@@ -136,6 +136,7 @@
   const KIND_REACTION = 7;
   const KIND_LIVE_EVENT = 30311;
   const KIND_LIVE_CHAT = 1311;
+  const KIND_LIVE_PRESENCE = 10312;
   const KIND_NIP71_VIDEO = 21;
   const KIND_NIP71_REEL = 22;
   const KIND_COMMENT = 1111;
@@ -478,6 +479,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     nip96DiscoveryByHost: new Map(),
     activeViewerAddress: '',
     activeHeroViewerAddress: '',
+    viewerPresenceAddress: '',
+    viewerPresenceTimer: null,
+    livePresenceSubId: null,
+    livePresenceStreamAddress: '',
+    livePresenceByPubkey: new Map(),
+    livePresencePublishTimer: null,
+    livePresenceLastPublishedCount: -1,
     relayPingMsByUrl: new Map(),
     goLiveSelectedAddress: '',
     goLiveTemplateAddress: '',
@@ -8786,6 +8794,137 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     refreshParticipantDependentUi();
   }
 
+  const LIVE_PRESENCE_TTL_MS = 75 * 1000;
+  const LIVE_PRESENCE_INTERVAL_MS = 30 * 1000;
+  const LIVE_PRESENCE_COUNT_INTERVAL_MS = 15 * 1000;
+
+  function stopViewerPresence() {
+    if (state.viewerPresenceTimer) {
+      clearInterval(state.viewerPresenceTimer);
+      state.viewerPresenceTimer = null;
+    }
+    state.viewerPresenceAddress = '';
+  }
+
+  async function publishViewerPresence(address) {
+    const key = String(address || '').trim();
+    if (!key || !state.user || !state.pool) return;
+    try {
+      await signAndPublish(KIND_LIVE_PRESENCE, '', [['a', key, '', 'root']]);
+    } catch (_) {
+      // Presence is best-effort; playback must never depend on it.
+    }
+  }
+
+  function startViewerPresence(address) {
+    const key = String(address || '').trim();
+    if (!key || !state.user) return;
+    if (state.viewerPresenceAddress === key && state.viewerPresenceTimer) return;
+
+    stopViewerPresence();
+    state.viewerPresenceAddress = key;
+    publishViewerPresence(key).catch(() => {});
+    state.viewerPresenceTimer = setInterval(() => {
+      if (!state.user || state.viewerPresenceAddress !== key) {
+        stopViewerPresence();
+        return;
+      }
+      publishViewerPresence(key).catch(() => {});
+    }, LIVE_PRESENCE_INTERVAL_MS);
+  }
+
+  function stopLivePresenceTracker() {
+    if (state.livePresenceSubId && state.pool) {
+      try { state.pool.unsubscribe(state.livePresenceSubId); } catch (_) {}
+    }
+    state.livePresenceSubId = null;
+    state.livePresenceStreamAddress = '';
+    state.livePresenceByPubkey.clear();
+    if (state.livePresencePublishTimer) {
+      clearInterval(state.livePresencePublishTimer);
+      state.livePresencePublishTimer = null;
+    }
+    state.livePresenceLastPublishedCount = -1;
+  }
+
+  function livePresenceCount() {
+    const cutoff = Date.now() - LIVE_PRESENCE_TTL_MS;
+    let count = 0;
+    for (const [pubkey, seenAt] of state.livePresenceByPubkey.entries()) {
+      if (Number(seenAt || 0) >= cutoff) count += 1;
+      else state.livePresenceByPubkey.delete(pubkey);
+    }
+    return count;
+  }
+
+  async function publishCurrentParticipants(stream, count) {
+    if (!stream || normalizeStreamStatus(stream.status) !== 'live') return;
+    if (!state.user || normalizePubkeyHex(state.user.pubkey) !== normalizePubkeyHex(stream.pubkey)) return;
+
+    const rawTags = stream.raw && Array.isArray(stream.raw.tags) ? stream.raw.tags : [];
+    const tags = rawTags
+      .filter((tag) => Array.isArray(tag) && String(tag[0] || '').toLowerCase() !== 'current_participants')
+      .map((tag) => [...tag]);
+    tags.push(['current_participants', String(Math.max(0, Number(count) || 0))]);
+
+    try {
+      const ev = await signAndPublish(KIND_LIVE_EVENT, String(stream.summary || ''), tags);
+      const updated = parseLiveEvent(ev);
+      if (updated) upsertStream(updated);
+      state.livePresenceLastPublishedCount = Math.max(0, Number(count) || 0);
+      refreshParticipantDependentUi();
+    } catch (err) {
+      if (window.console) console.warn('Live participant count publish failed:', err && err.message ? err.message : err);
+    }
+  }
+
+  function refreshLivePresenceCount(stream) {
+    if (!stream || state.livePresenceStreamAddress !== stream.address) return;
+    const count = livePresenceCount();
+    const current = state.streamsByAddress.get(stream.address) || stream;
+    if (count === state.livePresenceLastPublishedCount) return;
+    publishCurrentParticipants(current, count).catch(() => {});
+  }
+
+  function startLivePresenceTracker(stream) {
+    if (!stream || normalizeStreamStatus(stream.status) !== 'live' || !state.pool || !state.user) {
+      stopLivePresenceTracker();
+      return;
+    }
+    if (normalizePubkeyHex(state.user.pubkey) !== normalizePubkeyHex(stream.pubkey)) {
+      stopLivePresenceTracker();
+      return;
+    }
+
+    const address = String(stream.address || '').trim();
+    if (!address) return;
+    if (state.livePresenceStreamAddress === address && state.livePresenceSubId) return;
+
+    stopLivePresenceTracker();
+    state.livePresenceStreamAddress = address;
+
+    state.livePresenceSubId = state.pool.subscribe(
+      [{ kinds: [KIND_LIVE_PRESENCE], '#a': [address], limit: 1000 }],
+      {
+        event: (ev) => {
+          const pubkey = normalizePubkeyHex(ev && ev.pubkey);
+          if (!pubkey) return;
+          const eventAddress = firstTagValue(ev && ev.tags, 'a') || '';
+          if (eventAddress !== address) return;
+          state.livePresenceByPubkey.set(pubkey, Number(ev.created_at || 0) * 1000);
+          refreshLivePresenceCount(stream);
+        },
+        eose: () => refreshLivePresenceCount(stream)
+      }
+    );
+
+    state.livePresencePublishTimer = setInterval(() => {
+      refreshLivePresenceCount(stream);
+    }, LIVE_PRESENCE_COUNT_INTERVAL_MS);
+
+    refreshLivePresenceCount(stream);
+  }
+
   function isStreamPlaybackOffline(address) {
     const key = String(address || '').trim();
     if (!key) return false;
@@ -12311,6 +12450,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function clearHeroPlayback() {
     state.heroPlaybackToken++;
     state.featuredCurrentAddress = '';
+    if (!state.activeViewerAddress) stopViewerPresence();
     setActiveHeroViewerAddress('');
     const playerEl = qs('#heroPlayer');
     if (playerEl) {
@@ -12378,6 +12518,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const onCanPlay = () => {
       if (token !== state.heroPlaybackToken) return;
       setActiveHeroViewerAddress(stream.address);
+      startViewerPresence(stream.address);
       markStreamPlaybackOnline(stream.address);
       const hasUserActivation = !!(navigator.userActivation && navigator.userActivation.hasBeenActive);
       if (hasUserActivation) {
@@ -12570,6 +12711,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function clearPlayback() {
     state.playbackToken += 1;
+    if (!state.activeHeroViewerAddress) stopViewerPresence();
     state.playbackAddress = '';
     state.playbackUrl = '';
     if (state.hlsInstance) {
@@ -12794,7 +12936,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     video.addEventListener('resize', syncFit);
     video.addEventListener('canplay', syncFit);
     const markPlayable = () => {
-      if (status !== 'ended') markStreamPlaybackOnline(address);
+      if (status !== 'ended') {
+        startViewerPresence(address);
+        markStreamPlaybackOnline(address);
+      }
     };
     video.addEventListener('playing', markPlayable, { once: true });
     video.addEventListener('canplay', markPlayable, { once: true });
@@ -18836,6 +18981,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const featStreams = heroFeaturedStreams();
     if (featStreams.length) renderHero(featStreams[state.featuredIndex], state.featuredIndex, featStreams.length);
     if (isVideoPageVisible()) renderVideo(stream);
+    if (status === 'live') startLivePresenceTracker(stream);
+    else stopLivePresenceTracker();
     subscribeChat(stream);
     return stream;
   }
