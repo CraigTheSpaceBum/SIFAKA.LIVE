@@ -544,10 +544,37 @@
             <div class="sm-row-label">Theme</div>
             <div class="sm-row-desc">Choose default app theme</div>
           </div>
-          <select id="settingsThemeSelect" aria-label="Choose app theme" style="max-width:180px;">
-            <option value="dark">Dark Gray (Default)</option>
-            <option value="midnight">Midnight Orange/Purple</option>
+          <select id="settingsThemeSelect" aria-label="Choose app theme" onchange="previewSifakaTheme(this.value)">
+            <option value="dark">SIFAKA Dark</option>
+            <option value="midnight">Midnight</option>
             <option value="light">Light</option>
+            <option value="cyberpunk">Cyberpunk</option>
+            <option value="synthwave">Synthwave</option>
+            <option value="matrix">Matrix</option>
+            <option value="ocean">Ocean</option>
+            <option value="arctic">Arctic</option>
+            <option value="forest">Forest</option>
+            <option value="emerald">Emerald</option>
+            <option value="ruby">Ruby</option>
+            <option value="crimson">Crimson</option>
+            <option value="violet">Violet</option>
+            <option value="lavender">Lavender</option>
+            <option value="amethyst">Amethyst</option>
+            <option value="sunset">Sunset</option>
+            <option value="solar">Solar</option>
+            <option value="amber">Amber</option>
+            <option value="copper">Copper</option>
+            <option value="rose">Rose</option>
+            <option value="bubblegum">Bubblegum</option>
+            <option value="coffee">Coffee</option>
+            <option value="slate">Slate</option>
+            <option value="mono">Monochrome</option>
+            <option value="terminal">Terminal Green</option>
+            <option value="nord">Nordic</option>
+            <option value="dracula">Dracula</option>
+            <option value="hacker">Hacker</option>
+            <option value="toxic">Toxic Neon</option>
+            <option value="deepsea">Deep Sea</option>
           </select>
         </div>
         <div class="sm-row"><div><div class="sm-row-label">Show NIP-05 badges in chat</div><div class="sm-row-desc">Purple ✓ for verified identities</div></div><div class="toggle setting-toggle on" id="setNip05Toggle" onclick="toggleSetting(this)"></div></div>
