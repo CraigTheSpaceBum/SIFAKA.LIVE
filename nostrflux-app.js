@@ -13084,22 +13084,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       av.onclick = () => showProfileByPubkey(hostPubkey);
     }
 
-    // Host name + nip05
-    // Keep the initial theater paint stable while profile metadata arrives.
-    // Never flash the npub/short key as the primary name; reveal the real
-    // display name once the profile is available.
+    // Host identity. Keep the initial DOM stable until profile metadata is available.
     const hasHostProfile = !!(hostPubkey && state.profilesByPubkey.get(hostPubkey));
-    const displayName = hasHostProfile
-      ? (p.display_name || p.name || 'Unknown creator')
-      : 'Loading profile…';
+    const displayName = hasHostProfile ? (p.display_name || p.name || shortHex(hostPubkey)) : '';
     const name = qs('.sib-name');
-    if (name) {
-      const previousText = String(name.dataset.profileDisplay || '');
-      const shouldAnimate = hasHostProfile && previousText && previousText !== displayName;
+    if (name && hasHostProfile) {
+      const previousText = String(name.dataset.profileDisplay || '').trim();
+      const shouldAnimate = previousText && previousText !== displayName;
       name.innerHTML = '';
       name.textContent = displayName;
       name.dataset.profileDisplay = displayName;
-      name.classList.toggle('sib-profile-loading', !hasHostProfile);
+      name.classList.remove('sib-profile-loading');
       if (shouldAnimate) {
         name.classList.remove('sib-profile-fade-in');
         void name.offsetWidth;
@@ -13109,24 +13104,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const badge = document.createElement('span');
         badge.className = 'nip05-badge';
         badge.title = `NIP-05: ${verifiedNip05}`;
-        badge.textContent = '\u2713';
+        badge.textContent = '\\u2713';
         name.appendChild(document.createTextNode(' '));
         name.appendChild(badge);
       }
     }
     const ident = qs('.sib-identity');
-    if (ident) {
-      const nextIdentity = hasHostProfile
-        ? (verifiedNip05 || shortHex(hostPubkey))
-        : 'Loading profile…';
-      const identityChanged = ident.textContent !== nextIdentity;
-      ident.textContent = nextIdentity;
-      ident.classList.toggle('sib-profile-loading', !hasHostProfile);
-      if (hasHostProfile && identityChanged) {
-        ident.classList.remove('sib-profile-fade-in');
-        void ident.offsetWidth;
-        ident.classList.add('sib-profile-fade-in');
-      }
+    if (ident && hasHostProfile) {
+      ident.textContent = verifiedNip05 || shortHex(hostPubkey);
+      ident.classList.remove('sib-profile-loading');
+      ident.dataset.profileReady = '1';
     }
 
     // Hosted-by box: inline in .sib-host-row to the right of .sib-host-info
@@ -15406,6 +15393,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (current && Number(current.created_at || 0) > Number(parsed.created_at || 0)) return;
 
       state.profilesByPubkey.set(normalizedPubkey, { ...parsed, pubkey: normalizedPubkey });
+      updateTheaterProfileIdentity(normalizedPubkey);
       if (!opts.skipNip05) ensureNip05Verification(normalizedPubkey, parsed.nip05 || '').catch(() => {});
       updateVideosPageCardsForProfile(normalizedPubkey);
       if (isMessagesPageVisible()) {
@@ -15421,6 +15409,88 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.profileFetchInflightByPubkey.set(normalizedPubkey, request);
     return request;
+  }
+
+  function updateTheaterProfileIdentity(pubkey) {
+    if (!isVideoPageVisible() || !state.selectedStreamAddress) return;
+    const stream = state.streamsByAddress.get(state.selectedStreamAddress);
+    if (!stream) return;
+    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || String(stream.hostPubkey || stream.pubkey || '').trim().toLowerCase();
+    const platformPubkey = normalizePubkeyHex(stream.platformPubkey || '') || '';
+    const normalized = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
+    if (normalized !== hostPubkey && normalized !== platformPubkey) return;
+
+    const hostProfile = profileFor(hostPubkey);
+    const claimedNip05 = normalizeNip05Value(hostProfile.nip05 || '');
+    const verifiedNip05 = getVerifiedNip05ForPubkey(hostPubkey, hostProfile.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+
+    if (normalized === hostPubkey) {
+      const av = qs('.sib-av');
+      if (av) {
+        setAvatarEl(av, hostProfile.picture || '', pickAvatar(hostPubkey));
+        av.classList.toggle('nip05-square', !!verifiedNip05);
+      }
+      const name = qs('.sib-name');
+      if (name) {
+        const displayName = hostProfile.display_name || hostProfile.name || shortHex(hostPubkey);
+        const previousText = String(name.dataset.profileDisplay || '').trim();
+        name.innerHTML = '';
+        name.textContent = displayName;
+        name.dataset.profileDisplay = displayName;
+        name.classList.remove('sib-profile-loading');
+        if (previousText && previousText !== displayName) {
+          name.classList.remove('sib-profile-fade-in');
+          void name.offsetWidth;
+          name.classList.add('sib-profile-fade-in');
+        }
+        if (verifiedNip05) {
+          const badge = document.createElement('span');
+          badge.className = 'nip05-badge';
+          badge.title = `NIP-05: ${verifiedNip05}`;
+          badge.textContent = '\\u2713';
+          name.appendChild(document.createTextNode(' '));
+          name.appendChild(badge);
+        }
+      }
+      const ident = qs('.sib-identity');
+      if (ident) {
+        ident.textContent = verifiedNip05 || shortHex(hostPubkey);
+        ident.classList.remove('sib-profile-loading');
+        ident.dataset.profileReady = '1';
+      }
+    }
+
+    if (platformPubkey) {
+      const sibHostedBy = qs('.sib-hosted-by');
+      const plat = profileFor(platformPubkey);
+      if (sibHostedBy) {
+        sibHostedBy.innerHTML = '';
+        const platName = plat.display_name || plat.name || '';
+        const hostName = hostProfile.display_name || hostProfile.name || '';
+        if (platName && platName !== hostName) {
+          const box = document.createElement('div');
+          box.className = 'hosted-by-box';
+          const avatar = document.createElement('div');
+          avatar.className = 'hosted-by-av';
+          setAvatarEl(avatar, plat.picture || '', platName.charAt(0).toUpperCase() || '?');
+          if (!sanitizeMediaUrl(plat.picture || '')) avatar.classList.add('hosted-by-av-fallback');
+          const inner = document.createElement('div');
+          inner.className = 'hosted-by-inner';
+          const label = document.createElement('span');
+          label.className = 'hosted-by-label';
+          label.textContent = 'Hosted via';
+          const hostNameEl = document.createElement('span');
+          hostNameEl.className = 'hosted-by-name';
+          hostNameEl.textContent = platName;
+          inner.appendChild(label);
+          inner.appendChild(hostNameEl);
+          box.appendChild(avatar);
+          box.appendChild(inner);
+          box.addEventListener('click', () => showProfileByPubkey(platformPubkey));
+          sibHostedBy.appendChild(box);
+        }
+      }
+    }
   }
 
   function clearLiveGridRenderTimer() {
