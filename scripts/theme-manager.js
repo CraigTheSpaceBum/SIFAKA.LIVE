@@ -1,11 +1,11 @@
-﻿(function () {
+(function () {
   const KEY = 'sifaka_theme_v1';
   const root = document.documentElement;
+  const THEMES = ["dark","midnight","light","cyberpunk","synthwave","matrix","ocean","arctic","forest","emerald","ruby","crimson","violet","lavender","amethyst","sunset","solar","amber","copper","rose","bubblegum","coffee","slate","mono","terminal","nord","dracula","hacker","toxic","deepsea"];
 
   function normalize(theme) {
     const val = String(theme || '').trim().toLowerCase();
-    if (val === 'light' || val === 'midnight' || val === 'dark') return val;
-    return 'dark';
+    return THEMES.includes(val) ? val : 'dark';
   }
 
   function applyTheme(theme, persist = true) {
@@ -23,17 +23,17 @@
   }
 
   function cycleTheme() {
-    const order = ['dark', 'midnight', 'light'];
     const cur = currentTheme();
-    const idx = order.indexOf(cur);
-    const next = order[(idx + 1) % order.length];
+    const idx = THEMES.indexOf(cur);
+    const next = THEMES[(idx + 1) % THEMES.length];
     return applyTheme(next, true);
   }
 
   window.SifakaTheme = {
     apply: applyTheme,
     current: currentTheme,
-    cycle: cycleTheme
+    cycle: cycleTheme,
+    list: () => [...THEMES]
   };
 
   window.setSifakaTheme = applyTheme;
