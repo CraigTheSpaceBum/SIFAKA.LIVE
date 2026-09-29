@@ -326,6 +326,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     playbackAddress: '',
     playbackUrl: '',
     profileHlsInstance: null,
+    profileLoadToken: 0,
+    profileLoadingTimer: null,
     profilePlaybackToken: 0,
     profilePlaybackAddress: '',
     profilePlaybackUrl: '',
@@ -5002,6 +5004,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     }
     return page.style.display !== 'none';
+  }
+
+  function setProfilePageLoading(isLoading, message = 'Loading profile from Nostr relays...') {
+    const page = qs('#profilePage');
+    const overlay = qs('#profileLoadingOverlay');
+    const status = qs('#profileLoadingStatus');
+    if (status) status.textContent = String(message || 'Loading profile from Nostr relays...');
+    if (page) page.classList.toggle('profile-is-loading', !!isLoading);
+    if (overlay) {
+      overlay.classList.toggle('is-visible', !!isLoading);
+      overlay.setAttribute('aria-hidden', isLoading ? 'false' : 'true');
+    }
+    if (!isLoading && state.profileLoadingTimer) {
+      clearTimeout(state.profileLoadingTimer);
+      state.profileLoadingTimer = null;
+    }
   }
 
   function isProfilePageVisible() {
@@ -15605,7 +15623,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!normalizedPubkey) return Promise.resolve();
 
     const existing = state.profilesByPubkey.get(normalizedPubkey);
-    if (existing && (existing.name || existing.display_name || existing.picture)) return Promise.resolve();
+    const forceRefresh = !!opts.force;
+    if (existing && (existing.name || existing.display_name || existing.picture) && !forceRefresh) return Promise.resolve();
 
     // Profile metadata is requested from many surfaces (DMs, chat, videos, feed).
     // Deduplicate concurrent lookups so one person cannot trigger a burst of identical
@@ -15618,6 +15637,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       {
         scope: 'profile-by-pubkey',
         cacheKey: `profile-by-pubkey:${normalizedPubkey}`,
+        force: forceRefresh,
+        ttlMs: forceRefresh ? 0 : undefined,
         timeoutMs: 2200,
         maxEvents: 10
       }
@@ -18562,19 +18583,45 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function showProfileByPubkey(pubkey, opts = {}) {
     const routeMode = opts.routeMode || 'push';
-    if (!pubkey) return;
-    state.selectedProfilePubkey = pubkey;
-    // Prioritize the lightweight kind:0 lookup so name/avatar can update independently.
-    fetchProfileIfNeeded(pubkey);
-    const p = profileFor(pubkey);
-    const verifiedNip05 = getVerifiedNip05ForPubkey(pubkey, p.nip05 || '');
-    if (!verifiedNip05 && normalizeNip05Value(p.nip05 || '')) ensureNip05Verification(pubkey, p.nip05 || '').catch(() => {});
-    window.showProfile(p.name, pickAvatar(pubkey), formatNpubForDisplay(pubkey), verifiedNip05, pubkey, { routeMode });
-    renderProfilePage(pubkey);
-    subscribeProfileFeed(pubkey);
-    subscribeProfileStats(pubkey);
-    subscribeProfileStatus(pubkey);
-    subscribeBadges(pubkey);
+    const normalizedPubkey = normalizePubkeyHex(pubkey);
+    if (!normalizedPubkey) return;
+
+    state.selectedProfilePubkey = normalizedPubkey;
+    const loadToken = ++state.profileLoadToken;
+    setProfilePageLoading(true, 'Loading profile information...');
+    if (state.profileLoadingTimer) clearTimeout(state.profileLoadingTimer);
+    state.profileLoadingTimer = setTimeout(() => {
+      if (loadToken === state.profileLoadToken && isProfilePageVisible()) setProfilePageLoading(false);
+    }, 7000);
+
+    // Force a fresh kind:0 lookup so an older cached name/avatar cannot remain visible.
+    const profileRequest = fetchProfileIfNeeded(normalizedPubkey, { force: true });
+    const p = profileFor(normalizedPubkey);
+    const verifiedNip05 = getVerifiedNip05ForPubkey(normalizedPubkey, p.nip05 || '');
+    if (!verifiedNip05 && normalizeNip05Value(p.nip05 || '')) {
+      ensureNip05Verification(normalizedPubkey, p.nip05 || '').catch(() => {});
+    }
+
+    window.showProfile(
+      p.name,
+      pickAvatar(normalizedPubkey),
+      formatNpubForDisplay(normalizedPubkey),
+      verifiedNip05,
+      normalizedPubkey,
+      { routeMode }
+    );
+    renderProfilePage(normalizedPubkey);
+    subscribeProfileFeed(normalizedPubkey);
+    subscribeProfileStats(normalizedPubkey);
+    subscribeProfileStatus(normalizedPubkey);
+    subscribeBadges(normalizedPubkey);
+
+    Promise.resolve(profileRequest).finally(() => {
+      if (loadToken !== state.profileLoadToken) return;
+      if (normalizePubkeyHex(state.selectedProfilePubkey) !== normalizedPubkey) return;
+      renderProfilePage(normalizedPubkey);
+      setProfilePageLoading(false);
+    });
   }
 
   async function toggleFollowPubkey(pubkeyInput, opts = {}) {
