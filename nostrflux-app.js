@@ -22024,6 +22024,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     setUserUi();
     syncViewFromLocation({ fallbackMode: 'replace' });
 
+    if (isHomeViewActive()) {
+      setAppBootStatus('Loading live streams and profiles...');
+      await Promise.race([
+        state.liveInitialReadyPromise || Promise.resolve(true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 5200))
+      ]);
+    }
+
     // Render saved external lists immediately (they come from localStorage)
     renderListFilterDD();
     renderNostrFeedFilterSelect();
