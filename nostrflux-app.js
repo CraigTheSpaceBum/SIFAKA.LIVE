@@ -8877,9 +8877,28 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!state.user || normalizePubkeyHex(state.user.pubkey) !== normalizePubkeyHex(stream.pubkey)) return;
 
     const rawTags = stream.raw && Array.isArray(stream.raw.tags) ? stream.raw.tags : [];
+    const activeCutoff = Date.now() - LIVE_PRESENCE_TTL_MS;
+    const activeParticipants = [];
+    for (const [pubkey, seenAt] of state.livePresenceByPubkey.entries()) {
+      if (Number(seenAt || 0) >= activeCutoff && normalizePubkeyHex(pubkey)) {
+        activeParticipants.push(normalizePubkeyHex(pubkey));
+      }
+    }
+
     const tags = rawTags
-      .filter((tag) => Array.isArray(tag) && String(tag[0] || '').toLowerCase() !== 'current_participants')
+      .filter((tag) => {
+        if (!Array.isArray(tag)) return false;
+        const type = String(tag[0] || '').toLowerCase();
+        // Rebuild these two live-participant fields from the current presence set.
+        if (type === 'current_participants') return false;
+        if (type === 'p' && String(tag[3] || '').toLowerCase() === 'participant') return false;
+        return true;
+      })
       .map((tag) => [...tag]);
+
+    activeParticipants.forEach((pubkey) => {
+      tags.push(['p', pubkey, '', 'Participant']);
+    });
     tags.push(['current_participants', String(Math.max(0, Number(count) || 0))]);
 
     try {
@@ -12996,7 +13015,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     // those events as playback progress can keep the stall watchdog from recovering.
     const markProgress = () => {
       const currentTime = Number(video.currentTime || 0);
-      if (Math.abs(currentTime - lastPlaybackTime) > 0.04 || video.readyState >= 3) {
+      // Only advance the watchdog when the media clock actually moves.
+      // readyState can remain "playable" while an HLS stream is completely frozen.
+      if (Math.abs(currentTime - lastPlaybackTime) > 0.04) {
         lastProgressAt = Date.now();
         lastPlaybackTime = currentTime;
       }
@@ -13077,7 +13098,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (reason === 'media-error' || reason === 'native-hls-error' || (now - lastProgressAt) > 12000) {
             try { state.hlsInstance.recoverMediaError(); } catch (_) {}
           }
-        } else if (sourceAssigned && (((video.readyState || 0) < 2) || forceRecovery)) {
+        } else if (sourceAssigned && (((video.readyState || 0) < 2) || forceRecovery || (Number(video.buffered && video.buffered.length ? video.buffered.end(video.buffered.length - 1) : 0) - Number(video.currentTime || 0)) < 1.0)) {
           const sourceUrl = video.currentSrc || url;
           if (sourceUrl) {
             try {
@@ -13149,9 +13170,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             xhrSetup: (xhr) => { xhr.withCredentials = false; },
             liveSyncDurationCount: 3,
             liveMaxLatencyDurationCount: 9,
-            maxBufferLength: 60,
-            maxMaxBufferLength: 180,
-            backBufferLength: 45
+            maxBufferLength: 30,
+            maxMaxBufferLength: 90,
+            backBufferLength: 20,
+            maxBufferHole: 0.5,
+            capLevelToPlayerSize: true,
+            startLevel: -1
           },
           maxNetworkRecoveries: 6,
           maxMediaRecoveries: 3
