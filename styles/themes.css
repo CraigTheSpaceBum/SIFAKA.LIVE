@@ -1,52 +1,45 @@
-/* Theme overrides for Sifaka Live.
-   Toggle with document.documentElement.dataset.theme = 'light' | 'dark' | 'midnight'. */
-
-:root[data-theme='dark'] {
-  color-scheme: dark;
-}
-
-:root[data-theme='light'] {
-  --bg: #f4f7fb;
-  --surface: #ffffff;
-  --surface2: #f2f6fb;
-  --surface3: #e8eef6;
-  --border: #d7e0ea;
-  --border2: #c8d4e0;
-  --accent: #d44a0e;
-  --accent-glow: rgba(212, 74, 14, 0.2);
-  --live: #d63252;
-  --zap: #c48b10;
-  --zap-dim: rgba(196, 139, 16, 0.15);
-  --text: #13202d;
-  --text2: #445668;
-  --muted: #6a7d90;
-  --green: #0a9f6a;
-  --purple: #6b50b7;
-  --danger: #be2e3a;
-  color-scheme: light;
-}
-
-:root[data-theme='midnight'] {
-  --bg: #05070c;
-  --surface: #0a0f16;
-  --surface2: #101725;
-  --surface3: #172032;
-  --border: #1a2b43;
-  --border2: #23395a;
-  --accent: #ff5b18;
-  --accent-glow: rgba(255, 91, 24, 0.25);
-  --live: #ff4467;
-  --zap: #ffc53a;
-  --zap-dim: rgba(255, 197, 58, 0.16);
-  --text: #e9eef7;
-  --text2: #9fb1c8;
-  --muted: #5d718a;
-  --green: #1ad18c;
-  --purple: #9f7cff;
-  --danger: #ff5460;
-  color-scheme: dark;
-}
+/* Sifaka Live theme compatibility layer. Theme palettes live in app.css. */
+:root { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"],
+:root[data-theme="midnight"],
+:root[data-theme="cyberpunk"],
+:root[data-theme="synthwave"],
+:root[data-theme="matrix"],
+:root[data-theme="ocean"],
+:root[data-theme="arctic"],
+:root[data-theme="forest"],
+:root[data-theme="emerald"],
+:root[data-theme="ruby"],
+:root[data-theme="crimson"],
+:root[data-theme="violet"],
+:root[data-theme="lavender"],
+:root[data-theme="amethyst"],
+:root[data-theme="sunset"],
+:root[data-theme="solar"],
+:root[data-theme="amber"],
+:root[data-theme="copper"],
+:root[data-theme="rose"],
+:root[data-theme="bubblegum"],
+:root[data-theme="coffee"],
+:root[data-theme="slate"],
+:root[data-theme="mono"],
+:root[data-theme="terminal"],
+:root[data-theme="nord"],
+:root[data-theme="dracula"],
+:root[data-theme="hacker"],
+:root[data-theme="toxic"],
+:root[data-theme="deepsea"] { color-scheme: dark; }
 
 html, body {
   transition: background-color .2s ease, color .2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html, body { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }
