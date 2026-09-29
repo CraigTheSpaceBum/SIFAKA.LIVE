@@ -502,14 +502,29 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       this.onStatus = onStatus;
       this.sockets = new Map();
       this.subscriptions = new Map();
+      this.reconnectTimers = new Map();
+      this.connectTimers = new Set();
+      this.destroyed = false;
       this.connectAll();
     }
 
     connectAll() {
-      this.urls.forEach((url) => this.connect(url));
+      // Stagger relay handshakes so the browser is not hit with every WebSocket
+      // connection and subscription at exactly the same time.
+      this.urls.forEach((url, index) => {
+        const timer = setTimeout(() => {
+          this.connectTimers.delete(timer);
+          if (!this.destroyed) this.connect(url);
+        }, Math.min(index * 120, 1200));
+        this.connectTimers.add(timer);
+      });
     }
 
     connect(url) {
+      if (this.destroyed) return;
+      const existing = this.sockets.get(url);
+      if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) return;
+
       let ws;
       const connectStartedAt = Date.now();
       try {
@@ -519,7 +534,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         return;
       }
 
+      this.sockets.set(url, ws);
+
       ws.addEventListener('open', () => {
+        if (this.destroyed) {
+          try { ws.close(); } catch (_) {}
+          return;
+        }
         const latencyMs = Date.now() - connectStartedAt;
         if (Number.isFinite(latencyMs) && latencyMs >= 0) {
           state.relayPingMsByUrl.set(url, Math.max(1, Math.round(latencyMs)));
@@ -532,11 +553,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       ws.addEventListener('message', (msg) => {
         let data;
-        try {
-          data = JSON.parse(msg.data);
-        } catch (_) {
-          return;
-        }
+        try { data = JSON.parse(msg.data); } catch (_) { return; }
         if (!Array.isArray(data)) return;
         const type = data[0];
         if (type === 'EVENT') {
@@ -553,42 +570,47 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const eventId = data[1];
           const ok = data[2];
           const reason = data[3] || '';
-          if (window.console && !ok) {
-            console.warn('Relay reject', url, eventId, reason);
-          }
+          if (window.console && !ok) console.warn('Relay reject', url, eventId, reason);
         }
       });
 
       ws.addEventListener('error', () => this.onStatus(url, 'error'));
       ws.addEventListener('close', () => {
+        if (this.sockets.get(url) === ws) this.sockets.delete(url);
         this.onStatus(url, 'closed');
-        setTimeout(() => this.connect(url), 3000);
-      });
+        if (this.destroyed) return;
 
-      this.sockets.set(url, ws);
+        const previous = this.reconnectTimers.get(url);
+        if (previous) clearTimeout(previous);
+        const timer = setTimeout(() => {
+          this.reconnectTimers.delete(url);
+          this.connect(url);
+        }, 3000);
+        this.reconnectTimers.set(url, timer);
+      });
     }
 
     send(url, payload) {
       const ws = this.sockets.get(url);
       if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-      ws.send(JSON.stringify(payload));
-      return true;
+      try {
+        ws.send(JSON.stringify(payload));
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
 
     subscribe(filters, handlers) {
       const id = `sub_${Math.random().toString(36).slice(2, 10)}`;
       this.subscriptions.set(id, { filters, handlers });
-      this.urls.forEach((url) => {
-        this.send(url, ['REQ', id, ...filters]);
-      });
+      this.urls.forEach((url) => this.send(url, ['REQ', id, ...filters]));
       return id;
     }
 
     unsubscribe(id) {
       this.subscriptions.delete(id);
-      this.urls.forEach((url) => {
-        this.send(url, ['CLOSE', id]);
-      });
+      this.urls.forEach((url) => this.send(url, ['CLOSE', id]));
     }
 
     publish(event) {
@@ -600,16 +622,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     destroy() {
+      if (this.destroyed) return;
+      this.destroyed = true;
+
+      this.connectTimers.forEach((timer) => clearTimeout(timer));
+      this.connectTimers.clear();
+      this.reconnectTimers.forEach((timer) => clearTimeout(timer));
+      this.reconnectTimers.clear();
+
       this.subscriptions.forEach((_value, id) => {
         this.urls.forEach((url) => this.send(url, ['CLOSE', id]));
       });
       this.subscriptions.clear();
       this.sockets.forEach((ws) => {
-        try {
-          ws.close();
-        } catch (_) {
-          // ignore
-        }
+        try { ws.close(); } catch (_) {}
       });
       this.sockets.clear();
     }
