@@ -15706,14 +15706,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       reactionHistoryFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
       reactionLiveFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], since: reactionLiveSince });
     }
-    const pTargets = [...new Set([stream.pubkey, stream.hostPubkey].map((pk) => normalizePubkeyHex(pk)).filter(Boolean))];
-    if (pTargets.length) {
-      const pOnlyReactionSince = streamStart
-        ? Math.max(0, streamStart - (isArchive ? THEATER_P_ONLY_ZAP_HISTORY_WINDOW_ARCHIVE_SEC : THEATER_P_ONLY_ZAP_HISTORY_WINDOW_LIVE_SEC))
-        : (nowSec - (isArchive ? THEATER_P_ONLY_ZAP_HISTORY_WINDOW_ARCHIVE_SEC : THEATER_P_ONLY_ZAP_HISTORY_WINDOW_LIVE_SEC));
-      const pOnlyReactionLimit = isArchive ? THEATER_P_ONLY_ZAP_HISTORY_LIMIT_ARCHIVE : THEATER_P_ONLY_ZAP_HISTORY_LIMIT_LIVE;
-      reactionHistoryFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#p': pTargets, limit: pOnlyReactionLimit, since: pOnlyReactionSince });
-    }
+    // Do not query creator-wide #p zap traffic here. It can dwarf stream-specific
+    // traffic and compete with the video/chat rendering path. Stream zaps are
+    // already covered by the #a and #e filters above.
 
     function isSameSelectedStream() {
       return state.selectedStreamAddress === stream.address;
@@ -15722,6 +15717,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const theaterRelayUrls = (state.pool && Array.isArray(state.pool.urls))
       ? state.pool.urls.slice(0, THEATER_HIGH_VOLUME_RELAY_COUNT)
       : [];
+
+    function scheduleChatUiFrame() {
+      if (state._chatUiFramePending) return;
+      state._chatUiFramePending = true;
+      const run = () => {
+        state._chatUiFramePending = false;
+        if (!isSameSelectedStream()) return;
+        const sc = qs('#chatScroll');
+        if (sc && (sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28) {
+          sc.scrollTop = sc.scrollHeight;
+        }
+      };
+      if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run);
+      else setTimeout(run, 16);
+    }
 
     function flushChatEventQueue() {
       state._chatMessageQueueTimer = null;
@@ -15745,10 +15755,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
         if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) unknownPubkeys.add(senderPubkey);
       }
-      if (wasNearBottom && processed) {
-        const sc = qs('#chatScroll');
-        if (sc) sc.scrollTop = sc.scrollHeight;
-      }
+      if (wasNearBottom && processed) scheduleChatUiFrame();
       if (chatQueueCursor >= chatEventQueue.length) {
         chatEventQueue.length = 0;
         chatQueueCursor = 0;
@@ -15762,8 +15769,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (!ev || !ev.id) return;
       chatEventQueue.push(ev);
       if (chatEventQueue.length > THEATER_CHAT_QUEUE_SOFT_CAP) {
-        chatEventQueue.splice(0, Math.max(0, chatEventQueue.length - THEATER_CHAT_QUEUE_SOFT_CAP));
-        chatQueueCursor = Math.min(chatQueueCursor, chatEventQueue.length);
+        // Discard stale backlog when chat falls behind; the UI only shows a
+        // small rolling window, so rendering old messages is wasted main-thread work.
+        const pending = chatEventQueue.slice(chatQueueCursor);
+        chatEventQueue.length = 0;
+        chatQueueCursor = 0;
+        pending.slice(-THEATER_CHAT_QUEUE_SOFT_CAP).forEach((queued) => {
+          if (queued && queued.id) chatEventQueue.push(queued);
+        });
       }
       if (state._chatMessageQueueTimer) return;
       state._chatMessageQueueTimer = setTimeout(flushChatEventQueue, 8);
@@ -15862,27 +15875,30 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     function queueReactionEvent(ev) {
       if (!ev || !ev.id) return;
+      const kind = Number(ev.kind || 0);
+      if (kind === KIND_REACTION) {
+        const targetId = firstTagValue(ev.tags, 'e');
+        // Ignore likes for messages that are no longer visible.
+        if (targetId && targetId !== stream.id && !state.chatMessageEventsById.has(targetId)) return;
+      }
       reactionEventQueue.push(ev);
       if (reactionEventQueue.length > THEATER_REACTION_QUEUE_SOFT_CAP) {
-        const retained = reactionEventQueue.filter((queued) => {
-          if (!queued) return false;
-          if (Number(queued.kind || 0) === KIND_ZAP_RECEIPT) return true;
-          if (Number(queued.kind || 0) === KIND_DELETION) return true;
-          if (Number(queued.kind || 0) !== KIND_REACTION) return true;
-          const targetId = firstTagValue(queued.tags, 'e');
-          return !!(targetId && targetId === stream.id);
-        });
+        // Keep only the newest relevant reaction/zap work. This prevents an
+        // event storm from monopolizing the main thread.
         const tail = reactionEventQueue.slice(-THEATER_REACTION_QUEUE_SOFT_CAP);
         reactionEventQueue.length = 0;
-        [...retained, ...tail].forEach((queued) => {
-          if (!queued || !queued.id) return;
-          if (reactionEventQueue.find((entry) => entry && entry.id === queued.id)) return;
+        const seen = new Set();
+        tail.forEach((queued) => {
+          if (!queued || !queued.id || seen.has(queued.id)) return;
+          const qKind = Number(queued.kind || 0);
+          if (qKind === KIND_REACTION) {
+            const targetId = firstTagValue(queued.tags, 'e');
+            if (targetId && targetId !== stream.id && !state.chatMessageEventsById.has(targetId)) return;
+          }
+          seen.add(queued.id);
           reactionEventQueue.push(queued);
         });
-        if (reactionEventQueue.length > THEATER_REACTION_QUEUE_SOFT_CAP) {
-          reactionEventQueue.splice(0, Math.max(0, reactionEventQueue.length - THEATER_REACTION_QUEUE_SOFT_CAP));
-        }
-        reactionQueueCursor = Math.min(reactionQueueCursor, reactionEventQueue.length);
+        reactionQueueCursor = 0;
       }
       if (state._chatReactionQueueTimer) return;
       state._chatReactionQueueTimer = setTimeout(flushReactionEventQueue, 10);
