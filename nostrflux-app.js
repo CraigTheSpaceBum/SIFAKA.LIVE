@@ -15705,6 +15705,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function stopLiveSubscription() {
     clearLiveGridRenderTimer();
+    state.liveGridRenderSignature = '';
+    if (!state.liveSubId || !state.pool) {    clearLiveGridRenderTimer();
     if (!state.liveSubId || !state.pool) {
       state.liveSubId = null;
       return;
@@ -15725,6 +15727,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     stopLiveSubscription();
     if (!state.pool) return;
     let initialSyncComplete = false;
+    state.liveInitialReadyPromise = new Promise((resolve) => { state.liveInitialReadyResolve = resolve; });
+
+    const debouncedRenderGrid    let initialSyncComplete = false;
 
     const debouncedRenderGrid = () => {
       clearLiveGridRenderTimer();
@@ -15768,6 +15773,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         eose: () => {
           if (initialSyncComplete) return;
           initialSyncComplete = true;
+          state.liveInitialSyncComplete = true;          initialSyncComplete = true;
           if (isHomeViewActive()) renderLiveGrid();
           if (isVideosPageVisible()) scheduleVideosPageRender();
           persistLiveStreamsCache();
@@ -15780,7 +15786,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const initialProfileEntries = [...allKnownLiveEntries, ...initialVisibleVideoEntries];
           const pubSet = collectProfilePubkeysFromStreams(initialProfileEntries);
           subscribeProfiles(Array.from(pubSet));
-          ensureProfilesForStreams(initialProfileEntries);
+          Promise.allSettled(Array.from(collectProfilePubkeysFromStreams(initialProfileEntries)).map((pubkey) => fetchProfileIfNeeded(pubkey))).then(() => {
+            if (isHomeViewActive()) renderLiveGrid();
+            if (state.liveInitialReadyResolve) { state.liveInitialReadyResolve(true); state.liveInitialReadyResolve = null; }
+          });          ensureProfilesForStreams(initialProfileEntries);
           if (isHomeViewActive() && state.selectedProfilePubkey) renderProfilePage(state.selectedProfilePubkey);
         }
       }
