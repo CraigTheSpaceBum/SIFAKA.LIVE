@@ -15960,7 +15960,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const reactionLiveSince = Math.max(0, nowSec - THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC);
     const reactionHistoryFilters = [
       { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince },
-      { kinds: [KIND_REACTION, KIND_DELETION], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince },
       { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince }
     ];
     // Stream reactions can target the NIP-53 address (#a) or event id (#e).
@@ -15969,6 +15968,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       { kinds: [KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#a': [stream.address], since: reactionLiveSince }
     ];
     if (stream.id) {
+      reactionHistoryFilters.push({ kinds: [KIND_REACTION, KIND_DELETION], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
+      reactionHistoryFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
       reactionLiveFilters.push({ kinds: [KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#e': [stream.id], since: reactionLiveSince });
     }
     // Do not query creator-wide #p zap traffic here. It can dwarf stream-specific
