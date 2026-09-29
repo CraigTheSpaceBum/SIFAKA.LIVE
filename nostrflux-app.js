@@ -13085,10 +13085,26 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     // Host name + nip05
+    // Keep the initial theater paint stable while profile metadata arrives.
+    // Never flash the npub/short key as the primary name; reveal the real
+    // display name once the profile is available.
+    const hasHostProfile = !!(hostPubkey && state.profilesByPubkey.get(hostPubkey));
+    const displayName = hasHostProfile
+      ? (p.display_name || p.name || 'Unknown creator')
+      : 'Loading profile…';
     const name = qs('.sib-name');
     if (name) {
+      const previousText = String(name.dataset.profileDisplay || '');
+      const shouldAnimate = hasHostProfile && previousText && previousText !== displayName;
       name.innerHTML = '';
-      name.textContent = p.name || shortHex(hostPubkey);
+      name.textContent = displayName;
+      name.dataset.profileDisplay = displayName;
+      name.classList.toggle('sib-profile-loading', !hasHostProfile);
+      if (shouldAnimate) {
+        name.classList.remove('sib-profile-fade-in');
+        void name.offsetWidth;
+        name.classList.add('sib-profile-fade-in');
+      }
       if (verifiedNip05) {
         const badge = document.createElement('span');
         badge.className = 'nip05-badge';
@@ -13099,7 +13115,19 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     }
     const ident = qs('.sib-identity');
-    if (ident) ident.textContent = verifiedNip05 || shortHex(hostPubkey);
+    if (ident) {
+      const nextIdentity = hasHostProfile
+        ? (verifiedNip05 || shortHex(hostPubkey))
+        : 'Loading profile…';
+      const identityChanged = ident.textContent !== nextIdentity;
+      ident.textContent = nextIdentity;
+      ident.classList.toggle('sib-profile-loading', !hasHostProfile);
+      if (hasHostProfile && identityChanged) {
+        ident.classList.remove('sib-profile-fade-in');
+        void ident.offsetWidth;
+        ident.classList.add('sib-profile-fade-in');
+      }
+    }
 
     // Hosted-by box: inline in .sib-host-row to the right of .sib-host-info
     let sibHostedBy = qs('.sib-hosted-by');
