@@ -5062,3 +5062,262 @@ footer p{font-size:.72rem;color:var(--muted);}
   .modal-ov { padding:.25rem; }
   .modal { max-height:calc(100dvh - .5rem); }
 }
+
+
+/* ===== THEATER PAGE: PHONE-ONLY LAYOUT =====
+   Desktop remains completely unchanged. On phones the theater becomes:
+   video -> stream identity/actions -> live chat.
+   Recommended streams are hidden because chat takes that space. */
+@media (max-width: 700px) {
+  #videoPage {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* Flatten the desktop video column only on phones so the chat sidebar
+     can be placed directly after the stream information. */
+  #videoPage .video-layout {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+    max-width: none;
+  }
+
+  #videoPage .video-col {
+    display: contents;
+  }
+
+  #videoPage .player-wrap {
+    order: 1;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 0;
+  }
+
+  #videoPage .player-ui {
+    padding: .55rem .65rem;
+  }
+
+  #videoPage .pctrl-row {
+    gap: .35rem;
+  }
+
+  #videoPage .pvol {
+    flex-basis: 48px;
+  }
+
+  #videoPage .sib {
+    order: 2;
+    padding: .75rem .7rem .65rem;
+    background: linear-gradient(180deg, rgba(20,26,34,.98), rgba(12,17,24,.98));
+  }
+
+  /* Keep the title readable without letting the action buttons wreck the row. */
+  #videoPage .sib-top-row {
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+    margin-bottom: .7rem;
+  }
+
+  #videoPage .sib-title {
+    font-size: 1rem;
+    line-height: 1.3;
+  }
+
+  #videoPage .sib-actions-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .4rem;
+  }
+
+  #videoPage .sib-actions-row .btn,
+  #videoPage .sib-actions-row .action-btn {
+    min-height: 40px;
+    width: 100%;
+    justify-content: center;
+    padding: .42rem .5rem !important;
+    font-size: .72rem !important;
+  }
+
+  #videoPage .sib-host-row {
+    gap: .65rem;
+    flex-wrap: nowrap;
+    padding: .1rem 0 .55rem;
+  }
+
+  #videoPage .sib-av {
+    width: 44px;
+    height: 44px;
+  }
+
+  #videoPage .sib-name {
+    font-size: .86rem;
+  }
+
+  #videoPage .sib-identity {
+    font-size: .61rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Long stream descriptions take too much vertical space on phones.
+     Keep them available on desktop exactly as before. */
+  #videoPage .editable-block {
+    display: none !important;
+  }
+
+  #videoPage .sib-stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .35rem;
+    margin-top: .15rem;
+  }
+
+  #videoPage .sib-stats-row .ss {
+    min-width: 0;
+    padding: .38rem .25rem;
+    text-align: center;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.055);
+    border-radius: 7px;
+  }
+
+  #videoPage .sib-stats-row .ss:nth-child(n+4) {
+    display: none;
+  }
+
+  #videoPage .sib-stats-row .n {
+    font-size: .76rem;
+  }
+
+  #videoPage .sib-stats-row .l {
+    font-size: .56rem;
+  }
+
+  #videoPage .stream-reactions-row {
+    margin-top: .45rem;
+    min-height: 30px;
+  }
+
+  /* Hide the desktop recommendation section on phones. */
+  #videoPage .reco {
+    display: none !important;
+  }
+
+  /* Chat becomes the mobile equivalent of the old recommendation rail. */
+  #videoPage .stream-sidebar {
+    order: 3;
+    position: relative;
+    top: auto;
+    width: 100%;
+    height: min(62vh, 560px);
+    min-height: 390px;
+    max-height: 560px;
+    border: 1px solid var(--border);
+    border-radius: 12px 12px 0 0;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  #videoPage .stabs {
+    min-height: 43px;
+    background: rgba(255,255,255,.02);
+  }
+
+  #videoPage .stab {
+    padding: .7rem .5rem;
+    font-size: .74rem;
+  }
+
+  #videoPage .chat-scroll {
+    padding: .65rem .7rem;
+    gap: .5rem;
+    overscroll-behavior: contain;
+  }
+
+  #videoPage .cmsg {
+    gap: .5rem;
+  }
+
+  #videoPage .c-av {
+    width: 30px;
+    height: 30px;
+  }
+
+  #videoPage .c-name {
+    font-size: .72rem;
+  }
+
+  #videoPage .c-text {
+    font-size: .76rem;
+    line-height: 1.4;
+  }
+
+  /* Touch devices do not have hover, so don't reserve space for hover-only
+     message actions. They can still appear when the site explicitly exposes them. */
+  #videoPage .chat-msg-actions {
+    display: none;
+  }
+
+  #videoPage .chat-bottom {
+    background: var(--surface);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  #videoPage .chat-iw {
+    padding: .5rem .6rem .3rem;
+  }
+
+  #videoPage .chat-inp {
+    min-height: 42px;
+    max-height: 90px;
+    font-size: .8rem;
+    padding: .55rem .65rem;
+  }
+
+  #videoPage .chat-acts {
+    align-items:center;
+    gap: .35rem;
+    padding: .2rem .6rem .55rem;
+  }
+
+  /* Formatting controls are useful on desktop but make the mobile composer
+     unnecessarily tall. Attach + Send remain available. */
+  #videoPage .nostr-markup-toolbar-chat {
+    display: none;
+  }
+
+  #videoPage .ca-btn,
+  #videoPage .chat-send-btn {
+    min-height: 38px;
+  }
+
+  #videoPage .chat-send-btn {
+    padding-left: .85rem;
+    padding-right: .85rem;
+  }
+}
+
+@media (max-width: 430px) {
+  #videoPage .sib {
+    padding-left: .55rem;
+    padding-right: .55rem;
+  }
+
+  #videoPage .sib-title {
+    font-size: .94rem;
+  }
+
+  #videoPage .sib-actions-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #videoPage .stream-sidebar {
+    min-height: 360px;
+    height: min(64vh, 520px);
+  }
+}
