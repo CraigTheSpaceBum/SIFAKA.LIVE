@@ -12980,6 +12980,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     video.preload = 'auto';
     video.style.cssText = 'width:100%;height:100%;object-fit:cover;background:#000;';
     const syncFit = () => syncTheaterVideoFit(video, playerBg);
+    bindInitialPlaybackRecovery();
     video.addEventListener('loadedmetadata', syncFit);
     video.addEventListener('loadeddata', syncFit);
     video.addEventListener('resize', syncFit);
@@ -13055,6 +13056,37 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
       }
       return true;
+    };
+
+    let initialPlaybackRetryTimers = [];
+    const clearInitialPlaybackRetries = () => {
+      initialPlaybackRetryTimers.forEach((id) => clearTimeout(id));
+      initialPlaybackRetryTimers = [];
+    };
+    const attemptInitialPlayback = async () => {
+      if (isStale() || fallbackShown || !document.body.contains(video)) return false;
+      const played = await playWithAudioRecovery();
+      if (played) clearInitialPlaybackRetries();
+      return played;
+    };
+    const scheduleInitialPlaybackRetries = () => {
+      if (isStale() || fallbackShown) return;
+      clearInitialPlaybackRetries();
+      [0, 350, 1000, 2200, 4500].forEach((delay) => {
+        initialPlaybackRetryTimers.push(window.setTimeout(() => attemptInitialPlayback().catch(() => {}), delay));
+      });
+    };
+    const bindInitialPlaybackRecovery = () => {
+      const retry = () => {
+        if (!isStale() && !fallbackShown) attemptInitialPlayback().catch(() => {});
+      };
+      video.addEventListener('loadedmetadata', retry);
+      video.addEventListener('loadeddata', retry);
+      video.addEventListener('canplay', retry);
+      video.addEventListener('playing', clearInitialPlaybackRetries, { once: true });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) retry(); });
+      window.addEventListener('pageshow', retry);
+      window.addEventListener('focus', retry);
     };
 
     const showFailure = (message, opts = {}) => {
@@ -13258,8 +13290,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       sourceAssigned = true;
     }
     if (sourceAssigned && !hlsAttached) {
-      const played = await playWithAudioRecovery();
+      const played = await attemptInitialPlayback();
       if (played && status !== 'ended') markStreamPlaybackOnline(address);
+      if (!played) scheduleInitialPlaybackRetries();
+    } else if (hlsAttached) {
+      scheduleInitialPlaybackRetries();
     }
   }
 
