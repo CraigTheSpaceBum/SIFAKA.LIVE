@@ -15192,74 +15192,92 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function subscribeProfiles(pubkeys) {
-    // Always include the logged-in user so their profile isn't lost when other fetches fire
+    // Keep author filters small. Large Nostr REQ filters can exceed relay/message
+    // limits, which makes profile events silently fail to arrive.
     const allKeys = [...pubkeys];
     const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '') || '';
-    if (ownPubkey && !allKeys.includes(ownPubkey)) {
-      allKeys.unshift(ownPubkey);
-    }
+    if (ownPubkey && !allKeys.includes(ownPubkey)) allKeys.unshift(ownPubkey);
+
     const unique = [...new Set(
       allKeys
         .map((pubkey) => normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase())
         .filter(Boolean)
     )];
-    if (!unique.length) return;
-    if (state.profileSubId) state.pool.unsubscribe(state.profileSubId);
-    state.profileSubId = state.pool.subscribe(
-      [{ kinds: [KIND_PROFILE], authors: unique, limit: unique.length * 2 }],
-      {
-        event: (ev) => {
-          if (ev.kind !== KIND_PROFILE) return;
-          const parsed = parseProfile(ev);
-          const profilePubkey = normalizePubkeyHex(parsed.pubkey || ev.pubkey || '') || '';
-          if (!profilePubkey) return;
-          const existingProfile = state.profilesByPubkey.get(profilePubkey);
-          const existingTs = Number(existingProfile && existingProfile.created_at || 0);
-          const incomingTs = Number(parsed.created_at || 0);
-          if (existingProfile && existingTs > incomingTs) return;
-          if (
-            existingProfile &&
-            existingTs === incomingTs &&
-            String(existingProfile.name || '') === String(parsed.name || '') &&
-            String(existingProfile.display_name || '') === String(parsed.display_name || '') &&
-            String(existingProfile.about || '') === String(parsed.about || '') &&
-            String(existingProfile.picture || '') === String(parsed.picture || '') &&
-            String(existingProfile.banner || '') === String(parsed.banner || '') &&
-            String(existingProfile.nip05 || '') === String(parsed.nip05 || '')
-          ) {
-            return;
-          }
-          state.profilesByPubkey.set(profilePubkey, { ...parsed, pubkey: profilePubkey });
-          ensureNip05Verification(profilePubkey, parsed.nip05 || '').catch(() => {});
-          if (state.user && normalizePubkeyHex(state.user.pubkey) === profilePubkey) {
-            state.user.profile = state.profilesByPubkey.get(profilePubkey);
-            setUserUi();
-          }
-          if (isHomeViewActive()) renderLiveGrid();
-          updateVideosPageCardsForProfile(profilePubkey);
-          const sel = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
-          if (sel && isVideoPageVisible()) {
-            const selHost = normalizePubkeyHex(sel.hostPubkey || '');
-            const selPublisher = normalizePubkeyHex(sel.pubkey || '');
-            const selPlatform = normalizePubkeyHex(sel.platformPubkey || '');
-            if (profilePubkey === selHost || profilePubkey === selPublisher || profilePubkey === selPlatform) {
-              renderVideo(sel);
+    if (!unique.length || !state.pool) return;
+
+    const previousIds = Array.isArray(state.profileSubIds) ? state.profileSubIds : [];
+    previousIds.forEach((id) => {
+      try { state.pool.unsubscribe(id); } catch (_) {}
+    });
+    if (state.profileSubId && !previousIds.includes(state.profileSubId)) {
+      try { state.pool.unsubscribe(state.profileSubId); } catch (_) {}
+    }
+    state.profileSubIds = [];
+    state.profileSubId = null;
+
+    const PROFILE_AUTHOR_CHUNK = 100;
+    for (let offset = 0; offset < unique.length; offset += PROFILE_AUTHOR_CHUNK) {
+      const authors = unique.slice(offset, offset + PROFILE_AUTHOR_CHUNK);
+      const subId = state.pool.subscribe(
+        [{ kinds: [KIND_PROFILE], authors, limit: authors.length * 2 }],
+        {
+          event: (ev) => {
+            if (!ev || Number(ev.kind) !== KIND_PROFILE) return;
+            const parsed = parseProfile(ev);
+            const profilePubkey = normalizePubkeyHex(parsed.pubkey || ev.pubkey || '') || '';
+            if (!profilePubkey) return;
+
+            const existingProfile = state.profilesByPubkey.get(profilePubkey);
+            const existingTs = Number(existingProfile && existingProfile.created_at || 0);
+            const incomingTs = Number(parsed.created_at || 0);
+            if (existingProfile && existingTs > incomingTs) return;
+            if (
+              existingProfile &&
+              existingTs === incomingTs &&
+              String(existingProfile.name || '') === String(parsed.name || '') &&
+              String(existingProfile.display_name || '') === String(parsed.display_name || '') &&
+              String(existingProfile.about || '') === String(parsed.about || '') &&
+              String(existingProfile.picture || '') === String(parsed.picture || '') &&
+              String(existingProfile.banner || '') === String(parsed.banner || '') &&
+              String(existingProfile.nip05 || '') === String(parsed.nip05 || '')
+            ) return;
+
+            state.profilesByPubkey.set(profilePubkey, { ...parsed, pubkey: profilePubkey });
+            ensureNip05Verification(profilePubkey, parsed.nip05 || '').catch(() => {});
+
+            if (state.user && normalizePubkeyHex(state.user.pubkey) === profilePubkey) {
+              state.user.profile = state.profilesByPubkey.get(profilePubkey);
+              setUserUi();
+            }
+            if (isHomeViewActive()) renderLiveGrid();
+            updateVideosPageCardsForProfile(profilePubkey);
+
+            const sel = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
+            if (sel && isVideoPageVisible()) {
+              const selHost = normalizePubkeyHex(sel.hostPubkey || '');
+              const selPublisher = normalizePubkeyHex(sel.pubkey || '');
+              const selPlatform = normalizePubkeyHex(sel.platformPubkey || '');
+              if (profilePubkey === selHost || profilePubkey === selPublisher || profilePubkey === selPlatform) {
+                renderVideo(sel);
+              }
+            }
+            if (normalizePubkeyHex(state.selectedProfilePubkey) === profilePubkey && isProfilePageVisible()) {
+              renderProfilePage(profilePubkey);
+              syncProfileRoute(profilePubkey, 'replace');
+            }
+            if (isMessagesPageVisible()) {
+              renderDmContactSelect();
+              scheduleDmRender({
+                conversations: true,
+                thread: normalizePubkeyHex(state.dmActivePeerPubkey) === profilePubkey
+              });
             }
           }
-          if (normalizePubkeyHex(state.selectedProfilePubkey) === profilePubkey && isProfilePageVisible()) {
-            renderProfilePage(profilePubkey);
-            syncProfileRoute(profilePubkey, 'replace');
-          }
-          if (isMessagesPageVisible()) {
-            renderDmContactSelect();
-            scheduleDmRender({
-              conversations: true,
-              thread: normalizePubkeyHex(state.dmActivePeerPubkey) === profilePubkey
-            });
-          }
         }
-      }
-    );
+      );
+      state.profileSubIds.push(subId);
+    }
+    state.profileSubId = state.profileSubIds[0] || null;
   }
 
   // Fetch a single profile on demand (commenters, repost authors, etc.)
