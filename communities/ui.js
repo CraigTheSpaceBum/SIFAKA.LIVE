@@ -33,6 +33,16 @@ function isRoomChannel(channel) {
   return type === 'voice' || type === 'video' || type === 'stage';
 }
 
+function slugify(input) {
+  const raw = String(input || '');
+  const slug = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return slug || 'room';
+}
+
 function channelTypeLabel(type) {
   const key = String(type || '').trim().toLowerCase();
   if (key === 'announcement') return 'Announcement';
