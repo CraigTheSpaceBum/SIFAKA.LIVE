@@ -18058,8 +18058,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.profileFeedSubId = state.pool.subscribe(
       [
-        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 320 },
-        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 620 }
+        // Bound the initial request; older history is loaded separately when needed.
+        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 320, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 },
+        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 620, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 }
       ],
       {
         event: (ev) => {
@@ -18279,6 +18280,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const routeMode = opts.routeMode || 'push';
     if (!pubkey) return;
     state.selectedProfilePubkey = pubkey;
+    // Prioritize the lightweight kind:0 lookup so name/avatar can update independently.
+    fetchProfileIfNeeded(pubkey);
     const p = profileFor(pubkey);
     const verifiedNip05 = getVerifiedNip05ForPubkey(pubkey, p.nip05 || '');
     if (!verifiedNip05 && normalizeNip05Value(p.nip05 || '')) ensureNip05Verification(pubkey, p.nip05 || '').catch(() => {});
