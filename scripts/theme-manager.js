@@ -37,6 +37,7 @@
   };
 
   window.setSifakaTheme = applyTheme;
+  window.previewSifakaTheme = function (theme) { return applyTheme(theme, false); };
 
   document.addEventListener('DOMContentLoaded', () => {
     let saved = 'dark';
