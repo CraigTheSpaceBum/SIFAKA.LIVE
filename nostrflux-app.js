@@ -175,11 +175,12 @@
   const DM_DECRYPT_CONCURRENCY = 2;
   const DM_SYNC_LOOKBACK_YEARS = 48;
   const DM_SYNC_LOOKBACK_SECONDS = 60 * 60 * 24 * 365 * DM_SYNC_LOOKBACK_YEARS;
-  const DM_SYNC_RECENT_YEARS = 5;
+  // Keep the first DM view fast. Older history is still available through the backfill path.
+  const DM_SYNC_RECENT_YEARS = 1;
   const DM_SYNC_RECENT_SECONDS = 60 * 60 * 24 * 365 * DM_SYNC_RECENT_YEARS;
   const DM_SYNC_STATUS_TIMEOUT_MS = 4000;
-  const DM_SYNC_LIMIT_PER_DIRECTION = 480;
-  const DM_BACKFILL_LIMIT_PER_DIRECTION = 480;
+  const DM_SYNC_LIMIT_PER_DIRECTION = 160;
+  const DM_BACKFILL_LIMIT_PER_DIRECTION = 240;
   const DM_DECRYPT_QUEUE_SOFT_CAP = 1800;
   const DM_PER_PEER_MEMORY_CAP = 1200;
   const DM_LOCAL_ACTIVITY_MAX_ITEMS = 200;
@@ -7560,6 +7561,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     ensureMessagesSession({ subscribe: opts.subscribe !== false });
 
+    // A profile -> Message click can arrive with a known hex pubkey. Select it
+    // before the first render so the user never sees a blank/frozen DM transition.
+    const initialPeer = normalizePubkeyHex(opts.initialPeer || '');
+    if (initialPeer && (!state.user || initialPeer !== normalizePubkeyHex(state.user.pubkey))) {
+      state.dmSearchTerm = '';
+      if (!state.dmMessagesByPeer.has(initialPeer)) state.dmMessagesByPeer.set(initialPeer, []);
+      state.dmActivePeerPubkey = initialPeer;
+      fetchProfileIfNeeded(initialPeer);
+    }
+
     if (!root.dataset.dmReady || opts.forceLayout) {
       root.innerHTML = `
         <div class="dm-wrap dm-address-book-closed" id="dmWrap">
@@ -7669,10 +7680,36 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   async function openMessagesWithPeer(peerToken, opts = {}) {
+    if (!state.user) {
+      window.openLogin();
+      return '';
+    }
+
+    // Resolve the recipient before changing pages. Profile buttons normally pass
+    // a hex pubkey, so this is effectively synchronous and avoids a blank DM page.
+    const peer = await resolveDmRecipientToken(peerToken);
+    if (!peer) {
+      setDmStatus('Could not resolve that recipient. Use npub, NIP-05, nprofile, or hex pubkey.', 'error');
+      return '';
+    }
+    if (peer === normalizePubkeyHex(state.user.pubkey)) {
+      setDmStatus('You cannot open a DM with your own pubkey.', 'error');
+      return '';
+    }
+
     const routeMode = opts.routeMode || 'push';
-    if (window.showPage) window.showPage('messages', { routeMode });
-    if (!peerToken) return '';
-    return await startDmConversationWithInput(peerToken, { clearInput: true, focusComposer: true });
+    if (window.showPage) {
+      window.showPage('messages', { routeMode, initialDmPeer: peer });
+    }
+
+    const input = qs('#dmNewPeerInput');
+    if (input) input.value = '';
+    const compose = qs('#dmComposeInput');
+    if (compose) {
+      try { compose.focus(); } catch (_) {}
+    }
+    setDmStatus('DM conversation ready.', 'success');
+    return peer;
   }
 
   function parseProfile(ev) {
@@ -19130,7 +19167,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         window.SifakaCommunities.mount();
       }
       if (p === 'messages') {
-        renderMessagesPage({ subscribe: true });
+        renderMessagesPage({ subscribe: true, initialPeer: opts.initialDmPeer || '' });
       } else {
         teardownDmSubscription();
       }
