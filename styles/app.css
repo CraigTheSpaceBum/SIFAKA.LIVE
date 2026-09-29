@@ -4907,3 +4907,158 @@ footer p{font-size:.72rem;color:var(--muted);}
     transition-duration: 0.001ms !important;
   }
 }
+
+
+/* ===== MOBILE RESPONSIVE =====
+   Keep the desktop layout unchanged. On phones, prioritize touch targets,
+   readable cards, horizontal scrolling for dense controls, and single-column
+   content instead of squeezing desktop grids into a narrow viewport. */
+@media (max-width: 700px) {
+  html, body { max-width:100%; overflow-x:hidden; }
+  body { font-size:14px; }
+
+  nav {
+    min-height:56px;
+    height:auto;
+    padding:.45rem .65rem;
+    gap:.45rem;
+    flex-wrap:nowrap;
+  }
+  .logo-wrap { flex-shrink:0; }
+  .logo { padding:.2rem .35rem; }
+  .logo-text-8bit { display:none; }
+  .logo-live-pill { font-size:.55rem; padding:.12rem .3rem; }
+  .nav-logo-img { width:30px; height:30px; }
+  .search-wrap { flex:1; min-width:0; max-width:none; }
+  .search-input { width:100%; min-width:0; font-size:.8rem; padding:.55rem .65rem .55rem 2rem; }
+  #goLiveBtn { display:none; }
+  .nav-spacer { display:none; }
+  .nav-logged-out .btn-primary { padding:.52rem .65rem; font-size:.7rem; white-space:nowrap; }
+  .nav-logged-in { flex-shrink:0; }
+  .nav-notif-btn { width:36px; height:36px; }
+  .nav-user-pill { width:36px; height:36px; }
+  .nav-dropdown { max-width:calc(100vw - 1rem); }
+  .search-results { left:0; right:0; width:auto; max-height:70vh; overflow:auto; }
+
+  main, .page, .content-wrap, .container {
+    max-width:100%;
+  }
+
+  .main-grid, .content-grid, .two-col, .three-col {
+    grid-template-columns:1fr !important;
+  }
+
+  .section-hd, .sec-hd, .section-header {
+    gap:.5rem;
+    flex-wrap:wrap;
+  }
+
+  .card, .panel, .stream-card, .profile-card {
+    max-width:100%;
+  }
+
+  /* Make common grids collapse rather than becoming tiny cards. */
+  .stream-grid, .video-grid, .profile-grid, .following-grid {
+    grid-template-columns:1fr !important;
+  }
+
+  /* Profile */
+  #profilePage { width:100%; overflow:hidden; }
+  .profile-cover, .profile-banner { min-height:120px; max-height:190px; }
+  .profile-header, .profile-head, .profile-top {
+    padding:.8rem !important;
+    gap:.7rem !important;
+    flex-wrap:wrap;
+  }
+  .profile-header-main { min-width:0; flex:1 1 180px; }
+  .profile-actions { width:100%; }
+  .profile-actions .btn, .profile-tabs button { min-height:42px; }
+  .profile-tabs {
+    display:flex;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    gap:.25rem;
+  }
+  .profile-tabs::-webkit-scrollbar { display:none; }
+  .profile-feed-item { border-radius:10px; }
+  .profile-feed-stats {
+    display:flex;
+    flex-wrap:wrap;
+    gap:.25rem .5rem;
+  }
+  .profile-feed-stats .pfs { min-height:38px; }
+  .profile-comment-input { min-height:44px; }
+  .profile-comment-tools { flex-wrap:wrap; }
+
+  /* Video/live pages */
+  .hero-player {
+    position:relative;
+    left:auto; top:auto;
+    transform:none;
+    width:100%;
+    border-radius:8px;
+    margin:0;
+  }
+  .hero-nav-btn { width:34px; height:34px; }
+  .hero-nav-prev { left:.4rem; }
+  .hero-nav-next { right:.4rem; }
+  .hero-player video { object-fit:contain; }
+
+  /* Dense controls should scroll instead of overflowing the viewport. */
+  .filter-row, .toolbar, .chip-row, .tabs, .view-tabs {
+    max-width:100%;
+    overflow-x:auto;
+    flex-wrap:nowrap;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .filter-row::-webkit-scrollbar, .toolbar::-webkit-scrollbar,
+  .chip-row::-webkit-scrollbar, .tabs::-webkit-scrollbar,
+  .view-tabs::-webkit-scrollbar { display:none; }
+
+  /* Modals fit the phone and leave room for the browser UI. */
+  .modal-ov { padding:.5rem; align-items:flex-start; }
+  .modal {
+    width:100%;
+    max-width:none;
+    max-height:calc(100dvh - 1rem);
+    overflow:auto;
+    border-radius:12px;
+  }
+  .mfooter {
+    position:sticky;
+    bottom:0;
+    flex-wrap:wrap;
+    background:var(--surface);
+    padding:.65rem;
+  }
+  .mfooter .btn { min-height:42px; }
+
+  .go-live-create-grid,
+  .go-live-third-party-grid,
+  .go-live-form-grid {
+    grid-template-columns:1fr !important;
+  }
+  .go-live-col-preview { order:-1; }
+  .go-live-stream-preview-video { max-height:38vh; }
+
+  footer {
+    flex-direction:column;
+    align-items:flex-start;
+    gap:.5rem;
+  }
+}
+
+@media (max-width: 430px) {
+  nav { padding:.4rem .5rem; }
+  .nav-notif-btn { display:none; }
+  .nav-user-pill { width:34px; height:34px; }
+  .search-input { font-size:.75rem; }
+  .btn { min-height:40px; }
+  .profile-feed-text { font-size:.9rem; line-height:1.5; }
+  .profile-feed-media-wrap img,
+  .profile-feed-media-wrap video { max-width:100%; height:auto; }
+  .modal-ov { padding:.25rem; }
+  .modal { max-height:calc(100dvh - .5rem); }
+}
