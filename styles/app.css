@@ -4914,6 +4914,28 @@ footer p{font-size:.72rem;color:var(--muted);}
    readable cards, horizontal scrolling for dense controls, and single-column
    content instead of squeezing desktop grids into a narrow viewport. */
 @media (max-width: 700px) {
+  /* Mobile profile: use the full available viewport width.
+     Desktop keeps its existing 1.5rem side gutters. */
+  .profile-content {
+    padding-left: .45rem;
+    padding-right: .45rem;
+    padding-bottom: 1rem;
+  }
+  #profilePage .profile-content {
+    width: 100%;
+    max-width: none;
+  }
+  #profilePage .profile-top,
+  #profilePage .profile-main-grid {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  #profilePage .profile-feed-item,
+  #profilePage .profile-media-card {
+    border-radius: 8px;
+  }
+
   html, body { max-width:100%; overflow-x:hidden; }
   body { font-size:14px; }
 
