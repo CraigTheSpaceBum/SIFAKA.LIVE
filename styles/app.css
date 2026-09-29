@@ -5451,8 +5451,11 @@ footer p{font-size:.72rem;color:var(--muted);}
     padding: .45rem .75rem;
   }
 
-  /* Keep navigation indicators over the player instead of pushing content. */
+  /* Keep navigation arrows vertically centered on the 16:9 video itself.
+     The mobile hero stacks the info panel below the player, so top:50% of
+     the full hero would place the arrows too low. */
   #homePage .hero-nav-btn {
+    top: 28.125vw;
     z-index: 8;
   }
 
