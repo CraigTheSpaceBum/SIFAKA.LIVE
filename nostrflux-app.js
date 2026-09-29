@@ -296,6 +296,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     streamEventIdsByAddress: new Map(),
     nip71VideosByEventId: new Map(),
     profilesByPubkey: new Map(),
+    profileFetchInflightByPubkey: new Map(),
     profileNotesByPubkey: new Map(),
     profileStatsByPubkey: new Map(),
     liveSubId: null,
@@ -15321,9 +15322,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function fetchProfileIfNeeded(pubkey, opts = {}) {
     const normalizedPubkey = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
     if (!normalizedPubkey) return Promise.resolve();
+
     const existing = state.profilesByPubkey.get(normalizedPubkey);
     if (existing && (existing.name || existing.display_name || existing.picture)) return Promise.resolve();
-    return fetchEventsCached(
+
+    // Profile metadata is requested from many surfaces (DMs, chat, videos, feed).
+    // Deduplicate concurrent lookups so one person cannot trigger a burst of identical
+    // relay requests while the UI is rendering.
+    const inflight = state.profileFetchInflightByPubkey.get(normalizedPubkey);
+    if (inflight) return inflight;
+
+    const request = fetchEventsCached(
       [{ kinds: [KIND_PROFILE], authors: [normalizedPubkey], limit: 2 }],
       {
         scope: 'profile-by-pubkey',
@@ -15336,7 +15345,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         .filter((ev) => ev && ev.kind === KIND_PROFILE && normalizePubkeyHex(ev.pubkey || '') === normalizedPubkey)
         .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))[0];
       if (!latest) return;
+
       const parsed = parseProfile(latest);
+      const current = state.profilesByPubkey.get(normalizedPubkey);
+      if (current && Number(current.created_at || 0) > Number(parsed.created_at || 0)) return;
+
       state.profilesByPubkey.set(normalizedPubkey, { ...parsed, pubkey: normalizedPubkey });
       if (!opts.skipNip05) ensureNip05Verification(normalizedPubkey, parsed.nip05 || '').catch(() => {});
       updateVideosPageCardsForProfile(normalizedPubkey);
@@ -15347,7 +15360,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           thread: normalizePubkeyHex(state.dmActivePeerPubkey) === normalizedPubkey
         });
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      state.profileFetchInflightByPubkey.delete(normalizedPubkey);
+    });
+
+    state.profileFetchInflightByPubkey.set(normalizedPubkey, request);
+    return request;
   }
 
   function clearLiveGridRenderTimer() {
