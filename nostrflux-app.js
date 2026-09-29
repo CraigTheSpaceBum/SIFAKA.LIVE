@@ -2326,7 +2326,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const mediaStatus = cacheKey && state.mediaUrlStatusByKey ? state.mediaUrlStatusByKey.get(cacheKey) : '';
-    if ((raw && state.failedMediaUrls && state.failedMediaUrls.has(raw)) || mediaStatus === 'failed' || mediaStatus === 'pending') {
+    if ((raw && state.failedMediaUrls && state.failedMediaUrls.has(raw)) || mediaStatus === 'failed') {
       el.textContent = fallbackText;
       return;
     }
