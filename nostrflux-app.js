@@ -15698,8 +15698,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince },
       { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince }
     ];
+    // Keep high-volume reactions/deletions out of the real-time theater path.
+// Likes/reactions remain available through bounded history; stream zaps stay live.
     const reactionLiveFilters = [
-      { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], since: reactionLiveSince },
       { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], since: reactionLiveSince }
     ];
     if (stream.id) {
