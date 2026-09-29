@@ -16910,6 +16910,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const displayNote = (isRepost && originalNote) ? originalNote : note;
       const displayPubkey = (isRepost && originalPubkey) ? originalPubkey : note.pubkey;
       const displayProfile = (isRepost && originalProfile) ? originalProfile : profileFor(displayPubkey);
+      if (isRepost && /^[0-9a-f]{64}$/i.test(String(displayPubkey || '')) && (!displayProfile || (!displayProfile.picture && !displayProfile.display_name && !displayProfile.name))) {
+        fetchProfileIfNeeded(displayPubkey)
+          .then(() => {
+            if ((normalizePubkeyHex(state.selectedProfilePubkey) || state.selectedProfilePubkey) === (normalizePubkeyHex(pubkey) || pubkey) && isProfilePageVisible()) {
+              renderProfileFeed(pubkey);
+            }
+          })
+          .catch(() => {});
+      }
       const boostPubkey = normalizePubkeyHex(note.pubkey) || note.pubkey;
       const targetPostId =
         (aggregates && aggregates.targetIdByDisplayPostId && aggregates.targetIdByDisplayPostId.get(note.id)) ||
@@ -17160,6 +17169,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const list = expandedComments ? comments : comments.slice(0, maxPreview);
         list.forEach((comment) => {
           const cp = profileFor(comment.pubkey);
+          if (!cp || (!cp.picture && !cp.display_name && !cp.name)) {
+            fetchProfileIfNeeded(comment.pubkey)
+              .then(() => {
+                if ((normalizePubkeyHex(state.selectedProfilePubkey) || state.selectedProfilePubkey) === (normalizePubkeyHex(pubkey) || pubkey) && isProfilePageVisible()) {
+                  renderProfileFeed(pubkey);
+                }
+              })
+              .catch(() => {});
+          }
           const commentLikeSet = (aggregates && aggregates.commentLikePubkeysById && aggregates.commentLikePubkeysById.get(comment.id)) || new Set();
           const commentBoostSet = (aggregates && aggregates.commentBoostPubkeysById && aggregates.commentBoostPubkeysById.get(comment.id)) || new Set();
           const commentZapCount = Number((aggregates && aggregates.commentZapCountById && aggregates.commentZapCountById.get(comment.id)) || 0);
@@ -18224,8 +18242,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.profileFeedSubId = state.pool.subscribe(
       [
         // Bound the initial request; older history is loaded separately when needed.
-        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 320, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 },
-        { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 620, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 }
+        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 420, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 },
+        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 720, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 }
       ],
       {
         event: (ev) => {
