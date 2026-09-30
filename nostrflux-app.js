@@ -22175,7 +22175,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             syncTheaterRoute,
             stopHeroCycle,
             stopAllAudio,
-            renderVideoPlayback,
             renderRecoStreams: window.renderRecoStreams,
             showMini: window.showMini,
             hideMini: window.hideMini,
