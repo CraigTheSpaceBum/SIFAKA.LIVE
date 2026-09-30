@@ -2428,14 +2428,38 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function sanitizeMediaUrl(v) {
     const raw = String(v || '').trim();
     if (!raw) return '';
-    const unwrapped = raw.replace(/^['"]+|['"]+$/g, '');
-    return unwrapped
+
+    let clean = raw.replace(/^['"]+|['"]+$/g, '')
       .replace(/&amp;/gi, '&')
       .replace(/&quot;/gi, '"')
       .replace(/&#39;/gi, "'")
       .replace(/&lt;/gi, '<')
       .replace(/&gt;/gi, '>')
       .trim();
+
+    // Nostr profile metadata occasionally contains malformed inline SVG/data payloads
+    // instead of a real image URL. Decode only for inspection; keep valid URLs intact.
+    let inspected = clean;
+    for (let i = 0; i < 2; i += 1) {
+      try {
+        const decoded = decodeURIComponent(inspected);
+        if (decoded === inspected) break;
+        inspected = decoded;
+      } catch (_) {
+        break;
+      }
+    }
+
+    if (/^data:image\/svg\+xml/i.test(inspected)
+      || /<\/?svg\b/i.test(inspected)
+      || /<\/?(?:rect|text|path|circle|ellipse|polygon|polyline)\b/i.test(inspected)) {
+      return '';
+    }
+
+    // Never pass scriptable/non-image schemes through a media sanitizer.
+    if (/^(?:javascript|vbscript|file|about):/i.test(clean)) return '';
+
+    return clean;
   }
 
   function mediaUrlCacheKey(value) {
@@ -8012,23 +8036,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return peer;
   }
 
-  // Local presentation override for a known spammy Nostr identity. This only changes
-  // how the profile is displayed on Sifaka; it does not modify the Nostr event.
-  const ANONYMOUS_PROFILE_PUBKEYS = new Set([
-    'a9caf9d59557f33c07ec9b4c516194f7d7c638121ca5d9d59a5f7769d332a418'
-  ]);
-
-  function isAnonymousProfilePubkey(pubkey) {
-    const key = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
-    return ANONYMOUS_PROFILE_PUBKEYS.has(key);
-  }
-
-  function displayNameForProfile(pubkey, rawName, fallback = '') {
-    if (isAnonymousProfilePubkey(pubkey)) return 'Anonymous';
-    const name = String(rawName || '').trim();
-    return name || String(fallback || '').trim();
-  }
-
   function parseProfile(ev) {
     const normalizedPubkey = normalizePubkeyHex(ev && ev.pubkey || '') || String(ev && ev.pubkey || '').trim().toLowerCase();
     const fallbackPubkey = normalizedPubkey || String(ev && ev.pubkey || '').trim();
@@ -10889,17 +10896,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const normalizedPubkey = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
     const profile = (normalizedPubkey && state.profilesByPubkey.get(normalizedPubkey))
       || state.profilesByPubkey.get(pubkey);
-    if (profile) {
-      if (isAnonymousProfilePubkey(normalizedPubkey || pubkey)) {
-        return {
-          ...profile,
-          name: 'Anonymous',
-          display_name: 'Anonymous',
-          username: 'Anonymous'
-        };
-      }
-      return profile;
-    }
+    if (profile) return profile;
     return {
       pubkey: normalizedPubkey || pubkey,
       name: shortHex(normalizedPubkey || pubkey),
