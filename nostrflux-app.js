@@ -22141,47 +22141,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       };
     }
 
-    if (typeof views.showTheaterLayout === 'function' && typeof window.showVideoPage === 'function') {
-      const originalShowVideoPage = window.showVideoPage;
-      window.showVideoPage = function (opts = {}) {
-        try {
-          if (typeof window.closeVideoPostModal === 'function') window.closeVideoPostModal();
-          stopNostrFeedSubscription();
-          stopLiveSubscription();
-          teardownDmSubscription();
-          subscribeProfileStats('');
-          clearVideosRenderTimer();
-          clearVideosChunkRender();
-          state.videosRenderPending = false;
-          const feed = qs('#feedPage');
-          if (feed) feed.style.display = 'none';
-          const videos = qs('#videosPage');
-          if (videos) videos.style.display = 'none';
-          const notifications = qs('#notificationsPage');
-          if (notifications) notifications.style.display = 'none';
-          const myStreams = qs('#myStreamsPage');
-          if (myStreams) myStreams.style.display = 'none';
-          const widgets = qs('#widgetsPage');
-          if (widgets) widgets.style.display = 'none';
-          views.showTheaterLayout({
-            opts,
-            qs,
-            state,
-            setActiveViewerAddress,
-            syncTheaterRoute,
-            stopHeroCycle,
-            stopAllAudio,
-            renderRecoStreams: window.renderRecoStreams,
-            showMini: window.showMini,
-            hideMini: window.hideMini,
-            scrollToTop: () => window.scrollTo(0, 0)
-          });
-          return;
-        } catch (_) {}
-        return originalShowVideoPage(opts);
-      };
-    }
-
     if (typeof views.prepareProfileLayout === 'function' && typeof window.showProfile === 'function') {
       const originalShowProfile = window.showProfile;
       window.showProfile = function (name, av, npub, nip05, rawPubkey, opts = {}) {
