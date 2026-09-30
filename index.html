@@ -1008,17 +1008,23 @@
 <div id="nestsPage">
   <div class="nests-page-wrap">
     <section class="nests-page-hero">
-      <div>
-        <div class="nests-page-eyebrow">NOSTR NEST</div>
+      <div class="nests-hero-copy">
+        <div class="nests-page-eyebrow"><span class="nests-eyebrow-dot"></span>NOSTR NEST</div>
         <h2>Live Audio Rooms</h2>
-        <p>Discover live Nostr audio rooms, join conversations, and see who's speaking. Nostr Nest rooms use NIP-53 meeting-space events.</p>
+        <p>Drop into live conversations, community calls, podcasts, AMAs, and music sessions powered by Nostr.</p>
       </div>
-      <button class="btn btn-ghost" type="button" onclick="loadNestsPage(true)">Refresh</button>
+      <div class="nests-hero-side">
+        <div class="nests-hero-orbit" aria-hidden="true"><span>◉</span></div>
+        <button class="btn btn-ghost nests-refresh-btn" type="button" onclick="loadNestsPage(true)" aria-label="Refresh Nostr Nests"><span>↻</span> Refresh</button>
+      </div>
     </section>
-    <div class="nests-tabs" role="tablist">
+    <div class="nests-toolbar">
+      <div class="nests-tabs" role="tablist" aria-label="Nostr Nest rooms">
       <button class="nests-tab active" id="nestsLiveTab" type="button" onclick="setNestsTab('live')">Live Now</button>
       <button class="nests-tab" id="nestsUpcomingTab" type="button" onclick="setNestsTab('upcoming')">Upcoming</button>
       <button class="nests-tab" id="nestsFollowingTab" type="button" onclick="setNestsTab('following')">Following</button>
+    </div>
+      <div class="nests-live-note"><span class="nests-live-pulse"></span> Nostr-powered audio</div>
     </div>
     <div id="nestsPageStatus" class="nests-page-status" aria-live="polite"></div>
     <div id="nestsRoomsGrid" class="nests-rooms-grid">
