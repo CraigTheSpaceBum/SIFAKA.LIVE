@@ -1020,11 +1020,16 @@
     </section>
     <div class="nests-toolbar">
       <div class="nests-tabs" role="tablist" aria-label="Nostr Nest rooms">
-      <button class="nests-tab active" id="nestsLiveTab" type="button" onclick="setNestsTab('live')">Live Now</button>
-      <button class="nests-tab" id="nestsUpcomingTab" type="button" onclick="setNestsTab('upcoming')">Upcoming</button>
-      <button class="nests-tab" id="nestsFollowingTab" type="button" onclick="setNestsTab('following')">Following</button>
-    </div>
+        <button class="nests-tab active" id="nestsLiveTab" role="tab" aria-selected="true" type="button" onclick="setNestsTab('live')">Live Now</button>
+        <button class="nests-tab" id="nestsUpcomingTab" role="tab" aria-selected="false" type="button" onclick="setNestsTab('upcoming')">Upcoming</button>
+        <button class="nests-tab" id="nestsFollowingTab" role="tab" aria-selected="false" type="button" onclick="setNestsTab('following')">Following</button>
+        <button class="nests-tab" id="nestsEndedTab" role="tab" aria-selected="false" type="button" onclick="setNestsTab('ended')">Recently Ended</button>
+      </div>
       <div class="nests-live-note"><span class="nests-live-pulse"></span> Nostr-powered audio</div>
+    </div>
+    <div class="nests-search-row">
+      <span class="nests-search-icon" aria-hidden="true"></span>
+      <input id="nestsSearchInput" type="search" placeholder="Search rooms, hosts, or topics…" aria-label="Search Nostr Nest rooms" oninput="filterNests(this.value)">
     </div>
     <div id="nestsPageStatus" class="nests-page-status" aria-live="polite"></div>
     <div id="nestsRoomsGrid" class="nests-rooms-grid">
