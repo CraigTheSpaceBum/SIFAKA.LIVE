@@ -11281,6 +11281,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (type === 'repost') return !!state.settings.notificationsReposts;
     if (type === 'zap') return !!state.settings.notificationsZaps;
     if (type === 'follow') return !!state.settings.notificationsFollows;
+    if (type === 'dm') return true;
     return true;
   }
 
@@ -11291,6 +11292,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (type === 'repost') return 'Repost';
     if (type === 'zap') return 'Zap';
     if (type === 'follow') return 'Follow';
+    if (type === 'dm') return 'DM';
     return 'Activity';
   }
 
