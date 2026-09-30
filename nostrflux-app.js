@@ -332,6 +332,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     profileBioExpandedByPubkey: new Map(),
     isLive: false,
     hlsInstance: null,
+    playbackCleanup: null,
     playbackToken: 0,
     playbackAddress: '',
     playbackUrl: '',
@@ -13135,6 +13136,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function clearPlayback() {
     state.playbackToken += 1;
+    if (state.playbackCleanup) {
+      try { state.playbackCleanup(); } catch (_) {}
+      state.playbackCleanup = null;
+    }
     if (!state.activeHeroViewerAddress) stopViewerPresence();
     state.playbackAddress = '';
     state.playbackUrl = '';
@@ -13461,29 +13466,43 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const retry = () => {
         if (!isStale() && !fallbackShown) attemptInitialPlayback().catch(() => {});
       };
-      video.addEventListener('loadedmetadata', retry);
-      video.addEventListener('loadeddata', retry);
-      video.addEventListener('canplay', retry);
-      video.addEventListener('playing', () => {
-        // If autoplay had to start muted, keep retrying until audio is actually restored.
+      const onPlaying = () => {
         if (video.muted) scheduleInitialPlaybackRetries();
         else clearInitialPlaybackRetries();
-      });
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) retry(); });
-      window.addEventListener('pageshow', retry);
-      window.addEventListener('focus', retry);
-
-      // The click/tap that opens a stream is the user's interaction. If the
-      // browser initially required muted autoplay, use subsequent interaction
-      // to immediately retry the same player with audio rather than waiting for
-      // another stream to be opened.
+      };
+      const onVisibility = () => { if (!document.hidden) retry(); };
+      const onPageShow = () => retry();
+      const onFocus = () => retry();
       const unlockAudio = () => {
         if (isStale() || fallbackShown || !video.muted) return;
         attemptInitialPlayback().catch(() => {});
       };
+      video.addEventListener('loadedmetadata', retry);
+      video.addEventListener('loadeddata', retry);
+      video.addEventListener('canplay', retry);
+      video.addEventListener('playing', onPlaying);
+      document.addEventListener('visibilitychange', onVisibility);
+      window.addEventListener('pageshow', onPageShow);
+      window.addEventListener('focus', onFocus);
       document.addEventListener('pointerdown', unlockAudio, { passive: true });
       document.addEventListener('keydown', unlockAudio);
       document.addEventListener('touchstart', unlockAudio, { passive: true });
+      state.playbackCleanup = () => {
+        clearInitialPlaybackRetries();
+        if (stallWatchdogId) { clearInterval(stallWatchdogId); stallWatchdogId = null; }
+        if (startupRecoveryTimerId) { clearTimeout(startupRecoveryTimerId); startupRecoveryTimerId = null; }
+        if (mediaErrorRetryTimerId) { clearTimeout(mediaErrorRetryTimerId); mediaErrorRetryTimerId = null; }
+        video.removeEventListener('loadedmetadata', retry);
+        video.removeEventListener('loadeddata', retry);
+        video.removeEventListener('canplay', retry);
+        video.removeEventListener('playing', onPlaying);
+        document.removeEventListener('visibilitychange', onVisibility);
+        window.removeEventListener('pageshow', onPageShow);
+        window.removeEventListener('focus', onFocus);
+        document.removeEventListener('pointerdown', unlockAudio);
+        document.removeEventListener('keydown', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
+      };
     };
 
     const showFailure = (message, opts = {}) => {
@@ -16279,7 +16298,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
 
     state.liveSubId = state.pool.subscribe(
-      [{ kinds: [KIND_LIVE_EVENT, KIND_NIP71_VIDEO, KIND_NIP71_REEL], limit: 180, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7 }],
+      [{ kinds: [KIND_LIVE_EVENT, KIND_NIP71_VIDEO, KIND_NIP71_REEL], limit: 100, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 }],
       {
         event: (ev) => {
           const kind = Number(ev && ev.kind || 0);
@@ -16342,6 +16361,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           });          ensureProfilesForStreams(initialProfileEntries);
           if (isHomeViewActive() && state.selectedProfilePubkey) renderProfilePage(state.selectedProfilePubkey);
         }
+      }
+      , {
+        relayUrls: Array.from(new Set((state.relays || []).filter(Boolean))).slice(0, 6)
       }
     );
   }
