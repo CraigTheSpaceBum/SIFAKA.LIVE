@@ -6569,3 +6569,94 @@ footer p{font-size:.72rem;color:var(--muted);}
   #videoPage .theater-chat-label{display:none;}
   #videoPage .mobile-chat-toggle{display:block;}
 }
+
+
+/* ===== NOSTR NEST — final UI polish / responsive consistency ===== */
+.nest-preview-overlay{
+  padding:clamp(.75rem,2vw,1.25rem);
+  align-items:center;
+}
+.nest-preview-dialog{
+  display:flex;
+  flex-direction:column;
+  max-height:min(92vh,900px);
+  overflow:hidden;
+}
+.nest-preview-cover{flex:none}
+.nest-preview-content{
+  min-height:0;
+  overflow:auto;
+  scrollbar-width:thin;
+}
+.nest-preview-tabs{
+  position:sticky;
+  top:0;
+  z-index:4;
+  margin:.9rem 0 1rem;
+  backdrop-filter:blur(12px);
+}
+.nest-preview-tab{
+  min-height:38px;
+  transition:background .15s ease,color .15s ease,box-shadow .15s ease;
+}
+.nest-preview-tab.active{font-weight:800}
+.nest-preview-panel{min-height:0}
+.nest-preview-people{align-items:stretch}
+.nest-person{
+  min-height:52px;
+  transition:border-color .15s ease,background .15s ease,transform .15s ease;
+}
+.nest-person:active{transform:scale(.99)}
+.nest-preview-chat{scrollbar-width:thin}
+.nest-preview-chat-empty strong,.nest-preview-chat-empty small{display:block}
+.nest-preview-actions{
+  margin:1rem -1.35rem -1.35rem;
+  padding:1rem 1.35rem 1.35rem;
+  background:linear-gradient(180deg,transparent,var(--surface) 28%);
+}
+.nest-preview-actions .btn{flex:1}
+.nest-preview-footnote{padding-bottom:.1rem}
+
+@media(max-width:760px){
+  .nest-preview-overlay{
+    padding:0;
+    align-items:flex-end;
+  }
+  .nest-preview-dialog{
+    width:100%;
+    max-height:94vh;
+    border-radius:22px 22px 0 0;
+    border-bottom:0;
+  }
+  .nest-preview-cover{height:190px}
+  .nest-preview-content{
+    padding-bottom:max(1rem,env(safe-area-inset-bottom));
+  }
+  .nest-preview-tabs{
+    margin:.75rem 0 .9rem;
+  }
+  .nest-preview-tab{
+    min-height:40px;
+    padding:.65rem .35rem;
+  }
+  .nest-preview-stats span{
+    min-width:0;
+  }
+  .nest-preview-actions{
+    margin:1rem -1rem -1rem;
+    padding:1rem;
+    padding-bottom:max(1rem,env(safe-area-inset-bottom));
+  }
+}
+@media(max-width:420px){
+  .nest-preview-cover{height:165px}
+  .nest-preview-content{padding:.85rem}
+  #nestPreviewTitle{font-size:1.3rem}
+  .nest-preview-summary{font-size:.74rem}
+  .nest-preview-stats span{font-size:.58rem}
+  .nest-preview-actions{gap:.4rem}
+  .nest-preview-actions .btn{min-height:44px}
+}
+@media(prefers-reduced-motion:reduce){
+  .nest-preview-tab,.nest-person{transition:none}
+}
