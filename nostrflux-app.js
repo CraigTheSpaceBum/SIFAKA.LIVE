@@ -13557,8 +13557,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function toggleMobileTheaterChat(forceOpen = null) {
+    const sidebar = qs('#videoPage .stream-sidebar');
+    const button = qs('#mobileTheaterChatToggle');
+    if (!sidebar || !button) return;
+    const open = forceOpen === null
+      ? !sidebar.classList.contains('mobile-chat-open')
+      : !!forceOpen;
+    sidebar.classList.toggle('mobile-chat-open', open);
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    button.textContent = open ? 'Hide Live Chat' : 'Live Chat';
+  }
+
   function renderVideo(stream) {
     const hostPubkey = normalizePubkeyHex(stream.hostPubkey) || normalizePubkeyHex(stream.pubkey) || stream.hostPubkey || stream.pubkey;
+    // Start each theater visit collapsed on phones; desktop CSS is unaffected.
+    toggleMobileTheaterChat(false);
     const p = profileFor(hostPubkey);
 
     // Title & summary
