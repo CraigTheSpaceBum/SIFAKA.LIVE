@@ -624,11 +624,13 @@
   }
 
   function interceptJoinClicks(e) {
+    // Only intercept actual room-open controls. Do not capture share buttons
+    // or other controls inside a room card; those have their own handlers.
     const btn = e.target.closest && e.target.closest(
+      '#nestsRoomsGrid .nests-room-cover-btn, ' +
       '#nestsRoomsGrid .nests-room-actions .btn-primary, ' +
       '#nestsRoomsGrid .nests-room-join, ' +
-      '#nestsRoomsGrid [data-action="join"], ' +
-      '#nestsRoomsGrid button'
+      '#nestsRoomsGrid [data-action="join"]'
     );
     if (!btn) return;
 
