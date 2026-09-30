@@ -8046,19 +8046,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       obj = {};
     }
 
-    const anonymous = isAnonymousProfilePubkey(fallbackPubkey);
-    const safeName = displayNameForProfile(
-      fallbackPubkey,
-      obj.display_name || obj.name || '',
-      shortHex(fallbackPubkey)
-    );
-
     return {
       pubkey: normalizedPubkey,
       created_at: ev.created_at || 0,
-      name: safeName,
-      display_name: anonymous ? 'Anonymous' : (obj.display_name || ''),
-      username: anonymous ? 'Anonymous' : (obj.name || ''),
+      name: obj.display_name || obj.name || shortHex(fallbackPubkey),
+      display_name: obj.display_name || '',
+      username: obj.name || '',
       about: obj.about || '',
       picture: obj.picture || '',
       banner: obj.banner || '',
