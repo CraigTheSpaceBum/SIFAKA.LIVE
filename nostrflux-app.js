@@ -10889,7 +10889,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const normalizedPubkey = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
     const profile = (normalizedPubkey && state.profilesByPubkey.get(normalizedPubkey))
       || state.profilesByPubkey.get(pubkey);
-    if (profile) return profile;
+    if (profile) {
+      if (isAnonymousProfilePubkey(normalizedPubkey || pubkey)) {
+        return {
+          ...profile,
+          name: 'Anonymous',
+          display_name: 'Anonymous',
+          username: 'Anonymous'
+        };
+      }
+      return profile;
+    }
     return {
       pubkey: normalizedPubkey || pubkey,
       name: shortHex(normalizedPubkey || pubkey),
