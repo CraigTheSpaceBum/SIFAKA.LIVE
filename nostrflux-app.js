@@ -7012,7 +7012,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     loadLocalDmActivitiesForOwner(owner);
 
     if (opts.subscribe !== false && !state.dmSubId) {
-      if (state.pool) {
+      if (state.pool && !state.pool.destroyed) {
         subscribeDirectMessages();
       } else if (isMessagesPageVisible()) {
         // The Messages page can open while the relay pool is still rebuilding.
