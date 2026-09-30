@@ -6139,3 +6139,15 @@ footer p{font-size:.72rem;color:var(--muted);}
 .nest-listener:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
 .nest-listener-more{white-space:nowrap}
 .nest-preview-schedule small{min-width:72px}
+
+/* NOSTR NEST — room lobby tabs */
+.nest-preview-tabs{display:flex;gap:.35rem;margin:1rem 0 .85rem;padding:.25rem;border:1px solid var(--border);border-radius:12px;background:var(--surface2);position:sticky;top:0;z-index:2}
+.nest-preview-tab{flex:1;border:0;border-radius:9px;padding:.6rem .75rem;background:transparent;color:var(--muted);font:700 .62rem/1 "DM Mono",monospace;text-transform:uppercase;letter-spacing:.06em;cursor:pointer}
+.nest-preview-tab:hover{color:var(--text)}
+.nest-preview-tab.active{background:var(--surface);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.16)}
+.nest-preview-tab:focus-visible{outline:2px solid var(--purple);outline-offset:1px}
+.nest-preview-panel{display:none}
+.nest-preview-panel.active{display:block}
+.nest-preview-panel>.nest-preview-section:first-child{margin-top:0}
+@media(max-width:640px){.nest-preview-tabs{margin-top:.75rem}.nest-preview-tab{padding:.7rem .4rem;font-size:.56rem}}
+@media(prefers-reduced-motion:reduce){.nest-preview-tab{transition:none}}
