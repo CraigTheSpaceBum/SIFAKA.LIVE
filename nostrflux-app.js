@@ -12632,25 +12632,69 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let heroNetworkRecoveries = 0;
     let heroMediaRecoveries = 0;
 
-    // Once ready, keep autoplay stable and only restore audio after user activation.
-    const onCanPlay = () => {
+    // Start muted so browser autoplay policies cannot prevent the stream itself
+    // from starting. Once the browser has recorded a user interaction, keep
+    // retrying the audio unlock because some HLS streams expose their audio
+    // track after the first canplay event.
+    let heroAudioRetryTimers = [];
+    const clearHeroAudioRetries = () => {
+      heroAudioRetryTimers.forEach((id) => clearTimeout(id));
+      heroAudioRetryTimers = [];
+    };
+    const tryHeroAudio = async () => {
+      if (token !== state.heroPlaybackToken || !document.body.contains(video)) return false;
+      const hasUserActivation = !!(navigator.userActivation && navigator.userActivation.hasBeenActive);
+      if (!hasUserActivation) return false;
+      if (!video.muted) return true;
+
+      video.muted = false;
+      video.defaultMuted = false;
+      video.volume = 0.8;
+      try {
+        await video.play();
+        if (!video.muted) {
+          clearHeroAudioRetries();
+          return true;
+        }
+      } catch (_) {}
+
+      // Restore muted autoplay if the browser still requires a gesture.
+      video.muted = true;
+      video.defaultMuted = true;
+      return false;
+    };
+    const scheduleHeroAudioRetries = () => {
+      if (token !== state.heroPlaybackToken) return;
+      clearHeroAudioRetries();
+      [0, 250, 700, 1500, 3000, 5000].forEach((delay) => {
+        heroAudioRetryTimers.push(window.setTimeout(() => {
+          tryHeroAudio().catch(() => {});
+        }, delay));
+      });
+    };
+    const onHeroPlayable = () => {
       if (token !== state.heroPlaybackToken) return;
       setActiveHeroViewerAddress(stream.address);
       startViewerPresence(stream.address);
       markStreamPlaybackOnline(stream.address);
-      const hasUserActivation = !!(navigator.userActivation && navigator.userActivation.hasBeenActive);
-      if (hasUserActivation) {
-        video.muted = false;
-        video.defaultMuted = false;
-        video.volume = 0.8;
-        video.play().catch(() => {
-          video.muted = true;
-          video.defaultMuted = true;
-        });
-      }
       if (ovEl) ovEl.style.display = 'none';
+
+      if (navigator.userActivation && navigator.userActivation.hasBeenActive) {
+        scheduleHeroAudioRetries();
+      }
     };
-    video.addEventListener('canplay', onCanPlay, { once: true });
+    video.addEventListener('canplay', onHeroPlayable);
+    video.addEventListener('playing', onHeroPlayable);
+
+    // A click/tap anywhere after autoplay begins should immediately retry audio.
+    const unlockHeroAudio = () => {
+      if (token !== state.heroPlaybackToken || !video.muted) return;
+      tryHeroAudio().catch(() => {});
+    };
+    document.addEventListener('pointerdown', unlockHeroAudio, { passive: true });
+    document.addEventListener('keydown', unlockHeroAudio);
+    document.addEventListener('touchstart', unlockHeroAudio, { passive: true });
+    document.addEventListener('visibilitychange', unlockHeroAudio);
 
     // On error -> mark as failed and advance
     video.addEventListener('error', () => {
