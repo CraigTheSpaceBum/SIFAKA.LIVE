@@ -21298,6 +21298,190 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     };
 
+    let walletActionTemporarySession = null;
+
+    async function getWalletActionSession() {
+      if (state.walletPageSession) return { session: state.walletPageSession, temporary: false };
+      const config = getSavedNwcConfig();
+      if (!config) throw new Error('Connect a Nostr Wallet in Settings → Wallet first.');
+      const session = await createNwcSession(config);
+      try {
+        const infoEvent = await waitForNwcInfoEvent(session, { timeoutMs: Math.min(NWC_INFO_TIMEOUT_MS, 2500) });
+        const info = parseNwcInfoEvent(infoEvent);
+        if (info && info.preferredEncryption) {
+          session.encryption = info.preferredEncryption;
+          session.nip44ConversationKey = null;
+        }
+      } catch (_) {}
+      walletActionTemporarySession = session;
+      return { session, temporary: true };
+    }
+
+    function closeWalletTemporarySession() {
+      if (walletActionTemporarySession) {
+        teardownNwcSessionObject(walletActionTemporarySession, 'Wallet action finished.');
+        walletActionTemporarySession = null;
+      }
+    }
+
+    function clearWalletQr() {
+      const qr = qs('#walletReceiveQr');
+      if (qr) qr.innerHTML = '';
+      const empty = qs('#walletQrEmpty');
+      if (empty) empty.hidden = false;
+    }
+
+    function renderWalletQr(value) {
+      const qr = qs('#walletReceiveQr');
+      const empty = qs('#walletQrEmpty');
+      if (!qr) return;
+      qr.innerHTML = '';
+      if (!value) {
+        if (empty) empty.hidden = false;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      if (window.QRCode) {
+        new window.QRCode(qr, { text: value, width: 220, height: 220, correctLevel: window.QRCode.CorrectLevel.M });
+      } else {
+        qr.textContent = 'QR generator unavailable. Copy the invoice instead.';
+      }
+    }
+
+    window.openWalletReceive = function () {
+      const modal = qs('#walletActionModal');
+      if (!modal) return;
+      modal.hidden = false;
+      modal.setAttribute('aria-hidden', 'false');
+      setWalletAction('receive');
+      clearWalletQr();
+      const invoice = qs('#walletReceiveInvoice');
+      if (invoice) invoice.textContent = 'No invoice generated yet.';
+      const status = qs('#walletReceiveStatus');
+      if (status) status.textContent = '';
+      setTimeout(() => qs('#walletReceiveAmount')?.focus(), 0);
+    };
+
+    window.openWalletSend = function () {
+      const modal = qs('#walletActionModal');
+      if (!modal) return;
+      modal.hidden = false;
+      modal.setAttribute('aria-hidden', 'false');
+      setWalletAction('send');
+      const status = qs('#walletSendStatus');
+      if (status) status.textContent = '';
+      setTimeout(() => qs('#walletSendInvoice')?.focus(), 0);
+    };
+
+    window.setWalletAction = function (mode) {
+      const receive = mode !== 'send';
+      const title = qs('#walletModalTitle');
+      const rp = qs('#walletReceivePanel');
+      const sp = qs('#walletSendPanel');
+      if (title) title.textContent = receive ? 'Receive' : 'Send';
+      if (rp) rp.hidden = !receive;
+      if (sp) sp.hidden = receive;
+      document.querySelectorAll('.wallet-modal-tab').forEach((btn) => {
+        const active = btn.getAttribute('data-wallet-action') === (receive ? 'receive' : 'send');
+        btn.classList.toggle('active', active);
+      });
+    };
+
+    window.closeWalletAction = function () {
+      const modal = qs('#walletActionModal');
+      if (!modal) return;
+      modal.hidden = true;
+      modal.setAttribute('aria-hidden', 'true');
+      closeWalletTemporarySession();
+    };
+
+    window.generateWalletInvoice = async function () {
+      const amount = Math.floor(Number(qs('#walletReceiveAmount')?.value || 0));
+      const memo = String(qs('#walletReceiveMemo')?.value || '').trim().slice(0, 200);
+      const status = qs('#walletReceiveStatus');
+      const btn = qs('#walletGenerateInvoiceBtn');
+      if (!Number.isFinite(amount) || amount <= 0) {
+        if (status) status.textContent = 'Enter an amount in sats.';
+        qs('#walletReceiveAmount')?.focus();
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+      if (status) status.textContent = 'Creating Lightning invoice…';
+      try {
+        const { session } = await getWalletActionSession();
+        const result = await sendNwcRequest(session, 'make_invoice', {
+          amount: amount * 1000,
+          description: memo
+        }, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
+        const invoice = String(result?.invoice || result?.payment_request || '').trim();
+        if (!invoice) throw new Error('Wallet did not return a Lightning invoice.');
+        state.walletLastInvoice = invoice;
+        const el = qs('#walletReceiveInvoice');
+        if (el) el.textContent = invoice;
+        renderWalletQr(invoice);
+        if (status) status.textContent = 'Invoice ready. Scan the QR code or copy the invoice.';
+      } catch (err) {
+        if (status) status.textContent = err?.message || 'Could not create the invoice.';
+        clearWalletQr();
+      } finally {
+        closeWalletTemporarySession();
+        if (btn) { btn.disabled = false; btn.textContent = 'Generate invoice'; }
+      }
+    };
+
+    window.copyWalletInvoice = async function () {
+      const value = String(state.walletLastInvoice || qs('#walletReceiveInvoice')?.textContent || '').trim();
+      if (!value || value === 'No invoice generated yet.') return;
+      try {
+        await navigator.clipboard.writeText(value);
+        const status = qs('#walletReceiveStatus');
+        if (status) status.textContent = 'Invoice copied.';
+      } catch (_) {}
+    };
+
+    window.pasteWalletInvoice = async function () {
+      try {
+        const value = await navigator.clipboard.readText();
+        const input = qs('#walletSendInvoice');
+        if (input) { input.value = value; input.dispatchEvent(new Event('input')); input.focus(); }
+      } catch (_) {
+        const status = qs('#walletSendStatus');
+        if (status) status.textContent = 'Clipboard access was not available. Paste the invoice manually.';
+      }
+    };
+
+    window.payWalletInvoice = async function () {
+      const input = qs('#walletSendInvoice');
+      const invoice = String(input?.value || '').trim();
+      const status = qs('#walletSendStatus');
+      const btn = qs('#walletPayInvoiceBtn');
+      if (!/^ln(bc|tb|bcrt)/i.test(invoice)) {
+        if (status) status.textContent = 'Enter a valid Lightning invoice.';
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = 'Paying…'; }
+      if (status) status.textContent = 'Sending payment to your wallet…';
+      try {
+        const { session } = await getWalletActionSession();
+        await sendNwcRequest(session, 'pay_invoice', { invoice }, { timeoutMs: Math.max(NWC_REQUEST_TIMEOUT_MS, 30000) });
+        if (status) status.textContent = 'Payment sent successfully.';
+        if (input) input.value = '';
+        setTimeout(() => { if (typeof window.loadWalletPage === 'function') window.loadWalletPage(true); }, 500);
+      } catch (err) {
+        if (status) status.textContent = err?.message || 'Payment failed.';
+      } finally {
+        closeWalletTemporarySession();
+        if (btn) { btn.disabled = false; btn.textContent = 'Pay invoice'; }
+      }
+    };
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        const modal = qs('#walletActionModal');
+        if (modal && !modal.hidden) closeWalletAction();
+      }
+    });
+
     window.openWalletReceive = function () {
       const value = String(state.walletPageLightningAddress || '').trim();
       if (!value) {
