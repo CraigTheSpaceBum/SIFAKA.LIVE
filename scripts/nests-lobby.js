@@ -11,6 +11,9 @@
   ];
   const PRESENCE_TTL = 15 * 60;
   let modal, activeRoomUrl = '', sockets = [], refreshTimer = null, liveRefreshTimer = null, countdownTimer = null, chatSince = 0;
+  let activeRoom = null, activeRoomEvent = null, activeRoomRelays = [];
+  let activeRoomAudio = null, activeRoomAudioModulesPromise = null;
+  let activeRoomPresenceTimer = null, activeRoomRefreshTimer = null, activeRoomChatTimer = null;
 
   const $ = (s, root = document) => root.querySelector(s);
   const esc = (v) => {
@@ -68,15 +71,24 @@
       if (!d || Number(d.kind) !== 30312) return null;
       const pubkey = String(d.pubkey || '').toLowerCase();
       const identifier = String(d.identifier || '');
-      return { pubkey: pubkey, d: identifier, a: '30312:' + pubkey + ':' + identifier };
+      return {
+        pubkey: pubkey,
+        d: identifier,
+        a: '30312:' + pubkey + ':' + identifier,
+        relays: Array.isArray(d.relays) ? d.relays.slice() : []
+      };
     } catch (_) { return null; }
   }
 
-  function relayQuery(filters, timeout) {
+  function relayQuery(filters, timeout, relayUrls) {
     timeout = timeout || 4200;
+    const relayList = Array.from(new Set((Array.isArray(relayUrls) && relayUrls.length ? relayUrls : RELAYS)
+      .map(function(url) { return String(url || '').trim(); })
+      .filter(function(url) { return /^wss:\/\//i.test(url); })));
+    if (!relayList.length) relayList.push.apply(relayList, RELAYS);
     return new Promise(function(resolve) {
       const events = new Map();
-      let pending = RELAYS.length, settled = false;
+      let pending = relayList.length, settled = false;
       const localSockets = [];
       const relayDone = new Set();
       const markRelayDone = function(index) {
@@ -92,7 +104,7 @@
         resolve(Array.from(events.values()));
       };
       const timer = setTimeout(finish, timeout);
-      RELAYS.forEach(function(relay, relayIndex) {
+      relayList.forEach(function(relay, relayIndex) {
         let ws;
         try { ws = new WebSocket(relay); }
         catch (_) { markRelayDone(relayIndex); if (!pending) { clearTimeout(timer); finish(); } return; }
