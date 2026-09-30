@@ -212,6 +212,7 @@
           '<div class="nest-preview-schedule" id="nestPreviewSchedule"></div>' +
           '<div class="nest-preview-section"><div class="nest-preview-section-head"><span>On stage</span><span id="nestPreviewPeopleCount"></span></div><div class="nest-preview-people" id="nestPreviewPeople"></div></div>' +
           '<div class="nest-preview-section"><div class="nest-preview-section-head"><span>Listeners</span><span id="nestPreviewListenerCount">—</span></div><div class="nest-preview-listeners" id="nestPreviewListeners"></div></div>' +
+          '<div class="nest-preview-section nest-preview-chat-section"><div class="nest-preview-section-head"><span>Room chat</span><span id="nestPreviewChatCount">—</span></div><div class="nest-preview-chat" id="nestPreviewChat"></div></div>' +
           '<div class="nest-preview-topics" id="nestPreviewTopics"></div>' +
           '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join Nest</button></div>' +
           '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
@@ -270,8 +271,37 @@
     $('#nestPreviewPeopleCount', modal).textContent = '';
     $('#nestPreviewListenerCount', modal).textContent = fallback.countText || '—';
     $('#nestPreviewListeners', modal).innerHTML = '';
+    $('#nestPreviewChatCount', modal).textContent = 'Loading…';
+    $('#nestPreviewChat', modal).innerHTML = '<div class="nest-preview-chat-loading"><span></span><span></span><span></span></div>';
     $('#nestPreviewTopics', modal).innerHTML = (fallback.topics || []).map(function(t) { return '<span>#' + esc(t) + '</span>'; }).join('');
     $('#nestPreviewFootnote', modal).textContent = 'Loading Nostr room metadata…';
+  }
+
+  function renderChat(room, profiles) {
+    const messages = Array.isArray(room.chat) ? room.chat.slice().sort(function(a, b) {
+      return Number(a.created_at || 0) - Number(b.created_at || 0);
+    }).slice(-12) : [];
+
+    $('#nestPreviewChatCount', modal).textContent = messages.length
+      ? messages.length + (messages.length === 1 ? ' recent message' : ' recent messages')
+      : 'No messages';
+
+    if (!messages.length) {
+      $('#nestPreviewChat', modal).innerHTML =
+        '<div class="nest-preview-chat-empty"><span class="nest-chat-empty-icon">✦</span><strong>No room chat yet</strong><small>Be the first to say hello when you join.</small></div>';
+      return;
+    }
+
+    $('#nestPreviewChat', modal).innerHTML = messages.map(function(ev) {
+      const prof = profiles.get(String(ev.pubkey || '').toLowerCase()) || {};
+      const name = prof.name || String(ev.pubkey || '').slice(0, 8) + '…';
+      const content = String(ev.content || '').trim();
+      const when = ev.created_at ? new Date(Number(ev.created_at) * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+      return '<div class="nest-chat-message">' +
+        '<span class="nest-chat-avatar">' + (prof.picture ? '<img src="' + esc(prof.picture) + '" alt="">' : esc(name.slice(0, 1).toUpperCase())) + '</span>' +
+        '<div class="nest-chat-copy"><div><strong>' + esc(name) + '</strong><time>' + esc(when) + '</time></div><p>' + esc(content) + '</p></div>' +
+      '</div>';
+    }).join('');
   }
 
   function renderRoom(room, profiles, fallback) {
@@ -341,6 +371,8 @@
         }).join('') + (count > listenerKeys.length ? '<span class="nest-listener-more">+' + (count - listenerKeys.length) + '</span>' : '')
       : '<span class="nest-listener-text">' + (count ? count + ' listener' + (count === 1 ? '' : 's') + ' currently in the room' : 'Presence is not currently published.') + '</span>';
 
+    renderChat(room, profiles);
+
     const topicValues = Array.from(new Set((room.topics || []).concat((meeting && meeting.topics) || []))).slice(0, 8);
     $('#nestPreviewTopics', modal).innerHTML = topicValues.map(function(t) { return '<span>#' + esc(t) + '</span>'; }).join('');
     $('#nestPreviewJoinBtn', modal).textContent = live ? 'Join Nest' : 'Open Nest';
@@ -363,6 +395,7 @@
     const events = await relayQuery([
       { kinds: [30312], authors: [decoded.pubkey], '#d': [decoded.d], limit: 20 },
       { kinds: [30313], '#a': [decoded.a], limit: 20 },
+      { kinds: [1311], '#a': [decoded.a], limit: 60 },
       { kinds: [10312], '#a': [decoded.a], limit: 300 }
     ], 5200);
     if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
@@ -391,6 +424,7 @@
       starts: Number(tag(roomEvent,'starts') || 0), ends: Number(tag(roomEvent,'ends') || 0),
       topics: tags(roomEvent,'t'), currentParticipants: Number(tag(roomEvent,'current_participants') || 0),
       participants: people, presence: presence,
+      chat: events.filter(function(e) { return Number(e.kind) === 1311; }),
       meeting: current ? {
         title: tag(current,'title'), summary: tag(current,'summary'), image: tag(current,'image'),
         starts: Number(tag(current,'starts') || 0), ends: Number(tag(current,'ends') || 0),
