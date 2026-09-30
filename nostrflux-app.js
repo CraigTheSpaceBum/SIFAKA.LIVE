@@ -21183,6 +21183,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             ? 'Lightning address from your Nostr profile.'
             : 'Add a lud16 Lightning address in Settings → Profile.';
           if (copyBtn) copyBtn.hidden = !lud16;
+          const qrBtn = qs('#walletAddressQrBtn');
+          if (qrBtn) qrBtn.hidden = !lud16;
           state.walletPageLightningAddress = lud16;
         }).catch(() => {});
       } else {
@@ -21192,6 +21194,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           ? 'Lightning address saved in this browser.'
           : 'Sign in and add a lud16 Lightning address in Settings → Profile.';
         if (copyBtn) copyBtn.hidden = !lud16;
+        const qrBtn = qs('#walletAddressQrBtn');
+        if (qrBtn) qrBtn.hidden = !lud16;
         state.walletPageLightningAddress = lud16;
       }
 
@@ -21347,6 +21351,38 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         qr.textContent = 'QR generator unavailable. Copy the invoice instead.';
       }
     }
+
+    window.showWalletAddressQr = function (kind) {
+      const modal = qs('#walletAddressQrModal');
+      const qr = qs('#walletAddressQr');
+      const valueEl = qs('#walletAddressQrValue');
+      if (!modal || !qr) return;
+      const value = kind === 'bitcoin'
+        ? String(state.settings && state.settings.bitcoinAddress || '').trim()
+        : String(state.walletPageLightningAddress || '').trim();
+      if (!value) return;
+      const payload = kind === 'bitcoin' ? ('bitcoin:' + value) : value;
+      qr.innerHTML = '';
+      if (window.QRCode) {
+        new window.QRCode(qr, { text: payload, width: 240, height: 240, correctLevel: window.QRCode.CorrectLevel.M });
+      }
+      if (valueEl) valueEl.textContent = value;
+      const title = qs('#walletAddressQrTitle');
+      if (title) title.textContent = kind === 'bitcoin' ? 'Bitcoin address' : 'Lightning address';
+      modal.hidden = false;
+      modal.setAttribute('aria-hidden', 'false');
+    };
+
+    window.closeWalletAddressQr = function () {
+      const modal = qs('#walletAddressQrModal');
+      if (modal) { modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); }
+    };
+
+    window.copyWalletAddressQrValue = async function () {
+      const value = String(qs('#walletAddressQrValue')?.textContent || '').trim();
+      if (!value) return;
+      try { await navigator.clipboard.writeText(value); } catch (_) {}
+    };
 
     window.openWalletReceive = function () {
       const modal = qs('#walletActionModal');
