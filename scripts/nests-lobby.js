@@ -127,7 +127,9 @@
         const j = JSON.parse(ev.content || '{}');
         map.set(ev.pubkey.toLowerCase(), {
           name: j.display_name || j.name || '',
-          picture: j.picture || ''
+          picture: j.picture || '',
+          banner: j.banner || '',
+          about: j.about || ''
         });
       } catch (_) {}
     });
@@ -219,6 +221,29 @@
         '</div>' +
       '</div>';
     document.body.appendChild(modal);
+    const profileSheet = document.createElement('div');
+    profileSheet.id = 'nestProfileSheet';
+    profileSheet.className = 'nest-profile-sheet';
+    profileSheet.innerHTML = '<div class="nest-profile-card" role="dialog" aria-modal="true" aria-labelledby="nestProfileName">' +
+      '<button class="nest-profile-close" type="button" aria-label="Close profile">×</button>' +
+      '<div class="nest-profile-hero" id="nestProfileHero"></div>' +
+      '<div class="nest-profile-body"><div class="nest-profile-avatar" id="nestProfileAvatar"></div>' +
+      '<div class="nest-profile-role" id="nestProfileRole"></div><h3 id="nestProfileName">Profile</h3>' +
+      '<p id="nestProfileAbout"></p><div class="nest-profile-actions"><button class="btn btn-ghost" id="nestProfileCopy" type="button">Copy npub</button><button class="btn btn-primary" id="nestProfileOpen" type="button">Open profile</button></div>' +
+      '<div class="nest-profile-npub" id="nestProfileNpub"></div></div></div>';
+    document.body.appendChild(profileSheet);
+    $('.nest-profile-close', profileSheet).addEventListener('click', function() { profileSheet.classList.remove('open'); });
+    profileSheet.addEventListener('click', function(e) { if (e.target === profileSheet) profileSheet.classList.remove('open'); });
+    $('#nestProfileCopy', profileSheet).addEventListener('click', async function() {
+      const npub = profileSheet.dataset.npub || '';
+      if (!npub) return;
+      try { await navigator.clipboard.writeText(npub); this.textContent = 'Copied'; setTimeout(() => { this.textContent = 'Copy npub'; }, 1200); } catch (_) {}
+    });
+    $('#nestProfileOpen', profileSheet).addEventListener('click', function() {
+      const npub = profileSheet.dataset.npub || '';
+      if (npub) window.open('https://njump.me/' + npub, '_blank', 'noopener');
+    });
+    modal._profileSheet = profileSheet;
     $('.nest-preview-close', modal).addEventListener('click', closePreview);
     modal.addEventListener('click', function(e) { if (e.target === modal) closePreview(); });
     $('#nestPreviewJoinBtn', modal).addEventListener('click', function() {
@@ -353,6 +378,25 @@
       $('#nestPreviewSchedule', modal).innerHTML = '<div class="nest-preview-schedule-icon">◉</div><div><strong>Drop-in room</strong><span>Join whenever the room is open.</span></div>';
     }
 
+    const showProfile = function(pubkey, role) {
+      const sheet = modal && modal._profileSheet;
+      if (!sheet || !pubkey) return;
+      sheet.classList.add('open');
+      const profile = profiles.get(String(pubkey).toLowerCase()) || {};
+      const name = profile.name || String(pubkey).slice(0, 8) + '…' + String(pubkey).slice(-6);
+      let npub = '';
+      try { if (window.NostrTools?.nip19?.npubEncode) npub = window.NostrTools.nip19.npubEncode(pubkey); } catch (_) {}
+      sheet.dataset.npub = npub;
+      $('#nestProfileName', sheet).textContent = name;
+      $('#nestProfileRole', sheet).textContent = role || 'Nest participant';
+      $('#nestProfileAbout', sheet).textContent = profile.about || 'No profile bio published.';
+      $('#nestProfileAvatar', sheet).innerHTML = profile.picture ? '<img src="' + esc(profile.picture) + '" alt="">' : '<span>' + esc(name.slice(0,1).toUpperCase()) + '</span>';
+      $('#nestProfileHero', sheet).style.backgroundImage = profile.banner ? 'url("' + esc(profile.banner) + '")' : '';
+      $('#nestProfileNpub', sheet).textContent = npub || 'npub unavailable';
+      $('#nestProfileOpen', sheet).disabled = !npub;
+      $('#nestProfileCopy', sheet).disabled = !npub;
+    };
+
     const peopleHtml = ordered.map(function(p) {
       const prof = profiles.get(p.pubkey) || {};
       const name = prof.name || p.pubkey.slice(0, 8) + '…' + p.pubkey.slice(-6);
@@ -362,6 +406,10 @@
         '<span class="nest-person-dot ' + roleClass(p.role) + '"></span></button>';
     }).join('');
     $('#nestPreviewPeople', modal).innerHTML = peopleHtml || '<div class="nest-preview-empty">No named speakers were published yet.</div>';
+    Array.from($('#nestPreviewPeople', modal).querySelectorAll('.nest-person')).forEach(function(button, index) {
+      const person = ordered[index];
+      if (person) button.addEventListener('click', function() { showProfile(person.pubkey, person.role); });
+    });
     $('#nestPreviewPeopleCount', modal).textContent = ordered.length ? ordered.length + ' shown' : '';
 
     const listenerKeys = presence.filter(function(k) { return !ordered.some(function(p) { return p.pubkey === k; }); }).slice(0, 12);
