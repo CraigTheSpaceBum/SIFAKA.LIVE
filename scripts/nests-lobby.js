@@ -137,7 +137,9 @@
   function getCardFallback(button) {
     const card = button && button.closest('.nests-room-card');
     if (!card) return {};
-    const title = $('.nests-room-body h3', card)?.textContent?.trim() || 'Nostr Nest';
+    const title = $('.nests-room-body h3', card)?.textContent?.trim()
+      || $('.nests-room-title', card)?.textContent?.trim()
+      || 'Nostr Nest';
     const summary = $('.nests-room-body p', card)?.textContent?.trim() || '';
     const meta = Array.from(card.querySelectorAll('.nests-room-meta span')).map(function(x) { return x.textContent.trim(); }).filter(Boolean);
     const countText = meta.find(function(x) { return /listening|audio room|listener/i.test(x); }) || '';
@@ -145,12 +147,51 @@
     const img = $('.nests-room-cover img', card)?.getAttribute('src') || '';
     const badge = $('.nests-live-badge', card)?.textContent?.trim() || '';
     const topics = Array.from(card.querySelectorAll('.nests-topic')).map(function(x) { return x.textContent.replace(/^#/, '').trim(); }).filter(Boolean);
-    let url = '';
-    const onclick = button.getAttribute('onclick') || '';
-    const match = onclick.match(/joinNestsRoom\((.*)\)/);
-    if (match) {
-      try { url = JSON.parse(match[1]); } catch (_) { url = match[1].replace(/^['"]|['"]$/g, ''); }
+
+    // The Nest card markup has changed a few times. Prefer an explicit room URL,
+    // then an href, then the legacy inline joinNestsRoom(...) handler.
+    let url = String(
+      button.getAttribute('data-room-url') ||
+      button.getAttribute('data-room') ||
+      card.getAttribute('data-room-url') ||
+      card.getAttribute('data-room') ||
+      ''
+    ).trim();
+
+    if (!url) {
+      const link = button.closest('a[href]') || (button.tagName === 'A' ? button : null);
+      if (link) url = String(link.getAttribute('href') || '').trim();
     }
+
+    if (!url) {
+      const onclick = button.getAttribute('onclick') || '';
+      const match = onclick.match(/joinNestsRoom\\s*\\((.*)\\)/);
+      if (match) {
+        const raw = String(match[1] || '').trim();
+        try { url = JSON.parse(raw); }
+        catch (_) {
+          try { url = JSON.parse('"' + raw.replace(/\\\\/g, '\\\\').replace(/"/g, '\\"') + '"'); }
+          catch (_) { url = raw.replace(/^['"]|['"]$/g, ''); }
+        }
+      }
+    }
+
+    // Last-resort: look for any room button in the same card that still carries
+    // the legacy join handler.
+    if (!url) {
+      const legacy = Array.from(card.querySelectorAll('[onclick*="joinNestsRoom"]')).find(function(el) {
+        return el !== button;
+      });
+      if (legacy) {
+        const onclick = legacy.getAttribute('onclick') || '';
+        const match = onclick.match(/joinNestsRoom\\s*\\((.*)\\)/);
+        if (match) {
+          const raw = String(match[1] || '').trim();
+          try { url = JSON.parse(raw); } catch (_) { url = raw.replace(/^['"]|['"]$/g, ''); }
+        }
+      }
+    }
+
     return { title: title, summary: summary, host: host, countText: countText, img: img, badge: badge, topics: topics, url: url };
   }
 
@@ -180,7 +221,16 @@
     $('.nest-preview-close', modal).addEventListener('click', closePreview);
     modal.addEventListener('click', function(e) { if (e.target === modal) closePreview(); });
     $('#nestPreviewJoinBtn', modal).addEventListener('click', function() {
-      if (activeRoomUrl) window.open(activeRoomUrl, '_blank', 'noopener');
+      if (!activeRoomUrl) return;
+      // Use Sifaka's existing Nest join flow when available so room navigation,
+      // mobile handling, and any future in-app Nest integration remain intact.
+      if (typeof window.joinNestsRoom === 'function') {
+        try {
+          window.joinNestsRoom(activeRoomUrl);
+          return;
+        } catch (_) {}
+      }
+      window.open(activeRoomUrl, '_blank', 'noopener');
     });
     $('#nestPreviewShareBtn', modal).addEventListener('click', async function() {
       if (!activeRoomUrl) return;
@@ -354,12 +404,28 @@
   }
 
   function interceptJoinClicks(e) {
-    const btn = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-actions .btn-primary');
+    const btn = e.target.closest && e.target.closest(
+      '#nestsRoomsGrid .nests-room-actions .btn-primary, ' +
+      '#nestsRoomsGrid .nests-room-join, ' +
+      '#nestsRoomsGrid [data-action="join"], ' +
+      '#nestsRoomsGrid button'
+    );
     if (!btn) return;
+
+    const fallback = getCardFallback(btn);
+    if (!fallback.url) {
+      // Never swallow a working legacy join button if the room URL cannot be
+      // recovered from the new card markup.
+      if (typeof window.joinNestsRoom === 'function') {
+        const onclick = btn.getAttribute('onclick') || '';
+        if (/joinNestsRoom/.test(onclick)) return;
+      }
+      return;
+    }
+
     e.preventDefault();
     e.stopImmediatePropagation();
-    const fallback = getCardFallback(btn);
-    if (fallback.url) openPreview(fallback.url, fallback);
+    openPreview(fallback.url, fallback);
   }
 
   function boot() {
