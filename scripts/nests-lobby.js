@@ -115,7 +115,7 @@
           if (!pending) { clearTimeout(timer); finish(); }
         };
         ws.onclose = function() {
-          pending--;
+          markRelayDone(relayIndex);
           if (!pending) { clearTimeout(timer); finish(); }
         };
       });
