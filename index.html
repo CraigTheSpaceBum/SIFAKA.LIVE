@@ -1183,7 +1183,10 @@ body.nest-preview-open{overflow:hidden}
       </div>
       <div class="wallet-mainchain-address-row">
         <span id="walletMainchainAddress">No address configured</span>
-        <a id="walletMainchainExplorer" href="#" target="_blank" rel="noopener" hidden>View on mempool.space</a>
+        <div class="wallet-address-actions">
+          <button class="btn btn-ghost wallet-small-btn" type="button" onclick="showWalletAddressQr('bitcoin')">QR</button>
+          <a id="walletMainchainExplorer" href="#" target="_blank" rel="noopener" hidden>View on mempool.space</a>
+        </div>
       </div>
       <div id="walletMainchainTransactions" class="wallet-transactions-list wallet-mainchain-transactions">
         <div class="wallet-empty-state">Your on-chain Bitcoin transactions will appear here.</div>
@@ -1196,7 +1199,10 @@ body.nest-preview-open{overflow:hidden}
         <div class="wallet-address-value" id="walletAddressValue">Not available</div>
         <div class="wallet-address-help" id="walletAddressHelp">Your profile's lud16 address will appear here when available.</div>
       </div>
-      <button class="btn btn-ghost" id="walletAddressCopyBtn" type="button" onclick="copyWalletLightningAddress()" hidden>Copy</button>
+      <div class="wallet-address-actions">
+        <button class="btn btn-ghost wallet-small-btn" id="walletAddressQrBtn" type="button" onclick="showWalletAddressQr('lightning')" hidden>QR</button>
+        <button class="btn btn-ghost wallet-small-btn" id="walletAddressCopyBtn" type="button" onclick="copyWalletLightningAddress()" hidden>Copy</button>
+      </div>
     </section>
 
     <section class="wallet-transactions-card">
@@ -1221,6 +1227,16 @@ body.nest-preview-open{overflow:hidden}
       </div>
       <button class="btn btn-primary" type="button" onclick="openSettings();">Open Wallet Settings</button>
     </section>
+  </div>
+</div>
+
+<div class="wallet-address-modal" id="walletAddressQrModal" hidden aria-hidden="true">
+  <div class="wallet-modal-backdrop" onclick="closeWalletAddressQr()"></div>
+  <div class="wallet-modal-card wallet-address-qr-card" role="dialog" aria-modal="true" aria-labelledby="walletAddressQrTitle">
+    <div class="wallet-modal-head"><div><div class="wallet-card-label">Receive</div><h3 id="walletAddressQrTitle">Address QR</h3></div><button class="wallet-modal-close" type="button" onclick="closeWalletAddressQr()" aria-label="Close">×</button></div>
+    <div class="wallet-qr-wrap wallet-address-qr-wrap"><div id="walletAddressQr"></div></div>
+    <div class="wallet-invoice-box" id="walletAddressQrValue"></div>
+    <div class="wallet-modal-actions"><button class="btn btn-primary" type="button" onclick="copyWalletAddressQrValue()">Copy address</button><button class="btn btn-ghost" type="button" onclick="closeWalletAddressQr()">Done</button></div>
   </div>
 </div>
 
