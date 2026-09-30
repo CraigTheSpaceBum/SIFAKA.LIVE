@@ -38,6 +38,14 @@
     if (typeof ctx.stopAllAudio === 'function') ctx.stopAllAudio('theater');
     if (typeof ctx.renderRecoStreams === 'function') ctx.renderRecoStreams();
 
+    // The theater layout is mounted separately from the main app router.
+    // Re-initialize the selected stream player after the layout is visible;
+    // otherwise navigation destroys the Live Now player but nothing starts
+    // the replacement HLS/video element in theater mode.
+    if (selected && typeof ctx.renderVideoPlayback === 'function') {
+      Promise.resolve(ctx.renderVideoPlayback(selected)).catch(() => {});
+    }
+
     if (state.settings && state.settings.miniPlayer && state.selectedStreamAddress) {
       if (typeof ctx.showMini === 'function') ctx.showMini();
     } else if (typeof ctx.hideMini === 'function') {
