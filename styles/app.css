@@ -6133,3 +6133,9 @@ footer p{font-size:.72rem;color:var(--muted);}
 .nest-profile-npub{margin-top:.7rem;padding:.55rem .65rem;border:1px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--muted);font:500 .52rem/1.35 "DM Mono",monospace;overflow-wrap:anywhere}
 @media(max-width:640px){.nest-profile-sheet{align-items:flex-end;padding:0}.nest-profile-card{width:100%;border-radius:20px 20px 0 0;border-bottom:0}.nest-profile-hero{height:92px}}
 @media(prefers-reduced-motion:reduce){.nest-profile-sheet,.nest-profile-card{transition:none}}
+
+.nest-listener{padding:0;cursor:pointer;transition:transform .15s ease,border-color .15s ease}
+.nest-listener:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--purple) 55%,var(--surface))}
+.nest-listener:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.nest-listener-more{white-space:nowrap}
+.nest-preview-schedule small{min-width:72px}
