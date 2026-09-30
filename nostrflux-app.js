@@ -20918,16 +20918,29 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const topicHtml = (room.topics || []).slice(0,3).map(t => `<span class="nests-topic">#${escapeHtml(t)}</span>`).join('');
         const roomUrl = getNestsRoomUrl(room);
         const shareUrl = roomUrl;
+        const avatar = profile.picture ? `<img src="${escapeHtml(profile.picture)}" alt="" loading="lazy">` : `<span>${escapeHtml((profile.display_name || profile.name || 'N').slice(0, 1).toUpperCase())}</span>`;
+        const displayCount = room.participants ? formatCount(room.participants) : '—';
+        const statusLabel = live ? 'LIVE' : (status === 'ended' ? 'ENDED' : (room.starts ? 'UPCOMING' : 'OPEN'));
         return `<article class="nests-room-card">
-          <div class="nests-room-cover">${img}<span class="nests-live-badge ${live ? 'is-live' : ''}">${escapeHtml(when)}</span></div>
+          <button class="nests-room-cover nests-room-cover-btn" type="button" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})" aria-label="Open ${title}">
+            ${img}
+            <span class="nests-live-badge ${live ? 'is-live' : ''}"><i></i>${statusLabel}</span>
+            <span class="nests-cover-action">${live ? 'Listen now' : 'View room'} <b>→</b></span>
+          </button>
           <div class="nests-room-body">
-            <h3>${title}</h3>
-            <p>${summary}</p>
-            <div class="nests-room-meta"><span>${name}</span><span>·</span><span>${escapeHtml(count)}</span></div>
+            <div class="nests-room-title-row">
+              <h3>${title}</h3>
+              <button class="nests-card-share" type="button" onclick="shareNestsRoom(${JSON.stringify(shareUrl)})" aria-label="Share room">↗</button>
+            </div>
+            <p class="nests-room-summary">${summary}</p>
+            <div class="nests-room-host">
+              <span class="nests-room-host-avatar">${avatar}</span>
+              <span class="nests-room-host-copy"><small>HOST</small><strong>${name}</strong></span>
+              <span class="nests-room-listeners"><b>${displayCount}</b><small>listening</small></span>
+            </div>
             ${topicHtml ? `<div class="nests-topic-row">${topicHtml}</div>` : ''}
             <div class="nests-room-actions">
               <button class="btn btn-primary" type="button" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})">${live ? 'Join Nest' : 'View Room'}</button>
-              <button class="btn btn-ghost" type="button" onclick="shareNestsRoom(${JSON.stringify(shareUrl)})">Share</button>
             </div>
           </div>
         </article>`;
