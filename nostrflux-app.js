@@ -3467,7 +3467,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             eoseByRelay.add(String(key));
             if (eoseByRelay.size >= expectedEose) finish();
           }
-        }
+        },
+        { relayUrls: Array.isArray(opts.relayUrls) ? opts.relayUrls : undefined }
       );
     });
   }
@@ -7217,6 +7218,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     });
 
     const card = document.createElement('div');
+    card.dataset.hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || '';
+    card.dataset.platformPubkey = normalizePubkeyHex(stream.platformPubkey || '') || '';
+    card.dataset.streamAddress = String(stream.address || '');
     card.className = `dm-zap-card${activityType === 'zap-open' ? ' pending' : ''}`;
 
     const stamp = document.createElement('div');
@@ -12312,6 +12316,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return card;
   }
 
+  function updateLiveGridCardsForProfile(pubkey) {
+    const normalized = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
+    if (!normalized || !isHomeViewActive()) return;
+    const profile = profileFor(normalized);
+    qsa('.stream-card').forEach((card) => {
+      const host = String(card.dataset.hostPubkey || '').toLowerCase();
+      if (host !== normalized) return;
+      const av = qs('.ci-av', card);
+      if (av) setAvatarEl(av, profile.picture || '', pickAvatar(normalized));
+      const hostEl = qs('.ci-host', card);
+      if (hostEl) hostEl.textContent = profile.display_name || profile.name || shortHex(normalized);
+    });
+  }
+
   function getFilteredStreams() {
     // Only show streams that have a browser-playable HTTP(S) URL
     const allStreams = sortedLiveStreams().filter((s) => {
@@ -15583,13 +15601,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             ) return;
 
             state.profilesByPubkey.set(profilePubkey, { ...parsed, pubkey: profilePubkey });
+            updateLiveGridCardsForProfile(profilePubkey);
             ensureNip05Verification(profilePubkey, parsed.nip05 || '').catch(() => {});
 
             if (state.user && normalizePubkeyHex(state.user.pubkey) === profilePubkey) {
               state.user.profile = state.profilesByPubkey.get(profilePubkey);
               setUserUi();
             }
-            if (isHomeViewActive()) renderLiveGrid();
             updateVideosPageCardsForProfile(profilePubkey);
 
             const sel = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
@@ -15642,8 +15660,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         cacheKey: `profile-by-pubkey:${normalizedPubkey}`,
         force: forceRefresh,
         ttlMs: forceRefresh ? 0 : undefined,
-        timeoutMs: 2200,
-        maxEvents: 10
+        timeoutMs: 950,
+        maxEvents: 10,
+        relayUrls: (() => {
+          const urls = Array.isArray(state.pool && state.pool.urls) ? [...state.pool.urls] : [];
+          const latency = state.relayPingMsByUrl instanceof Map ? state.relayPingMsByUrl : new Map();
+          return urls
+            .map((url, index) => ({ url, index, ms: Number(latency.get(url) || Number.POSITIVE_INFINITY) }))
+            .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
+            .slice(0, 3)
+            .map((item) => item.url);
+        })()
       }
     ).then((events) => {
       const latest = (events || [])
@@ -15818,6 +15845,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (kind === KIND_LIVE_EVENT) {
             const stream = parseLiveEvent(ev);
             const changed = upsertStream(stream);
+            if (stream) {
+              const hostKey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+              const platformKey = normalizePubkeyHex(stream.platformPubkey || '');
+              if (hostKey) fetchProfileIfNeeded(hostKey).catch(() => {});
+              if (platformKey && platformKey !== hostKey) fetchProfileIfNeeded(platformKey).catch(() => {});
+            }
             if (stream && normalizeStreamStatus(stream.status) === 'live'
               && state.user
               && normalizePubkeyHex(state.user.pubkey) === normalizePubkeyHex(stream.pubkey)) {
