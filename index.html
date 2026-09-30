@@ -1506,7 +1506,7 @@
     <!-- Chat sidebar -->
     <div class="stream-sidebar">
       <div class="stabs">
-        <div class="stab active" onclick="switchTab('chat')">Live Chat</div>
+        <button class="stab active mobile-chat-toggle" id="mobileTheaterChatToggle" type="button" aria-expanded="false" aria-controls="chatScroll" onclick="toggleMobileTheaterChat()">Live Chat</button>
       </div>
       <div class="chat-scroll" id="chatScroll">
         <div class="cmsg"><div class="c-av" onclick="showProfile('fiatjaf','','npub1zl3...gz4','fiatjaf@nostr.com')"></div><div class="c-body"><div class="c-name-row"><span class="c-name co" onclick="showProfile('fiatjaf','','npub1zl3...gz4','fiatjaf@nostr.com')">fiatjaf</span><span class="c-nip05" title="fiatjaf@nostr.com"></span></div><div class="c-text">incredible session wavesound </div></div><div class="chat-msg-actions"><button class="cma-btn" title="Reply"></button><button class="cma-btn like-cma" title="Like"></button><button class="cma-btn zap-cma" title="Zap"></button><button class="cma-btn" title="Share"></button></div></div>
