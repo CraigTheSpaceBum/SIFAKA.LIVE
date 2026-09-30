@@ -21904,17 +21904,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
 
     window.switchSettingsTab = function (tab) {
-      const tabs = ['profile','wallet','relays','app','chat','themes'];
-      const nextTab = tabs.includes(String(tab || '').toLowerCase()) ? String(tab).toLowerCase() : 'profile';
+      const requested = String(tab || '').trim().toLowerCase();
+      const nextTab = ['profile','wallet','relays','app','chat','themes'].includes(requested) ? requested : 'profile';
+
       if (nextTab !== 'wallet') stopWalletScanner({ keepStatus: true });
       if (nextTab !== 'relays') window.closeRelayAddModal();
-      tabs.forEach(t => {
-        const btn = qs(`#smTab-${t}`);
-        const panel = qs(`#smPanel${t.charAt(0).toUpperCase()+t.slice(1)}`);
-        if (btn) btn.classList.toggle('active', t === nextTab);
-        if (panel) panel.classList.toggle('active', t === nextTab);
+
+      qsa('#settingsModal .smv2-tab').forEach((btn) => {
+        btn.classList.toggle('active', btn.id === `smTab-${nextTab}`);
       });
+      qsa('#settingsModal .smv2-panel').forEach((panel) => {
+        panel.classList.toggle('active', panel.id === `smPanel${nextTab.charAt(0).toUpperCase()+nextTab.slice(1)}`);
+      });
+
       if (nextTab === 'relays') renderSettingsRelayList();
+
       if (nextTab === 'chat') {
         setToggleById('setNip05Toggle', state.settings.showNip05Badges);
         setToggleById('setCompactToggle', state.settings.compactChat);
@@ -21926,6 +21930,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (warm) warm.value = String(safeCache.cacheWarmSec);
         if (live) live.value = String(safeCache.cacheLiveFeedTtlSec);
       }
+
       if (nextTab === 'themes') {
         const themeSelect = qs('#settingsThemeSelect');
         if (themeSelect) themeSelect.value = normalizeThemeSetting(state.settings.theme);
@@ -21934,7 +21939,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     window.previewSifakaTheme = function (theme) {
       const nextTheme = normalizeThemeSetting(theme);
-      document.documentElement.setAttribute('data-theme', nextTheme);
+      if (typeof window.setSifakaTheme === 'function') {
+        window.setSifakaTheme(nextTheme, false);
+      } else if (window.SifakaTheme && typeof window.SifakaTheme.apply === 'function') {
+        window.SifakaTheme.apply(nextTheme, false);
+      } else {
+        document.documentElement.setAttribute('data-theme', nextTheme === 'dark' ? '' : nextTheme);
+      }
     };
 
     window.previewSettingsAvatar = function (url) {
