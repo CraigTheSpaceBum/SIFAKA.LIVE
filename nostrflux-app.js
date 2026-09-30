@@ -13058,7 +13058,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     video.preload = 'auto';
     video.style.cssText = 'width:100%;height:100%;object-fit:cover;background:#000;';
     const syncFit = () => syncTheaterVideoFit(video, playerBg);
-    bindInitialPlaybackRecovery();
     video.addEventListener('loadedmetadata', syncFit);
     video.addEventListener('loadeddata', syncFit);
     video.addEventListener('resize', syncFit);
@@ -13074,6 +13073,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     playerBg.innerHTML = '';
     playerBg.appendChild(video);
+    // Install recovery only after the video is in the live theater DOM.
+    bindInitialPlaybackRecovery();
     syncFit();
     window.setTimeout(() => {
       if (token !== state.playbackToken) return;
@@ -13136,7 +13137,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (video.muted) {
         await tryRestoreAudio();
       }
-      return !video.paused;
+      return true;
     };
 
     let initialPlaybackRetryTimers = [];
@@ -13419,8 +13420,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const attached = await attachHls();
         if (attached) {
           scheduleStartupRecovery();
+          // HLS attach can complete before MANIFEST_PARSED fires. Keep the
+          // startup path alive and retry play as soon as the media is ready.
+          attemptInitialPlayback().catch(() => {});
           window.setTimeout(() => {
             if (isStale()) return;
+            attemptInitialPlayback().catch(() => {});
             attemptPlaybackRecovery('error').catch(() => {});
           }, 900);
           return;
