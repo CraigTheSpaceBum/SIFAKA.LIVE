@@ -148,6 +148,7 @@
 
   const LOCAL_NSEC_STORAGE_KEY = 'nostrflux_local_nsec';
   const REMOTE_SIGNER_STORAGE_KEY = 'nostrflux_remote_signer_v1';
+  const AUTH_SESSION_STORAGE_KEY = 'nostrflux_auth_session_v1';
   const NOSTR_TOOLS_SRC = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
   const HLS_JS_SOURCES = [
     'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
@@ -998,6 +999,38 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return legacy;
   }
 
+  function clearPersistedAuthSession() {
+    try {
+      localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+    } catch (_) {}
+  }
+
+  function persistAuthSession(pubkey, authMode) {
+    const normalizedPubkey = normalizePubkeyHex(pubkey || '');
+    if (!normalizedPubkey || !['local', 'remote', 'nip07'].includes(authMode)) return;
+    try {
+      localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify({
+        pubkey: normalizedPubkey,
+        authMode,
+        savedAt: Date.now()
+      }));
+    } catch (_) {}
+  }
+
+  function loadPersistedAuthSession() {
+    try {
+      const raw = (localStorage.getItem(AUTH_SESSION_STORAGE_KEY) || '').trim();
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const pubkey = normalizePubkeyHex(parsed && parsed.pubkey || '');
+      const authMode = String(parsed && parsed.authMode || '');
+      if (!pubkey || !['local', 'remote', 'nip07'].includes(authMode)) return null;
+      return { pubkey, authMode };
+    } catch (_) {
+      return null;
+    }
+  }
+
   function clearPersistedRemoteSignerSession() {
     try {
       localStorage.removeItem(REMOTE_SIGNER_STORAGE_KEY);
@@ -1111,11 +1144,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       } catch (_) {
         if (session.closed || !state.remoteSignerSession || state.remoteSignerSession !== session) return;
         state.remoteSignerHeartbeatFailures = Number(state.remoteSignerHeartbeatFailures || 0) + 1;
-        // Allow one missed check for a temporary relay hiccup. Two consecutive
-        // failures mean the remote signer is no longer reachable.
+        // Do not sign the user out because of a temporary relay/signer
+        // outage. The persisted identity remains authoritative and will be
+        // retried on the next page load.
         if (state.remoteSignerHeartbeatFailures >= 2) {
           stopRemoteSignerHeartbeat();
-          try { window.signOut({ remoteSignerDisconnected: true }); } catch (_) {}
         }
       }
     };
@@ -1711,11 +1744,50 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           persistRemoteSignerSession(state.remoteSignerSession, state.remoteSignerSession.connectSecret || '');
         }
         return true;
-      } catch (_) {}
-      clearPersistedRemoteSignerSession();
-      teardownRemoteSignerSession('Remote restore failed.');
+      } catch (_) {
+        // Keep the saved remote session. A temporary relay/signer outage must
+        // not turn into a different account being restored on the next load.
+        teardownRemoteSignerSession('Remote restore temporarily unavailable.');
+        return false;
+      }
+    }
+  }
+
+  async function tryRestoreExtensionLogin(expectedPubkey = '') {
+    if (!window.nostr || typeof window.nostr.getPublicKey !== 'function') return false;
+    try {
+      const pubkey = normalizePubkeyHex(await window.nostr.getPublicKey());
+      if (!pubkey) return false;
+      const expected = normalizePubkeyHex(expectedPubkey || '');
+      if (expected && pubkey !== expected) {
+        // Never silently switch to whatever account happens to be active in
+        // the browser extension.
+        return false;
+      }
+      setAuthenticatedUser(pubkey, 'nip07');
+      return true;
+    } catch (_) {
       return false;
     }
+  }
+
+  async function restorePersistedAuth() {
+    const savedAuth = loadPersistedAuthSession();
+
+    // Prefer the explicit session marker so two old storage entries can never
+    // make startup fall through into a different account.
+    if (savedAuth) {
+      if (savedAuth.authMode === 'remote') return await tryRestoreRemoteLogin();
+      if (savedAuth.authMode === 'local') return await tryRestoreLocalLogin();
+      if (savedAuth.authMode === 'nip07') return await tryRestoreExtensionLogin(savedAuth.pubkey);
+      return false;
+    }
+
+    // Migration for sessions created before the explicit auth marker existed.
+    // If both are present, remote wins rather than silently changing identity.
+    if (loadPersistedRemoteSignerSession()) return await tryRestoreRemoteLogin();
+    if ((localStorage.getItem(LOCAL_NSEC_STORAGE_KEY) || '').trim()) return await tryRestoreLocalLogin();
+    return false;
   }
 
   function parseNwcConnectionString(input) {
@@ -19012,6 +19084,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const previousUser = normalizePubkeyHex(state.user && state.user.pubkey || '');
     const nextUser = normalizePubkeyHex(pubkey);
     cancelRemoteLoginAttempt({ silent: true });
+    persistAuthSession(nextUser, authMode);
     state.authMode = authMode;
     state.followPublishPending = false;
     state.streamLikePublishPending = false;
@@ -22065,6 +22138,7 @@ window.saveAppSettings = function () {
       stopRemoteSignerHeartbeat();
       teardownRemoteSignerSession('Signed out.');
       clearPersistedRemoteSignerSession();
+      clearPersistedAuthSession();
       stopNostrFeedSubscription();
       try {
         if (preserveSettings) {
@@ -22396,8 +22470,7 @@ window.saveAppSettings = function () {
     // CDN failure should not leave the entire site looking frozen.
     Promise.resolve().then(async () => {
       try {
-        const restoredRemote = await tryRestoreRemoteLogin();
-        if (!restoredRemote) await tryRestoreLocalLogin();
+        await restorePersistedAuth();
       } catch (_) {}
       try { setUserUi(); } catch (_) {}
     });
