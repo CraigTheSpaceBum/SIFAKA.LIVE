@@ -13568,7 +13568,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     button.setAttribute('aria-expanded', open ? 'true' : 'false');
     button.textContent = open ? 'Hide Live Chat' : 'Live Chat';
   }
-
+  // Inline mobile theater chat control needs to be available from the page scope.
+  window.toggleMobileTheaterChat = toggleMobileTheaterChat;
   function renderVideo(stream) {
     const hostPubkey = normalizePubkeyHex(stream.hostPubkey) || normalizePubkeyHex(stream.pubkey) || stream.hostPubkey || stream.pubkey;
     // Start each theater visit collapsed on phones; desktop CSS is unaffected.
