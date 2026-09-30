@@ -434,6 +434,7 @@ body.nest-preview-open{overflow:hidden}
       <button class="smv2-tab tab-wallet" id="smTab-wallet" onclick="switchSettingsTab('wallet')">Connect Wallet</button>
       <button class="smv2-tab tab-relays" id="smTab-relays" onclick="switchSettingsTab('relays')">📡 Relays</button>
       <button class="smv2-tab tab-app" id="smTab-app" onclick="switchSettingsTab('app')">⚙️ App</button>
+      <button class="smv2-tab tab-chat" id="smTab-chat" onclick="switchSettingsTab('chat')">💬 Chat & Cache</button>
       <button class="smv2-tab tab-themes" id="smTab-themes" onclick="switchSettingsTab('themes')">🎨 Themes</button>
     </div>
 
@@ -593,39 +594,26 @@ body.nest-preview-open{overflow:hidden}
 
       </div>
 
-      <div class="smv2-section">
-        <div class="smv2-section-title">Identity & Chat</div>
-        <div class="sm-row"><div><div class="sm-row-label">Show NIP-05 badges in chat</div><div class="sm-row-desc">Purple ✓ for verified identities</div></div><div class="toggle setting-toggle on" id="setNip05Toggle" onclick="toggleSetting(this)"></div></div>
-        <div class="sm-row"><div><div class="sm-row-label">Compact chat mode</div><div class="sm-row-desc">Denser message layout in stream chat</div></div><div class="toggle setting-toggle" id="setCompactToggle" onclick="toggleSetting(this)"></div></div>      </div>
-
-      <div class="smv2-section">
-        <div class="smv2-section-title">Cache</div>
-        <div class="sm-row">
-          <div>
-            <div class="sm-row-label">Query cache TTL (seconds)</div>
-            <div class="sm-row-desc">How long a relay query result stays fresh</div>
-          </div>
-          <input id="settingsCacheQueryTtlSec" type="number" min="1" max="600" step="1" aria-label="Query cache TTL in seconds" style="max-width:120px;">
-        </div>
-        <div class="sm-row">
-          <div>
-            <div class="sm-row-label">Warm cache window (seconds)</div>
-            <div class="sm-row-desc">Serve stale cache while refreshing in background</div>
-          </div>
-          <input id="settingsCacheWarmSec" type="number" min="5" max="7200" step="1" aria-label="Warm cache window in seconds" style="max-width:120px;">
-        </div>
-        <div class="sm-row">
-          <div>
-            <div class="sm-row-label">Live feed cache TTL (seconds)</div>
-            <div class="sm-row-desc">How long live stream snapshots are reused on load</div>
-          </div>
-          <input id="settingsCacheLiveFeedTtlSec" type="number" min="10" max="1800" step="1" aria-label="Live feed cache TTL in seconds" style="max-width:120px;">
-        </div>
-      </div>
-
       <div class="smv2-save-row">
         <button class="btn btn-primary" onclick="saveAppSettings()">Save App Settings →</button>
       </div>
+    </div>
+
+    <!-- ── Panel: Chat & Cache ── -->
+    <div class="smv2-panel" id="smPanelChat">
+      <div class="smv2-panel-label">💬 Chat identity and performance settings. Changes are applied when you save.</div>
+      <div class="smv2-section">
+        <div class="smv2-section-title">Identity & Chat</div>
+        <div class="sm-row"><div><div class="sm-row-label">Show NIP-05 badges in chat</div><div class="sm-row-desc">Purple ✓ for verified identities</div></div><div class="toggle setting-toggle on" id="setNip05Toggle" onclick="toggleSetting(this)"></div></div>
+        <div class="sm-row"><div><div class="sm-row-label">Compact chat mode</div><div class="sm-row-desc">Denser message layout in stream chat</div></div><div class="toggle setting-toggle" id="setCompactToggle" onclick="toggleSetting(this)"></div></div>
+      </div>
+      <div class="smv2-section">
+        <div class="smv2-section-title">Cache</div>
+        <div class="sm-row"><div><div class="sm-row-label">Query cache TTL (seconds)</div><div class="sm-row-desc">How long a relay query result stays fresh</div></div><input id="settingsCacheQueryTtlSec" type="number" min="1" max="600" step="1" aria-label="Query cache TTL in seconds" style="max-width:120px;"></div>
+        <div class="sm-row"><div><div class="sm-row-label">Warm cache window (seconds)</div><div class="sm-row-desc">Serve stale cache while refreshing in background</div></div><input id="settingsCacheWarmSec" type="number" min="5" max="7200" step="1" aria-label="Warm cache window in seconds" style="max-width:120px;"></div>
+        <div class="sm-row"><div><div class="sm-row-label">Live feed cache TTL (seconds)</div><div class="sm-row-desc">How long live stream snapshots are reused on load</div></div><input id="settingsCacheLiveFeedTtlSec" type="number" min="10" max="1800" step="1" aria-label="Live feed cache TTL in seconds" style="max-width:120px;"></div>
+      </div>
+      <div class="smv2-save-row"><button class="btn btn-primary" onclick="saveAppSettings()">Save Chat & Cache Settings →</button></div>
     </div>
 
     <!-- ── Panel: Themes ── -->
