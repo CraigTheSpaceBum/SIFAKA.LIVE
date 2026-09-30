@@ -274,7 +274,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     lud16: '',
     website: '',
     banner: '',
-    nwcConnectionUri: ''
+    nwcConnectionUri: '',
+    bitcoinAddress: ''
   };
 
   const SAVED_LISTS_STORAGE_KEY = 'nostrflux_saved_lists_v1';
@@ -2601,6 +2602,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     merged.notificationsZaps = merged.notificationsZaps !== false;
     merged.notificationsFollows = merged.notificationsFollows !== false;
     merged.nwcConnectionUri = String(merged.nwcConnectionUri || '').trim();
+    merged.bitcoinAddress = String(merged.bitcoinAddress || '').trim();
     Object.assign(merged, sanitizeCacheSettings(merged));
 
     state.settings = merged;
@@ -3270,6 +3272,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const avatarUrl = qs('#settingsAvatarUrl');
     const nip05 = qs('#settingsNip05Input');
     const nwcInput = qs('#settingsNwcInput');
+    const bitcoinAddress = qs('#settingsBitcoinAddressInput');
 
     const up = state.user ? profileFor(state.user.pubkey) : null;
     if (lud16) lud16.value = (up && up.lud16) || state.settings.lud16 || '';
@@ -3281,6 +3284,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (avatarUrl) avatarUrl.value = (up && up.picture) || '';
     if (nip05) nip05.value = (up && up.nip05) || '';
     if (nwcInput) nwcInput.value = state.settings.nwcConnectionUri || '';
+    if (bitcoinAddress) bitcoinAddress.value = state.settings.bitcoinAddress || '';
     populateRelayAddModalForm({ bucketId: 'public_outbox' });
 
     if (up && up.picture) previewSettingsAvatar(up.picture);
@@ -3317,6 +3321,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const lud16 = qs('#settingsLud16Input');
     const web = qs('#settingsWebsiteInput');
     const banner = qs('#settingsBannerInput');
+    const bitcoinAddress = qs('#settingsBitcoinAddressInput');
     const theme = qs('#settingsThemeSelect');
     const cacheQueryInput = qs('#settingsCacheQueryTtlSec');
     const cacheWarmInput = qs('#settingsCacheWarmSec');
@@ -3349,7 +3354,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       cacheLiveFeedTtlSec: safeCache.cacheLiveFeedTtlSec,
       lud16: (lud16 && lud16.value.trim()) || '',
       website: (web && web.value.trim()) || '',
-      banner: (banner && banner.value.trim()) || ''
+      banner: (banner && banner.value.trim()) || '',
+      bitcoinAddress: (bitcoinAddress && bitcoinAddress.value.trim()) || ''
     };
   }
 
@@ -20751,6 +20757,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const txEl = qs('#walletTransactionsList');
       const chipEl = qs('#walletStatusChip');
       const promptEl = qs('#walletConnectPrompt');
+      const mainchainBalanceEl = qs('#walletMainchainBalance');
+      const mainchainPendingEl = qs('#walletMainchainPending');
+      const mainchainStatsEl = qs('#walletMainchainStats');
+      const mainchainAddressEl = qs('#walletMainchainAddress');
+      const mainchainStatusEl = qs('#walletMainchainStatus');
+      const mainchainExplorerEl = qs('#walletMainchainExplorer');
+      const mainchainTxEl = qs('#walletMainchainTransactions');
       const refreshBtn = qs('#walletRefreshBtn');
       const addressEl = qs('#walletAddressValue');
       const addressHelpEl = qs('#walletAddressHelp');
@@ -20775,7 +20788,97 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       };
 
       const savedUri = String(state.settings && state.settings.nwcConnectionUri || '').trim();
+      const bitcoinAddress = String(state.settings && state.settings.bitcoinAddress || '').trim();
       let config = null;
+
+      const isBitcoinAddress = (value) => /^(bc1[ac-hj-np-z02-9]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,62})$/.test(value);
+      const loadMainchainWallet = async () => {
+        if (!mainchainBalanceEl) return;
+        if (!bitcoinAddress) {
+          mainchainBalanceEl.textContent = '—';
+          if (mainchainPendingEl) mainchainPendingEl.textContent = 'Add a Bitcoin address in Settings → Wallet.';
+          if (mainchainAddressEl) mainchainAddressEl.textContent = 'No address configured';
+          if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Not configured'; mainchainStatusEl.className = 'wallet-status-chip'; }
+          if (mainchainExplorerEl) mainchainExplorerEl.hidden = true;
+          if (mainchainStatsEl) mainchainStatsEl.innerHTML = '';
+          if (mainchainTxEl) mainchainTxEl.innerHTML = '<div class="wallet-empty-state">Add a public Bitcoin address in Settings → Wallet to load mainchain balance and transactions.</div>';
+          return;
+        }
+        if (!isBitcoinAddress(bitcoinAddress)) {
+          mainchainBalanceEl.textContent = '—';
+          if (mainchainPendingEl) mainchainPendingEl.textContent = 'The saved Bitcoin address does not look valid.';
+          if (mainchainAddressEl) mainchainAddressEl.textContent = bitcoinAddress;
+          if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Invalid address'; mainchainStatusEl.className = 'wallet-status-chip is-error'; }
+          return;
+        }
+        if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Loading'; mainchainStatusEl.className = 'wallet-status-chip is-loading'; }
+        try {
+          const base = 'https://mempool.space/api/address/' + encodeURIComponent(bitcoinAddress);
+          const [addressRes, txRes] = await Promise.all([
+            fetch(base, { headers: { Accept: 'application/json' } }),
+            fetch(base + '/txs', { headers: { Accept: 'application/json' } })
+          ]);
+          if (!addressRes.ok || !txRes.ok) throw new Error('Bitcoin address data could not be loaded.');
+          const data = await addressRes.json();
+          const txs = await txRes.json();
+          if (token !== state.walletPageLoadToken) return;
+          const chain = data.chain_stats || {};
+          const mempool = data.mempool_stats || {};
+          const confirmedSats = Number(chain.funded_txo_sum || 0) - Number(chain.spent_txo_sum || 0);
+          const pendingSats = (Number(mempool.funded_txo_sum || 0) - Number(mempool.spent_txo_sum || 0));
+          const totalReceived = Number(chain.funded_txo_sum || 0);
+          const totalSpent = Number(chain.spent_txo_sum || 0);
+          mainchainBalanceEl.textContent = `${formatCount(Math.max(0, Math.floor(confirmedSats)))} sats`;
+          if (mainchainPendingEl) mainchainPendingEl.textContent = pendingSats
+            ? `${pendingSats > 0 ? '+' : ''}${formatCount(Math.abs(Math.floor(pendingSats)))} sats pending`
+            : 'No pending balance change';
+          if (mainchainAddressEl) mainchainAddressEl.textContent = bitcoinAddress;
+          if (mainchainExplorerEl) {
+            mainchainExplorerEl.href = 'https://mempool.space/address/' + encodeURIComponent(bitcoinAddress);
+            mainchainExplorerEl.hidden = false;
+          }
+          if (mainchainStatsEl) mainchainStatsEl.innerHTML = [
+            ['Total received', `${formatCount(Math.floor(totalReceived))} sats`],
+            ['Total sent', `${formatCount(Math.floor(totalSpent))} sats`],
+            ['Confirmed UTXOs', String(chain.utxo_count ?? Math.max(0, Number(chain.funded_txo_count || 0) - Number(chain.spent_txo_count || 0)))],
+            ['Transactions', String(chain.tx_count || 0)]
+          ].map(([label,value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
+          const list = Array.isArray(txs) ? txs.slice(0,20) : [];
+          if (mainchainTxEl) {
+            if (!list.length) {
+              mainchainTxEl.innerHTML = '<div class="wallet-empty-state">No mainchain transactions found.</div>';
+            } else {
+              mainchainTxEl.innerHTML = list.map((tx) => {
+                const received = (tx.vout || []).filter(o => o && o.scriptpubkey_address === bitcoinAddress).reduce((sum,o) => sum + Number(o.value || 0), 0);
+                const spent = (tx.vin || []).filter(v => v && v.prevout && v.prevout.scriptpubkey_address === bitcoinAddress).reduce((sum,v) => sum + Number(v.prevout.value || 0), 0);
+                const delta = received - spent;
+                const confirmed = !!(tx.status && tx.status.confirmed);
+                const dateValue = confirmed ? Number(tx.status.block_time || 0) : 0;
+                const date = dateValue ? new Date(dateValue * 1000).toLocaleString() : 'Pending';
+                const label = delta >= 0 ? 'Received' : 'Sent';
+                const amount = Math.abs(delta);
+                const txid = String(tx.txid || '');
+                return `<article class="wallet-tx-row">
+                  <div class="wallet-tx-icon ${delta >= 0 ? 'incoming' : 'outgoing'}">${delta >= 0 ? '↓' : '↑'}</div>
+                  <div class="wallet-tx-main">
+                    <strong>${label} · Mainchain</strong>
+                    <span>${escapeHtml(txid.slice(0, 12) + '…' + txid.slice(-8))}</span>
+                    <time>${escapeHtml(date)}</time>
+                  </div>
+                  <div class="wallet-tx-amount ${delta >= 0 ? 'incoming' : 'outgoing'}">${delta >= 0 ? '+' : '-'}${escapeHtml(formatCount(Math.floor(amount)))} sats</div>
+                </article>`;
+              }).join('');
+            }
+          }
+          if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Connected'; mainchainStatusEl.className = 'wallet-status-chip is-connected'; }
+        } catch (err) {
+          if (token !== state.walletPageLoadToken) return;
+          if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Unavailable'; mainchainStatusEl.className = 'wallet-status-chip is-error'; }
+          if (mainchainPendingEl) mainchainPendingEl.textContent = err && err.message ? err.message : 'Could not load Bitcoin mainchain data.';
+        }
+      };
+      loadMainchainWallet();
+
       if (savedUri) {
         try { config = parseNwcConnectionString(savedUri); }
         catch (_) { config = null; }
