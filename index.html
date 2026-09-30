@@ -38,6 +38,7 @@
       <button class="dd-item" onclick="showPage('videos',{videosFilter:'all'});closeAllDD()"><span class="ddi">&#127909;</span>Videos</button>
       <button class="dd-item" onclick="showPage('feed');closeAllDD()"><span class="ddi">&#128225;</span>Nostr Feed</button>
       <button class="dd-item" onclick="showPage('messages');closeAllDD()"><span class="ddi">&#128172;</span>Messages</button>
+      <button class="dd-item" onclick="showPage('nests');closeAllDD()"><span class="ddi">&#128066;</span>Nostr Nest</button>
       <button class="dd-item" onclick="showPage('faq');closeAllDD()"><span class="ddi">&#10067;</span>FAQ & Help</button>
     </div>
   </div>
@@ -1001,6 +1002,29 @@
 <!-- ========= MESSAGES PAGE ========= -->
 <div id="messagesPage">
   <div id="messagesRoot"></div>
+</div>
+
+<!-- ========= NOSTR NEST PAGE ========= -->
+<div id="nestsPage">
+  <div class="nests-page-wrap">
+    <section class="nests-page-hero">
+      <div>
+        <div class="nests-page-eyebrow">NOSTR NEST</div>
+        <h2>Live Audio Rooms</h2>
+        <p>Discover live Nostr audio rooms, join conversations, and see who's speaking. Nostr Nest rooms use NIP-53 meeting-space events.</p>
+      </div>
+      <button class="btn btn-ghost" type="button" onclick="loadNestsPage(true)">Refresh</button>
+    </section>
+    <div class="nests-tabs" role="tablist">
+      <button class="nests-tab active" id="nestsLiveTab" type="button" onclick="setNestsTab('live')">Live Now</button>
+      <button class="nests-tab" id="nestsUpcomingTab" type="button" onclick="setNestsTab('upcoming')">Upcoming</button>
+      <button class="nests-tab" id="nestsFollowingTab" type="button" onclick="setNestsTab('following')">Following</button>
+    </div>
+    <div id="nestsPageStatus" class="nests-page-status" aria-live="polite"></div>
+    <div id="nestsRoomsGrid" class="nests-rooms-grid">
+      <div class="nests-empty-state">Loading Nostr Nests…</div>
+    </div>
+  </div>
 </div>
 
 <!-- ========= MY STREAMS PAGE ========= -->
