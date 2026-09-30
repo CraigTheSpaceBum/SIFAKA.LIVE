@@ -386,6 +386,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     notificationsTargetNotesById: new Map(),
     notificationsTargetFetchPending: false,
     notificationsTargetFetchPromise: null,
+    notificationsSubId: null,
     // Hero featured stream cycling
     heroHlsInstance: null,
     heroPlaybackToken: 0,
@@ -3383,7 +3384,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       subscribeNostrFeed();
     }
     if (state.user) {
-      loadNotifications({
+      startNotificationsSubscription();
+      startNotificationsSubscription();
+    loadNotifications({
         force: true,
         silent: !isNotificationsPageVisible(),
         minIntervalMs: 0
@@ -11449,6 +11452,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       };
     }
 
+    if (ev.kind === KIND_DIRECT_MESSAGE) {
+      const pRefs = normalizePRefs(ev.tags);
+      if (!pRefs.includes(ownPubkey)) return null;
+      return {
+        id: ev.id,
+        created_at: Number(ev.created_at || 0) || 0,
+        type: 'dm',
+        actorPubkey,
+        targetId: '',
+        summary: 'Sent you a direct message.',
+        raw: ev
+      };
+    }
+
     if (ev.kind === KIND_CONTACTS) {
       const pRefs = normalizePRefs(ev.tags);
       if (!pRefs.includes(ownPubkey)) return null;
@@ -11587,6 +11604,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         : 'liked your post';
       else if (entry.type === 'repost') actionText = 'boosted your post';
       else if (entry.type === 'follow') actionText = 'followed you';
+      else if (entry.type === 'dm') actionText = 'sent you a direct message';
       else if (entry.type === 'zap') actionText = entry.sats > 0
         ? `zapped you ${formatCount(entry.sats)} sats`
         : 'sent you a zap';
@@ -11624,7 +11642,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       try { timeEl.title = new Date(Number(entry.created_at || 0) * 1000).toLocaleString(); } catch (_) {}
 
       const chipEl = qs('.notif-type-chip', row);
-      chipEl.textContent = (entry.type === 'like' && entry.reactionKey && entry.reactionKey !== '+') ? 'Reaction' : typeLabel;
+      chipEl.textContent = entry.type === 'dm' ? 'DM' : ((entry.type === 'like' && entry.reactionKey && entry.reactionKey !== '+') ? 'Reaction' : typeLabel);
 
       const textEl = qs('.notif-text', row);
       const summary = truncateNotificationText(entry.summary || '');
@@ -11649,6 +11667,38 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     });
   }
 
+  function stopNotificationsSubscription() {
+    if (state.notificationsSubId && state.pool) {
+      try { state.pool.unsubscribe(state.notificationsSubId); } catch (_) {}
+    }
+    state.notificationsSubId = null;
+  }
+
+  function startNotificationsSubscription() {
+    stopNotificationsSubscription();
+    const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+    if (!ownPubkey || !state.pool || state.pool.destroyed) return;
+    const since = Math.max(0, Math.floor(Date.now() / 1000) - 60 * 5);
+    const filters = notificationFiltersForUser(ownPubkey, { sinceSec: since, limit: 300 });
+    if (!filters.length) return;
+
+    state.notificationsSubId = state.pool.subscribe(filters, {
+      event: (ev) => {
+        const activePubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+        if (!activePubkey || activePubkey !== ownPubkey) return;
+        const entry = buildNotificationEntry(ev, ownPubkey);
+        if (!entry) return;
+        const existing = state.notificationsById.get(entry.id);
+        if (!existing || Number(existing.created_at || 0) <= Number(entry.created_at || 0)) {
+          state.notificationsById.set(entry.id, entry);
+          if (entry.actorPubkey) fetchNotificationProfileIfNeeded(entry.actorPubkey);
+          renderNotificationsBell();
+          if (isNotificationsPageVisible()) renderNotifications();
+        }
+      }
+    });
+  }
+
   function notificationFiltersForUser(pubkey, opts = {}) {
     const key = normalizePubkeyHex(pubkey);
     if (!key) return [];
@@ -11660,7 +11710,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       { kinds: [KIND_REACTION], '#p': [key], since: sinceSec, limit },
       { kinds: [6], '#p': [key], since: sinceSec, limit },
       { kinds: [KIND_ZAP_RECEIPT], '#p': [key], since: sinceSec, limit },
-      { kinds: [KIND_CONTACTS], '#p': [key], since: sinceSec, limit: Math.min(limit, 260) }
+      { kinds: [KIND_CONTACTS], '#p': [key], since: sinceSec, limit: Math.min(limit, 260) },
+      { kinds: [KIND_DIRECT_MESSAGE], '#p': [key], since: sinceSec, limit }
     ];
   }
 
@@ -20137,7 +20188,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (p === 'feed') {
         subscribeNostrFeed();
       } else {
-        stopNostrFeedSubscription();
+        stopNotificationsSubscription();
+      stopNostrFeedSubscription();
       }
       if (p === 'notifications') {
         markNotificationsReadInternal({ silent: true });
