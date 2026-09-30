@@ -793,16 +793,29 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   async function ensureHlsJs() {
     if (window.Hls) return window.Hls;
+
+    // Do not let a dead CDN hold stream startup for 15s x 3 fallbacks.
+    // A live stream should either acquire Hls.js quickly or move on to the
+    // next playback path. Keep one shared promise per source via loadExternalScript.
     let lastErr = null;
+    const deadline = Date.now() + 10000;
+
     for (let i = 0; i < HLS_JS_SOURCES.length; i += 1) {
+      if (window.Hls) return window.Hls;
       const src = String(HLS_JS_SOURCES[i] || '').trim();
       if (!src) continue;
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+
       try {
-        return await loadExternalScript(src, 'Hls');
+        return await loadExternalScript(src, 'Hls', Math.min(4500, remaining));
       } catch (err) {
         lastErr = err;
       }
     }
+
+    if (window.Hls) return window.Hls;
     if (lastErr) throw lastErr;
     return null;
   }
@@ -13254,13 +13267,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       // quick retry for a live-stream client.
       liveSyncDurationCount: 2,
       liveMaxLatencyDurationCount: 6,
-      manifestLoadingTimeOut: 7000,
-      manifestLoadingMaxRetry: 2,
-      manifestLoadingRetryDelay: 500,
-      levelLoadingTimeOut: 7000,
-      levelLoadingMaxRetry: 2,
-      fragLoadingTimeOut: 9000,
-      fragLoadingMaxRetry: 2,
+      manifestLoadingTimeOut: 5000,
+      manifestLoadingMaxRetry: 1,
+      manifestLoadingRetryDelay: 350,
+      levelLoadingTimeOut: 5000,
+      levelLoadingMaxRetry: 1,
+      fragLoadingTimeOut: 7000,
+      fragLoadingMaxRetry: 1,
       ...hlsConfig
     });
 
