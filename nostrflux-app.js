@@ -8012,6 +8012,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return peer;
   }
 
+  // Local presentation override for a known spammy Nostr identity. This only changes
+  // how the profile is displayed on Sifaka; it does not modify the Nostr event.
+  const ANONYMOUS_PROFILE_PUBKEYS = new Set([
+    'a9caf9d59557f33c07ec9b4c516194f7d7c638121ca5d9d59a5f7769d332a418'
+  ]);
+
+  function isAnonymousProfilePubkey(pubkey) {
+    const key = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
+    return ANONYMOUS_PROFILE_PUBKEYS.has(key);
+  }
+
+  function displayNameForProfile(pubkey, rawName, fallback = '') {
+    if (isAnonymousProfilePubkey(pubkey)) return 'Anonymous';
+    const name = String(rawName || '').trim();
+    return name || String(fallback || '').trim();
+  }
+
   function parseProfile(ev) {
     const normalizedPubkey = normalizePubkeyHex(ev && ev.pubkey || '') || String(ev && ev.pubkey || '').trim().toLowerCase();
     const fallbackPubkey = normalizedPubkey || String(ev && ev.pubkey || '').trim();
@@ -8021,12 +8038,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     } catch (_) {
       obj = {};
     }
+
+    const anonymous = isAnonymousProfilePubkey(fallbackPubkey);
+    const safeName = displayNameForProfile(
+      fallbackPubkey,
+      obj.display_name || obj.name || '',
+      shortHex(fallbackPubkey)
+    );
+
     return {
       pubkey: normalizedPubkey,
       created_at: ev.created_at || 0,
-      name: obj.display_name || obj.name || shortHex(fallbackPubkey),
-      display_name: obj.display_name || '',
-      username: obj.name || '',
+      name: safeName,
+      display_name: anonymous ? 'Anonymous' : (obj.display_name || ''),
+      username: anonymous ? 'Anonymous' : (obj.name || ''),
       about: obj.about || '',
       picture: obj.picture || '',
       banner: obj.banner || '',
