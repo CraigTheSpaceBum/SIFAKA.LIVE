@@ -657,7 +657,23 @@
     chatSince = 0;
   }
 
+  function resetActiveRoomUi() {
+    if (!modal) return;
+    const bar = $('#nestRoomAudioBar', modal);
+    const compose = $('#nestRoomChatCompose', modal);
+    const join = $('#nestPreviewJoinBtn', modal);
+    if (bar) bar.hidden = true;
+    if (compose) compose.hidden = true;
+    if (join) {
+      join.textContent = 'Join Nest';
+      join.disabled = false;
+      join.classList.remove('btn-danger');
+    }
+    modal.classList.remove('is-live-room');
+  }
+
   function renderLoading(fallback) {
+    resetActiveRoomUi();
     ensureModal().classList.add('open');
     document.body.classList.add('nest-preview-open');
     $('#nestPreviewCover', modal).innerHTML = fallback.img ? '<img src="' + esc(fallback.img) + '" alt="">' : '<div class="nest-preview-cover-fallback">N</div>';
@@ -822,7 +838,9 @@
 
     const topicValues = Array.from(new Set((room.topics || []).concat((meeting && meeting.topics) || []))).slice(0, 8);
     $('#nestPreviewTopics', modal).innerHTML = topicValues.map(function(t) { return '<span>#' + esc(t) + '</span>'; }).join('');
-    $('#nestPreviewJoinBtn', modal).textContent = live ? 'Join Nest' : 'Open Nest';
+    $('#nestPreviewJoinBtn', modal).textContent = activeRoomAudio ? 'Leave Nest' : (live ? 'Join Nest' : 'Open Nest');
+    $('#nestPreviewJoinBtn', modal).classList.toggle('btn-danger', !!activeRoomAudio);
+    updateActiveRoomAudioUi();
     $('#nestPreviewFootnote', modal).textContent = room.sourceCount > 1 ? 'Room details merged from ' + room.sourceCount + ' relays.' : 'Room details are read from Nostr NIP-53 events.';
   }
 
@@ -986,14 +1004,18 @@
   }
 
   async function openPreview(url, fallback) {
+    if (activeRoomAudio && activeRoomUrl !== url) await leaveActiveRoom();
     activeRoomUrl = url;
+    activeRoomEvent = null;
+    activeRoom = null;
+    activeRoomRelays = [];
     renderLoading(fallback);
     const decoded = decodeRoom(url);
     if (!decoded) {
       renderRoom({
         title: fallback.title, summary: fallback.summary, image: fallback.img,
         pubkey: '', status: /live/i.test(fallback.badge) ? 'live' : 'open',
-        currentParticipants: parseInt(fallback.countText, 10) || 0, participants: [], presence: new Set()
+        currentParticipants: parseInt(fallback.countText, 10) || 0, participants: [], presence: new Set(), a: ''
       }, new Map(), fallback);
       return;
     }
@@ -1037,8 +1059,15 @@
         status: tag(current,'status'), currentParticipants: Number(tag(current,'current_participants') || 0),
         participants: pTags(current), topics: tags(current,'t')
       } : null,
-      sourceCount: new Set(events.map(function(e) { return e.id; })).size
+      sourceCount: new Set(events.map(function(e) { return e.id; })).size,
+      a: decoded.a,
+      relays: tags(roomEvent, 'relays'),
+      streaming: tag(roomEvent, 'streaming'),
+      auth: tag(roomEvent, 'auth')
     };
+    activeRoomEvent = roomEvent;
+    activeRoom = room;
+    activeRoomRelays = roomRelayUrls(room, decoded);
     renderRoom(room, profiles, fallback);
 
     // Keep a live room lobby feeling live: refresh presence/chat more often than
@@ -1091,11 +1120,21 @@
       people.unshift({ pubkey: decoded.pubkey, role: 'Host' });
     }
 
+    activeRoom = Object.assign({}, activeRoom || {}, {
+      pubkey: decoded.pubkey,
+      d: decoded.d,
+      a: decoded.a,
+      status: current ? tag(current,'status') : (activeRoom && activeRoom.status) || 'open',
+      relays: (activeRoom && activeRoom.relays) || [],
+      streaming: activeRoom && activeRoom.streaming || '',
+      participants: people,
+      presence: presence
+    });
     renderRoom({
       pubkey: decoded.pubkey,
-      title: current ? tag(current,'title') : 'Nostr Nest',
-      summary: current ? tag(current,'summary') : '',
-      image: current ? tag(current,'image') : '',
+      title: current ? tag(current,'title') : (activeRoom && activeRoom.title) || 'Nostr Nest',
+      summary: current ? tag(current,'summary') : (activeRoom && activeRoom.summary) || '',
+      image: current ? tag(current,'image') : (activeRoom && activeRoom.image) || '',
       status: current ? tag(current,'status') : 'open',
       starts: current ? Number(tag(current,'starts') || 0) : 0,
       ends: current ? Number(tag(current,'ends') || 0) : 0,
@@ -1105,7 +1144,8 @@
       presence: presence,
       chat: chat,
       meeting: null,
-      sourceCount: 0
+      sourceCount: 0,
+      a: decoded.a
     }, profiles, {
       title: $('#nestPreviewTitle', modal).textContent || 'Nostr Nest',
       summary: $('#nestPreviewSummary', modal).textContent || '',
@@ -1144,6 +1184,16 @@
 
     e.preventDefault();
     e.stopImmediatePropagation();
+    if (btn.matches('#nestsRoomsGrid .nests-room-actions .btn-primary')) {
+      activeRoomUrl = fallback.url;
+      activeRoomEvent = null;
+      activeRoom = null;
+      activeRoomRelays = [];
+      enterActiveRoom().catch(function(err) {
+        openPreview(fallback.url, fallback).catch(function() {});
+      });
+      return;
+    }
     openPreview(fallback.url, fallback);
   }
 
