@@ -20922,7 +20922,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const displayCount = room.participants ? formatCount(room.participants) : '—';
         const statusLabel = live ? 'LIVE' : (status === 'ended' ? 'ENDED' : (room.starts ? 'UPCOMING' : 'OPEN'));
         return `<article class="nests-room-card">
-          <button class="nests-room-cover nests-room-cover-btn" type="button" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})" aria-label="Open ${title}">
+          <button class="nests-room-cover nests-room-cover-btn" type="button" data-action="join" data-room-url="${escapeHtml(roomUrl)}" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})" aria-label="Open ${title}">
             ${img}
             <span class="nests-live-badge ${live ? 'is-live' : ''}"><i></i>${statusLabel}</span>
             <span class="nests-cover-action">${live ? 'Listen now' : 'View room'} <b>→</b></span>
@@ -20940,7 +20940,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             </div>
             ${topicHtml ? `<div class="nests-topic-row">${topicHtml}</div>` : ''}
             <div class="nests-room-actions">
-              <button class="btn btn-primary" type="button" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})">${live ? 'Join Nest' : 'View Room'}</button>
+              <button class="btn btn-primary" type="button" data-action="join" data-room-url="${escapeHtml(roomUrl)}" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})">${live ? 'Join Nest' : 'View Room'}</button>
             </div>
           </div>
         </article>`;
@@ -20964,10 +20964,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       renderNestsPage();
     };
 
-    window.joinNestsRoom = function(url) {
+    window.joinNestsRoom = function(url, opts = {}) {
       const target = String(url || '').trim();
       if (!target) return;
-      window.open(target, '_blank', 'noopener');
+      const external = !!(opts && opts.external);
+      if (!external && typeof window.openNestsRoomPreview === 'function') {
+        window.openNestsRoomPreview(target);
+        return;
+      }
+      const opened = window.open(target, '_blank', 'noopener');
+      if (!opened) window.location.assign(target);
     };
 
     window.shareNestsRoom = async function(url) {
