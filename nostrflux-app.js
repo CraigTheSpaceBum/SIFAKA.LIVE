@@ -21518,15 +21518,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     });
 
-    window.openWalletReceive = function () {
-      const value = String(state.walletPageLightningAddress || '').trim();
-      if (!value) {
-        window.openSettings();
-        return;
-      }
-      window.copyWalletLightningAddress();
-    };
-
     window.copyWalletLightningAddress = async function () {
       const value = String(state.walletPageLightningAddress || '').trim();
       if (!value) return;
