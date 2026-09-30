@@ -3396,8 +3396,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (state.user) {
       startNotificationsSubscription();
-      startNotificationsSubscription();
-    loadNotifications({
+      loadNotifications({
         force: true,
         silent: !isNotificationsPageVisible(),
         minIntervalMs: 0
@@ -20835,8 +20834,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           ? 'LIVE NOW'
           : room.starts ? new Date(room.starts * 1000).toLocaleString() : 'Scheduled';
         const count = room.participants ? `${formatCount(room.participants)} listening` : 'Audio room';
-        const naddr = typeof encodeNaddr === 'function' ? encodeNaddr(room.pubkey, room.d, room.kind) : '';
-        const joinUrl = room.service || room.streaming || (naddr ? `https://nostrnests.com/${naddr}` : 'https://nostrnests.com/lobby');
+        const naddr = window.NostrTools?.nip19 && typeof window.NostrTools.nip19.naddrEncode === 'function'
+          ? (() => {
+              try {
+                return window.NostrTools.nip19.naddrEncode({
+                  identifier: room.d,
+                  pubkey: room.pubkey,
+                  kind: room.kind
+                });
+              } catch (_) {
+                return '';
+              }
+            })()
+          : '';
+        const joinUrl = naddr ? `https://nostrnests.com/${naddr}` : 'https://nostrnests.com/lobby';
         return `<article class="nests-room-card">
           <div class="nests-room-cover">${img}<span class="nests-live-badge ${room.status === 'live' || room.status === 'open' ? 'is-live' : ''}">${escapeHtml(when)}</span></div>
           <div class="nests-room-body">
