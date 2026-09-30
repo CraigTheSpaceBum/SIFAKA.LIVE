@@ -6113,3 +6113,23 @@ footer p{font-size:.72rem;color:var(--muted);}
 @media(prefers-reduced-motion:reduce){
   .nest-person,.nest-preview-dialog{transition:none}
 }
+
+
+/* NOSTR NEST — interactive participant profile sheet */
+.nest-profile-sheet{position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(3,5,12,.7);backdrop-filter:blur(12px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .18s ease,visibility .18s ease}
+.nest-profile-sheet.open{opacity:1;visibility:visible;pointer-events:auto}
+.nest-profile-card{position:relative;width:min(420px,100%);overflow:hidden;border:1px solid color-mix(in srgb,var(--purple) 30%,var(--border));border-radius:22px;background:var(--surface);box-shadow:0 30px 90px rgba(0,0,0,.4);transform:translateY(10px) scale(.98);transition:transform .2s ease}
+.nest-profile-sheet.open .nest-profile-card{transform:none}
+.nest-profile-close{position:absolute;z-index:3;right:.7rem;top:.7rem;width:34px;height:34px;border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:1.25rem;cursor:pointer}
+.nest-profile-hero{height:105px;background:linear-gradient(135deg,color-mix(in srgb,var(--purple) 30%,var(--surface2)),var(--surface3));background-size:cover;background-position:center}
+.nest-profile-body{padding:0 1.15rem 1.15rem}
+.nest-profile-avatar{width:76px;height:76px;margin-top:-38px;border:4px solid var(--surface);border-radius:50%;overflow:hidden;display:grid;place-items:center;background:var(--surface3);font-size:1.3rem;font-weight:800}
+.nest-profile-avatar img{width:100%;height:100%;object-fit:cover}
+.nest-profile-role{margin-top:.65rem;color:var(--purple);font:700 .55rem/1 "DM Mono",monospace;text-transform:uppercase;letter-spacing:.1em}
+#nestProfileName{margin:.3rem 0;font-size:1.25rem}
+#nestProfileAbout{margin:0;min-height:2.7em;color:var(--text2);font-size:.72rem;line-height:1.5}
+.nest-profile-actions{display:grid;grid-template-columns:.8fr 1.2fr;gap:.5rem;margin-top:1rem}
+.nest-profile-actions .btn{min-height:40px}
+.nest-profile-npub{margin-top:.7rem;padding:.55rem .65rem;border:1px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--muted);font:500 .52rem/1.35 "DM Mono",monospace;overflow-wrap:anywhere}
+@media(max-width:640px){.nest-profile-sheet{align-items:flex-end;padding:0}.nest-profile-card{width:100%;border-radius:20px 20px 0 0;border-bottom:0}.nest-profile-hero{height:92px}}
+@media(prefers-reduced-motion:reduce){.nest-profile-sheet,.nest-profile-card{transition:none}}
