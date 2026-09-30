@@ -3746,6 +3746,7 @@ textarea{resize:vertical;min-height:65px;line-height:1.5;}
 .smv2-tab.active.tab-wallet{border-color:rgba(247,147,26,.35);color:var(--zap);}
 .smv2-tab.active.tab-relays{border-color:rgba(0,212,138,.35);color:var(--green);}
 .smv2-tab.active.tab-app{border-color:rgba(232,70,10,.35);color:var(--accent);}
+.smv2-tab.active.tab-themes{border-color:rgba(155,114,255,.45);color:var(--purple);}
 .smv2-panel{display:none;padding:1.2rem 1.35rem 1.4rem;overflow-y:auto;flex:1;}
 .smv2-panel.active{display:block;}
 .smv2-panel-label{
