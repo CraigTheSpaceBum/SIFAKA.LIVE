@@ -3432,11 +3432,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function runOneShotRelayQuery(filters, opts = {}) {
     return new Promise((resolve) => {
       if (!state.pool) { resolve([]); return; }
-      const timeoutMs = Math.max(200, Number(opts.timeoutMs || 1800));
+      const timeoutMs = Math.max(200, Number(opts.timeoutMs || 1400));
       const maxEvents = Math.max(10, Number(opts.maxEvents || 1200));
       const eventsById = new Map();
       const eoseByRelay = new Set();
-      const expectedEose = Math.max(1, Number((state.pool.urls && state.pool.urls.length) || 1));
+      // Do not make a query wait for every configured relay. A single offline/slow
+      // relay should not hold up pages when several relays have already answered.
+      const relayCount = Math.max(1, Number((state.pool.urls && state.pool.urls.length) || 1));
+      const expectedEose = Math.min(3, relayCount);
       let done = false;
       let subId = null;
 
@@ -12331,11 +12334,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const allStreams = sortedLiveStreams();
+    const streams = getFilteredStreams();
 
     const renderSignature = state.activeListFilter + '::' + streams.map((stream) => [stream.address, stream.id, stream.status, stream.streaming, stream.image, stream.title, stream.summary, stream.participants].join('|')).join('||');
     if (grid.querySelector('.stream-card') && state.liveGridRenderSignature === renderSignature) return;
     state.liveGridRenderSignature = renderSignature;
-    const streams = getFilteredStreams();
 
     // Update count pill
     const pill = qs('#liveCountPill');
@@ -15762,6 +15765,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function stopLiveSubscription() {
     clearLiveGridRenderTimer();
     state.liveGridRenderSignature = '';
+    state.liveInitialSyncComplete = false;
     if (!state.liveSubId || !state.pool) {
       state.liveSubId = null;
       return;
@@ -15782,7 +15786,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     stopLiveSubscription();
     if (!state.pool) return;
     let initialSyncComplete = false;
+    let initialRenderStarted = false;
+    let initialRenderTimer = null;
     state.liveInitialReadyPromise = new Promise((resolve) => { state.liveInitialReadyResolve = resolve; });
+
+    const renderInitialGrid = () => {
+      if (initialRenderStarted || !isHomeViewActive()) return;
+      initialRenderStarted = true;
+      if (initialRenderTimer) { clearTimeout(initialRenderTimer); initialRenderTimer = null; }
+      renderLiveGrid();
+    };
+
+    // EOSE finalizes the sync, but it should not be required before the first
+    // useful batch of streams can appear.
+    initialRenderTimer = setTimeout(renderInitialGrid, 2200);
 
     const debouncedRenderGrid = () => {
       clearLiveGridRenderTimer();
@@ -15810,8 +15827,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               tryOpenPendingRouteStream();
             }
             if (changed && isVideosPageVisible()) scheduleVideosPageRender(220);
-            // Avoid rapid card remount/flicker while the initial relay sync is still streaming in.
-            if (isHomeViewActive() && initialSyncComplete) debouncedRenderGrid();
+            // Render the first useful batch as soon as it arrives. After that,
+            // keep updates debounced so relay fan-out does not cause flicker.
+            if (isHomeViewActive()) {
+              if (!initialSyncComplete) renderInitialGrid();
+              else debouncedRenderGrid();
+            }
             return;
           }
 
@@ -15826,6 +15847,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         eose: () => {
           if (initialSyncComplete) return;
           initialSyncComplete = true;
+          if (initialRenderTimer) { clearTimeout(initialRenderTimer); initialRenderTimer = null; }
+          renderInitialGrid();
           state.liveInitialSyncComplete = true;
           if (isHomeViewActive()) renderLiveGrid();
           if (isVideosPageVisible()) scheduleVideosPageRender();
