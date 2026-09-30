@@ -532,7 +532,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const timer = setTimeout(() => {
           this.connectTimers.delete(timer);
           if (!this.destroyed) this.connect(url);
-        }, Math.min(index * 120, 1200));
+        }, Math.min(index * 90, 900));
         this.connectTimers.add(timer);
       });
     }
@@ -15794,7 +15794,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
 
     state.liveSubId = state.pool.subscribe(
-      [{ kinds: [KIND_LIVE_EVENT, KIND_NIP71_VIDEO, KIND_NIP71_REEL], limit: 350, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 30 }],
+      [{ kinds: [KIND_LIVE_EVENT, KIND_NIP71_VIDEO, KIND_NIP71_REEL], limit: 180, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7 }],
       {
         event: (ev) => {
           const kind = Number(ev && ev.kind || 0);
