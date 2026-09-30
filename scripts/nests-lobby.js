@@ -216,6 +216,296 @@
     return { title: title, summary: summary, host: host, countText: countText, img: img, badge: badge, topics: topics, url: url };
   }
 
+  function getSifakaContext() {
+    return window.__SIFAKA_CONTEXT || null;
+  }
+
+  async function loadNestAudioModules() {
+    if (!activeRoomAudioModulesPromise) {
+      activeRoomAudioModulesPromise = Promise.all([
+        import('https://esm.sh/@moq/lite@0.1.7'),
+        import('https://esm.sh/@moq/watch@0.2.3')
+      ]).then(function(modules) {
+        return { Moq: modules[0], Watch: modules[1] };
+      });
+    }
+    return activeRoomAudioModulesPromise;
+  }
+
+  function closeAudioEntry(entry) {
+    if (!entry) return;
+    try { entry.emitter && entry.emitter.close(); } catch (_) {}
+    try { entry.decoder && entry.decoder.close(); } catch (_) {}
+    try { entry.audioSource && entry.audioSource.close(); } catch (_) {}
+    try { entry.sync && entry.sync.close(); } catch (_) {}
+    try { entry.broadcast && entry.broadcast.close(); } catch (_) {}
+  }
+
+  class SifakaNestAudioTransport {
+    constructor() {
+      this.connection = null;
+      this.entries = new Map();
+      this.state = 'disconnected';
+      this.volume = 1;
+      this.muted = false;
+      this.listeners = new Set();
+      this.announcementDispose = null;
+      this.statusDispose = null;
+      this.pollTimer = null;
+      this.identity = '';
+      this.Moq = null;
+      this.Watch = null;
+    }
+
+    onStateChange(cb) {
+      this.listeners.add(cb);
+      const self = this;
+      return function() { self.listeners.delete(cb); };
+    }
+
+    emitState(next) {
+      this.state = next;
+      this.listeners.forEach(function(cb) { try { cb(next); } catch (_) {} });
+    }
+
+    async connect(config) {
+      await this.disconnect();
+      const libs = await loadNestAudioModules();
+      this.Moq = libs.Moq;
+      this.Watch = libs.Watch;
+      this.identity = String(config.identity || '');
+      this.emitState('connecting');
+
+      const relayUrl = new URL(String(config.serverUrl));
+      relayUrl.pathname = '/' + String(config.namespace || '');
+      if (config.token) relayUrl.searchParams.set('jwt', config.token);
+
+      this.connection = new this.Moq.Connection.Reload({
+        url: relayUrl,
+        enabled: true,
+        delay: { initial: 1000, multiplier: 2, max: 30000 },
+        webtransport: {},
+        websocket: {}
+      });
+
+      const self = this;
+      if (this.connection.status && this.connection.status.watch) {
+        this.statusDispose = this.connection.status.watch(function(status) {
+          if (status === 'connected') {
+            self.emitState('connected');
+            self.startAnnouncements();
+          } else if (status === 'connecting') {
+            self.emitState(self.state === 'disconnected' ? 'connecting' : 'reconnecting');
+          } else if (status === 'disconnected') {
+            self.emitState('disconnected');
+            self.stopAnnouncements();
+          }
+        });
+      }
+    }
+
+    startAnnouncements() {
+      this.stopAnnouncements();
+      if (!this.connection) return;
+      const self = this;
+      if (this.connection.announced && this.connection.announced.subscribe) {
+        this.announcementDispose = this.connection.announced.subscribe(function(announced) {
+          self.processAnnouncements(announced);
+        });
+      }
+      this.pollTimer = setInterval(function() {
+        if (!self.connection || !self.connection.announced) return;
+        try { self.processAnnouncements(self.connection.announced.peek()); } catch (_) {}
+      }, 3000);
+      try { this.processAnnouncements(this.connection.announced.peek()); } catch (_) {}
+    }
+
+    stopAnnouncements() {
+      if (this.announcementDispose) {
+        try { this.announcementDispose(); } catch (_) {}
+        this.announcementDispose = null;
+      }
+      if (this.pollTimer) {
+        clearInterval(this.pollTimer);
+        this.pollTimer = null;
+      }
+    }
+
+    processAnnouncements(announced) {
+      if (!this.connection || !announced) return;
+      const current = new Set();
+      const self = this;
+      announced.forEach(function(path) {
+        const pubkey = String(path || '').toLowerCase();
+        if (!pubkey || pubkey === String(self.identity || '').toLowerCase()) return;
+        if (!/^[0-9a-f]{64}$/.test(pubkey)) return;
+        current.add(pubkey);
+        if (!self.entries.has(pubkey)) self.subscribeParticipant(pubkey);
+      });
+      Array.from(this.entries.keys()).forEach(function(pubkey) {
+        if (!current.has(pubkey)) {
+          closeAudioEntry(self.entries.get(pubkey));
+          self.entries.delete(pubkey);
+        }
+      });
+      updateActiveRoomAudioUi();
+    }
+
+    subscribeParticipant(pubkey) {
+      if (!this.connection || !this.Watch || !this.Moq || this.entries.has(pubkey)) return;
+      try {
+        const broadcast = new this.Watch.Broadcast({
+          connection: this.connection.established,
+          enabled: true,
+          name: this.Moq.Path.from(pubkey),
+          reload: true
+        });
+        const sync = new this.Watch.Sync({ jitter: 150 });
+        const audioSource = new this.Watch.Audio.Source(sync, { broadcast: broadcast });
+        const decoder = new this.Watch.Audio.Decoder(audioSource, { enabled: true });
+        const emitter = new this.Watch.Audio.Emitter(decoder, {
+          volume: this.muted ? 0 : this.volume,
+          muted: this.muted
+        });
+        this.entries.set(pubkey, { broadcast, sync, audioSource, decoder, emitter });
+      } catch (err) {
+        console.warn('[sifaka-nests] participant audio failed', err);
+      }
+      updateActiveRoomAudioUi();
+    }
+
+    setVolume(value) {
+      this.volume = Math.max(0, Math.min(1, Number(value) || 0));
+      this.entries.forEach(function(entry) {
+        try { entry.emitter.volume.set(this.muted ? 0 : this.volume); } catch (_) {}
+      }, this);
+    }
+
+    setMuted(value) {
+      this.muted = !!value;
+      this.entries.forEach(function(entry) {
+        try {
+          entry.emitter.muted.set(this.muted);
+          entry.emitter.volume.set(this.muted ? 0 : this.volume);
+        } catch (_) {}
+      }, this);
+    }
+
+    async disconnect() {
+      this.stopAnnouncements();
+      if (this.statusDispose) {
+        try { this.statusDispose(); } catch (_) {}
+        this.statusDispose = null;
+      }
+      this.entries.forEach(function(entry) { closeAudioEntry(entry); });
+      this.entries.clear();
+      if (this.connection) {
+        try { this.connection.close(); } catch (_) {}
+        try { this.connection.enabled.set(false); } catch (_) {}
+      }
+      this.connection = null;
+      this.emitState('disconnected');
+    }
+  }
+
+  function roomRelayUrls(room, decoded) {
+    const ctx = getSifakaContext();
+    const defaults = ctx && typeof ctx.getRelays === 'function' ? ctx.getRelays() : [];
+    const tagged = room && Array.isArray(room.relays) ? room.relays : [];
+    const hinted = decoded && Array.isArray(decoded.relays) ? decoded.relays : [];
+    return Array.from(new Set(defaults.concat(tagged, hinted)
+      .map(function(url) { return String(url || '').trim(); })
+      .filter(function(url) { return /^wss:\/\//i.test(url); })));
+  }
+
+  async function signRoomEvent(kind, content, tags) {
+    const ctx = getSifakaContext();
+    if (!ctx || typeof ctx.signEvent !== 'function') {
+      throw new Error('Please sign in to interact with this Nest.');
+    }
+    return ctx.signEvent(kind, content, tags);
+  }
+
+  async function publishSignedRoomEvent(event, relays) {
+    const relayList = Array.from(new Set((relays || [])
+      .map(function(url) { return String(url || '').trim(); })
+      .filter(function(url) { return /^wss:\/\//i.test(url); })));
+    if (!relayList.length) throw new Error('No room relays are available.');
+
+    await Promise.all(relayList.map(function(relay) {
+      return new Promise(function(resolve) {
+        let settled = false;
+        let ws = null;
+        const timer = setTimeout(function() {
+          if (settled) return;
+          settled = true;
+          try { if (ws) ws.close(); } catch (_) {}
+          resolve(false);
+        }, 5000);
+        try { ws = new WebSocket(relay); } catch (_) { clearTimeout(timer); resolve(false); return; }
+        ws.onopen = function() {
+          try { ws.send(JSON.stringify(['EVENT', event])); } catch (_) {}
+        };
+        ws.onmessage = function(message) {
+          try {
+            const payload = JSON.parse(message.data);
+            if (payload[0] === 'OK') {
+              clearTimeout(timer);
+              settled = true;
+              try { ws.close(); } catch (_) {}
+              resolve(!!payload[2]);
+            }
+          } catch (_) {}
+        };
+        ws.onerror = function() {
+          if (settled) return;
+          clearTimeout(timer);
+          settled = true;
+          try { ws.close(); } catch (_) {}
+          resolve(false);
+        };
+      });
+    }));
+  }
+
+  async function authenticateNestAudio(roomEvent, namespace) {
+    const ctx = getSifakaContext();
+    const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+    if (!user || typeof ctx.signEvent !== 'function') return '';
+    const authUrl = tag(roomEvent, 'auth') || 'https://moq-auth.nostrnests.com';
+    const endpoint = authUrl.replace(/\/$/, '') + '/auth';
+    const signed = await ctx.signEvent(27235, '', [['u', endpoint], ['method', 'POST']]);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Nostr ' + btoa(JSON.stringify(signed))
+      },
+      body: JSON.stringify({ namespace: namespace, publish: false })
+    });
+    if (!response.ok) throw new Error('Nest audio authentication failed (' + response.status + ').');
+    const data = await response.json();
+    return String(data.token || '');
+  }
+
+  function updateActiveRoomAudioUi() {
+    if (!modal) return;
+    const status = modal.querySelector('#nestRoomAudioStatus');
+    const btn = modal.querySelector('#nestRoomMuteBtn');
+    const slider = modal.querySelector('#nestRoomVolume');
+    const dot = modal.querySelector('#nestRoomAudioDot');
+    if (status && activeRoomAudio) {
+      const state = activeRoomAudio.state || 'disconnected';
+      const count = activeRoomAudio.entries ? activeRoomAudio.entries.size : 0;
+      status.textContent = state === 'connected'
+        ? ('Connected • ' + count + ' speaker' + (count === 1 ? '' : 's'))
+        : (state.charAt(0).toUpperCase() + state.slice(1) + '…');
+      if (dot) dot.classList.toggle('connected', state === 'connected');
+    }
+    if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute' : 'Mute';
+    if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
+  }
+
   function ensureModal() {
     if (modal) return modal;
     modal = document.createElement('div');
