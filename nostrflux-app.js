@@ -12909,15 +12909,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       backBufferLength: 30,
       maxBufferLength: 45,
       maxMaxBufferLength: 120,
-      liveSyncDurationCount: 4,
-      liveMaxLatencyDurationCount: 12,
-      manifestLoadingTimeOut: 15000,
-      manifestLoadingMaxRetry: 5,
-      manifestLoadingRetryDelay: 1200,
-      levelLoadingTimeOut: 15000,
-      levelLoadingMaxRetry: 5,
-      fragLoadingTimeOut: 20000,
-      fragLoadingMaxRetry: 5,
+      // Start close to the live edge. Long startup waits are worse than a
+      // quick retry for a live-stream client.
+      liveSyncDurationCount: 2,
+      liveMaxLatencyDurationCount: 6,
+      manifestLoadingTimeOut: 7000,
+      manifestLoadingMaxRetry: 2,
+      manifestLoadingRetryDelay: 500,
+      levelLoadingTimeOut: 7000,
+      levelLoadingMaxRetry: 2,
+      fragLoadingTimeOut: 9000,
+      fragLoadingMaxRetry: 2,
       ...hlsConfig
     });
 
@@ -12926,8 +12928,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let lastNonFatalNetworkRecoveryAt = 0;
 
     onAttach(hls);
-    hls.loadSource(url);
+    // Attach the media element before loading the manifest so HLS.js can begin
+    // wiring playback immediately instead of waiting on a manifest first.
     hls.attachMedia(video);
+    hls.loadSource(url);
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       if (isStale()) return;
@@ -13263,11 +13267,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           },
           hlsConfig: {
             xhrSetup: (xhr) => { xhr.withCredentials = false; },
-            liveSyncDurationCount: 3,
-            liveMaxLatencyDurationCount: 9,
-            maxBufferLength: 30,
+            // Prefer fast startup while retaining enough buffer for recovery.
+            liveSyncDurationCount: 2,
+            liveMaxLatencyDurationCount: 6,
+            maxBufferLength: 20,
             maxMaxBufferLength: 90,
-            backBufferLength: 20,
+            backBufferLength: 12,
             maxBufferHole: 0.5,
             capLevelToPlayerSize: true,
             startLevel: -1
