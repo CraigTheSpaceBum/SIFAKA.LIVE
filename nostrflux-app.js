@@ -465,6 +465,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     dmSyncEoseTimer: null,
     dmBackfilling: false,
     dmBackfillSubId: null,
+    dmSubscriptionRetryTimer: null,
     postReactionPublishPendingByNoteAndKey: new Set(),
     postBoostPublishPendingByNoteId: new Set(),
     reactionPickerTarget: null,
@@ -3278,6 +3279,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     // Relay pool was rebuilt; force DM subscription to be recreated on the new pool.
     state.dmSubId = null;
+    if (state.dmSubscriptionRetryTimer) {
+      clearTimeout(state.dmSubscriptionRetryTimer);
+      state.dmSubscriptionRetryTimer = null;
+    }
     if (isMessagesPageVisible() && state.user) {
       ensureMessagesSession({ subscribe: true });
       renderMessagesPage({ subscribe: true });
@@ -5153,6 +5158,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function teardownDmSubscription() {
+    if (state.dmSubscriptionRetryTimer) {
+      clearTimeout(state.dmSubscriptionRetryTimer);
+      state.dmSubscriptionRetryTimer = null;
+    }
     if (state.dmSubId && state.pool) {
       try { state.pool.unsubscribe(state.dmSubId); } catch (_) {}
     }
@@ -7003,7 +7012,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     loadLocalDmActivitiesForOwner(owner);
 
     if (opts.subscribe !== false && !state.dmSubId) {
-      subscribeDirectMessages();
+      if (state.pool) {
+        subscribeDirectMessages();
+      } else if (isMessagesPageVisible()) {
+        // The Messages page can open while the relay pool is still rebuilding.
+        // Retry instead of leaving the page rendered with no DM subscription.
+        if (!state.dmSubscriptionRetryTimer) {
+          state.dmSubscriptionRetryTimer = setTimeout(() => {
+            state.dmSubscriptionRetryTimer = null;
+            if (isMessagesPageVisible() && state.user) {
+              ensureMessagesSession({ subscribe: true });
+              renderMessagesPage({ subscribe: false });
+            }
+          }, 1200);
+        }
+      }
     }
   }
 
