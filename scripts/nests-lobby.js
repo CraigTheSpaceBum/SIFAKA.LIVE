@@ -536,6 +536,16 @@
           '<div class="nest-preview-panel" data-panel="chat">' +
             '<div class="nest-preview-section nest-preview-chat-section"><div class="nest-preview-section-head"><span>Room chat</span><span id="nestPreviewChatCount">—</span></div><div class="nest-preview-chat" id="nestPreviewChat"></div></div>' +
           '</div>' +
+          '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
+            '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
+            '<strong id="nestRoomAudioStatus">Not connected</strong>' +
+            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute</button>' +
+            '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
+          '</div>' +
+          '<div class="nest-room-chat-compose" id="nestRoomChatCompose" hidden>' +
+            '<input id="nestRoomChatInput" type="text" maxlength="1000" placeholder="Say something in the room…" aria-label="Send a Nest room message">' +
+            '<button class="btn btn-primary" id="nestRoomChatSendBtn" type="button">Send</button>' +
+          '</div>' +
           '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join Nest</button></div>' +
           '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
         '</div>' +
@@ -568,15 +578,35 @@
     modal.addEventListener('click', function(e) { if (e.target === modal) closePreview(); });
     $('#nestPreviewJoinBtn', modal).addEventListener('click', function() {
       if (!activeRoomUrl) return;
-      // Use Sifaka's existing Nest join flow when available so room navigation,
-      // mobile handling, and any future in-app Nest integration remain intact.
-      if (typeof window.joinNestsRoom === 'function') {
-        try {
-          window.joinNestsRoom(activeRoomUrl, { external: true });
-          return;
-        } catch (_) {}
+      enterActiveRoom().catch(function(err) {
+        const status = $('#nestRoomAudioStatus', modal);
+        if (status) status.textContent = err && err.message ? err.message : 'Unable to join this Nest.';
+      });
+    });
+    $('#nestRoomMuteBtn', modal).addEventListener('click', function() {
+      if (!activeRoomAudio) return;
+      activeRoomAudio.setMuted(!activeRoomAudio.muted);
+      updateActiveRoomAudioUi();
+    });
+    $('#nestRoomVolume', modal).addEventListener('input', function() {
+      if (!activeRoomAudio) return;
+      activeRoomAudio.setVolume(Number(this.value) / 100);
+      updateActiveRoomAudioUi();
+    });
+    $('#nestRoomChatSendBtn', modal).addEventListener('click', function() {
+      sendActiveRoomChat().catch(function(err) {
+        const status = $('#nestRoomAudioStatus', modal);
+        if (status) status.textContent = err && err.message ? err.message : 'Could not send message';
+      });
+    });
+    $('#nestRoomChatInput', modal).addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendActiveRoomChat().catch(function(err) {
+          const status = $('#nestRoomAudioStatus', modal);
+          if (status) status.textContent = err && err.message ? err.message : 'Could not send message';
+        });
       }
-      window.open(activeRoomUrl, '_blank', 'noopener');
     });
     $('#nestPreviewShareBtn', modal).addEventListener('click', async function() {
       if (!activeRoomUrl) return;
