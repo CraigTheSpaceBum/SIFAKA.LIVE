@@ -6560,3 +6560,12 @@ footer p{font-size:.72rem;color:var(--muted);}
   #walletPage .wallet-action-tile{min-height:58px}
   #walletPage .wallet-address-card{align-items:flex-start}
 }
+
+
+/* Theater chat header: desktop is a static label; mobile is the collapsible button. */
+#videoPage .theater-chat-label{display:block;cursor:default;user-select:none;}
+#videoPage .mobile-chat-toggle{display:none;}
+@media(max-width:760px){
+  #videoPage .theater-chat-label{display:none;}
+  #videoPage .mobile-chat-toggle{display:block;}
+}
