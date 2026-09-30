@@ -161,7 +161,7 @@
   const REMOTE_SIGNER_REQUEST_TIMEOUT_MS = 18000;
   const REMOTE_SIGNER_CONNECT_TIMEOUT_MS = 28000;
   const REMOTE_SIGNER_SCAN_TIMEOUT_MS = 180000;
-  const REMOTE_SIGNER_REQUESTED_PERMS = 'sign_event,nip44_encrypt,nip44_decrypt,nip04_encrypt,nip04_decrypt';
+  const REMOTE_SIGNER_REQUESTED_PERMS = 'sign_event,nip04_encrypt,nip04_decrypt';
   const NWC_REQUEST_TIMEOUT_MS = 18000;
   const NWC_INFO_TIMEOUT_MS = 4500;
   const NWC_SCAN_INTERVAL_MS = 420;
@@ -7929,10 +7929,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     } else if (state.authMode === 'remote') {
       const remotePayload = { ...unsigned, pubkey: state.user.pubkey };
-      const response = await requestRemoteSigner('sign_event', [JSON.stringify(remotePayload)], {
-        timeoutMs: REMOTE_SIGNER_REQUEST_TIMEOUT_MS,
-        fallbackEncrypt: true
-      });
+      let response;
+      try {
+        // NIP-46 specifies a JSON-string parameter. Keep that as the primary
+        // format, but retry with the legacy object form for signers that still
+        // implement the older NIP-46 parameter shape.
+        response = await requestRemoteSigner('sign_event', [JSON.stringify(remotePayload)], {
+          timeoutMs: REMOTE_SIGNER_REQUEST_TIMEOUT_MS,
+          fallbackEncrypt: true
+        });
+      } catch (firstErr) {
+        if (firstErr && firstErr.remoteSignerResponse) {
+          response = await requestRemoteSigner('sign_event', [remotePayload], {
+            timeoutMs: REMOTE_SIGNER_REQUEST_TIMEOUT_MS,
+            fallbackEncrypt: true
+          });
+        } else {
+          throw firstErr;
+        }
+      }
       let parsed = null;
       if (typeof response === 'string') {
         try {
