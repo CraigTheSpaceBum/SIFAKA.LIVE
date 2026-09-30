@@ -1146,6 +1146,25 @@ body.nest-preview-open{overflow:hidden}
       </article>
     </section>
 
+    <section class="wallet-actions-card" id="walletActionsCard">
+      <div class="wallet-section-head">
+        <div>
+          <div class="wallet-card-label">Lightning</div>
+          <h3>Send & Receive</h3>
+        </div>
+      </div>
+      <div class="wallet-action-grid">
+        <button class="wallet-action-tile receive" type="button" onclick="openWalletReceive()">
+          <span class="wallet-action-icon">↓</span>
+          <span><strong>Receive</strong><small>Create an invoice and show its QR code</small></span>
+        </button>
+        <button class="wallet-action-tile send" type="button" onclick="openWalletSend()">
+          <span class="wallet-action-icon">↑</span>
+          <span><strong>Send</strong><small>Pay a Lightning invoice</small></span>
+        </button>
+      </div>
+    </section>
+
     <section class="wallet-mainchain-card" id="walletMainchainCard">
       <div class="wallet-section-head">
         <div>
@@ -1202,6 +1221,42 @@ body.nest-preview-open{overflow:hidden}
       </div>
       <button class="btn btn-primary" type="button" onclick="openSettings();">Open Wallet Settings</button>
     </section>
+  </div>
+</div>
+
+<div class="wallet-modal" id="walletActionModal" hidden aria-hidden="true">
+  <div class="wallet-modal-backdrop" onclick="closeWalletAction()"></div>
+  <div class="wallet-modal-card" role="dialog" aria-modal="true" aria-labelledby="walletModalTitle">
+    <div class="wallet-modal-head">
+      <div><div class="wallet-card-label">Lightning Wallet</div><h3 id="walletModalTitle">Receive</h3></div>
+      <button class="wallet-modal-close" type="button" onclick="closeWalletAction()" aria-label="Close">×</button>
+    </div>
+    <div class="wallet-modal-tabs">
+      <button type="button" class="wallet-modal-tab active" data-wallet-action="receive" onclick="setWalletAction('receive')">Receive</button>
+      <button type="button" class="wallet-modal-tab" data-wallet-action="send" onclick="setWalletAction('send')">Send</button>
+    </div>
+    <div id="walletReceivePanel">
+      <div class="wallet-qr-wrap"><div id="walletReceiveQr"></div><div id="walletQrEmpty">Connect a wallet to generate an invoice QR.</div></div>
+      <div class="wallet-invoice-box" id="walletReceiveInvoice">No invoice generated yet.</div>
+      <div class="wallet-modal-form">
+        <label>Amount (sats)<input id="walletReceiveAmount" type="number" min="1" step="1" inputmode="numeric" placeholder="Optional"></label>
+        <label>Memo<input id="walletReceiveMemo" type="text" maxlength="200" placeholder="What is this payment for?"></label>
+      </div>
+      <div class="wallet-modal-actions">
+        <button class="btn btn-primary" type="button" id="walletGenerateInvoiceBtn" onclick="generateWalletInvoice()">Generate invoice</button>
+        <button class="btn btn-ghost" type="button" onclick="copyWalletInvoice()">Copy invoice</button>
+      </div>
+      <div class="wallet-modal-status" id="walletReceiveStatus" aria-live="polite"></div>
+    </div>
+    <div id="walletSendPanel" hidden>
+      <label class="wallet-send-label">Lightning invoice<input id="walletSendInvoice" type="text" autocomplete="off" placeholder="lnbc..."></label>
+      <div class="wallet-invoice-preview" id="walletSendPreview">Paste a Lightning invoice to pay it from your connected wallet.</div>
+      <div class="wallet-modal-actions">
+        <button class="btn btn-primary" type="button" id="walletPayInvoiceBtn" onclick="payWalletInvoice()">Pay invoice</button>
+        <button class="btn btn-ghost" type="button" onclick="pasteWalletInvoice()">Paste</button>
+      </div>
+      <div class="wallet-modal-status" id="walletSendStatus" aria-live="polite"></div>
+    </div>
   </div>
 </div>
 
@@ -1930,6 +1985,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/profile-view.js" defer></script>
 <script src="./scripts/gif-provider.js" defer></script>
 <script src="./scripts/widgets-builder.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="./nostrflux-app.js" defer></script>
 <script src="scripts/nests-lobby.js"></script>
 </body>
