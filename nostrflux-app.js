@@ -465,6 +465,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     dmSyncEoseTimer: null,
     dmBackfilling: false,
     dmBackfillSubId: null,
+    remoteSignerHeartbeatTimer: null,
+    remoteSignerHeartbeatFailures: 0,
     dmSubscriptionRetryTimer: null,
     postReactionPublishPendingByNoteAndKey: new Set(),
     postBoostPublishPendingByNoteId: new Set(),
@@ -1083,6 +1085,44 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     teardownRemoteSignerSessionObject(current, reason);
   }
 
+  function stopRemoteSignerHeartbeat() {
+    if (state.remoteSignerHeartbeatTimer) {
+      clearInterval(state.remoteSignerHeartbeatTimer);
+      state.remoteSignerHeartbeatTimer = null;
+    }
+    state.remoteSignerHeartbeatFailures = 0;
+  }
+
+  function startRemoteSignerHeartbeat(session) {
+    stopRemoteSignerHeartbeat();
+    if (!session) return;
+
+    const check = async () => {
+      if (!state.remoteSignerSession || state.remoteSignerSession !== session || session.closed) {
+        stopRemoteSignerHeartbeat();
+        return;
+      }
+      try {
+        await sendRemoteSignerRequest(session, 'get_public_key', [], {
+          timeoutMs: 9000,
+          fallbackEncrypt: true
+        });
+        state.remoteSignerHeartbeatFailures = 0;
+      } catch (_) {
+        if (session.closed || !state.remoteSignerSession || state.remoteSignerSession !== session) return;
+        state.remoteSignerHeartbeatFailures = Number(state.remoteSignerHeartbeatFailures || 0) + 1;
+        // Allow one missed check for a temporary relay hiccup. Two consecutive
+        // failures mean the remote signer is no longer reachable.
+        if (state.remoteSignerHeartbeatFailures >= 2) {
+          stopRemoteSignerHeartbeat();
+          try { window.signOut({ remoteSignerDisconnected: true }); } catch (_) {}
+        }
+      }
+    };
+
+    state.remoteSignerHeartbeatTimer = setInterval(check, 30000);
+  }
+
   function setRemoteLoginStatus(message, mode = 'info') {
     const statusEl = qs('#remoteLoginStatus');
     if (!statusEl) return;
@@ -1612,6 +1652,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         persistRemoteSignerSession(session, session.connectSecret);
       }
       setAuthenticatedUser(userPubkey, 'remote');
+      startRemoteSignerHeartbeat(session);
       return userPubkey;
     } catch (err) {
       teardownRemoteSignerSessionObject(session, 'Remote signer connection failed.');
@@ -21975,12 +22016,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
 
     // ---- Sign out: clear all data, go home ----
-    window.signOut = function () {
+    window.signOut = function (opts = {}) {
+      const preserveSettings = !!opts.remoteSignerDisconnected;
       cancelRemoteLoginAttempt({ silent: true });
+      stopRemoteSignerHeartbeat();
       teardownRemoteSignerSession('Signed out.');
       clearPersistedRemoteSignerSession();
       stopNostrFeedSubscription();
-      try { localStorage.clear(); } catch (_) {}
+      try {
+        if (preserveSettings) {
+          localStorage.removeItem(REMOTE_SIGNER_STORAGE_KEY);
+          localStorage.removeItem(LOCAL_NSEC_STORAGE_KEY);
+        } else {
+          localStorage.clear();
+        }
+      } catch (_) {}
       state.user = null; state.authMode = 'readonly'; state.localSecretKey = null;
       state.remoteSignerSession = null; state.remoteLoginPending = false; state.remoteLoginAbortController = null; state.remoteLoginUri = '';
       stopViewerPresence();
