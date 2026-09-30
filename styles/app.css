@@ -5902,30 +5902,83 @@ footer p{font-size:.72rem;color:var(--muted);}
 @media (max-width:760px){.wallet-mainchain-grid{grid-template-columns:1fr;}.wallet-mainchain-address-row{align-items:flex-start;flex-direction:column;}}
 
 
-/* Nostr Nest */
-#nestsPage{display:none;min-height:calc(100vh - 72px)}
-.nests-page-wrap{max-width:1240px;margin:0 auto;padding:2.2rem 1.2rem 4rem}
-.nests-page-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:1.5rem;margin-bottom:1.5rem}
-.nests-page-eyebrow{font:700 .7rem/1 'DM Mono',monospace;letter-spacing:.14em;color:var(--purple);margin-bottom:.55rem}
-.nests-page-hero h2{margin:0 0 .45rem;font-family:var(--font-display);font-size:clamp(1.7rem,3vw,2.5rem)}
-.nests-page-hero p{margin:0;color:var(--text2);max-width:720px;line-height:1.55}
-.nests-tabs{display:flex;gap:.35rem;border-bottom:1px solid var(--border);margin-bottom:1.1rem}
-.nests-tab{border:0;background:transparent;color:var(--text2);padding:.75rem 1rem;font-weight:700;cursor:pointer;border-bottom:2px solid transparent}
-.nests-tab.active{color:var(--text);border-bottom-color:var(--purple)}
-.nests-page-status{min-height:1.3rem;color:var(--text2);font-size:.78rem;margin-bottom:.8rem}
-.nests-rooms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:1rem}
-.nests-room-card{overflow:hidden;border:1px solid var(--border);background:var(--surface);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.12)}
-.nests-room-cover{height:155px;position:relative;background:var(--surface2);overflow:hidden}
-.nests-room-cover img{width:100%;height:100%;object-fit:cover;display:block}
-.nests-room-art{width:100%;height:100%;display:grid;place-items:center;font:800 3.5rem/1 var(--font-display);color:var(--purple);background:linear-gradient(135deg,var(--surface2),var(--surface3))}
-.nests-live-badge{position:absolute;left:.75rem;top:.75rem;padding:.35rem .55rem;border-radius:999px;background:rgba(0,0,0,.7);color:#fff;font:700 .62rem/1 'DM Mono',monospace}
-.nests-live-badge.is-live{background:var(--live)}
-.nests-room-body{padding:1rem}
-.nests-room-body h3{margin:0 0 .4rem;font-size:1rem}
-.nests-room-body p{margin:0 0 .8rem;color:var(--text2);font-size:.8rem;line-height:1.45;min-height:2.3em}
-.nests-room-meta{display:flex;gap:.4rem;color:var(--text2);font-size:.72rem;margin-bottom:.9rem;overflow:hidden}
+
+/* ======== NOSTR NEST ======== */
+#nestsPage{display:none;min-height:calc(100vh - 72px);background:radial-gradient(circle at 85% 5%,color-mix(in srgb,var(--purple) 12%,transparent),transparent 28rem)}
+.nests-page-wrap{max-width:1280px;margin:0 auto;padding:2rem 1.25rem 4.5rem}
+.nests-page-hero{position:relative;display:flex;align-items:center;justify-content:space-between;gap:2rem;min-height:210px;padding:2rem 2.1rem;margin-bottom:1rem;overflow:hidden;border:1px solid var(--border2);border-radius:24px;background:linear-gradient(125deg,color-mix(in srgb,var(--purple) 13%,var(--surface)) 0%,var(--surface) 48%,color-mix(in srgb,var(--accent) 7%,var(--surface)) 100%);box-shadow:0 18px 55px rgba(0,0,0,.12)}
+.nests-page-hero::before,.nests-page-hero::after{content:"";position:absolute;border-radius:50%;pointer-events:none}
+.nests-page-hero::before{width:260px;height:260px;right:80px;top:-180px;background:color-mix(in srgb,var(--purple) 18%,transparent);filter:blur(5px)}
+.nests-page-hero::after{width:180px;height:180px;right:280px;bottom:-150px;background:color-mix(in srgb,var(--accent) 11%,transparent);filter:blur(8px)}
+.nests-hero-copy{position:relative;z-index:1}
+.nests-page-eyebrow{display:flex;align-items:center;gap:.5rem;font:700 .66rem/1 'DM Mono',monospace;letter-spacing:.16em;color:var(--purple);margin-bottom:.65rem}
+.nests-eyebrow-dot{width:7px;height:7px;border-radius:50%;background:var(--live);box-shadow:0 0 12px var(--live);animation:nestsPulse 1.8s ease-in-out infinite}
+.nests-page-hero h2{margin:0 0 .5rem;font-family:var(--font-display);font-size:clamp(1.9rem,4vw,3rem);letter-spacing:-.025em}
+.nests-page-hero p{margin:0;color:var(--text2);max-width:650px;font-size:.84rem;line-height:1.65}
+.nests-hero-side{position:relative;z-index:1;display:flex;align-items:center;gap:1rem}
+.nests-hero-orbit{display:grid;place-items:center;width:92px;height:92px;border:1px solid color-mix(in srgb,var(--purple) 45%,var(--border));border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--purple) 16%,var(--surface2)),transparent 68%);box-shadow:0 0 45px color-mix(in srgb,var(--purple) 15%,transparent)}
+.nests-hero-orbit::before,.nests-hero-orbit::after{content:"";position:absolute;width:108px;height:42px;border:1px solid color-mix(in srgb,var(--purple) 25%,transparent);border-radius:50%;transform:rotate(28deg)}
+.nests-hero-orbit::after{transform:rotate(-28deg)}
+.nests-hero-orbit span{font-size:1.7rem;color:var(--purple);text-shadow:0 0 18px color-mix(in srgb,var(--purple) 65%,transparent)}
+.nests-refresh-btn{white-space:nowrap}
+.nests-refresh-btn span{font-size:1rem;margin-right:.25rem}
+.nests-toolbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.9rem}
+.nests-tabs{display:flex;gap:.25rem;padding:.25rem;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 6px 20px rgba(0,0,0,.06)}
+.nests-tab{position:relative;border:0;border-radius:9px;background:transparent;color:var(--text2);padding:.58rem .85rem;font-size:.72rem;font-weight:700;cursor:pointer;transition:background .18s ease,color .18s ease,transform .18s ease}
+.nests-tab:hover{color:var(--text);background:var(--surface2)}
+.nests-tab.active{color:var(--text);background:var(--surface2);box-shadow:0 2px 10px rgba(0,0,0,.08)}
+.nests-tab.active::after{content:"";position:absolute;left:25%;right:25%;bottom:3px;height:2px;border-radius:2px;background:var(--purple)}
+.nests-live-note{display:flex;align-items:center;gap:.45rem;color:var(--muted);font:500 .62rem/1 'DM Mono',monospace;text-transform:uppercase;letter-spacing:.06em}
+.nests-live-pulse{width:6px;height:6px;border-radius:50%;background:var(--live);box-shadow:0 0 10px var(--live)}
+.nests-page-status{min-height:1.2rem;margin:0 0 .8rem;padding-left:.2rem;color:var(--muted);font:500 .62rem/1.4 'DM Mono',monospace}
+.nests-rooms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem}
+.nests-room-card{position:relative;overflow:hidden;border:1px solid var(--border);background:var(--surface);border-radius:17px;box-shadow:0 10px 30px rgba(0,0,0,.09);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.nests-room-card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--purple) 38%,var(--border));box-shadow:0 18px 38px rgba(0,0,0,.15)}
+.nests-room-cover{height:174px;position:relative;background:linear-gradient(135deg,var(--surface2),var(--surface3));overflow:hidden}
+.nests-room-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 48%,rgba(0,0,0,.52));pointer-events:none}
+.nests-room-cover img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .35s ease}
+.nests-room-card:hover .nests-room-cover img{transform:scale(1.035)}
+.nests-room-art{width:100%;height:100%;display:grid;place-items:center;font:800 4rem/1 var(--font-display);color:var(--purple);background:radial-gradient(circle at 35% 25%,color-mix(in srgb,var(--purple) 22%,transparent),transparent 35%),linear-gradient(135deg,var(--surface2),var(--surface3))}
+.nests-live-badge{position:absolute;z-index:1;left:.75rem;top:.75rem;padding:.35rem .55rem;border:1px solid rgba(255,255,255,.14);border-radius:999px;background:rgba(0,0,0,.66);backdrop-filter:blur(8px);color:#fff;font:700 .58rem/1 'DM Mono',monospace;letter-spacing:.04em}
+.nests-live-badge.is-live{background:color-mix(in srgb,var(--live) 88%,#000);box-shadow:0 5px 18px color-mix(in srgb,var(--live) 28%,transparent)}
+.nests-room-body{padding:1rem 1rem 1.05rem}
+.nests-room-body h3{margin:0 0 .42rem;font-size:1rem;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nests-room-body p{margin:0 0 .85rem;color:var(--text2);font-size:.76rem;line-height:1.5;min-height:2.28em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nests-room-meta{display:flex;align-items:center;gap:.4rem;color:var(--text2);font-size:.68rem;margin-bottom:.9rem;min-width:0}
 .nests-room-meta span:first-child{color:var(--text);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nests-room-actions{display:flex;gap:.5rem}
-.nests-room-actions .btn{flex:1}
-.nests-empty-state{grid-column:1/-1;border:1px dashed var(--border);border-radius:14px;padding:2.5rem;text-align:center;color:var(--text2)}
-@media(max-width:650px){.nests-page-wrap{padding:1.2rem .8rem 3rem}.nests-page-hero{align-items:flex-start;flex-direction:column}.nests-page-hero .btn{width:100%}.nests-room-actions{flex-direction:column}}
+.nests-room-actions{display:grid;grid-template-columns:1.25fr .75fr;gap:.5rem}
+.nests-room-actions .btn{min-height:38px}
+.nests-empty-state{grid-column:1/-1;min-height:190px;display:grid;place-items:center;border:1px dashed var(--border2);border-radius:17px;padding:2rem;text-align:center;color:var(--text2);background:color-mix(in srgb,var(--surface) 75%,transparent)}
+@keyframes nestsPulse{0%,100%{opacity:.55;transform:scale(.9)}50%{opacity:1;transform:scale(1.12)}}
+@media(max-width:760px){
+  #nestsPage{background:radial-gradient(circle at 90% 0%,color-mix(in srgb,var(--purple) 10%,transparent),transparent 18rem)}
+  .nests-page-wrap{padding:1rem .7rem 3rem}
+  .nests-page-hero{align-items:flex-start;flex-direction:column;gap:1.2rem;min-height:0;padding:1.35rem 1.1rem;border-radius:18px}
+  .nests-page-hero h2{font-size:1.75rem}
+  .nests-page-hero p{font-size:.75rem;line-height:1.55}
+  .nests-hero-side{width:100%;justify-content:space-between}
+  .nests-hero-orbit{width:62px;height:62px}
+  .nests-hero-orbit::before,.nests-hero-orbit::after{width:76px;height:30px}
+  .nests-hero-orbit span{font-size:1.2rem}
+  .nests-refresh-btn{flex:1;min-height:42px}
+  .nests-toolbar{align-items:stretch;flex-direction:column;gap:.55rem}
+  .nests-tabs{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}
+  .nests-tab{padding:.65rem .35rem;font-size:.67rem}
+  .nests-live-note{justify-content:center;padding:.2rem 0}
+  .nests-rooms-grid{grid-template-columns:1fr;gap:.75rem}
+  .nests-room-cover{height:165px}
+  .nests-room-card{border-radius:15px}
+  .nests-room-card:hover{transform:none}
+  .nests-room-body{padding:.9rem}
+  .nests-room-actions{grid-template-columns:1fr 1fr}
+  .nests-room-actions .btn{min-height:40px}
+}
+@media(max-width:390px){
+  .nests-page-wrap{padding-left:.55rem;padding-right:.55rem}
+  .nests-page-hero{padding:1.1rem .9rem}
+  .nests-room-actions{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){
+  .nests-eyebrow-dot{animation:none}
+  .nests-room-card,.nests-room-cover img,.nests-tab{transition:none}
+}
