@@ -78,6 +78,13 @@
       const events = new Map();
       let pending = RELAYS.length, settled = false;
       const localSockets = [];
+      const relayDone = new Set();
+      const markRelayDone = function(index) {
+        if (relayDone.has(index)) return false;
+        relayDone.add(index);
+        pending--;
+        return true;
+      };
       const finish = function() {
         if (settled) return;
         settled = true;
@@ -85,10 +92,10 @@
         resolve(Array.from(events.values()));
       };
       const timer = setTimeout(finish, timeout);
-      RELAYS.forEach(function(relay) {
+      RELAYS.forEach(function(relay, relayIndex) {
         let ws;
         try { ws = new WebSocket(relay); }
-        catch (_) { pending--; if (!pending) { clearTimeout(timer); finish(); } return; }
+        catch (_) { markRelayDone(relayIndex); if (!pending) { clearTimeout(timer); finish(); } return; }
         localSockets.push(ws);
         ws.onopen = function() {
           try { ws.send(JSON.stringify(['REQ', 'sifaka-nest-' + Math.random().toString(36).slice(2), ...filters])); } catch (_) {}
@@ -98,13 +105,13 @@
             const m = JSON.parse(message.data);
             if (m[0] === 'EVENT' && m[2] && m[2].id) events.set(m[2].id, m[2]);
             if (m[0] === 'EOSE') {
-              pending--;
+              markRelayDone(relayIndex);
               if (!pending) { clearTimeout(timer); finish(); }
             }
           } catch (_) {}
         };
         ws.onerror = function() {
-          pending--;
+          markRelayDone(relayIndex);
           if (!pending) { clearTimeout(timer); finish(); }
         };
         ws.onclose = function() {
@@ -208,14 +215,25 @@
         '<div class="nest-preview-cover" id="nestPreviewCover"></div>' +
         '<div class="nest-preview-content">' +
           '<div class="nest-preview-status" id="nestPreviewStatus"></div>' +
+          '<div class="nest-preview-tabs" role="tablist" aria-label="Nest sections">' +
+            '<button type="button" class="nest-preview-tab active" role="tab" aria-selected="true" data-tab="overview">Overview</button>' +
+            '<button type="button" class="nest-preview-tab" role="tab" aria-selected="false" data-tab="people">People</button>' +
+            '<button type="button" class="nest-preview-tab" role="tab" aria-selected="false" data-tab="chat">Chat</button>' +
+          '</div>' +
           '<h2 id="nestPreviewTitle">Nostr Nest</h2>' +
           '<p class="nest-preview-summary" id="nestPreviewSummary"></p>' +
-          '<div class="nest-preview-stats" id="nestPreviewStats"></div>' +
-          '<div class="nest-preview-schedule" id="nestPreviewSchedule"></div>' +
+          '<div class="nest-preview-panel active" data-panel="overview">' +
+            '<div class="nest-preview-stats" id="nestPreviewStats"></div>' +
+            '<div class="nest-preview-schedule" id="nestPreviewSchedule"></div>' +
+            '<div class="nest-preview-topics" id="nestPreviewTopics"></div>' +
+          '</div>' +
+          '<div class="nest-preview-panel" data-panel="people">' +
           '<div class="nest-preview-section"><div class="nest-preview-section-head"><span>On stage</span><span id="nestPreviewPeopleCount"></span></div><div class="nest-preview-people" id="nestPreviewPeople"></div></div>' +
           '<div class="nest-preview-section"><div class="nest-preview-section-head"><span>Listeners</span><span id="nestPreviewListenerCount">—</span></div><div class="nest-preview-listeners" id="nestPreviewListeners"></div></div>' +
-          '<div class="nest-preview-section nest-preview-chat-section"><div class="nest-preview-section-head"><span>Room chat</span><span id="nestPreviewChatCount">—</span></div><div class="nest-preview-chat" id="nestPreviewChat"></div></div>' +
-          '<div class="nest-preview-topics" id="nestPreviewTopics"></div>' +
+          '</div>' +
+          '<div class="nest-preview-panel" data-panel="chat">' +
+            '<div class="nest-preview-section nest-preview-chat-section"><div class="nest-preview-section-head"><span>Room chat</span><span id="nestPreviewChatCount">—</span></div><div class="nest-preview-chat" id="nestPreviewChat"></div></div>' +
+          '</div>' +
           '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join Nest</button></div>' +
           '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
         '</div>' +
@@ -269,6 +287,19 @@
         }
       } catch (_) {}
     });
+    Array.from(modal.querySelectorAll('.nest-preview-tab')).forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        const target = tab.getAttribute('data-tab');
+        Array.from(modal.querySelectorAll('.nest-preview-tab')).forEach(function(t) {
+          const active = t === tab;
+          t.classList.toggle('active', active);
+          t.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        Array.from(modal.querySelectorAll('.nest-preview-panel')).forEach(function(panel) {
+          panel.classList.toggle('active', panel.getAttribute('data-panel') === target);
+        });
+      });
+    });
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && modal.classList.contains('open')) closePreview(); });
     return modal;
   }
@@ -304,6 +335,11 @@
     $('#nestPreviewChatCount', modal).textContent = 'Loading…';
     $('#nestPreviewChat', modal).innerHTML = '<div class="nest-preview-chat-loading"><span></span><span></span><span></span></div>';
     $('#nestPreviewTopics', modal).innerHTML = (fallback.topics || []).map(function(t) { return '<span>#' + esc(t) + '</span>'; }).join('');
+    Array.from(modal.querySelectorAll('.nest-preview-tab')).forEach(function(t) {
+      const active = t.getAttribute('data-tab') === 'overview';
+      t.classList.toggle('active', active); t.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    Array.from(modal.querySelectorAll('.nest-preview-panel')).forEach(function(p) { p.classList.toggle('active', p.getAttribute('data-panel') === 'overview'); });
     $('#nestPreviewFootnote', modal).textContent = 'Loading Nostr room metadata…';
   }
 
