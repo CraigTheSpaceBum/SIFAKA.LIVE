@@ -20927,7 +20927,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     window.switchSettingsTab = function (tab) {
       if (tab !== 'wallet') stopWalletScanner({ keepStatus: true });
       if (tab !== 'relays') window.closeRelayAddModal();
-      ['profile','wallet','relays','app'].forEach(t => {
+      ['profile','wallet','relays','app','themes'].forEach(t => {
         const btn = qs(`#smTab-${t}`);
         const panel = qs(`#smPanel${t.charAt(0).toUpperCase()+t.slice(1)}`);
         if (btn) btn.classList.toggle('active', t === tab);
@@ -21165,7 +21165,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
 
     // Save app/interface settings only
-    window.saveAppSettings = function () {
+        // Save theme settings separately from the App tab.
+    window.saveThemeSettings = function () {
+      try {
+        const next = collectSettingsFromModal();
+        applySettings(next, { reconnect: false });
+        window.closeSettings();
+      } catch (err) {
+        alert(err.message || 'Failed to save theme settings.');
+      }
+    };
+
+window.saveAppSettings = function () {
       try {
         const next = collectSettingsFromModal();
         applySettings(next, { reconnect: false });
