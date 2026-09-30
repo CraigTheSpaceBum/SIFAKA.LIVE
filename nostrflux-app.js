@@ -293,6 +293,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     nwcLastProbe: null,
     walletPageSession: null,
     walletPageLoadToken: 0,
+    nestsSubId: null,
+    nestsRooms: new Map(),
+    nestsTab: 'live',
     remoteLoginPending: false,
     remoteLoginAbortController: null,
     remoteLoginUri: '',
@@ -20173,6 +20176,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const messages = qs('#messagesPage');
       const myStreams = qs('#myStreamsPage');
       const wallet = qs('#walletPage');
+      const nests = qs('#nestsPage');
       const widgets = qs('#widgetsPage');
       const faq = qs('#faqPage');
       if (p !== 'video') {
@@ -20181,6 +20185,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         stopLivePresenceTracker();
         stopChatSubscription();
       }
+      if (p !== 'nests') stopNestsSubscription();
       if (p !== 'wallet' && state.walletPageSession) {
         teardownNwcSessionObject(state.walletPageSession, 'Leaving wallet page.');
         state.walletPageSession = null;
@@ -20199,6 +20204,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (p === 'messages' && routeMode !== 'skip') syncMessagesRoute(routeMode);
       if (p === 'myStreams' && routeMode !== 'skip') syncMyStreamsRoute(routeMode);
       if (p === 'wallet' && routeMode !== 'skip') syncWalletRoute(routeMode);
+      if (p === 'nests' && routeMode !== 'skip') history.pushState({}, '', '/nests');
       if (p === 'widgets' && routeMode !== 'skip') syncWidgetsRoute(routeMode);
       if (p === 'communities' && routeMode !== 'skip') syncCommunitiesRoute(routeMode);
       if (home) home.classList.toggle('active', p === 'home');
@@ -20211,9 +20217,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (messages) messages.style.display = p === 'messages' ? 'block' : 'none';
       if (myStreams) myStreams.style.display = p === 'myStreams' ? 'block' : 'none';
       if (wallet) wallet.style.display = p === 'wallet' ? 'block' : 'none';
+      if (nests) nests.style.display = p === 'nests' ? 'block' : 'none';
       if (widgets) widgets.style.display = p === 'widgets' ? 'block' : 'none';
       if (faq) faq.style.display = p === 'faq' ? 'block' : 'none';
       if (p === 'wallet' && typeof window.loadWalletPage === 'function') window.loadWalletPage();
+      if (p === 'nests' && typeof window.loadNestsPage === 'function') window.loadNestsPage();
       // Communities/home router behavior:
       // - home keeps hero playback and cycling
       // - all other top-level pages fully stop hero playback
@@ -20746,6 +20754,127 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const routeMode = opts.routeMode || 'push';
       window.showPage('wallet', { routeMode });
       return true;
+    };
+
+    function stopNestsSubscription() {
+      if (state.nestsSubId && state.pool) {
+        try { state.pool.unsubscribe(state.nestsSubId); } catch (_) {}
+      }
+      state.nestsSubId = null;
+    }
+
+    function parseNestsEvent(ev) {
+      const tags = Array.isArray(ev && ev.tags) ? ev.tags : [];
+      const tag = (name) => {
+        const found = tags.find(t => Array.isArray(t) && t[0] === name);
+        return found ? String(found[1] || '') : '';
+      };
+      const all = (name) => tags.filter(t => Array.isArray(t) && t[0] === name).map(t => t[1]).filter(Boolean);
+      const kind = Number(ev && ev.kind || 0);
+      const d = tag('d');
+      if (!d || !ev.pubkey) return null;
+      return {
+        id: String(ev.id || ''),
+        pubkey: normalizePubkeyHex(ev.pubkey),
+        d,
+        kind,
+        title: tag('room') || tag('title') || 'Nostr Nest',
+        summary: tag('summary'),
+        image: tag('image'),
+        status: tag('status') || (kind === 30312 ? 'open' : 'planned'),
+        service: tag('service'),
+        streaming: tag('streaming'),
+        starts: Number(tag('starts') || 0),
+        ends: Number(tag('ends') || 0),
+        participants: Number(tag('current_participants') || 0),
+        participantPubkeys: all('p'),
+        createdAt: Number(ev.created_at || 0),
+        aTag: `${kind}:${normalizePubkeyHex(ev.pubkey)}:${d}`
+      };
+    }
+
+    function renderNestsPage() {
+      const grid = qs('#nestsRoomsGrid');
+      if (!grid) return;
+      const now = Math.floor(Date.now() / 1000);
+      const following = state.followedPubkeys || new Set();
+      let rooms = Array.from(state.nestsRooms.values()).filter(room => {
+        if (state.nestsTab === 'following') return following.has(room.pubkey);
+        if (state.nestsTab === 'upcoming') return room.status === 'planned' || (room.starts && room.starts > now);
+        return room.status === 'live' || room.status === 'open';
+      });
+      rooms.sort((a,b) => (Number(b.starts || b.createdAt) - Number(a.starts || a.createdAt)));
+      if (!rooms.length) {
+        grid.innerHTML = '<div class="nests-empty-state">No rooms found in this category yet.</div>';
+        return;
+      }
+      grid.innerHTML = rooms.slice(0, 80).map(room => {
+        const profile = profileFor(room.pubkey) || {};
+        const name = escapeHtml(profile.display_name || profile.name || formatNpubForDisplay(room.pubkey));
+        const title = escapeHtml(room.title);
+        const summary = escapeHtml(room.summary || 'Live audio conversation on Nostr.');
+        const img = room.image ? `<img src="${escapeHtml(room.image)}" alt="" loading="lazy">` : '<div class="nests-room-art">N</div>';
+        const when = room.status === 'live' || room.status === 'open'
+          ? 'LIVE NOW'
+          : room.starts ? new Date(room.starts * 1000).toLocaleString() : 'Scheduled';
+        const count = room.participants ? `${formatCount(room.participants)} listening` : 'Audio room';
+        const naddr = typeof encodeNaddr === 'function' ? encodeNaddr(room.pubkey, room.d, room.kind) : '';
+        const joinUrl = room.service || room.streaming || (naddr ? `https://nostrnests.com/${naddr}` : 'https://nostrnests.com/lobby');
+        return `<article class="nests-room-card">
+          <div class="nests-room-cover">${img}<span class="nests-live-badge ${room.status === 'live' || room.status === 'open' ? 'is-live' : ''}">${escapeHtml(when)}</span></div>
+          <div class="nests-room-body">
+            <h3>${title}</h3>
+            <p>${summary}</p>
+            <div class="nests-room-meta"><span>${name}</span><span>·</span><span>${escapeHtml(count)}</span></div>
+            <div class="nests-room-actions">
+              <button class="btn btn-primary" type="button" onclick="joinNestsRoom(${JSON.stringify(joinUrl)})">Join Nest</button>
+              <button class="btn btn-ghost" type="button" onclick="showProfile('', '', '', '', '${room.pubkey}')">Profile</button>
+            </div>
+          </div>
+        </article>`;
+      }).join('');
+    }
+
+    window.setNestsTab = function(tab) {
+      state.nestsTab = ['live','upcoming','following'].includes(tab) ? tab : 'live';
+      ['live','upcoming','following'].forEach(id => {
+        const el = qs('#nests' + id.charAt(0).toUpperCase() + id.slice(1) + 'Tab');
+        if (el) el.classList.toggle('active', id === state.nestsTab);
+      });
+      renderNestsPage();
+    };
+
+    window.joinNestsRoom = function(url) {
+      const target = String(url || '').trim();
+      if (!target) return;
+      window.open(target, '_blank', 'noopener');
+    };
+
+    window.loadNestsPage = async function(force = false) {
+      const grid = qs('#nestsRoomsGrid');
+      const status = qs('#nestsPageStatus');
+      if (!grid || !state.pool) return;
+      if (force) state.nestsRooms.clear();
+      stopNestsSubscription();
+      if (status) status.textContent = 'Discovering Nostr Nests…';
+      grid.innerHTML = '<div class="nests-empty-state">Discovering live audio rooms…</div>';
+      const since = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 2;
+      state.nestsSubId = state.pool.subscribe(
+        [{ kinds: [30312, 30313], limit: 200, since }],
+        {
+          event: (ev) => {
+            const room = parseNestsEvent(ev);
+            if (!room) return;
+            state.nestsRooms.set(room.aTag, room);
+            if (room.pubkey) fetchProfileIfNeeded(room.pubkey).then(() => renderNestsPage()).catch(() => {});
+            renderNestsPage();
+          },
+          eose: () => {
+            if (status) status.textContent = `${state.nestsRooms.size} Nostr Nest room${state.nestsRooms.size === 1 ? '' : 's'} discovered.`;
+            renderNestsPage();
+          }
+        }
+      );
     };
 
     window.loadWalletPage = async function (force = false) {
