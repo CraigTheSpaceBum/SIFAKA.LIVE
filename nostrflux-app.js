@@ -12567,6 +12567,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   /* ---- Clear hero HLS ---- */
   function clearHeroPlayback() {
     state.heroPlaybackToken++;
+    if (state.heroAudioCleanup) {
+      try { state.heroAudioCleanup(); } catch (_) {}
+      state.heroAudioCleanup = null;
+    }
     state.featuredCurrentAddress = '';
     if (!state.activeViewerAddress) stopViewerPresence();
     setActiveHeroViewerAddress('');
@@ -12695,6 +12699,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     document.addEventListener('keydown', unlockHeroAudio);
     document.addEventListener('touchstart', unlockHeroAudio, { passive: true });
     document.addEventListener('visibilitychange', unlockHeroAudio);
+    state.heroAudioCleanup = () => {
+      clearHeroAudioRetries();
+      document.removeEventListener('pointerdown', unlockHeroAudio);
+      document.removeEventListener('keydown', unlockHeroAudio);
+      document.removeEventListener('touchstart', unlockHeroAudio);
+      document.removeEventListener('visibilitychange', unlockHeroAudio);
+    };
 
     // On error -> mark as failed and advance
     video.addEventListener('error', () => {
