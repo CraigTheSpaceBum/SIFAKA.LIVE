@@ -1027,6 +1027,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (!remoteSignerPubkey || !/^[0-9a-f]{64}$/.test(clientSecretHex)) return null;
       const relays = uniqueRelayUrls(parsed.relays || []);
       if (!relays.length) relays.push('wss://relay.primal.net');
+      // Primal's NIP-46 remote signer uses its dedicated Nostr Remote Signer
+      // relay. Migrate older saved sessions that only remembered the normal
+      // Primal public relay so an existing login can recover without forcing
+      // the user to reconnect manually.
+      if (
+        relays.includes('wss://relay.primal.net') &&
+        !relays.includes('wss://nrs.primal.net')
+      ) {
+        relays.unshift('wss://nrs.primal.net');
+      }
       return {
         remoteSignerPubkey,
         relays,
@@ -1615,9 +1625,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function preferredRemoteQrRelays() {
     const configured = uniqueRelayUrls(state.relays || []);
-    if (configured.includes('wss://relay.primal.net')) return ['wss://relay.primal.net'];
-    if (configured.length) return [configured[0]];
-    return ['wss://relay.primal.net'];
+    // Primal uses a dedicated NIP-46 relay (nrs.primal.net), not just its
+    // general-purpose public relay. Keep the general relay as a fallback and
+    // retain one configured relay for compatibility with other signers.
+    return uniqueRelayUrls([
+      'wss://nrs.primal.net',
+      'wss://relay.primal.net',
+      ...configured
+    ]).slice(0, 3);
   }
 
   async function loginWithRemoteSignerQr(persist = true, opts = {}) {
