@@ -474,6 +474,11 @@
     </div>
     <div class="smv2-panel" id="smPanelWallet">
       <div class="smv2-panel-label">NIP-47 / Nostr Wallet Connect - connect an external Lightning wallet for zaps</div>
+      <div class="fg wallet-mainchain-address-field" style="margin-bottom:.7rem">
+        <label for="settingsBitcoinAddressInput">₿ Bitcoin Mainchain Address</label>
+        <input id="settingsBitcoinAddressInput" type="text" placeholder="bc1... or 1... / 3..." spellcheck="false" autocomplete="off">
+        <div class="smv2-field-hint">Optional. Stored locally in this browser and used to display your on-chain Bitcoin balance and transactions.</div>
+      </div>
       <div class="wallet-connect-card">
         <div class="wallet-connect-head">
           <div>
@@ -1062,6 +1067,31 @@
           <div class="wallet-info-empty">No wallet connected.</div>
         </div>
       </article>
+    </section>
+
+    <section class="wallet-mainchain-card" id="walletMainchainCard">
+      <div class="wallet-section-head">
+        <div>
+          <div class="wallet-card-label">₿ Bitcoin Mainchain</div>
+          <h3>On-chain Wallet</h3>
+        </div>
+        <span class="wallet-status-chip" id="walletMainchainStatus">Not configured</span>
+      </div>
+      <div class="wallet-mainchain-grid">
+        <div class="wallet-mainchain-balance">
+          <span>Confirmed Balance</span>
+          <strong id="walletMainchainBalance">—</strong>
+          <small id="walletMainchainPending">Add a Bitcoin address in Settings → Wallet.</small>
+        </div>
+        <div class="wallet-mainchain-stats" id="walletMainchainStats"></div>
+      </div>
+      <div class="wallet-mainchain-address-row">
+        <span id="walletMainchainAddress">No address configured</span>
+        <a id="walletMainchainExplorer" href="#" target="_blank" rel="noopener" hidden>View on mempool.space</a>
+      </div>
+      <div id="walletMainchainTransactions" class="wallet-transactions-list wallet-mainchain-transactions">
+        <div class="wallet-empty-state">Your on-chain Bitcoin transactions will appear here.</div>
+      </div>
     </section>
 
     <section class="wallet-address-card" id="walletAddressCard">
