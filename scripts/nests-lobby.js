@@ -1199,6 +1199,17 @@
 
   function boot() {
     ensureModal();
+    window.enterNestsRoom = function(url) {
+      const target = String(url || '').trim();
+      if (!target) return;
+      activeRoomUrl = target;
+      enterActiveRoom().catch(function(err) {
+        console.warn('[sifaka-nests] native room join failed', err);
+      });
+    };
+    window.leaveNestsRoom = function() {
+      leaveActiveRoom();
+    };
     window.openNestsRoomPreview = function(url, fallback = {}) {
       const target = String(url || '').trim();
       if (!target) return;
