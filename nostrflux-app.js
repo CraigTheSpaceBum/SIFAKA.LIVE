@@ -19990,6 +19990,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         getUser: () => (state.user ? { ...state.user } : null),
         getRelays: () => [...state.relays],
         getSettings: () => ({ ...state.settings }),
+        signEvent: (kind, content, tags, opts = {}) => signEvent(kind, content, tags, opts),
         openLogin: () => window.openLogin(),
         showMessages: () => window.showMessages(),
         showNotifications: () => window.showNotifications(),
