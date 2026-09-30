@@ -4469,7 +4469,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function isNestsPath(pathname) {
     const raw = (pathname || '/').trim();
     const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
-    return normalized.toLowerCase() === '/nests';
+    const lower = normalized.toLowerCase();
+    // Keep both spellings working so existing bookmarks and the shorter /nest URL
+    // resolve to the same Nostr Nest page.
+    return lower === '/nest' || lower === '/nests';
   }
 
   function isWidgetsPath(pathname) {
@@ -5106,6 +5109,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       return;
     }
     if (window.showPage) window.showPage('wallet', { routeMode: 'skip' });
+  }
+
+  function showNestsFromRoute() {
+    if (window.showPage) window.showPage('nests', { routeMode: 'skip' });
   }
 
   function showWidgetsFromRoute() {
