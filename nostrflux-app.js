@@ -4420,6 +4420,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return normalized.toLowerCase() === '/wallet';
   }
 
+  function isNestsPath(pathname) {
+    const raw = (pathname || '/').trim();
+    const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
+    return normalized.toLowerCase() === '/nests';
+  }
+
   function isWidgetsPath(pathname) {
     const raw = (pathname || '/').trim();
     const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
@@ -4887,6 +4893,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function syncNestsRoute(mode = 'push') {
+    if (!window.history || !window.history.pushState) return;
+    if (isNestsPath(window.location.pathname)) return;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try { window.history[method]({ view: 'nests' }, '', '/nests'); } catch (_) {}
+  }
+
   function syncWidgetsRoute(mode = 'push') {
     if (!window.history || !window.history.pushState) return;
     if (isWidgetsPath(window.location.pathname)) return;
@@ -5089,6 +5102,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (isWalletPath(window.location.pathname)) {
       showWalletFromRoute();
+      return;
+    }
+    if (isNestsPath(window.location.pathname)) {
+      showNestsFromRoute();
       return;
     }
     if (isWidgetsPath(window.location.pathname)) {
@@ -20204,7 +20221,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (p === 'messages' && routeMode !== 'skip') syncMessagesRoute(routeMode);
       if (p === 'myStreams' && routeMode !== 'skip') syncMyStreamsRoute(routeMode);
       if (p === 'wallet' && routeMode !== 'skip') syncWalletRoute(routeMode);
-      if (p === 'nests' && routeMode !== 'skip') history.pushState({}, '', '/nests');
+      if (p === 'nests' && routeMode !== 'skip') syncNestsRoute(routeMode);
       if (p === 'widgets' && routeMode !== 'skip') syncWidgetsRoute(routeMode);
       if (p === 'communities' && routeMode !== 'skip') syncCommunitiesRoute(routeMode);
       if (home) home.classList.toggle('active', p === 'home');
