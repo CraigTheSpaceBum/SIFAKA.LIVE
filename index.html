@@ -93,6 +93,7 @@
         <button class="pd-item" onclick="openMyProfile();closeAllDD()">&#128100; My Profile</button>
         <button class="pd-item" onclick="showPage('notifications');closeAllDD()">&#128276; Notifications</button>
         <button class="pd-item" onclick="openMyStreams();closeAllDD()">&#128250; My Streams</button>
+        <button class="pd-item" onclick="openWallet();closeAllDD()">&#128155; Wallet</button>
         <button class="pd-item" onclick="openWidgets();closeAllDD()">&#129513; Widgets</button>
         <button class="pd-item" onclick="openSettings();closeAllDD()">&#9881;&#65039; Settings</button>
         <div class="dd-sep"></div>
@@ -1033,6 +1034,67 @@
         <button class="btn btn-live-pulse" id="myStreamsPublishBtn" onclick="publishMyStreamUpdate()">Save Stream Update</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ========= WALLET PAGE ========= -->
+<div id="walletPage">
+  <div class="wallet-page-wrap">
+    <section class="wallet-page-hero">
+      <div>
+        <div class="wallet-page-eyebrow">NOSTR WALLET</div>
+        <h2>Your Bitcoin Wallet</h2>
+        <p>View your connected Lightning wallet, balance, wallet service, Lightning address, and recent activity through NIP-47 Nostr Wallet Connect.</p>
+      </div>
+      <button class="btn btn-ghost" id="walletRefreshBtn" type="button" onclick="loadWalletPage(true)">Refresh</button>
+    </section>
+
+    <section class="wallet-dashboard-grid">
+      <article class="wallet-balance-card" id="walletBalanceCard">
+        <div class="wallet-card-label">Available Balance</div>
+        <div class="wallet-balance-value" id="walletBalanceValue">—</div>
+        <div class="wallet-balance-sub" id="walletBalanceSub">Connect a Nostr wallet to load your balance.</div>
+      </article>
+
+      <article class="wallet-info-card">
+        <div class="wallet-card-label">Wallet</div>
+        <div class="wallet-info-list" id="walletInfoList">
+          <div class="wallet-info-empty">No wallet connected.</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="wallet-address-card" id="walletAddressCard">
+      <div>
+        <div class="wallet-card-label">Lightning Address</div>
+        <div class="wallet-address-value" id="walletAddressValue">Not available</div>
+        <div class="wallet-address-help" id="walletAddressHelp">Your profile's lud16 address will appear here when available.</div>
+      </div>
+      <button class="btn btn-ghost" id="walletAddressCopyBtn" type="button" onclick="copyWalletLightningAddress()" hidden>Copy</button>
+    </section>
+
+    <section class="wallet-transactions-card">
+      <div class="wallet-section-head">
+        <div>
+          <div class="wallet-card-label">Recent Transactions</div>
+          <h3>Lightning Activity</h3>
+        </div>
+        <span class="wallet-status-chip" id="walletStatusChip">Not connected</span>
+      </div>
+      <div id="walletTransactionsList" class="wallet-transactions-list">
+        <div class="wallet-empty-state">Connect a Nostr Wallet Connect wallet in Settings → Wallet to load your wallet activity.</div>
+      </div>
+    </section>
+
+    <div id="walletPageStatus" class="wallet-page-status" aria-live="polite"></div>
+
+    <section class="wallet-connect-prompt" id="walletConnectPrompt">
+      <div>
+        <strong>Connect your Nostr wallet</strong>
+        <p>Use the existing NIP-47 wallet connection in Sifaka Settings. Your NWC secret stays local to this browser.</p>
+      </div>
+      <button class="btn btn-primary" type="button" onclick="openSettings();">Open Wallet Settings</button>
+    </section>
   </div>
 </div>
 
