@@ -5982,3 +5982,12 @@ footer p{font-size:.72rem;color:var(--muted);}
   .nests-eyebrow-dot{animation:none}
   .nests-room-card,.nests-room-cover img,.nests-tab{transition:none}
 }
+
+.nests-search-row{display:flex;align-items:center;gap:.6rem;margin:0 0 1rem;padding:.2rem .7rem;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 6px 18px rgba(0,0,0,.05)}
+.nests-search-icon{width:13px;height:13px;border:2px solid var(--muted);border-radius:50%;position:relative;flex:none}
+.nests-search-icon::after{content:"";position:absolute;width:6px;height:2px;background:var(--muted);right:-5px;bottom:-2px;transform:rotate(45deg);border-radius:2px}
+.nests-search-row input{width:100%;border:0;outline:0;background:transparent;color:var(--text);padding:.62rem .1rem;font-size:.75rem}
+.nests-search-row input::placeholder{color:var(--muted)}
+.nests-topic-row{display:flex;gap:.35rem;flex-wrap:wrap;margin:-.2rem 0 .85rem}
+.nests-topic{padding:.25rem .42rem;border-radius:999px;background:color-mix(in srgb,var(--purple) 9%,var(--surface2));color:var(--text2);font:500 .58rem/1 'DM Mono',monospace}
+@media(max-width:760px){.nests-tabs{grid-template-columns:repeat(2,1fr)}.nests-search-row{margin-bottom:.75rem}.nests-topic-row{margin-bottom:.7rem}}
