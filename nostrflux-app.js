@@ -12958,12 +12958,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let lastNonFatalNetworkRecoveryAt = 0;
 
     onAttach(hls);
-    // Attach the media element before loading the manifest so HLS.js can begin
-    // wiring playback immediately instead of waiting on a manifest first.
-    // Use the same source/attach order as the working Live Now player.
-    // HLS.js officially supports loading the manifest before attaching the media element.
-    hls.loadSource(url);
+    // Attach the media element before loading the manifest.
     hls.attachMedia(video);
+    hls.loadSource(url);
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       if (isStale()) return;
@@ -13049,15 +13046,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const video = document.createElement('video');
     video.controls = true;
     video.autoplay = true;
-    // Start muted so mobile/browser autoplay policies cannot prevent the HLS
-    // player from starting. Restore audio from the user's interaction below.
-    video.muted = true;
-    video.defaultMuted = true;
-    video.volume = 0.8;
+    video.muted = false;
+    video.defaultMuted = false;
     video.playsInline = true;
     video.preload = 'auto';
     video.style.cssText = 'width:100%;height:100%;object-fit:cover;background:#000;';
     const syncFit = () => syncTheaterVideoFit(video, playerBg);
+    bindInitialPlaybackRecovery();
     video.addEventListener('loadedmetadata', syncFit);
     video.addEventListener('loadeddata', syncFit);
     video.addEventListener('resize', syncFit);
@@ -13073,8 +13068,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     playerBg.innerHTML = '';
     playerBg.appendChild(video);
-    // Install recovery only after the video is in the live theater DOM.
-    bindInitialPlaybackRecovery();
     syncFit();
     window.setTimeout(() => {
       if (token !== state.playbackToken) return;
@@ -13121,23 +13114,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         await video.play();
         return true;
       } catch (_) {
-        // Keep playback alive if the browser still blocks unmuted autoplay.
-        video.muted = true;
-        video.defaultMuted = true;
         return false;
       }
     };
 
     const playWithAudioRecovery = async () => {
-      // Playback success is independent from whether unmuted audio is allowed.
-      // This prevents an autoplay policy from making a perfectly valid stream
-      // look like a failed theater player.
       const played = await tryPlayVideoWithMutedFallback(video);
       if (!played) return false;
       if (video.muted) {
-        await tryRestoreAudio();
+        const restored = await tryRestoreAudio();
+        if (!restored) {
+          video.muted = true;
+          video.defaultMuted = true;
+          return false;
+        }
       }
-      return true;
+      return !video.paused;
     };
 
     let initialPlaybackRetryTimers = [];
@@ -13420,12 +13412,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const attached = await attachHls();
         if (attached) {
           scheduleStartupRecovery();
-          // HLS attach can complete before MANIFEST_PARSED fires. Keep the
-          // startup path alive and retry play as soon as the media is ready.
-          attemptInitialPlayback().catch(() => {});
           window.setTimeout(() => {
             if (isStale()) return;
-            attemptInitialPlayback().catch(() => {});
             attemptPlaybackRecovery('error').catch(() => {});
           }, 900);
           return;
