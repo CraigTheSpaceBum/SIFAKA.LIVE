@@ -21003,16 +21003,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       renderNestsPage();
     };
 
-    window.joinNestsRoom = function(url, opts = {}) {
+    window.joinNestsRoom = function(url) {
       const target = String(url || '').trim();
       if (!target) return;
-      const external = !!(opts && opts.external);
-      if (!external && typeof window.openNestsRoomPreview === 'function') {
-        window.openNestsRoomPreview(target);
+      if (typeof window.enterNestsRoom === 'function') {
+        window.enterNestsRoom(target);
         return;
       }
-      const opened = window.open(target, '_blank', 'noopener');
-      if (!opened) window.location.assign(target);
+      if (typeof window.openNestsRoomPreview === 'function') {
+        window.openNestsRoomPreview(target);
+      }
     };
 
     window.shareNestsRoom = async function(url) {
