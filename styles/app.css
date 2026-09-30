@@ -5462,8 +5462,17 @@ footer p{font-size:.72rem;color:var(--muted);}
     z-index: 8;
   }
 
-  #homePage .hero-indicators,
+  /* The dots/progress belong to the 16:9 player, not the stacked
+     information panel below it. */
+  #homePage .hero-indicators {
+    top: calc(56.25vw - 18px);
+    bottom: auto;
+    z-index: 9;
+  }
+
   #homePage .hero-cycle-bar-wrap {
+    top: calc(56.25vw - 2px);
+    bottom: auto;
     z-index: 9;
   }
 
