@@ -20,7 +20,6 @@
 </script>
 <link rel="stylesheet" href="./styles/app.css">
 <link rel="stylesheet" href="./styles/themes.css">
-<link rel="stylesheet" href="./communities/communities.css">
 </head>
 <body>
 <div id="appBootScreen" class="app-boot-screen" role="status" aria-live="polite" aria-label="Loading Sifaka Live"><div class="app-boot-card"><div class="app-boot-logo-wrap"><img src="./logo.webp" alt="Sifaka Live" class="app-boot-logo" width="72" height="72" fetchpriority="high" decoding="async"><span class="app-boot-live">LIVE</span></div><div class="app-boot-title">SIFAKA LIVE</div><div class="app-boot-subtitle" id="appBootStatus">Connecting to Nostr relays...</div><div class="app-boot-spinner" aria-hidden="true"></div><div class="app-boot-hint">Loading your Nostr experience</div></div></div>
@@ -38,7 +37,6 @@
       <button class="dd-item" onclick="showPage('home');closeAllDD()"><span class="ddi">&#128308;</span>Live Now <span class="dd-count">24</span></button>
       <button class="dd-item" onclick="showPage('videos',{videosFilter:'all'});closeAllDD()"><span class="ddi">&#127909;</span>Videos</button>
       <button class="dd-item" onclick="showPage('feed');closeAllDD()"><span class="ddi">&#128225;</span>Nostr Feed</button>
-      <button class="dd-item" onclick="showCommunities();closeAllDD()"><span class="ddi">&#127970;</span>Communities</button>
       <button class="dd-item" onclick="showPage('messages');closeAllDD()"><span class="ddi">&#128172;</span>Messages</button>
       <button class="dd-item" onclick="showPage('faq');closeAllDD()"><span class="ddi">&#10067;</span>FAQ & Help</button>
     </div>
@@ -980,11 +978,6 @@
   </div>
 </div>
 
-<!-- ========= COMMUNITIES PAGE ========= -->
-<div id="communitiesPage">
-  <div id="communitiesRoot"></div>
-</div>
-
 <!-- ========= MESSAGES PAGE ========= -->
 <div id="messagesPage">
   <div id="messagesRoot"></div>
@@ -1419,7 +1412,6 @@
       <p>Creators can get paid directly and keep more control.</p>
       <div class="faq-actions">
         <button class="btn btn-primary" onclick="showPage('home')">Back to Live Now</button>
-        <button class="btn btn-ghost" onclick="showPage('communities')">Open Communities</button>
       </div>
     </section>
   </div>
@@ -1751,7 +1743,6 @@
 
 <!-- ========= SCRIPTS ========= -->
 <script src="./scripts/theme-manager.js" defer></script>
-<script src="./scripts/communities-view.js" defer></script>
 <script src="./scripts/theater-view.js" defer></script>
 <script src="./scripts/profile-view.js" defer></script>
 <script src="./scripts/gif-provider.js" defer></script>
