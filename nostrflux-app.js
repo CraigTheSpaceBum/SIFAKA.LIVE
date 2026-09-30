@@ -2559,9 +2559,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     el.textContent = fallbackText;
   }
 
+  const SIFAKA_THEME_IDS = [
+    'dark','midnight','light','cyberpunk','synthwave','matrix','ocean','arctic','forest','emerald',
+    'ruby','crimson','violet','lavender','amethyst','sunset','solar','amber','copper','rose',
+    'bubblegum','coffee','slate','mono','terminal','nord','dracula','hacker','toxic','deepsea'
+  ];
+
   function normalizeThemeSetting(value) {
     const v = String(value || '').trim().toLowerCase();
-    return (v === 'light' || v === 'midnight' || v === 'dark') ? v : 'dark';
+    return SIFAKA_THEME_IDS.includes(v) ? v : 'dark';
   }
 
   function clampInt(value, min, max, fallback) {
@@ -21898,15 +21904,37 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
 
     window.switchSettingsTab = function (tab) {
-      if (tab !== 'wallet') stopWalletScanner({ keepStatus: true });
-      if (tab !== 'relays') window.closeRelayAddModal();
-      ['profile','wallet','relays','app','themes'].forEach(t => {
+      const tabs = ['profile','wallet','relays','app','chat','themes'];
+      const nextTab = tabs.includes(String(tab || '').toLowerCase()) ? String(tab).toLowerCase() : 'profile';
+      if (nextTab !== 'wallet') stopWalletScanner({ keepStatus: true });
+      if (nextTab !== 'relays') window.closeRelayAddModal();
+      tabs.forEach(t => {
         const btn = qs(`#smTab-${t}`);
         const panel = qs(`#smPanel${t.charAt(0).toUpperCase()+t.slice(1)}`);
-        if (btn) btn.classList.toggle('active', t === tab);
-        if (panel) panel.classList.toggle('active', t === tab);
+        if (btn) btn.classList.toggle('active', t === nextTab);
+        if (panel) panel.classList.toggle('active', t === nextTab);
       });
-      if (tab === 'relays') renderSettingsRelayList();
+      if (nextTab === 'relays') renderSettingsRelayList();
+      if (nextTab === 'chat') {
+        setToggleById('setNip05Toggle', state.settings.showNip05Badges);
+        setToggleById('setCompactToggle', state.settings.compactChat);
+        const safeCache = sanitizeCacheSettings(state.settings);
+        const query = qs('#settingsCacheQueryTtlSec');
+        const warm = qs('#settingsCacheWarmSec');
+        const live = qs('#settingsCacheLiveFeedTtlSec');
+        if (query) query.value = String(safeCache.cacheQueryTtlSec);
+        if (warm) warm.value = String(safeCache.cacheWarmSec);
+        if (live) live.value = String(safeCache.cacheLiveFeedTtlSec);
+      }
+      if (nextTab === 'themes') {
+        const themeSelect = qs('#settingsThemeSelect');
+        if (themeSelect) themeSelect.value = normalizeThemeSetting(state.settings.theme);
+      }
+    };
+
+    window.previewSifakaTheme = function (theme) {
+      const nextTheme = normalizeThemeSetting(theme);
+      document.documentElement.setAttribute('data-theme', nextTheme);
     };
 
     window.previewSettingsAvatar = function (url) {
