@@ -10,7 +10,7 @@
     'wss://relay.nostr.net'
   ];
   const PRESENCE_TTL = 15 * 60;
-  let modal, activeRoomUrl = '', sockets = [], refreshTimer = null, liveRefreshTimer = null, chatSince = 0;
+  let modal, activeRoomUrl = '', sockets = [], refreshTimer = null, liveRefreshTimer = null, countdownTimer = null, chatSince = 0;
 
   const $ = (s, root = document) => root.querySelector(s);
   const esc = (v) => {
@@ -281,8 +281,10 @@
     sockets = [];
     clearTimeout(refreshTimer);
     clearTimeout(liveRefreshTimer);
+    clearInterval(countdownTimer);
     refreshTimer = null;
     liveRefreshTimer = null;
+    countdownTimer = null;
     chatSince = 0;
   }
 
@@ -370,10 +372,26 @@
 
     const start = Number((meeting && meeting.starts) || room.starts || 0);
     const end = Number((meeting && meeting.ends) || room.ends || 0);
+    clearInterval(countdownTimer);
     if (start) {
-      $('#nestPreviewSchedule', modal).innerHTML =
-        '<div class="nest-preview-schedule-icon">◷</div><div><strong>' + (live ? 'Live session' : 'Scheduled session') + '</strong><span>' +
-        esc(formatDate(start)) + (end ? ' — ' + esc(formatDate(end)) : '') + '</span><small>' + esc(relativeTime(start)) + '</small></div>';
+      const renderSchedule = function() {
+        const currentNow = now();
+        let detail = relativeTime(start);
+        if (live && end && end > currentNow) {
+          const left = end - currentNow;
+          const mins = Math.floor(left / 60);
+          const secs = left % 60;
+          detail = 'Ends in ' + (mins >= 60 ? Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm' : mins + ':' + String(secs).padStart(2, '0'));
+        }
+        $('#nestPreviewSchedule', modal).innerHTML =
+          '<div class="nest-preview-schedule-icon">' + (live ? '●' : '◷') + '</div><div><strong>' + (live ? 'Live session' : 'Scheduled session') + '</strong><span>' +
+          esc(formatDate(start)) + (end ? ' — ' + esc(formatDate(end)) : '') + '</span><small id="nestPreviewCountdown">' + esc(detail) + '</small></div>';
+      };
+      renderSchedule();
+      countdownTimer = setInterval(function() {
+        if (!modal || !modal.classList.contains('open')) return;
+        renderSchedule();
+      }, 1000);
     } else {
       $('#nestPreviewSchedule', modal).innerHTML = '<div class="nest-preview-schedule-icon">◉</div><div><strong>Drop-in room</strong><span>Join whenever the room is open.</span></div>';
     }
@@ -417,10 +435,14 @@
     $('#nestPreviewListeners', modal).innerHTML = listenerKeys.length
       ? listenerKeys.map(function(k) {
           const prof = profiles.get(k) || {};
-          return '<span class="nest-listener" title="' + esc(prof.name || k) + '">' +
-            (prof.picture ? '<img src="' + esc(prof.picture) + '" alt="">' : esc((prof.name || k).slice(0,1).toUpperCase())) + '</span>';
+          return '<button class="nest-listener" type="button" title="' + esc(prof.name || k) + '" data-pubkey="' + esc(k) + '">' +
+            (prof.picture ? '<img src="' + esc(prof.picture) + '" alt="">' : esc((prof.name || k).slice(0,1).toUpperCase())) + '</button>';
         }).join('') + (count > listenerKeys.length ? '<span class="nest-listener-more">+' + (count - listenerKeys.length) + '</span>' : '')
       : '<span class="nest-listener-text">' + (count ? count + ' listener' + (count === 1 ? '' : 's') + ' currently in the room' : 'Presence is not currently published.') + '</span>';
+    Array.from($('#nestPreviewListeners', modal).querySelectorAll('.nest-listener')).forEach(function(button) {
+      const pubkey = button.getAttribute('data-pubkey');
+      button.addEventListener('click', function() { showProfile(pubkey, 'Listener'); });
+    });
 
     renderChat(room, profiles);
 
