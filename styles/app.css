@@ -5234,6 +5234,28 @@ footer p{font-size:.72rem;color:var(--muted);}
   }
 
   /* Chat becomes the mobile equivalent of the old recommendation rail. */
+  /* Mobile theater chat starts collapsed and expands from the Live Chat button. */
+  #videoPage .stream-sidebar:not(.mobile-chat-open) {
+    height: 43px;
+    min-height: 43px;
+    max-height: 43px;
+  }
+
+  #videoPage .stream-sidebar.mobile-chat-open {
+    height: min(62vh, 560px);
+    min-height: 390px;
+    max-height: 560px;
+  }
+
+  #videoPage .mobile-chat-toggle {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
   #videoPage .stream-sidebar {
     order: 3;
     position: relative;
