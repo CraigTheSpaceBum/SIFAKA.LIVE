@@ -6211,3 +6211,11 @@ footer p{font-size:.72rem;color:var(--muted);}
 .wallet-page-status{min-height:0;margin-top:10px;font-size:12px}.wallet-page-status.is-visible{padding:10px 13px;border-radius:11px;background:var(--surface2);border:1px solid var(--border)}.wallet-page-status.is-success{color:#86efac}.wallet-page-status.is-error{color:#fda4af}
 @media(max-width:760px){.wallet-page-wrap{padding:22px 14px 48px}.wallet-page-hero{align-items:stretch;flex-direction:column}.wallet-page-hero .btn{width:100%}.wallet-dashboard-grid{grid-template-columns:1fr}.wallet-balance-card{min-height:205px;padding:23px}.wallet-balance-value{margin-top:28px}.wallet-mainchain-grid{grid-template-columns:1fr}.wallet-mainchain-card,.wallet-transactions-card{padding:18px}.wallet-address-card,.wallet-connect-prompt{align-items:stretch;flex-direction:column}.wallet-address-card .btn,.wallet-connect-prompt .btn{width:100%}.wallet-tx-row{grid-template-columns:36px minmax(0,1fr);gap:10px}.wallet-tx-amount{grid-column:2;justify-self:start;margin-top:-5px}.wallet-mainchain-address-row{align-items:flex-start;flex-direction:column}.wallet-mainchain-address-row a{align-self:flex-start}}
 @media(prefers-reduced-motion:reduce){.wallet-balance-card{scroll-behavior:auto}}
+
+.wallet-quick-actions{position:relative;z-index:2;display:flex;gap:8px;margin-top:22px}
+.wallet-quick-btn{border:1px solid var(--border);background:rgba(255,255,255,.045);color:var(--text);border-radius:12px;padding:10px 14px;font:600 12px/1 var(--font-display,sans-serif);cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease}
+.wallet-quick-btn:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--purple) 45%,var(--border));background:rgba(139,92,246,.09)}
+.wallet-quick-btn:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.wallet-quick-btn.primary{background:var(--purple);border-color:var(--purple);color:#fff}
+.wallet-quick-btn span{font-size:16px;margin-right:5px}
+@media(max-width:760px){.wallet-quick-actions{display:grid;grid-template-columns:1fr 1fr}.wallet-quick-btn{padding:12px 8px}}
