@@ -11591,7 +11591,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     entries.forEach((entry) => {
       const actorPubkey = normalizePubkeyHex(entry.actorPubkey || '');
       const actorProfile = profileFor(actorPubkey);
-      const actorName = actorProfile.display_name || actorProfile.name || shortHex(actorPubkey);
+      const displayName = String(actorProfile.display_name || '').trim();
+      const profileName = String(actorProfile.name || '').trim();
+      const usableName = (value) => value && !/^[?!.#@_\-\s]+$/.test(value);
+      const actorName = (usableName(displayName) ? displayName : (usableName(profileName) ? profileName : shortHex(actorPubkey))) || 'Unknown user';
       const actorPicture = actorProfile.picture || '';
       const isUnread = Number(entry.created_at || 0) > lastRead;
       const typeLabel = notificationTypeLabel(entry.type);
@@ -14992,6 +14995,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (
       low === '+' ||
       low === 'like' ||
+      low === '?' ||
+      low === '??' ||
       raw === '\u2764' ||
       raw === '\u2764\uFE0F' ||
       raw === mojibakeHeart ||
