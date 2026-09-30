@@ -636,18 +636,24 @@
     return modal;
   }
 
-  function closePreview() {
+  async function closePreview() {
     if (!modal) return;
+    await leaveActiveRoom({ silent: true });
     modal.classList.remove('open');
+    modal.classList.remove('is-live-room');
     document.body.classList.remove('nest-preview-open');
     sockets.forEach(function(ws) { try { ws.close(); } catch (_) {} });
     sockets = [];
     clearTimeout(refreshTimer);
     clearTimeout(liveRefreshTimer);
     clearInterval(countdownTimer);
+    clearInterval(activeRoomRefreshTimer);
+    clearInterval(activeRoomChatTimer);
     refreshTimer = null;
     liveRefreshTimer = null;
     countdownTimer = null;
+    activeRoomRefreshTimer = null;
+    activeRoomChatTimer = null;
     chatSince = 0;
   }
 
@@ -818,6 +824,165 @@
     $('#nestPreviewTopics', modal).innerHTML = topicValues.map(function(t) { return '<span>#' + esc(t) + '</span>'; }).join('');
     $('#nestPreviewJoinBtn', modal).textContent = live ? 'Join Nest' : 'Open Nest';
     $('#nestPreviewFootnote', modal).textContent = room.sourceCount > 1 ? 'Room details merged from ' + room.sourceCount + ' relays.' : 'Room details are read from Nostr NIP-53 events.';
+  }
+
+  async function enterActiveRoom() {
+    if (!activeRoomUrl) return;
+    if (activeRoomAudio) {
+      await leaveActiveRoom();
+      return;
+    }
+    if (!activeRoomEvent || !activeRoom) {
+      await openPreview(activeRoomUrl, {
+        title: $('#nestPreviewTitle', modal)?.textContent || 'Nostr Nest',
+        summary: $('#nestPreviewSummary', modal)?.textContent || '',
+        img: $('#nestPreviewCover img', modal)?.getAttribute('src') || '',
+        badge: $('#nestPreviewStatus', modal)?.textContent || 'LIVE',
+        countText: $('#nestPreviewListenerCount', modal)?.textContent || '',
+        topics: []
+      });
+    }
+    if (!activeRoomEvent) throw new Error('Could not load the Nest room event from Nostr.');
+
+    const ctx = getSifakaContext();
+    const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+    const d = String(tag(activeRoomEvent, 'd') || activeRoom.d || '');
+    const namespace = 'nests/30312:' + activeRoomEvent.pubkey + ':' + d;
+    const streamingUrl = tag(activeRoomEvent, 'streaming') || activeRoom.streaming || 'https://moq.nostrnests.com';
+    let token = '';
+    if (user) {
+      try {
+        token = await authenticateNestAudio(activeRoomEvent, namespace);
+      } catch (err) {
+        console.warn('[sifaka-nests] audio auth failed; trying public listener mode', err);
+      }
+    }
+
+    const bar = $('#nestRoomAudioBar', modal);
+    const compose = $('#nestRoomChatCompose', modal);
+    const join = $('#nestPreviewJoinBtn', modal);
+    if (bar) bar.hidden = false;
+    if (compose) compose.hidden = !user;
+    if (join) {
+      join.textContent = 'Connecting…';
+      join.disabled = true;
+      join.classList.remove('btn-danger');
+    }
+    modal.classList.add('is-live-room');
+
+    activeRoomAudio = new SifakaNestAudioTransport();
+    activeRoomAudio.onStateChange(function() { updateActiveRoomAudioUi(); });
+
+    try {
+      await activeRoomAudio.connect({
+        serverUrl: streamingUrl,
+        namespace: namespace,
+        identity: user ? String(user.pubkey) : '',
+        token: token
+      });
+      if (join) {
+        join.disabled = false;
+        join.textContent = 'Leave Nest';
+        join.classList.add('btn-danger');
+      }
+      startActiveRoomPresence();
+      startActiveRoomRefresh();
+      updateActiveRoomAudioUi();
+    } catch (err) {
+      if (activeRoomAudio) {
+        await activeRoomAudio.disconnect();
+        activeRoomAudio = null;
+      }
+      if (bar) bar.hidden = true;
+      if (compose) compose.hidden = true;
+      if (join) {
+        join.disabled = false;
+        join.textContent = 'Join Nest';
+      }
+      modal.classList.remove('is-live-room');
+      throw err;
+    }
+  }
+
+  async function leaveActiveRoom() {
+    if (activeRoomPresenceTimer) {
+      clearInterval(activeRoomPresenceTimer);
+      activeRoomPresenceTimer = null;
+    }
+    if (activeRoomRefreshTimer) {
+      clearInterval(activeRoomRefreshTimer);
+      activeRoomRefreshTimer = null;
+    }
+    if (activeRoomChatTimer) {
+      clearInterval(activeRoomChatTimer);
+      activeRoomChatTimer = null;
+    }
+    if (activeRoomAudio) {
+      try { await activeRoomAudio.disconnect(); } catch (_) {}
+      activeRoomAudio = null;
+    }
+    if (!modal) return;
+    const bar = $('#nestRoomAudioBar', modal);
+    const compose = $('#nestRoomChatCompose', modal);
+    const join = $('#nestPreviewJoinBtn', modal);
+    if (bar) bar.hidden = true;
+    if (compose) compose.hidden = true;
+    if (join) {
+      join.disabled = false;
+      join.textContent = String($('#nestPreviewStatus', modal)?.textContent || '').toLowerCase().includes('live') ? 'Join Nest' : 'View Room';
+      join.classList.remove('btn-danger');
+    }
+    modal.classList.remove('is-live-room');
+  }
+
+  async function publishActiveRoomPresence() {
+    if (!activeRoom || !activeRoom.a) return;
+    try {
+      const event = await signRoomEvent(10312, '', [
+        ['a', activeRoom.a],
+        ['publishing', '0'],
+        ['muted', '1'],
+        ['onstage', '0']
+      ]);
+      await publishSignedRoomEvent(event, activeRoomRelays);
+    } catch (err) {
+      console.warn('[sifaka-nests] presence publish failed', err);
+    }
+  }
+
+  function startActiveRoomPresence() {
+    const ctx = getSifakaContext();
+    const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+    if (!user || !activeRoom || !activeRoom.a) return;
+    publishActiveRoomPresence().catch(function() {});
+    clearInterval(activeRoomPresenceTimer);
+    activeRoomPresenceTimer = setInterval(function() {
+      publishActiveRoomPresence().catch(function() {});
+    }, 120000);
+  }
+
+  function startActiveRoomRefresh() {
+    clearInterval(activeRoomRefreshTimer);
+    clearInterval(activeRoomChatTimer);
+    activeRoomRefreshTimer = setInterval(function() {
+      if (!activeRoomUrl || !modal || !modal.classList.contains('is-live-room')) return;
+      refreshLiveRoom(activeRoomUrl).catch(function() {});
+    }, 12000);
+    activeRoomChatTimer = setInterval(function() {
+      if (!activeRoomUrl || !modal || !modal.classList.contains('is-live-room')) return;
+      refreshLiveRoom(activeRoomUrl).catch(function() {});
+    }, 4000);
+  }
+
+  async function sendActiveRoomChat() {
+    const input = $('#nestRoomChatInput', modal);
+    if (!input || !String(input.value || '').trim()) return;
+    if (!activeRoom || !activeRoom.a) throw new Error('This room does not expose a valid Nostr room address.');
+    const content = String(input.value || '').trim().slice(0, 1000);
+    const event = await signRoomEvent(1311, content, [['a', activeRoom.a]]);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+    input.value = '';
+    refreshLiveRoom(activeRoomUrl).catch(function() {});
   }
 
   async function openPreview(url, fallback) {
