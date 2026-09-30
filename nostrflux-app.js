@@ -22091,32 +22091,32 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const pill = qs('#navUserPill');
     if (pill) pill.addEventListener('click', (e) => { e.stopPropagation(); window.toggleDD('profile'); });
 
-    if (state.streamsByAddress.size) renderLiveGrid();
+    // Start relay connections immediately, but never make the first paint wait for network I/O.
+    // Relay events, profile hydration, and persisted signer restoration continue in the background.
     setAppBootStatus('Connecting to Nostr relays...');
     initRelay();
-    const restoredRemote = await tryRestoreRemoteLogin();
-    if (!restoredRemote) {
-      setAppBootStatus('Restoring your Nostr identity...');
-      await tryRestoreLocalLogin();
-    }
-    setAppBootStatus('Loading live Nostr data...');
+
+    // Render the local/cache-backed shell immediately.
     setUserUi();
     syncViewFromLocation({ fallbackMode: 'replace' });
-
-    if (isHomeViewActive()) {
-      setAppBootStatus('Loading live streams and profiles...');
-      await Promise.race([
-        state.liveInitialReadyPromise || Promise.resolve(true),
-        new Promise((resolve) => setTimeout(() => resolve(false), 5200))
-      ]);
-    }
-
-    // Render saved external lists immediately (they come from localStorage)
     renderListFilterDD();
     renderNostrFeedFilterSelect();
-    renderLiveGrid();
+    if (state.streamsByAddress.size) renderLiveGrid();
+
+    // Identity restoration must never block startup. A slow remote signer or Nostr-tools
+    // CDN failure should not leave the entire site looking frozen.
+    Promise.resolve().then(async () => {
+      try {
+        const restoredRemote = await tryRestoreRemoteLogin();
+        if (!restoredRemote) await tryRestoreLocalLogin();
+      } catch (_) {}
+      try { setUserUi(); } catch (_) {}
+    });
+
+    // Live subscriptions render incrementally as relay events arrive.
+    // Do not wait for EOSE or a fixed timeout before revealing the application.
     setAppBootStatus('Sifaka Live is ready.');
-    finishAppBoot();
+    finishAppBoot(true);
   }
 
   document.addEventListener('DOMContentLoaded', init);
