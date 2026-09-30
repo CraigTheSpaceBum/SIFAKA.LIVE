@@ -10,7 +10,7 @@
     'wss://relay.nostr.net'
   ];
   const PRESENCE_TTL = 15 * 60;
-  let modal, activeRoomUrl = '', sockets = [], refreshTimer = null;
+  let modal, activeRoomUrl = '', sockets = [], refreshTimer = null, liveRefreshTimer = null, chatSince = 0;
 
   const $ = (s, root = document) => root.querySelector(s);
   const esc = (v) => {
@@ -255,7 +255,10 @@
     sockets.forEach(function(ws) { try { ws.close(); } catch (_) {} });
     sockets = [];
     clearTimeout(refreshTimer);
+    clearTimeout(liveRefreshTimer);
     refreshTimer = null;
+    liveRefreshTimer = null;
+    chatSince = 0;
   }
 
   function renderLoading(fallback) {
@@ -434,7 +437,84 @@
       sourceCount: new Set(events.map(function(e) { return e.id; })).size
     };
     renderRoom(room, profiles, fallback);
-    refreshTimer = setTimeout(function() { if (modal && modal.classList.contains('open')) openPreview(url, fallback); }, 45000);
+
+    // Keep a live room lobby feeling live: refresh presence/chat more often than
+    // the heavier room/profile metadata refresh. The preview is always closed
+    // and cleaned up when the modal closes.
+    clearTimeout(liveRefreshTimer);
+    if (modal && modal.classList.contains('open') && activeRoomUrl === url) {
+      liveRefreshTimer = setTimeout(function() {
+        if (modal && modal.classList.contains('open') && activeRoomUrl === url) {
+          refreshLiveRoom(url);
+        }
+      }, 12000);
+    }
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(function() {
+      if (modal && modal.classList.contains('open') && activeRoomUrl === url) openPreview(url, fallback);
+    }, 60000);
+  }
+
+  async function refreshLiveRoom(url) {
+    const decoded = decodeRoom(url);
+    if (!decoded || !modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
+
+    const events = await relayQuery([
+      { kinds: [30313], '#a': [decoded.a], limit: 10 },
+      { kinds: [1311], '#a': [decoded.a], limit: 30 },
+      { kinds: [10312], '#a': [decoded.a], limit: 200 }
+    ], 3600);
+
+    if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
+
+    const meetings = events.filter(function(e) { return Number(e.kind) === 30313; })
+      .sort(function(a,b) { return Number(b.created_at||0)-Number(a.created_at||0); });
+    const current = meetings.find(function(e) {
+      return ['live','planned','open'].indexOf(String(tag(e,'status')).toLowerCase()) >= 0;
+    }) || meetings.find(function(e) { return Number(tag(e,'starts')) > now(); }) || meetings[0] || null;
+
+    const presence = new Set();
+    events.filter(function(e) { return Number(e.kind) === 10312; }).forEach(function(e) {
+      if (Number(e.created_at || 0) >= now() - PRESENCE_TTL) presence.add(String(e.pubkey || '').toLowerCase());
+    });
+
+    const chat = events.filter(function(e) { return Number(e.kind) === 1311; });
+    const profiles = await loadProfiles(Array.from(presence).concat(
+      (current ? pTags(current).map(function(p) { return p.pubkey; }) : [])
+    ));
+
+    const people = current ? pTags(current) : [];
+    if (decoded.pubkey && !people.some(function(p) { return p.pubkey === decoded.pubkey; })) {
+      people.unshift({ pubkey: decoded.pubkey, role: 'Host' });
+    }
+
+    renderRoom({
+      pubkey: decoded.pubkey,
+      title: current ? tag(current,'title') : 'Nostr Nest',
+      summary: current ? tag(current,'summary') : '',
+      image: current ? tag(current,'image') : '',
+      status: current ? tag(current,'status') : 'open',
+      starts: current ? Number(tag(current,'starts') || 0) : 0,
+      ends: current ? Number(tag(current,'ends') || 0) : 0,
+      topics: current ? tags(current,'t') : [],
+      currentParticipants: current ? Number(tag(current,'current_participants') || 0) : 0,
+      participants: people,
+      presence: presence,
+      chat: chat,
+      meeting: null,
+      sourceCount: 0
+    }, profiles, {
+      title: $('#nestPreviewTitle', modal).textContent || 'Nostr Nest',
+      summary: $('#nestPreviewSummary', modal).textContent || '',
+      img: $('#nestPreviewCover img', modal)?.getAttribute('src') || '',
+      badge: $('#nestPreviewStatus', modal).textContent || '',
+      countText: $('#nestPreviewListenerCount', modal).textContent || ''
+    });
+
+    clearTimeout(liveRefreshTimer);
+    if (modal && modal.classList.contains('open') && activeRoomUrl === url) {
+      liveRefreshTimer = setTimeout(function() { refreshLiveRoom(url); }, 12000);
+    }
   }
 
   function interceptJoinClicks(e) {
