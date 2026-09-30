@@ -174,7 +174,7 @@
 
     if (!url) {
       const onclick = button.getAttribute('onclick') || '';
-      const match = onclick.match(/joinNestsRoom\\s*\\((.*)\\)/);
+      const match = onclick.match(/joinNestsRoom\s*\((.*)\)/);
       if (match) {
         const raw = String(match[1] || '').trim();
         try { url = JSON.parse(raw); }
@@ -193,7 +193,7 @@
       });
       if (legacy) {
         const onclick = legacy.getAttribute('onclick') || '';
-        const match = onclick.match(/joinNestsRoom\\s*\\((.*)\\)/);
+        const match = onclick.match(/joinNestsRoom\s*\((.*)\)/);
         if (match) {
           const raw = String(match[1] || '').trim();
           try { url = JSON.parse(raw); } catch (_) { url = raw.replace(/^['"]|['"]$/g, ''); }
@@ -270,7 +270,7 @@
       // mobile handling, and any future in-app Nest integration remain intact.
       if (typeof window.joinNestsRoom === 'function') {
         try {
-          window.joinNestsRoom(activeRoomUrl);
+          window.joinNestsRoom(activeRoomUrl, { external: true });
           return;
         } catch (_) {}
       }
@@ -652,6 +652,32 @@
 
   function boot() {
     ensureModal();
+    window.openNestsRoomPreview = function(url, fallback = {}) {
+      const target = String(url || '').trim();
+      if (!target) return;
+      const safeFallback = {
+        title: String(fallback.title || 'Nostr Nest'),
+        summary: String(fallback.summary || 'Live audio conversation on Nostr.'),
+        host: String(fallback.host || ''),
+        countText: String(fallback.countText || ''),
+        img: String(fallback.img || ''),
+        badge: String(fallback.badge || 'ROOM PREVIEW'),
+        topics: Array.isArray(fallback.topics) ? fallback.topics : [],
+        url: target
+      };
+      openPreview(target, safeFallback).catch(function() {
+        renderRoom({
+          title: safeFallback.title,
+          summary: safeFallback.summary,
+          image: safeFallback.img,
+          pubkey: '',
+          status: /live/i.test(safeFallback.badge) ? 'live' : 'open',
+          currentParticipants: parseInt(safeFallback.countText, 10) || 0,
+          participants: [],
+          presence: new Set()
+        }, new Map(), safeFallback);
+      });
+    };
     const grid = $('#nestsRoomsGrid');
     if (!grid) return;
     grid.addEventListener('click', interceptJoinClicks, true);
