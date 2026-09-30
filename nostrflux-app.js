@@ -18520,14 +18520,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.profileFeedSubId = state.pool.subscribe(
       [
-        // Keep the first profile paint focused on the author's actual posts/media.
-        // Reactions, zaps, and comments can be very high-volume for an active user;
-        // pulling all of them in the same large request made the signed-in user's
-        // profile noticeably slower than ordinary profiles.
-        { kinds: [1, 6, 20, 21, 22, 1063, KIND_DELETION], authors: [pubkey], limit: 160, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 },
-        // Pull only a bounded recent interaction set for the profile's posts.
-        { kinds: [KIND_COMMENT, 1], '#p': [pubkey], limit: 260, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 90 },
-        { kinds: [KIND_REACTION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 320, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 90 }
+        // Keep the full profile event set so the profile can render the author's
+        // posts together with replies/comments, reactions, boosts, deletions, and zaps.
+        // This is especially important for the signed-in user's own profile.
+        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 420, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 },
+        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 720, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 }
       ],
       {
         event: (ev) => {
