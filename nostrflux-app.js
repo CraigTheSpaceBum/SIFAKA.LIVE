@@ -294,8 +294,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     walletPageSession: null,
     walletPageLoadToken: 0,
     nestsSubId: null,
+    nestsPresenceSubId: null,
     nestsRooms: new Map(),
+    nestsPresence: new Map(),
     nestsTab: 'live',
+    nestsSearch: '',
     remoteLoginPending: false,
     remoteLoginAbortController: null,
     remoteLoginUri: '',
@@ -20776,7 +20779,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (state.nestsSubId && state.pool) {
         try { state.pool.unsubscribe(state.nestsSubId); } catch (_) {}
       }
+      if (state.nestsPresenceSubId && state.pool) {
+        try { state.pool.unsubscribe(state.nestsPresenceSubId); } catch (_) {}
+      }
       state.nestsSubId = null;
+      state.nestsPresenceSubId = null;
+      state.nestsPresence.clear();
     }
 
     function parseNestsEvent(ev) {
@@ -20785,28 +20793,53 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const found = tags.find(t => Array.isArray(t) && t[0] === name);
         return found ? String(found[1] || '') : '';
       };
-      const all = (name) => tags.filter(t => Array.isArray(t) && t[0] === name).map(t => t[1]).filter(Boolean);
+      const allTags = (name) => tags.filter(t => Array.isArray(t) && t[0] === name).map(t => String(t[1] || '')).filter(Boolean);
+      const pTags = tags.filter(t => Array.isArray(t) && t[0] === 'p').map(t => ({
+        pubkey: String(t[1] || ''),
+        relay: String(t[2] || ''),
+        role: String(t[3] || '')
+      })).filter(p => p.pubkey);
       const kind = Number(ev && ev.kind || 0);
       const d = tag('d');
-      if (!d || !ev.pubkey) return null;
+      if (!d || !ev.pubkey || ![30312,30313].includes(kind)) return null;
+      const parentATag = kind === 30313 ? tag('a') : '';
+      const roomRef = parentATag || `30312:${normalizePubkeyHex(ev.pubkey)}:${d}`;
       return {
         id: String(ev.id || ''),
         pubkey: normalizePubkeyHex(ev.pubkey),
         d,
         kind,
+        roomRef,
+        parentATag,
         title: tag('room') || tag('title') || 'Nostr Nest',
         summary: tag('summary'),
         image: tag('image'),
         status: tag('status') || (kind === 30312 ? 'open' : 'planned'),
         service: tag('service'),
-        streaming: tag('streaming'),
+        endpoint: tag('endpoint'),
         starts: Number(tag('starts') || 0),
         ends: Number(tag('ends') || 0),
         participants: Number(tag('current_participants') || 0),
-        participantPubkeys: all('p'),
-        createdAt: Number(ev.created_at || 0),
-        aTag: `${kind}:${normalizePubkeyHex(ev.pubkey)}:${d}`
+        participantPubkeys: pTags.map(p => p.pubkey),
+        participantRoles: pTags,
+        relays: allTags('relays'),
+        topics: allTags('t'),
+        createdAt: Number(ev.created_at || 0)
       };
+    }
+
+    function getNestsRoomNaddr(room) {
+      if (!room || !window.NostrTools?.nip19 || typeof window.NostrTools.nip19.naddrEncode !== 'function') return '';
+      const match = String(room.roomRef || '').match(/^30312:([0-9a-f]{64}):(.+)$/i);
+      if (!match) return '';
+      try {
+        return window.NostrTools.nip19.naddrEncode({ identifier: match[2], pubkey: match[1], kind: 30312 });
+      } catch (_) { return ''; }
+    }
+
+    function getNestsRoomUrl(room) {
+      const naddr = getNestsRoomNaddr(room);
+      return naddr ? `https://nostrnests.com/${naddr}` : 'https://nostrnests.com/lobby';
     }
 
     function renderNestsPage() {
@@ -20814,12 +20847,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (!grid) return;
       const now = Math.floor(Date.now() / 1000);
       const following = state.followedPubkeys || new Set();
+      const query = String(state.nestsSearch || '').trim().toLowerCase();
       let rooms = Array.from(state.nestsRooms.values()).filter(room => {
-        if (state.nestsTab === 'following') return following.has(room.pubkey);
-        if (state.nestsTab === 'upcoming') return room.status === 'planned' || (room.starts && room.starts > now);
-        return room.status === 'live' || room.status === 'open';
+        const status = String(room.status || '').toLowerCase();
+        const isLive = status === 'live' || status === 'open';
+        const isUpcoming = status === 'planned' || (room.starts && room.starts > now);
+        const isEnded = status === 'ended' || (room.ends && room.ends < now);
+        if (state.nestsTab === 'following' && !following.has(room.pubkey)) return false;
+        if (state.nestsTab === 'upcoming' && !isUpcoming) return false;
+        if (state.nestsTab === 'ended' && !isEnded) return false;
+        if (state.nestsTab === 'live' && !isLive) return false;
+        if (query && ![room.title, room.summary, room.pubkey, ...(room.topics || [])].join(' ').toLowerCase().includes(query)) return false;
+        return true;
       });
-      rooms.sort((a,b) => (Number(b.starts || b.createdAt) - Number(a.starts || a.createdAt)));
+      rooms.sort((a,b) => {
+        const liveA = String(a.status) === 'live' || String(a.status) === 'open';
+        const liveB = String(b.status) === 'live' || String(b.status) === 'open';
+        if (liveA !== liveB) return liveA ? -1 : 1;
+        return Number(b.starts || b.createdAt) - Number(a.starts || a.createdAt);
+      });
       if (!rooms.length) {
         grid.innerHTML = '<div class="nests-empty-state">No rooms found in this category yet.</div>';
         return;
@@ -20830,33 +20876,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const title = escapeHtml(room.title);
         const summary = escapeHtml(room.summary || 'Live audio conversation on Nostr.');
         const img = room.image ? `<img src="${escapeHtml(room.image)}" alt="" loading="lazy">` : '<div class="nests-room-art">N</div>';
-        const when = room.status === 'live' || room.status === 'open'
-          ? 'LIVE NOW'
-          : room.starts ? new Date(room.starts * 1000).toLocaleString() : 'Scheduled';
+        const status = String(room.status || '').toLowerCase();
+        const live = status === 'live' || status === 'open';
+        const when = live ? 'LIVE NOW' : room.starts ? new Date(room.starts * 1000).toLocaleString() : (status === 'ended' ? 'ENDED' : 'Scheduled');
         const count = room.participants ? `${formatCount(room.participants)} listening` : 'Audio room';
-        const naddr = window.NostrTools?.nip19 && typeof window.NostrTools.nip19.naddrEncode === 'function'
-          ? (() => {
-              try {
-                return window.NostrTools.nip19.naddrEncode({
-                  identifier: room.d,
-                  pubkey: room.pubkey,
-                  kind: room.kind
-                });
-              } catch (_) {
-                return '';
-              }
-            })()
-          : '';
-        const joinUrl = naddr ? `https://nostrnests.com/${naddr}` : 'https://nostrnests.com/lobby';
+        const topicHtml = (room.topics || []).slice(0,3).map(t => `<span class="nests-topic">#${escapeHtml(t)}</span>`).join('');
+        const roomUrl = getNestsRoomUrl(room);
+        const shareUrl = roomUrl;
         return `<article class="nests-room-card">
-          <div class="nests-room-cover">${img}<span class="nests-live-badge ${room.status === 'live' || room.status === 'open' ? 'is-live' : ''}">${escapeHtml(when)}</span></div>
+          <div class="nests-room-cover">${img}<span class="nests-live-badge ${live ? 'is-live' : ''}">${escapeHtml(when)}</span></div>
           <div class="nests-room-body">
             <h3>${title}</h3>
             <p>${summary}</p>
             <div class="nests-room-meta"><span>${name}</span><span>·</span><span>${escapeHtml(count)}</span></div>
+            ${topicHtml ? `<div class="nests-topic-row">${topicHtml}</div>` : ''}
             <div class="nests-room-actions">
-              <button class="btn btn-primary" type="button" onclick="joinNestsRoom(${JSON.stringify(joinUrl)})">Join Nest</button>
-              <button class="btn btn-ghost" type="button" onclick="showProfile('', '', '', '', '${room.pubkey}')">Profile</button>
+              <button class="btn btn-primary" type="button" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})">${live ? 'Join Nest' : 'View Room'}</button>
+              <button class="btn btn-ghost" type="button" onclick="shareNestsRoom(${JSON.stringify(shareUrl)})">Share</button>
             </div>
           </div>
         </article>`;
@@ -20864,11 +20900,19 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     window.setNestsTab = function(tab) {
-      state.nestsTab = ['live','upcoming','following'].includes(tab) ? tab : 'live';
-      ['live','upcoming','following'].forEach(id => {
+      state.nestsTab = ['live','upcoming','following','ended'].includes(tab) ? tab : 'live';
+      ['live','upcoming','following','ended'].forEach(id => {
         const el = qs('#nests' + id.charAt(0).toUpperCase() + id.slice(1) + 'Tab');
-        if (el) el.classList.toggle('active', id === state.nestsTab);
+        if (el) {
+          el.classList.toggle('active', id === state.nestsTab);
+          el.setAttribute('aria-selected', id === state.nestsTab ? 'true' : 'false');
+        }
       });
+      renderNestsPage();
+    };
+
+    window.filterNests = function(value) {
+      state.nestsSearch = String(value || '');
       renderNestsPage();
     };
 
@@ -20876,6 +20920,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const target = String(url || '').trim();
       if (!target) return;
       window.open(target, '_blank', 'noopener');
+    };
+
+    window.shareNestsRoom = async function(url) {
+      const target = String(url || '').trim();
+      if (!target) return;
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: 'Nostr Nest', url: target });
+        } else if (navigator.clipboard) {
+          await navigator.clipboard.writeText(target);
+          const status = qs('#nestsPageStatus');
+          if (status) {
+            status.textContent = 'Room link copied to clipboard.';
+            setTimeout(() => { if (status) status.textContent = ''; }, 1800);
+          }
+        }
+      } catch (_) {}
     };
 
     window.loadNestsPage = async function(force = false) {
@@ -20886,14 +20947,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       stopNestsSubscription();
       if (status) status.textContent = 'Discovering Nostr Nests…';
       grid.innerHTML = '<div class="nests-empty-state">Discovering live audio rooms…</div>';
-      const since = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 2;
+      const since = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7;
       state.nestsSubId = state.pool.subscribe(
-        [{ kinds: [30312, 30313], limit: 200, since }],
+        [{ kinds: [30312, 30313], limit: 500, since }],
         {
           event: (ev) => {
             const room = parseNestsEvent(ev);
             if (!room) return;
-            state.nestsRooms.set(room.aTag, room);
+            const key = room.roomRef;
+            const existing = state.nestsRooms.get(key) || {};
+            state.nestsRooms.set(key, { ...existing, ...room, ...(room.kind === 30313 ? {
+              pubkey: existing.pubkey || (room.parentATag || '').split(':')[1] || room.pubkey,
+              d: existing.d || (room.parentATag || '').split(':').slice(2).join(':') || room.d,
+              service: existing.service || room.service,
+              title: room.title || existing.title,
+              summary: room.summary || existing.summary,
+              image: room.image || existing.image
+            } : {}) });
             if (room.pubkey) fetchProfileIfNeeded(room.pubkey).then(() => renderNestsPage()).catch(() => {});
             renderNestsPage();
           },
@@ -20903,8 +20973,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           }
         }
       );
+      state.nestsPresenceSubId = state.pool.subscribe(
+        [{ kinds: [10312], limit: 500, since: Math.floor(Date.now() / 1000) - 60 * 15 }],
+        {
+          event: (ev) => {
+            const a = Array.isArray(ev.tags) ? ev.tags.find(t => Array.isArray(t) && t[0] === 'a') : null;
+            const roomRef = a ? String(a[1] || '') : '';
+            if (!roomRef) return;
+            state.nestsPresence.set(`${roomRef}:${ev.pubkey}`, Number(ev.created_at || 0));
+            const cutoff = Math.floor(Date.now() / 1000) - 60 * 15;
+            for (const [key, ts] of state.nestsPresence) if (ts < cutoff) state.nestsPresence.delete(key);
+            renderNestsPage();
+          }
+        }
+      );
     };
-
     window.loadWalletPage = async function (force = false) {
       const token = ++state.walletPageLoadToken;
       const statusEl = qs('#walletPageStatus');
