@@ -13089,6 +13089,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let mediaErrorCount = 0;
     let lastMediaErrorAt = 0;
     let mediaErrorRetryTimerId = null;
+    let startupRecoveryTimerId = null;
+    let startupRecoveryCount = 0;
     // Only count actual playback movement as progress. HLS can continue firing
     // network/progress/canplay events while the media timestamp is frozen; treating
     // those events as playback progress can keep the stall watchdog from recovering.
@@ -13187,6 +13189,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (stallWatchdogId) {
         clearInterval(stallWatchdogId);
         stallWatchdogId = null;
+      }
+      if (startupRecoveryTimerId) {
+        clearTimeout(startupRecoveryTimerId);
+        startupRecoveryTimerId = null;
       }
       if (mediaErrorRetryTimerId) {
         clearTimeout(mediaErrorRetryTimerId);
@@ -13321,9 +13327,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const resetMediaErrorBudget = () => {
       mediaErrorCount = 0;
       lastMediaErrorAt = 0;
+      startupRecoveryCount = 0;
       if (mediaErrorRetryTimerId) {
         clearTimeout(mediaErrorRetryTimerId);
         mediaErrorRetryTimerId = null;
+      }
+      if (startupRecoveryTimerId) {
+        clearTimeout(startupRecoveryTimerId);
+        startupRecoveryTimerId = null;
       }
     };
     video.addEventListener('playing', resetMediaErrorBudget);
@@ -13362,13 +13373,49 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.');
       });
     });
+    const scheduleStartupRecovery = () => {
+      if (isStale() || fallbackShown || startupRecoveryCount >= 2) return;
+      if (startupRecoveryTimerId) clearTimeout(startupRecoveryTimerId);
+      startupRecoveryTimerId = window.setTimeout(async () => {
+        startupRecoveryTimerId = null;
+        if (isStale() || fallbackShown || video.currentTime > 0.15 || video.readyState >= 3) return;
+
+        startupRecoveryCount += 1;
+
+        // A stream can publish a valid event before its HLS manifest/first
+        // segment is ready. Rebuild the player instead of declaring the stream
+        // broken too early.
+        try {
+          if (state.hlsInstance && hlsAttached) {
+            state.hlsInstance.stopLoad();
+            state.hlsInstance.loadSource(url);
+            state.hlsInstance.startLoad(-1);
+          } else if (sourceAssigned) {
+            try { video.pause(); } catch (_) {}
+            try { video.removeAttribute('src'); } catch (_) {}
+            try { video.load(); } catch (_) {}
+            video.src = url;
+            video.load();
+          } else {
+            const attached = await attachHls();
+            if (attached) return;
+          }
+        } catch (_) {}
+
+        attemptInitialPlayback().catch(() => {});
+        scheduleStartupRecovery();
+      }, 10000);
+    };
+
     if (shouldPreferHls) {
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
         sourceAssigned = true;
+        scheduleStartupRecovery();
       } else {
         const attached = await attachHls();
         if (attached) {
+          scheduleStartupRecovery();
           window.setTimeout(() => {
             if (isStale()) return;
             attemptPlaybackRecovery('error').catch(() => {});
