@@ -432,7 +432,7 @@
       .filter(function(url) { return /^wss:\/\//i.test(url); })));
     if (!relayList.length) throw new Error('No room relays are available.');
 
-    await Promise.all(relayList.map(function(relay) {
+    const results = await Promise.all(relayList.map(function(relay) {
       return new Promise(function(resolve) {
         let settled = false;
         let ws = null;
@@ -466,6 +466,7 @@
         };
       });
     }));
+    if (!results.some(Boolean)) throw new Error('Could not publish the Nest event to any room relay.');
   }
 
   async function authenticateNestAudio(roomEvent, namespace) {
@@ -1004,7 +1005,8 @@
   }
 
   async function openPreview(url, fallback) {
-    if (activeRoomAudio && activeRoomUrl !== url) await leaveActiveRoom();
+    if (activeRoomAudio && activeRoomUrl === url) return;
+    if (activeRoomAudio) await leaveActiveRoom();
     activeRoomUrl = url;
     activeRoomEvent = null;
     activeRoom = null;
