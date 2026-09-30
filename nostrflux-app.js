@@ -290,6 +290,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     localSecretKey: null,
     remoteSignerSession: null,
     nwcLastProbe: null,
+    walletPageSession: null,
+    walletPageLoadToken: 0,
     remoteLoginPending: false,
     remoteLoginAbortController: null,
     remoteLoginUri: '',
@@ -4403,6 +4405,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return normalized.toLowerCase() === '/my-streams';
   }
 
+  function isWalletPath(pathname) {
+    const raw = (pathname || '/').trim();
+    const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
+    return normalized.toLowerCase() === '/wallet';
+  }
+
   function isWidgetsPath(pathname) {
     const raw = (pathname || '/').trim();
     const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
@@ -4859,6 +4867,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function syncWalletRoute(mode = 'push') {
+    if (!window.history || !window.history.pushState) return;
+    if (isWalletPath(window.location.pathname)) return;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try {
+      window.history[method]({ view: 'wallet' }, '', '/wallet');
+    } catch (_) {
+      // ignore
+    }
+  }
+
   function syncWidgetsRoute(mode = 'push') {
     if (!window.history || !window.history.pushState) return;
     if (isWidgetsPath(window.location.pathname)) return;
@@ -5013,6 +5032,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (window.showPage) window.showPage('home', { routeMode: 'replace' });
   }
 
+  function showWalletFromRoute() {
+    if (typeof window.openWallet === 'function') {
+      window.openWallet({ routeMode: 'skip' });
+      return;
+    }
+    if (window.showPage) window.showPage('wallet', { routeMode: 'skip' });
+  }
+
   function showWidgetsFromRoute() {
     if (typeof window.openWidgets === 'function') {
       window.openWidgets({ routeMode: 'skip' });
@@ -5049,6 +5076,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (isMyStreamsPath(window.location.pathname)) {
       showMyStreamsFromRoute();
+      return;
+    }
+    if (isWalletPath(window.location.pathname)) {
+      showWalletFromRoute();
       return;
     }
     if (isWidgetsPath(window.location.pathname)) {
@@ -20135,6 +20166,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const communities = qs('#communitiesPage');
       const messages = qs('#messagesPage');
       const myStreams = qs('#myStreamsPage');
+      const wallet = qs('#walletPage');
       const widgets = qs('#widgetsPage');
       const faq = qs('#faqPage');
       if (p !== 'video') {
@@ -20142,6 +20174,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         stopViewerPresence();
         stopLivePresenceTracker();
         stopChatSubscription();
+      }
+      if (p !== 'wallet' && state.walletPageSession) {
+        teardownNwcSessionObject(state.walletPageSession, 'Leaving wallet page.');
+        state.walletPageSession = null;
       }
       if (p === 'home' && routeMode !== 'skip') syncHomeRoute(routeMode);
       if (p === 'videos' && routeMode !== 'skip') syncVideosRoute(routeMode);
@@ -20156,6 +20192,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (p === 'faq' && routeMode !== 'skip') syncFaqRoute(routeMode);
       if (p === 'messages' && routeMode !== 'skip') syncMessagesRoute(routeMode);
       if (p === 'myStreams' && routeMode !== 'skip') syncMyStreamsRoute(routeMode);
+      if (p === 'wallet' && routeMode !== 'skip') syncWalletRoute(routeMode);
       if (p === 'widgets' && routeMode !== 'skip') syncWidgetsRoute(routeMode);
       if (p === 'communities' && routeMode !== 'skip') syncCommunitiesRoute(routeMode);
       if (home) home.classList.toggle('active', p === 'home');
@@ -20167,8 +20204,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (communities) communities.style.display = p === 'communities' ? 'block' : 'none';
       if (messages) messages.style.display = p === 'messages' ? 'block' : 'none';
       if (myStreams) myStreams.style.display = p === 'myStreams' ? 'block' : 'none';
+      if (wallet) wallet.style.display = p === 'wallet' ? 'block' : 'none';
       if (widgets) widgets.style.display = p === 'widgets' ? 'block' : 'none';
       if (faq) faq.style.display = p === 'faq' ? 'block' : 'none';
+      if (p === 'wallet' && typeof window.loadWalletPage === 'function') window.loadWalletPage();
       // Communities/home router behavior:
       // - home keeps hero playback and cycling
       // - all other top-level pages fully stop hero playback
@@ -20696,6 +20735,191 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const preferredAddress = (state.goLiveSelectedAddress || state.selectedStreamAddress || '').trim();
       window.syncWidgetBuilderStreams(streams, preferredAddress);
     }
+
+    window.openWallet = function (opts = {}) {
+      const routeMode = opts.routeMode || 'push';
+      window.showPage('wallet', { routeMode });
+      return true;
+    };
+
+    window.loadWalletPage = async function (force = false) {
+      const token = ++state.walletPageLoadToken;
+      const statusEl = qs('#walletPageStatus');
+      const balanceEl = qs('#walletBalanceValue');
+      const balanceSubEl = qs('#walletBalanceSub');
+      const infoEl = qs('#walletInfoList');
+      const txEl = qs('#walletTransactionsList');
+      const chipEl = qs('#walletStatusChip');
+      const promptEl = qs('#walletConnectPrompt');
+      const refreshBtn = qs('#walletRefreshBtn');
+      const addressEl = qs('#walletAddressValue');
+      const addressHelpEl = qs('#walletAddressHelp');
+      const copyBtn = qs('#walletAddressCopyBtn');
+
+      if (!statusEl || !balanceEl || !infoEl || !txEl) return;
+      if (state.walletPageSession) {
+        teardownNwcSessionObject(state.walletPageSession, 'Wallet page refreshed.');
+        state.walletPageSession = null;
+      }
+
+      const setStatus = (message, mode = 'info') => {
+        statusEl.textContent = message || '';
+        statusEl.className = 'wallet-page-status';
+        if (message) statusEl.classList.add('is-visible', `is-${mode}`);
+      };
+      const setLoading = (loading) => {
+        if (refreshBtn) {
+          refreshBtn.disabled = !!loading;
+          refreshBtn.textContent = loading ? 'Loading…' : 'Refresh';
+        }
+      };
+
+      const savedUri = String(state.settings && state.settings.nwcConnectionUri || '').trim();
+      let config = null;
+      if (savedUri) {
+        try { config = parseNwcConnectionString(savedUri); }
+        catch (_) { config = null; }
+      }
+
+      const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+      if (ownPubkey) {
+        fetchProfileIfNeeded(ownPubkey, { force: !!force }).then(() => {
+          if (token !== state.walletPageLoadToken) return;
+          const profile = profileFor(ownPubkey);
+          const lud16 = String(profile.lud16 || state.settings.lud16 || '').trim();
+          if (addressEl) addressEl.textContent = lud16 || 'Not available';
+          if (addressHelpEl) addressHelpEl.textContent = lud16
+            ? 'Lightning address from your Nostr profile.'
+            : 'Add a lud16 Lightning address in Settings → Profile.';
+          if (copyBtn) copyBtn.hidden = !lud16;
+          state.walletPageLightningAddress = lud16;
+        }).catch(() => {});
+      } else {
+        const lud16 = String(state.settings && state.settings.lud16 || '').trim();
+        if (addressEl) addressEl.textContent = lud16 || 'Not available';
+        if (addressHelpEl) addressHelpEl.textContent = lud16
+          ? 'Lightning address saved in this browser.'
+          : 'Sign in and add a lud16 Lightning address in Settings → Profile.';
+        if (copyBtn) copyBtn.hidden = !lud16;
+        state.walletPageLightningAddress = lud16;
+      }
+
+      if (!config) {
+        balanceEl.textContent = '—';
+        balanceSubEl.textContent = 'No Nostr Wallet Connect wallet is configured.';
+        infoEl.innerHTML = '<div class="wallet-info-empty">No NIP-47 wallet connection is configured.</div>';
+        txEl.innerHTML = '<div class="wallet-empty-state">Connect a wallet in Settings → Wallet to load your live Lightning balance and transactions.</div>';
+        if (chipEl) { chipEl.textContent = 'Not connected'; chipEl.className = 'wallet-status-chip'; }
+        if (promptEl) promptEl.hidden = false;
+        setStatus('', 'info');
+        return;
+      }
+
+      if (promptEl) promptEl.hidden = true;
+      setLoading(true);
+      setStatus('Connecting to your Nostr wallet…', 'loading');
+      if (chipEl) { chipEl.textContent = 'Connecting'; chipEl.className = 'wallet-status-chip is-loading'; }
+      balanceEl.textContent = '…';
+      balanceSubEl.textContent = 'Loading live wallet balance';
+      txEl.innerHTML = '<div class="wallet-empty-state">Loading recent Lightning activity…</div>';
+
+      try {
+        const session = await createNwcSession(config);
+        if (token !== state.walletPageLoadToken) {
+          teardownNwcSessionObject(session, 'Wallet page load superseded.');
+          return;
+        }
+        state.walletPageSession = session;
+
+        const infoResult = await sendNwcRequest(session, 'get_info', {}, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
+        if (token !== state.walletPageLoadToken) return;
+
+        let balanceResult = null;
+        try {
+          balanceResult = await sendNwcRequest(session, 'get_balance', {}, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
+        } catch (_) {}
+
+        let txResult = null;
+        try {
+          txResult = await sendNwcRequest(session, 'list_transactions', { limit: 20 }, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
+        } catch (_) {}
+
+        const balanceMsats = Number(balanceResult && (balanceResult.balance ?? balanceResult.amount) || 0);
+        const balanceSats = Number.isFinite(balanceMsats) ? balanceMsats / 1000 : 0;
+        const network = String(infoResult && infoResult.network || '').trim();
+        const alias = String(infoResult && infoResult.alias || '').trim();
+        const methods = Array.isArray(infoResult && infoResult.methods) ? infoResult.methods.filter(Boolean) : [];
+        const transactions = Array.isArray(txResult && txResult.transactions)
+          ? txResult.transactions
+          : (Array.isArray(txResult) ? txResult : []);
+
+        balanceEl.textContent = `${formatCount(Math.floor(balanceSats))} sats`;
+        balanceSubEl.textContent = network
+          ? `${network} Lightning wallet`
+          : 'Lightning wallet balance';
+        infoEl.innerHTML = [
+          ['Wallet Service', shortHex(config.walletPubkey)],
+          ['Alias', alias || 'Not provided'],
+          ['Network', network || 'Not reported'],
+          ['Relays', `${config.relays.length}`],
+          ['Encryption', session.encryption === 'nip04' ? 'NIP-04' : 'NIP-44'],
+          ['Capabilities', methods.length ? methods.join(', ') : 'Not reported']
+        ].map(([label,value]) => `<div class="wallet-info-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
+
+        const sortedTx = transactions
+          .filter(Boolean)
+          .sort((a,b) => Number(b.settled_at || b.created_at || 0) - Number(a.settled_at || a.created_at || 0))
+          .slice(0,20);
+
+        if (!sortedTx.length) {
+          txEl.innerHTML = '<div class="wallet-empty-state">No recent wallet transactions were returned.</div>';
+        } else {
+          txEl.innerHTML = sortedTx.map((tx) => {
+            const type = String(tx.type || '').toLowerCase();
+            const incoming = type === 'incoming' || type === 'receive' || Number(tx.amount || 0) > 0;
+            const sats = Math.abs(Number(tx.amount || 0)) / 1000;
+            const timestamp = Number(tx.settled_at || tx.created_at || 0);
+            const date = timestamp ? new Date(timestamp * 1000).toLocaleString() : 'Date unavailable';
+            const description = String(tx.description || tx.metadata?.comment || tx.payment_hash || 'Lightning transaction').trim();
+            return `<article class="wallet-tx-row">
+              <div class="wallet-tx-icon ${incoming ? 'incoming' : 'outgoing'}">${incoming ? '↓' : '↑'}</div>
+              <div class="wallet-tx-main">
+                <strong>${incoming ? 'Received' : 'Sent'}</strong>
+                <span>${escapeHtml(description.slice(0, 180))}</span>
+                <time>${escapeHtml(date)}</time>
+              </div>
+              <div class="wallet-tx-amount ${incoming ? 'incoming' : 'outgoing'}">${incoming ? '+' : '-'}${escapeHtml(formatCount(Math.floor(sats)))} sats</div>
+            </article>`;
+          }).join('');
+        }
+
+        if (chipEl) { chipEl.textContent = 'Connected'; chipEl.className = 'wallet-status-chip is-connected'; }
+        setStatus('Wallet information updated.', 'success');
+      } catch (err) {
+        if (token !== state.walletPageLoadToken) return;
+        balanceEl.textContent = '—';
+        balanceSubEl.textContent = 'Could not load the live wallet balance.';
+        if (chipEl) { chipEl.textContent = 'Connection error'; chipEl.className = 'wallet-status-chip is-error'; }
+        txEl.innerHTML = '<div class="wallet-empty-state">The wallet connection could not be reached. Check Settings → Wallet and try again.</div>';
+        setStatus(err && err.message ? err.message : 'Could not load wallet information.', 'error');
+      } finally {
+        if (token === state.walletPageLoadToken) setLoading(false);
+      }
+    };
+
+    window.copyWalletLightningAddress = async function () {
+      const value = String(state.walletPageLightningAddress || '').trim();
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+        const btn = qs('#walletAddressCopyBtn');
+        if (btn) {
+          const original = btn.textContent;
+          btn.textContent = 'Copied';
+          setTimeout(() => { if (btn) btn.textContent = original; }, 1200);
+        }
+      } catch (_) {}
+    };
 
     window.openWidgets = function (opts = {}) {
       const routeMode = opts.routeMode || 'push';
