@@ -13089,9 +13089,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (video.muted) {
         const restored = await tryRestoreAudio();
         if (!restored) {
-          // Keep playback running even when browser blocks unmuted autoplay.
+          // Keep the stream playing, but do not treat muted playback as a fully
+          // successful initial start. This lets later user interaction/retries
+          // restore audio instead of permanently accepting a silent player.
           video.muted = true;
           video.defaultMuted = true;
+          return false;
         }
       }
       return true;
@@ -13122,10 +13125,26 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       video.addEventListener('loadedmetadata', retry);
       video.addEventListener('loadeddata', retry);
       video.addEventListener('canplay', retry);
-      video.addEventListener('playing', clearInitialPlaybackRetries, { once: true });
+      video.addEventListener('playing', () => {
+        // If autoplay had to start muted, keep retrying until audio is actually restored.
+        if (video.muted) scheduleInitialPlaybackRetries();
+        else clearInitialPlaybackRetries();
+      });
       document.addEventListener('visibilitychange', () => { if (!document.hidden) retry(); });
       window.addEventListener('pageshow', retry);
       window.addEventListener('focus', retry);
+
+      // The click/tap that opens a stream is the user's interaction. If the
+      // browser initially required muted autoplay, use subsequent interaction
+      // to immediately retry the same player with audio rather than waiting for
+      // another stream to be opened.
+      const unlockAudio = () => {
+        if (isStale() || fallbackShown || !video.muted) return;
+        attemptInitialPlayback().catch(() => {});
+      };
+      document.addEventListener('pointerdown', unlockAudio, { passive: true });
+      document.addEventListener('keydown', unlockAudio);
+      document.addEventListener('touchstart', unlockAudio, { passive: true });
     };
 
     const showFailure = (message, opts = {}) => {
