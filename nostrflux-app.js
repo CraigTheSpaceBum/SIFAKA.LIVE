@@ -15626,7 +15626,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     const ctext = qs('.c-text', row);
     const rawText = String(ev.content || '');
-    if (rawText) ctext.appendChild(renderNostrContent(rawText));
+    if (rawText) {
+      // Treat directly pasted image URLs as inline chat images instead of plain links.
+      const imageUrls = Array.from(new Set(
+        extractHttpUrls(rawText)
+          .map((url) => sanitizeMediaUrl(url))
+          .filter((url) => classifyMediaUrl(url) === 'photo')
+      ));
+      const textWithoutImages = stripMediaUrlsFromText(rawText, imageUrls);
+      if (textWithoutImages) ctext.appendChild(renderNostrContent(textWithoutImages));
+      if (imageUrls.length) {
+        renderChatInlineMedia(ctext, imageUrls, {
+          allowVideo: false,
+          allowAudio: false,
+          maxItems: 4,
+          classPrefix: 'chat'
+        });
+      }
+    }
     const likeBtn = qs('.chat-like-btn', row);
     if (likeBtn) likeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
