@@ -13052,7 +13052,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     video.preload = 'auto';
     video.style.cssText = 'width:100%;height:100%;object-fit:cover;background:#000;';
     const syncFit = () => syncTheaterVideoFit(video, playerBg);
-    bindInitialPlaybackRecovery();
+    // Bind playback recovery only after the helper is initialized below.
+    // Calling it earlier hits the const temporal-dead-zone and aborts playback setup.
     video.addEventListener('loadedmetadata', syncFit);
     video.addEventListener('loadeddata', syncFit);
     video.addEventListener('resize', syncFit);
@@ -13287,6 +13288,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       attemptPlaybackRecovery('watchdog').catch(() => {});
     }, 5000);
+
+    // Start the recovery listeners after bindInitialPlaybackRecovery has been defined.
+    bindInitialPlaybackRecovery();
 
     const attachHls = async () => {
       if (hlsAttached || isStale()) return false;
