@@ -7486,3 +7486,73 @@ body.nest-room-page-open{
 #nestRoomPage .nest-person-role-moderator{color:var(--live);border-color:color-mix(in srgb,var(--live) 30%,var(--border));background:color-mix(in srgb,var(--live) 7%,var(--surface3))}
 #nestRoomPage .nest-preview-section-head{display:flex;align-items:center;justify-content:space-between}
 #nestRoomPage .nests-room-page-people-column .nest-preview-section:first-child{margin-top:0}
+
+
+/* NOSTR NEST — audio controls and room interaction */
+#nestRoomPage .nest-room-volume{
+  display:flex;align-items:center;gap:.42rem;min-width:165px;
+  color:var(--muted);font:600 .5rem/1 "DM Mono",monospace;
+  text-transform:uppercase;letter-spacing:.04em;
+}
+#nestRoomPage .nest-room-volume input{
+  width:110px;accent-color:var(--purple);
+}
+#nestRoomPage .nest-room-mic-volume input{accent-color:var(--accent)}
+#nestRoomPage .nest-room-mic-volume input:disabled{opacity:.45}
+#nestRoomPage .nest-room-reactions{
+  display:flex;align-items:center;gap:.25rem;flex-wrap:wrap;
+  max-width:320px;
+}
+#nestRoomPage .nest-room-reaction-btn{
+  min-width:34px;min-height:32px;padding:.25rem .35rem;
+  font-size:.9rem;line-height:1;
+}
+#nestRoomPage .nest-room-reaction-btn small{
+  margin-left:.16rem;color:var(--muted);font:600 .45rem/1 "DM Mono",monospace;
+}
+#nestRoomPage .nest-person-wrap{
+  display:flex;flex-direction:column;gap:.28rem;min-width:0;
+}
+#nestRoomPage .nest-person-wrap .nest-person-volume{
+  display:flex;align-items:center;gap:.35rem;padding:0 .18rem .12rem;
+  color:var(--muted);font:600 .46rem/1 "DM Mono",monospace;
+}
+#nestRoomPage .nest-person-wrap .nest-person-volume span{
+  flex:none;text-transform:uppercase;letter-spacing:.03em;
+}
+#nestRoomPage .nest-person-volume-input{
+  width:100%;min-width:0;accent-color:var(--purple);
+}
+.nest-preview-overlay .nest-room-volume{
+  display:flex;align-items:center;gap:.4rem;min-width:145px;
+  color:var(--muted);font:600 .5rem/1 "DM Mono",monospace;
+}
+.nest-preview-overlay .nest-room-volume input{width:95px;accent-color:var(--purple)}
+.nest-preview-overlay .nest-room-mic-volume input{accent-color:var(--accent)}
+.nest-preview-overlay .nest-room-mic-volume input:disabled{opacity:.45}
+.nest-preview-overlay .nest-room-reactions{
+  display:flex;align-items:center;gap:.22rem;flex-wrap:wrap;max-width:290px;
+}
+.nest-preview-overlay .nest-room-reaction-btn{
+  min-width:32px;min-height:30px;padding:.2rem .3rem;font-size:.85rem;line-height:1;
+}
+.nest-preview-overlay .nest-room-reaction-btn small{
+  margin-left:.15rem;color:var(--muted);font:600 .45rem/1 "DM Mono",monospace;
+}
+.nest-preview-overlay .nest-person-wrap{
+  display:flex;flex-direction:column;gap:.25rem;min-width:0;
+}
+.nest-preview-overlay .nest-person-wrap .nest-person-volume{
+  display:flex;align-items:center;gap:.3rem;padding:0 .15rem .1rem;
+  color:var(--muted);font:600 .45rem/1 "DM Mono",monospace;
+}
+.nest-preview-overlay .nest-person-volume-input{width:100%;accent-color:var(--purple)}
+
+@media(max-width:760px){
+  #nestRoomPage .nest-room-volume{
+    width:100%;min-width:0;
+    justify-content:space-between;
+  }
+  #nestRoomPage .nest-room-volume input{flex:1;width:auto}
+  #nestRoomPage .nest-room-reactions{width:100%;max-width:none}
+}
