@@ -966,31 +966,42 @@
   }
 
   function renderChat(room, profiles) {
+    const chatEl = $('#nestPreviewChat', modal);
+    if (!chatEl) return;
+    const stickToBottom = (chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight) < 64;
     const messages = Array.isArray(room.chat) ? room.chat.slice().sort(function(a, b) {
       return Number(a.created_at || 0) - Number(b.created_at || 0);
-    }).slice(-12) : [];
+    }).slice(-80) : [];
 
-    $('#nestPreviewChatCount', modal).textContent = messages.length
-      ? messages.length + (messages.length === 1 ? ' recent message' : ' recent messages')
+    const countEl = $('#nestPreviewChatCount', modal);
+    if (countEl) countEl.textContent = messages.length
+      ? messages.length + (messages.length === 1 ? ' message' : ' messages')
       : 'No messages';
 
     if (!messages.length) {
-      $('#nestPreviewChat', modal).innerHTML =
-        '<div class="nest-preview-chat-empty"><span class="nest-chat-empty-icon">✦</span><strong>No room chat yet</strong><small>Be the first to say hello when you join.</small></div>';
+      chatEl.innerHTML =
+        '<div class="nest-preview-chat-empty"><span class="nest-chat-empty-icon">✦</span><strong>No live chat yet</strong><small>Messages from this room will appear here in real time.</small></div>';
       return;
     }
 
-    $('#nestPreviewChat', modal).innerHTML = messages.map(function(ev) {
+    chatEl.innerHTML = messages.map(function(ev, index) {
       const prof = profiles.get(String(ev.pubkey || '').toLowerCase()) || {};
       const name = profileDisplayName(prof);
       const picture = safeNestImageUrl(prof.picture);
       const content = String(ev.content || '').trim();
       const when = ev.created_at ? new Date(Number(ev.created_at) * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-      return '<div class="nest-chat-message">' +
-        '<span class="nest-chat-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : esc(name.slice(0, 1).toUpperCase())) + '</span>' +
+      const previous = messages[index - 1];
+      const sameSender = previous &&
+        String(previous.pubkey || '').toLowerCase() === String(ev.pubkey || '').toLowerCase() &&
+        Number(ev.created_at || 0) - Number(previous.created_at || 0) < 300;
+      return '<div class="nest-chat-message' + (sameSender ? ' is-grouped' : '') + '">' +
+        (sameSender ? '<span class="nest-chat-avatar nest-chat-avatar-empty"></span>' :
+          '<span class="nest-chat-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : esc(name.slice(0, 1).toUpperCase())) + '</span>') +
         '<div class="nest-chat-copy"><div><strong>' + esc(name) + '</strong><time>' + esc(when) + '</time></div><p>' + esc(content) + '</p></div>' +
       '</div>';
     }).join('');
+
+    if (stickToBottom) chatEl.scrollTop = chatEl.scrollHeight;
   }
 
   function renderRoom(room, profiles, fallback) {
@@ -1052,7 +1063,7 @@
         renderSchedule();
       }, 1000);
     } else {
-      $('#nestPreviewSchedule', modal).innerHTML = '<div class="nest-preview-schedule-icon">◉</div><div><strong>Drop-in room</strong><span>Join whenever the room is open.</span></div>';
+      $('#nestPreviewSchedule', modal).innerHTML = '';
     }
 
     const showProfile = function(pubkey, role) {
@@ -1116,8 +1127,16 @@
 
     const topicValues = Array.from(new Set((room.topics || []).concat((meeting && meeting.topics) || []))).slice(0, 8);
     $('#nestPreviewTopics', modal).innerHTML = topicValues.map(function(t) { return '<span>#' + esc(t) + '</span>'; }).join('');
-    $('#nestPreviewJoinBtn', modal).textContent = activeRoomAudio ? 'Leave Nest' : (live ? 'Join Nest' : 'Open Nest');
-    $('#nestPreviewJoinBtn', modal).classList.toggle('btn-danger', !!activeRoomAudio);
+    const joinButton = $('#nestPreviewJoinBtn', modal);
+    if (joinButton) {
+      joinButton.textContent = activeRoomAudio
+        ? (activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener')
+        : (live ? 'Join As Speak' : 'Open Nest');
+      joinButton.disabled = !!activeRoomAudio;
+      joinButton.classList.remove('btn-danger');
+    }
+    const leaveButton = $('#nestRoomLeaveBtn', modal);
+    if (leaveButton) leaveButton.disabled = false;
     updateActiveRoomAudioUi();
     $('#nestPreviewFootnote', modal).textContent = room.sourceCount > 1 ? 'Room details merged from ' + room.sourceCount + ' relays.' : 'Room details are read from Nostr NIP-53 events.';
   }
