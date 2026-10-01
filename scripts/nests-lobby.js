@@ -448,6 +448,10 @@
 
     setParticipants(pubkeys) {
       if (!this.connection) return;
+      // Treat the NIP-53 stage roster as an additive hint, not an authoritative
+      // replacement for MoQ announcements. A room event can lag behind the
+      // transport announcement by several seconds; removing an announced
+      // speaker here would otherwise mute them until a new announcement arrives.
       const wanted = new Set((Array.isArray(pubkeys) ? pubkeys : [])
         .map(function(value) { return String(value || '').trim().toLowerCase(); })
         .filter(function(value) {
@@ -456,12 +460,6 @@
 
       wanted.forEach(function(pubkey) {
         if (!this.entries.has(pubkey)) this.subscribeParticipant(pubkey);
-      }, this);
-
-      Array.from(this.entries.keys()).forEach(function(pubkey) {
-        if (wanted.has(pubkey)) return;
-        closeAudioEntry(this.entries.get(pubkey));
-        this.entries.delete(pubkey);
       }, this);
 
       updateActiveRoomAudioUi();
@@ -1316,11 +1314,14 @@
   async function publishActiveRoomPresence() {
     if (!activeRoom || !activeRoom.a) return;
     try {
+      const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
+      const muted = !!(activeRoomAudio ? activeRoomAudio.muted : true);
+      const onstage = !!(activeRoomAudio && activeRoomAudio.publishRequested);
       const event = await signRoomEvent(10312, '', [
         ['a', activeRoom.a],
-        ['publishing', '0'],
-        ['muted', '1'],
-        ['onstage', '0']
+        ['publishing', publishing ? '1' : '0'],
+        ['muted', muted ? '1' : '0'],
+        ['onstage', onstage ? '1' : '0']
       ]);
       await publishSignedRoomEvent(event, activeRoomRelays);
     } catch (err) {
@@ -1363,6 +1364,42 @@
     refreshLiveRoom(activeRoomUrl).catch(function() {});
   }
 
+  function chooseCurrentMeeting(events) {
+    const meetings = (Array.isArray(events) ? events : [])
+      .filter(function(e) { return Number(e && e.kind || 0) === 30313; })
+      .sort(function(a,b) { return Number(b.created_at || 0) - Number(a.created_at || 0); });
+
+    // Kind:30313 is parameterized replaceable. Keep only the newest event
+    // for each d-tag before deciding which meeting is current.
+    const latestByD = new Map();
+    meetings.forEach(function(ev) {
+      const d = String(tag(ev, 'd') || '').trim();
+      if (!d) return;
+      if (!latestByD.has(d)) latestByD.set(d, ev);
+    });
+
+    const latest = Array.from(latestByD.values())
+      .sort(function(a,b) { return Number(b.created_at || 0) - Number(a.created_at || 0); });
+    const current = latest.find(function(e) {
+      const status = String(tag(e, 'status') || '').toLowerCase();
+      const starts = Number(tag(e, 'starts') || 0);
+      const ends = Number(tag(e, 'ends') || 0);
+      if (status === 'live' || status === 'open') return !ends || ends > now();
+      if (status === 'planned') return starts > now();
+      // Some producers omit status while the start/end window is authoritative.
+      if (!status) return (!starts || starts <= now()) && (!ends || ends > now());
+      return false;
+    });
+    if (current) return current;
+
+    // No active meeting: prefer the next scheduled meeting, otherwise the
+    // newest historical meeting so ended rooms are shown as ended rather than
+    // being resurrected by an older live event.
+    return latest.find(function(e) {
+      return Number(tag(e, 'starts') || 0) > now();
+    }) || latest[0] || null;
+  }
+
   async function openPreview(url, fallback) {
     if (activeRoomAudio && activeRoomUrl === url) return;
     if (activeRoomAudio) await leaveActiveRoom();
@@ -1390,10 +1427,8 @@
     if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
 
     const rooms = events.filter(function(e) { return Number(e.kind) === 30312; }).sort(function(a,b) { return Number(b.created_at||0)-Number(a.created_at||0); });
-    const meetings = events.filter(function(e) { return Number(e.kind) === 30313; }).sort(function(a,b) { return Number(b.created_at||0)-Number(a.created_at||0); });
     const roomEvent = rooms[0] || null;
-    const current = meetings.find(function(e) { return ['live','planned','open'].indexOf(String(tag(e,'status')).toLowerCase()) >= 0; })
-      || meetings.find(function(e) { return Number(tag(e,'starts')) > now(); }) || meetings[0] || null;
+    const current = chooseCurrentMeeting(events);
     const presence = new Set();
     events.filter(function(e) { return Number(e.kind) === 10312; }).forEach(function(e) {
       if (Number(e.created_at || 0) >= now() - PRESENCE_TTL) presence.add(String(e.pubkey || '').toLowerCase());
@@ -1460,11 +1495,7 @@
 
     if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
 
-    const meetings = events.filter(function(e) { return Number(e.kind) === 30313; })
-      .sort(function(a,b) { return Number(b.created_at||0)-Number(a.created_at||0); });
-    const current = meetings.find(function(e) {
-      return ['live','planned','open'].indexOf(String(tag(e,'status')).toLowerCase()) >= 0;
-    }) || meetings.find(function(e) { return Number(tag(e,'starts')) > now(); }) || meetings[0] || null;
+    const current = chooseCurrentMeeting(events);
 
     const presence = new Set();
     events.filter(function(e) { return Number(e.kind) === 10312; }).forEach(function(e) {
