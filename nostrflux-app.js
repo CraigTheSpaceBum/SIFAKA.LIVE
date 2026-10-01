@@ -299,6 +299,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     nwcLastProbe: null,
     walletPageSession: null,
     walletPageLoadToken: 0,
+    walletOnchainSendDraft: null,
+    walletOnchainSignerModule: null,
     nestsSubId: null,
     nestsPresenceSubId: null,
     nestsRooms: new Map(),
@@ -21545,6 +21547,207 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       taprootDerivationSelfTested = true;
     }
 
+    function renderWalletOnchainReceiveQr(address) {
+      const qr = qs('#walletMainchainQr');
+      const empty = qs('#walletMainchainQrEmpty');
+      if (!qr) return;
+      qr.innerHTML = '';
+      const value = String(address || '').trim();
+      if (!value) {
+        if (empty) empty.hidden = false;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      if (window.QRCode) {
+        new window.QRCode(qr, {
+          text: 'bitcoin:' + value,
+          width: 240,
+          height: 240,
+          correctLevel: window.QRCode.CorrectLevel.M
+        });
+      }
+    }
+
+    async function getWalletOnchainSignerModule() {
+      if (state.walletOnchainSignerModule) return state.walletOnchainSignerModule;
+      const mod = await import('https://cdn.jsdelivr.net/npm/@scure/btc-signer@2.4.1/+esm');
+      state.walletOnchainSignerModule = mod;
+      return mod;
+    }
+
+    async function deriveNipBcTaprootSpendSecret(internalSecretKey) {
+      const secretBytes = normalizeSecretKey(internalSecretKey);
+      if (!secretBytes || secretBytes.length !== 32) throw new Error('A locally controlled Nostr private key is required to send on-chain Bitcoin.');
+      const scalar = btcBytesToBigInt(secretBytes);
+      if (scalar <= 0n || scalar >= BTC_CURVE_ORDER) throw new Error('Invalid local Nostr private key.');
+      const point = btcPointMultiply(scalar, { x: BTC_GX, y: BTC_GY });
+      if (!point) throw new Error('Could not derive the Nostr public key.');
+      const normalizedScalar = (point.y & 1n) ? BTC_CURVE_ORDER - scalar : scalar;
+      const xOnly = btcBigIntTo32Bytes(point.x);
+      const tweak = btcBytesToBigInt(await btcTapTweakHash(xOnly));
+      if (tweak >= BTC_CURVE_ORDER) throw new Error('Invalid Taproot tweak.');
+      const tweaked = btcMod(normalizedScalar + tweak, BTC_CURVE_ORDER);
+      if (tweaked === 0n) throw new Error('Invalid Taproot spending key.');
+      return btcBigIntTo32Bytes(tweaked);
+    }
+
+    async function fetchWalletOnchainFeeRate() {
+      const response = await fetch('https://mempool.space/api/v1/fees/recommended', { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error('Could not load the current Bitcoin fee rate.');
+      const data = await response.json();
+      const fee = Number(data.halfHourFee || data.hourFee || data.fastestFee || 1);
+      return Number.isFinite(fee) && fee > 0 ? fee : 1;
+    }
+
+    async function fetchWalletOnchainUtxos(address) {
+      const response = await fetch('https://mempool.space/api/address/' + encodeURIComponent(address) + '/utxo', { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error('Could not load your Bitcoin UTXOs.');
+      const utxos = await response.json();
+      return Array.isArray(utxos) ? utxos.filter((u) => u && u.txid && Number(u.value) > 0) : [];
+    }
+
+    function estimateWalletOnchainFee(inputCount, outputCount, feeRate) {
+      const vbytes = 11 + (58 * inputCount) + (43 * outputCount);
+      return Math.max(1, Math.ceil(vbytes * Number(feeRate || 1)));
+    }
+
+    function requireLocalOnchainSigner() {
+      if (state.authMode !== 'local' || !state.localSecretKey) {
+        throw new Error('On-chain sending currently requires a local Nostr key login.');
+      }
+      return normalizeSecretKey(state.localSecretKey);
+    }
+
+    function resetWalletOnchainSendDraft() {
+      state.walletOnchainSendDraft = null;
+      const summary = qs('#walletOnchainSendSummary');
+      const status = qs('#walletOnchainSendStatus');
+      const btn = qs('#walletOnchainReviewBtn');
+      if (summary) summary.textContent = 'Enter a recipient and amount to prepare the transaction.';
+      if (status) status.textContent = '';
+      if (btn) { btn.disabled = false; btn.textContent = 'Review transaction'; btn.onclick = window.prepareWalletOnchainSend; }
+    }
+
+    async function buildWalletOnchainTransaction(draft) {
+      const secret = requireLocalOnchainSigner();
+      const btc = await getWalletOnchainSignerModule();
+      const spendSecret = await deriveNipBcTaprootSpendSecret(secret);
+      const spendPubkey = btc.utils.pubSchnorr(spendSecret);
+      const spend = btc.p2tr(spendPubkey);
+      const ownAddress = String(state.walletPageOnchainAddress || '').trim();
+      if (!ownAddress || spend.address !== ownAddress) throw new Error('The local signing key does not match this wallet address.');
+      const tx = new btc.Transaction();
+      draft.utxos.forEach((utxo) => {
+        tx.addInput({
+          ...spend,
+          txid: utxo.txid,
+          index: Number(utxo.vout),
+          witnessUtxo: { script: spend.script, amount: BigInt(Math.floor(Number(utxo.value))) }
+        });
+      });
+      tx.addOutputAddress(draft.destination, BigInt(draft.amountSats));
+      if (draft.changeSats >= 330) tx.addOutputAddress(ownAddress, BigInt(draft.changeSats));
+      tx.sign(spendSecret);
+      tx.finalize();
+      return { txid: tx.id, hex: tx.hex };
+    }
+
+    window.openWalletOnchainReceive = function () {
+      const address = String(state.walletPageOnchainAddress || '').trim();
+      if (!address) return;
+      showWalletAddressQr('bitcoin');
+    };
+
+    window.openWalletOnchainSend = function () {
+      const modal = qs('#walletOnchainSendModal');
+      if (!modal) return;
+      modal.hidden = false;
+      modal.setAttribute('aria-hidden', 'false');
+      resetWalletOnchainSendDraft();
+      const note = qs('#walletOnchainSendNote');
+      if (note) note.textContent = state.authMode === 'local' && state.localSecretKey
+        ? 'Your transaction will be prepared locally and only broadcast after you confirm the destination, amount, and fee.'
+        : 'On-chain sending currently requires a local Nostr key login. The receive wallet remains available with remote signer or extension login.';
+      setTimeout(() => qs('#walletOnchainSendAddress')?.focus(), 0);
+    };
+
+    window.closeWalletOnchainSend = function () {
+      const modal = qs('#walletOnchainSendModal');
+      if (modal) { modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); }
+      resetWalletOnchainSendDraft();
+    };
+
+    window.prepareWalletOnchainSend = async function () {
+      const addressEl = qs('#walletOnchainSendAddress');
+      const amountEl = qs('#walletOnchainSendAmount');
+      const feeRateEl = qs('#walletOnchainSendFeeRate');
+      const summary = qs('#walletOnchainSendSummary');
+      const status = qs('#walletOnchainSendStatus');
+      const btn = qs('#walletOnchainReviewBtn');
+      const destination = String(addressEl?.value || '').trim();
+      const amountSats = Math.floor(Number(amountEl?.value || 0));
+      let feeRate = Number(feeRateEl?.value || 0);
+      if (!destination || !/^(bc1[ac-hj-np-z02-9]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,62})$/i.test(destination)) { if (status) status.textContent = 'Enter a valid Bitcoin mainnet address.'; return; }
+      if (!Number.isFinite(amountSats) || amountSats < 1) { if (status) status.textContent = 'Enter a valid amount in sats.'; return; }
+      try {
+        requireLocalOnchainSigner();
+        if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+        if (status) status.textContent = 'Loading UTXOs and fee rate…';
+        if (!Number.isFinite(feeRate) || feeRate <= 0) { feeRate = await fetchWalletOnchainFeeRate(); if (feeRateEl) feeRateEl.value = String(feeRate); }
+        const ownAddress = String(state.walletPageOnchainAddress || '').trim();
+        if (!ownAddress) throw new Error('Your Taproot wallet address is not available yet.');
+        const utxos = (await fetchWalletOnchainUtxos(ownAddress)).sort((a,b) => Number(b.value || 0) - Number(a.value || 0));
+        if (!utxos.length) throw new Error('No spendable on-chain UTXOs were found for this address.');
+        const selected = [];
+        let totalInputSats = 0;
+        for (const utxo of utxos) {
+          selected.push(utxo);
+          totalInputSats += Math.floor(Number(utxo.value));
+          const feeWithChange = estimateWalletOnchainFee(selected.length, 2, feeRate);
+          const feeWithoutChange = estimateWalletOnchainFee(selected.length, 1, feeRate);
+          if (totalInputSats >= amountSats + feeWithChange + 330 || totalInputSats >= amountSats + feeWithoutChange) break;
+        }
+        if (totalInputSats < amountSats + estimateWalletOnchainFee(selected.length, 1, feeRate)) throw new Error('Insufficient balance for this payment and network fee.');
+        const feeWithChange = estimateWalletOnchainFee(selected.length, 2, feeRate);
+        const candidateChange = totalInputSats - amountSats - feeWithChange;
+        const changeSats = candidateChange >= 330 ? candidateChange : 0;
+        const actualFee = totalInputSats - amountSats - changeSats;
+        state.walletOnchainSendDraft = { destination, amountSats, feeRate, utxos: selected, totalInputSats, changeSats };
+        if (summary) summary.textContent = 'Recipient: ' + destination + ' • Send: ' + formatCount(amountSats) + ' sats • Fee: ~' + formatCount(actualFee) + ' sats • Total: ' + formatCount(amountSats + actualFee) + ' sats';
+        if (status) status.textContent = 'Review the transaction details, then confirm the broadcast.';
+        if (btn) { btn.disabled = false; btn.textContent = 'Confirm & broadcast'; btn.onclick = window.confirmWalletOnchainSend; }
+      } catch (err) {
+        if (status) status.textContent = err?.message || 'Could not prepare the Bitcoin transaction.';
+        if (btn) { btn.disabled = false; btn.textContent = 'Review transaction'; btn.onclick = window.prepareWalletOnchainSend; }
+      }
+    };
+
+    window.confirmWalletOnchainSend = async function () {
+      const draft = state.walletOnchainSendDraft;
+      const status = qs('#walletOnchainSendStatus');
+      const btn = qs('#walletOnchainReviewBtn');
+      if (!draft) return;
+      const fee = draft.totalInputSats - draft.amountSats - draft.changeSats;
+      if (!window.confirm('Send ' + formatCount(draft.amountSats) + ' sats to ' + draft.destination + '?\n\nEstimated network fee: ' + formatCount(fee) + ' sats.')) return;
+      try {
+        if (btn) { btn.disabled = true; btn.textContent = 'Signing…'; }
+        if (status) status.textContent = 'Signing the Taproot transaction locally…';
+        const built = await buildWalletOnchainTransaction(draft);
+        if (btn) btn.textContent = 'Broadcasting…';
+        if (status) status.textContent = 'Broadcasting transaction to Bitcoin mainnet…';
+        const response = await fetch('https://mempool.space/api/tx', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: built.hex });
+        const body = await response.text();
+        if (!response.ok) throw new Error(body || ('Broadcast failed (' + response.status + ').'));
+        state.walletOnchainSendDraft = null;
+        if (status) status.textContent = 'Sent successfully. Transaction: ' + String(body || built.txid).trim();
+        if (btn) { btn.disabled = false; btn.textContent = 'Done'; btn.onclick = window.closeWalletOnchainSend; }
+        setTimeout(() => window.loadWalletPage(true), 1200);
+      } catch (err) {
+        if (status) status.textContent = err?.message || 'Bitcoin transaction failed.';
+        if (btn) { btn.disabled = false; btn.textContent = 'Confirm & broadcast'; btn.onclick = window.confirmWalletOnchainSend; }
+      }
+    };
+
     window.loadWalletPage = async function (force = false) {
       const token = ++state.walletPageLoadToken;
       const statusEl = qs('#walletPageStatus');
@@ -21699,6 +21902,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (mainchainPendingEl) mainchainPendingEl.textContent = err && err.message ? err.message : 'Could not load Bitcoin mainchain data.';
         }
       };
+      renderWalletOnchainReceiveQr(bitcoinAddress);
       loadMainchainWallet();
 
       if (savedUri) {
