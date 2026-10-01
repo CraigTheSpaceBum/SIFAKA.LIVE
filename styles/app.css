@@ -6920,3 +6920,208 @@ footer p{font-size:.72rem;color:var(--muted);}
   }
   #walletPage .wallet-onchain-action-grid{display:none;}
 }
+
+
+/* ======== WALLET CONNECTED LIGHTNING COLUMN / PROFILE BITCOIN PASS ======== */
+#walletPage #walletLightningColumn[hidden],
+#walletPage #walletConnectPrompt[hidden]{
+  display:none!important;
+}
+
+.profile-bio-meta .val[title="On-chain Bitcoin address"]{
+  font-family:'DM Mono',monospace;
+  overflow-wrap:anywhere;
+}
+
+/* Desktop: the two wallet columns intentionally mirror each other. */
+@media (min-width:761px){
+  #walletPage .wallet-page-wrap{
+    grid-template-areas:
+      "hero hero"
+      "onchain-label lightning-label"
+      "onchain lightning"
+      "onchain lightning"
+      "onchain lightning"
+      "onchain lightning"
+      "status status";
+  }
+
+  #walletPage .wallet-mainchain-card{
+    grid-area:onchain;
+    min-height:100%;
+  }
+
+  #walletPage .wallet-lightning-column{
+    grid-area:lightning;
+    min-width:0;
+    min-height:100%;
+    padding:1.05rem;
+    border:1px solid rgba(255,255,255,.075);
+    border-radius:18px;
+    background:
+      linear-gradient(135deg,rgba(139,92,246,.045),transparent 45%),
+      rgba(29,35,43,.86);
+    box-shadow:0 14px 42px rgba(0,0,0,.16);
+    overflow:hidden;
+  }
+
+  #walletPage .wallet-lightning-overview{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:.75rem;
+  }
+
+  #walletPage .wallet-lightning-column .wallet-balance-card,
+  #walletPage .wallet-lightning-column .wallet-info-card{
+    min-width:0;
+    margin:0;
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:15px;
+    box-shadow:none;
+  }
+
+  #walletPage .wallet-lightning-column .wallet-balance-card{
+    min-height:190px;
+    padding:1rem;
+  }
+
+  #walletPage .wallet-lightning-column .wallet-info-card{
+    padding:1rem;
+  }
+
+  #walletPage .wallet-lightning-receive{
+    margin-top:.75rem;
+    padding:1rem;
+    text-align:center;
+    border:1px solid rgba(255,255,255,.07);
+    border-radius:16px;
+    background:
+      radial-gradient(circle at 50% 0%,rgba(139,92,246,.09),transparent 45%),
+      rgba(37,45,55,.42);
+  }
+
+  #walletPage .wallet-lightning-qr-wrap{
+    width:276px;
+    max-width:100%;
+    min-height:276px;
+    margin:0 auto .75rem;
+    display:grid;
+    place-items:center;
+    padding:14px;
+    border-radius:16px;
+    background:#fff;
+    box-sizing:border-box;
+  }
+
+  #walletPage .wallet-lightning-qr{
+    min-height:240px;
+    display:grid;
+    place-items:center;
+  }
+
+  #walletPage .wallet-lightning-qr img,
+  #walletPage .wallet-lightning-qr canvas{
+    width:240px!important;
+    height:240px!important;
+  }
+
+  #walletPage .wallet-lightning-qr-empty{
+    max-width:220px;
+    color:#64748b;
+    font-size:.68rem;
+    line-height:1.45;
+  }
+
+  #walletPage .wallet-lightning-receive-label{
+    margin-top:.2rem;
+    color:var(--muted);
+    font:700 .58rem/1 'DM Mono',monospace;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+  }
+
+  #walletPage .wallet-lightning-receive-address{
+    margin-top:.45rem;
+    color:var(--text);
+    font:700 .72rem/1.55 'DM Mono',monospace;
+    overflow-wrap:anywhere;
+  }
+
+  #walletPage .wallet-lightning-receive-help{
+    margin:.35rem auto 0;
+    max-width:480px;
+    color:var(--muted);
+    font-size:.62rem;
+    line-height:1.45;
+  }
+
+  #walletPage .wallet-lightning-column .wallet-actions-card,
+  #walletPage .wallet-lightning-column .wallet-transactions-card{
+    margin-top:.75rem;
+    margin-bottom:0;
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:15px;
+    box-shadow:none;
+  }
+
+  #walletPage .wallet-lightning-column .wallet-actions-card{
+    padding:.85rem;
+    background:rgba(29,35,43,.54);
+  }
+
+  #walletPage .wallet-lightning-column .wallet-transactions-card{
+    padding:1rem;
+    background:rgba(29,35,43,.54);
+  }
+
+  #walletPage .wallet-lightning-column .wallet-action-grid{
+    margin-top:.65rem;
+  }
+
+  #walletPage .wallet-lightning-column .wallet-mainchain-receive-actions{
+    display:flex;
+    justify-content:center;
+    flex-wrap:wrap;
+    gap:.45rem;
+    margin-top:.7rem;
+  }
+
+  #walletPage .wallet-lightning-column .wallet-status-chip{
+    font-size:.55rem;
+  }
+
+  #walletPage .wallet-connect-prompt{
+    grid-area:lightning;
+    align-self:stretch;
+    margin:0;
+    padding:1.25rem;
+    border:1px solid rgba(255,255,255,.075);
+    border-radius:18px;
+    background:
+      radial-gradient(circle at 70% 10%,rgba(139,92,246,.085),transparent 16rem),
+      rgba(29,35,43,.86);
+    box-shadow:0 14px 42px rgba(0,0,0,.16);
+    align-items:center;
+  }
+}
+
+@media (max-width:760px){
+  /* Flatten the desktop wrapper so the existing mobile wallet stacking stays intact. */
+  #walletPage .wallet-lightning-column{display:contents;}
+  #walletPage .wallet-lightning-qr-wrap{display:none;}
+  #walletPage .wallet-lightning-receive{
+    margin-top:.65rem;
+    padding:.6rem .7rem;
+    text-align:left;
+    border:1px solid var(--border);
+    border-radius:10px;
+    background:var(--surface2);
+  }
+  #walletPage .wallet-lightning-receive-label,
+  #walletPage .wallet-lightning-receive-help{display:none;}
+  #walletPage .wallet-lightning-receive-address{
+    margin:0;
+    font-size:.62rem;
+    font-weight:400;
+  }
+}
