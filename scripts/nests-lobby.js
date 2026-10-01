@@ -835,8 +835,11 @@
           '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
             '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
             '<strong id="nestRoomAudioStatus">Not connected</strong>' +
-            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute</button>' +
-            '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
+            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute Mic</button>' +
+            '<label class="nest-room-volume"><span>Room Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Room volume"></label>' +
+            '<label class="nest-room-volume nest-room-mic-volume"><span>Mic Volume</span><input id="nestRoomMicVolume" type="range" min="0" max="100" value="100" aria-label="Microphone volume"></label>' +
+            '<button class="btn btn-ghost" id="nestRoomHandBtn" type="button">Raise Hand</button>' +
+            '<div class="nest-room-reactions" id="nestRoomReactions" aria-label="Room reactions"></div>' +
             '<div class="nest-room-audio-actions">' +
               '<button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speak</button>' +
               '<button class="btn btn-ghost nest-room-leave-btn" id="nestRoomLeaveBtn" type="button">Leave Nest</button>' +
@@ -884,8 +887,11 @@
           '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
             '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
             '<strong id="nestRoomAudioStatus">Not connected</strong>' +
-            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute</button>' +
-            '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
+            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute Mic</button>' +
+            '<label class="nest-room-volume"><span>Room Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Room volume"></label>' +
+            '<label class="nest-room-volume nest-room-mic-volume"><span>Mic Volume</span><input id="nestRoomMicVolume" type="range" min="0" max="100" value="100" aria-label="Microphone volume"></label>' +
+            '<button class="btn btn-ghost" id="nestRoomHandBtn" type="button">Raise Hand</button>' +
+            '<div class="nest-room-reactions" id="nestRoomReactions" aria-label="Room reactions"></div>' +
           '</div>' +
           '<div class="nest-room-chat-compose" id="nestRoomChatCompose" hidden>' +
             '<input id="nestRoomChatInput" type="text" maxlength="1000" placeholder="Say something in the room…" aria-label="Send a Nest room message">' +
