@@ -21492,7 +21492,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     function btcBech32mPolymod(values) {
-      const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3, 0x2bc830a3];
+      const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
       let chk = 1;
       for (let i = 0; i < values.length; i += 1) {
         const value = Number(values[i] || 0);
@@ -21706,7 +21706,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         catch (_) { config = null; }
       }
 
-      const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
       if (ownPubkey) {
         fetchProfileIfNeeded(ownPubkey, { force: !!force }).then(() => {
           if (token !== state.walletPageLoadToken) return;
@@ -21885,6 +21884,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         qr.textContent = 'QR generator unavailable. Copy the invoice instead.';
       }
     }
+
+    window.copyWalletOnchainAddress = async function () {
+      const value = String(state.walletPageOnchainAddress || state.settings && state.settings.bitcoinAddress || '').trim();
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+        const btn = qs('#walletMainchainCopyBtn');
+        if (btn) {
+          const original = btn.textContent;
+          btn.textContent = 'Copied';
+          setTimeout(() => { if (btn) btn.textContent = original; }, 1200);
+        }
+      } catch (_) {}
+    };
 
     window.showWalletAddressQr = function (kind) {
       const modal = qs('#walletAddressQrModal');
