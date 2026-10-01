@@ -21373,6 +21373,178 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
       );
     };
+
+    // ===== NIP-BC / BIP-341 on-chain wallet derivation =====
+    // Derives the native Taproot receive address from the logged-in Nostr x-only public key.
+    const BTC_FIELD_PRIME = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn;
+    const BTC_CURVE_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
+    const BTC_GX = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798n;
+    const BTC_GY = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8n;
+    const TAPROOT_TAG = new TextEncoder().encode('TapTweak');
+    const TAPROOT_TEST_VECTOR = {
+      pubkey: 'd6889cb081036e0faefa3a35157ad71086b123b2b144b649798b494c300a961d',
+      expectedAddress: 'bc1p2wsldez5mud2yam29q22wgfh9439spgduvct83k3pm50fcxa5dps59h4z5'
+    };
+    let taprootDerivationSelfTested = false;
+
+    function btcMod(a, m = BTC_FIELD_PRIME) {
+      const result = a % m;
+      return result >= 0n ? result : result + m;
+    }
+
+    function btcPowMod(base, exponent, modulus = BTC_FIELD_PRIME) {
+      let result = 1n;
+      let value = btcMod(base, modulus);
+      let exp = BigInt(exponent);
+      while (exp > 0n) {
+        if (exp & 1n) result = (result * value) % modulus;
+        value = (value * value) % modulus;
+        exp >>= 1n;
+      }
+      return result;
+    }
+
+    function btcInvMod(value, modulus = BTC_FIELD_PRIME) {
+      const normalized = btcMod(value, modulus);
+      if (normalized === 0n) throw new Error('Invalid secp256k1 point.');
+      return btcPowMod(normalized, modulus - 2n, modulus);
+    }
+
+    function btcPointAdd(a, b) {
+      if (!a) return b;
+      if (!b) return a;
+
+      if (a.x === b.x) {
+        if (a.y !== b.y) return null;
+        if (a.y === 0n) return null;
+        const lambda = btcMod((3n * a.x * a.x) * btcInvMod(2n * a.y));
+        const x = btcMod(lambda * lambda - a.x - b.x);
+        const y = btcMod(lambda * (a.x - x) - a.y);
+        return { x, y };
+      }
+
+      const lambda = btcMod((b.y - a.y) * btcInvMod(b.x - a.x));
+      const x = btcMod(lambda * lambda - a.x - b.x);
+      const y = btcMod(lambda * (a.x - x) - a.y);
+      return { x, y };
+    }
+
+    function btcPointMultiply(scalar, point) {
+      let k = BigInt(scalar);
+      if (k === 0n) return null;
+      if (k < 0n) k = BTC_CURVE_ORDER + k;
+      let result = null;
+      let addend = point;
+      while (k > 0n) {
+        if (k & 1n) result = btcPointAdd(result, addend);
+        addend = btcPointAdd(addend, addend);
+        k >>= 1n;
+      }
+      return result;
+    }
+
+    function btcLiftXEven(xOnly) {
+      const x = BigInt('0x' + xOnly);
+      if (x < 0n || x >= BTC_FIELD_PRIME) throw new Error('Invalid Nostr public key.');
+      const ySquared = btcMod(x * x * x + 7n);
+      let y = btcPowMod(ySquared, (BTC_FIELD_PRIME + 1n) / 4n);
+      if (btcMod(y * y - ySquared) !== 0n) throw new Error('Nostr public key is not on secp256k1.');
+      if (y & 1n) y = BTC_FIELD_PRIME - y;
+      return { x, y };
+    }
+
+    function btcHexToBytes(hex) {
+      const clean = String(hex || '').trim().toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(clean)) throw new Error('Invalid hexadecimal key.');
+      const out = new Uint8Array(32);
+      for (let i = 0; i < 32; i += 1) out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+      return out;
+    }
+
+    function btcBytesToBigInt(bytes) {
+      let result = 0n;
+      for (const byte of bytes) result = (result << 8n) | BigInt(byte);
+      return result;
+    }
+
+    function btcBigIntTo32Bytes(value) {
+      const out = new Uint8Array(32);
+      let n = BigInt(value);
+      for (let i = 31; i >= 0; i -= 1) {
+        out[i] = Number(n & 0xffn);
+        n >>= 8n;
+      }
+      return out;
+    }
+
+    async function btcSha256(bytes) {
+      if (!window.crypto || !window.crypto.subtle) throw new Error('Browser cryptography is unavailable.');
+      return new Uint8Array(await window.crypto.subtle.digest('SHA-256', bytes));
+    }
+
+    async function btcTapTweakHash(internalKey) {
+      const tagHash = await btcSha256(TAPROOT_TAG);
+      const payload = new Uint8Array(64 + internalKey.length);
+      payload.set(tagHash, 0);
+      payload.set(tagHash, 32);
+      payload.set(internalKey, 64);
+      return btcSha256(payload);
+    }
+
+    function btcBech32mPolymod(values) {
+      const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3, 0x2bc830a3];
+      let chk = 1;
+      for (let i = 0; i < values.length; i += 1) {
+        const value = Number(values[i] || 0);
+        const top = chk >>> 25;
+        chk = ((chk & 0x1ffffff) << 5) ^ value;
+        for (let j = 0; j < 5; j += 1) {
+          if ((top >>> j) & 1) chk ^= generators[j];
+        }
+      }
+      return chk >>> 0;
+    }
+
+    function btcBech32mChecksum(hrp, data) {
+      const values = bech32HrpExpand(hrp).concat(data, [0, 0, 0, 0, 0, 0]);
+      const mod = (btcBech32mPolymod(values) ^ 0x2bc830a3) >>> 0;
+      const out = [];
+      for (let i = 0; i < 6; i += 1) out.push((mod >>> (5 * (5 - i))) & 31);
+      return out;
+    }
+
+    function btcBech32mEncode(hrp, data) {
+      const normalizedHrp = String(hrp || '').trim().toLowerCase();
+      const words = Array.isArray(data) ? data : [];
+      const combined = words.concat(btcBech32mChecksum(normalizedHrp, words));
+      let out = normalizedHrp + '1';
+      for (let i = 0; i < combined.length; i += 1) out += BECH32_CHARSET.charAt(combined[i]);
+      return out;
+    }
+
+    async function deriveNipBcTaprootAddress(pubkey) {
+      const normalized = normalizePubkeyHex(pubkey || '');
+      if (!normalized) throw new Error('No usable Nostr public key is available.');
+      const internalKey = btcLiftXEven(normalized);
+      const internalBytes = btcHexToBytes(normalized);
+      const tweakBytes = await btcTapTweakHash(internalBytes);
+      const tweak = btcBytesToBigInt(tweakBytes);
+      if (tweak >= BTC_CURVE_ORDER) throw new Error('Invalid Taproot tweak.');
+      const output = btcPointAdd(internalKey, btcPointMultiply(tweak, { x: BTC_GX, y: BTC_GY }));
+      if (!output) throw new Error('Invalid Taproot output key.');
+      const outputX = btcBigIntTo32Bytes(output.x);
+      return btcBech32mEncode('bc', [1].concat(convertBits(outputX, 8, 5, true)));
+    }
+
+    async function ensureTaprootDerivationSelfTest() {
+      if (taprootDerivationSelfTested) return;
+      const derived = await deriveNipBcTaprootAddress(TAPROOT_TEST_VECTOR.pubkey);
+      if (derived !== TAPROOT_TEST_VECTOR.expectedAddress) {
+        throw new Error('Taproot derivation self-test failed; on-chain wallet disabled.');
+      }
+      taprootDerivationSelfTested = true;
+    }
+
     window.loadWalletPage = async function (force = false) {
       const token = ++state.walletPageLoadToken;
       const statusEl = qs('#walletPageStatus');
@@ -21413,16 +21585,38 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       };
 
       const savedUri = String(state.settings && state.settings.nwcConnectionUri || '').trim();
-      const bitcoinAddress = String(state.settings && state.settings.bitcoinAddress || '').trim();
+      const manualBitcoinAddress = String(state.settings && state.settings.bitcoinAddress || '').trim();
+      const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+      let bitcoinAddress = '';
+      let bitcoinAddressSource = 'none';
       let config = null;
 
       const isBitcoinAddress = (value) => /^(bc1[ac-hj-np-z02-9]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,62})$/.test(value);
+      if (ownPubkey) {
+        try {
+          await ensureTaprootDerivationSelfTest();
+          bitcoinAddress = await deriveNipBcTaprootAddress(ownPubkey);
+          bitcoinAddressSource = 'nostr';
+          state.walletPageOnchainAddress = bitcoinAddress;
+        } catch (err) {
+          state.walletPageOnchainAddress = '';
+          setStatus(err && err.message ? err.message : 'Could not derive your Taproot address.', 'error');
+        }
+      }
+      if (!bitcoinAddress && manualBitcoinAddress && isBitcoinAddress(manualBitcoinAddress)) {
+        bitcoinAddress = manualBitcoinAddress;
+        bitcoinAddressSource = 'legacy';
+        state.walletPageOnchainAddress = bitcoinAddress;
+      }
+
       const loadMainchainWallet = async () => {
         if (!mainchainBalanceEl) return;
         if (!bitcoinAddress) {
           mainchainBalanceEl.textContent = '—';
-          if (mainchainPendingEl) mainchainPendingEl.textContent = 'Add a Bitcoin address in Settings → Wallet.';
-          if (mainchainAddressEl) mainchainAddressEl.textContent = 'No address configured';
+          if (mainchainPendingEl) mainchainPendingEl.textContent = ownPubkey
+            ? 'Your NIP-BC Taproot address is derived automatically from your Nostr public key.'
+            : 'Sign in to derive your NIP-BC Taproot address automatically.';
+          if (mainchainAddressEl) mainchainAddressEl.textContent = 'No address available';
           if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Not configured'; mainchainStatusEl.className = 'wallet-status-chip'; }
           if (mainchainExplorerEl) mainchainExplorerEl.hidden = true;
           if (mainchainStatsEl) mainchainStatsEl.innerHTML = '';
@@ -21495,7 +21689,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               }).join('');
             }
           }
-          if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Connected'; mainchainStatusEl.className = 'wallet-status-chip is-connected'; }
+          if (mainchainStatusEl) {
+            mainchainStatusEl.textContent = bitcoinAddressSource === 'nostr' ? 'Derived' : 'Connected';
+            mainchainStatusEl.className = 'wallet-status-chip is-connected';
+          }
         } catch (err) {
           if (token !== state.walletPageLoadToken) return;
           if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Unavailable'; mainchainStatusEl.className = 'wallet-status-chip is-error'; }
