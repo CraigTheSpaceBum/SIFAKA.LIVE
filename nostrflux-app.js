@@ -19400,7 +19400,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const mainBioLinks = qs('#profBioLinksMain');
     if (mainBioLinks) mainBioLinks.style.display = (twitterVisible || githubVisible) ? 'flex' : 'none';
     const bottomBioLinks = qs('#profBioLinksBottom');
-    if (bottomBioLinks) bottomBioLinks.style.display = (websiteVisible || lud16Visible) ? 'flex' : 'none';
+    if (bottomBioLinks) bottomBioLinks.style.display = (websiteVisible || lud16Visible || !!profileBitcoinPubkey) ? 'flex' : 'none';
 
       const bannerImg = qs('#profBannerImg');
       if (bannerImg && p.banner && isLikelyUrl(p.banner)) {
