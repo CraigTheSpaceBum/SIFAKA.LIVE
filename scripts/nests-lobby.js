@@ -1349,8 +1349,30 @@
     }, 12000);
     activeRoomChatTimer = setInterval(function() {
       if (!activeRoomUrl || !modal || !modal.classList.contains('is-live-room')) return;
-      refreshLiveRoom(activeRoomUrl).catch(function() {});
+      refreshActiveRoomChat(activeRoomUrl).catch(function() {});
     }, 4000);
+  }
+
+  async function refreshActiveRoomChat(url) {
+    const decoded = decodeRoom(url);
+    if (!decoded || !modal || !modal.classList.contains('open') || activeRoomUrl !== url || !activeRoom) return;
+
+    const events = await relayQuery([
+      { kinds: [1311], '#a': [decoded.a], limit: 80 }
+    ], 3200, roomRelayUrls(activeRoom, decoded));
+
+    if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url || !activeRoom) return;
+
+    const chat = events
+      .filter(function(e) { return Number(e.kind) === 1311; })
+      .sort(function(a, b) { return Number(a.created_at || 0) - Number(b.created_at || 0); });
+
+    activeRoom.chat = chat;
+
+    const profiles = await loadProfiles(
+      chat.map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean)
+    );
+    renderChat({ chat: chat }, profiles);
   }
 
   async function sendActiveRoomChat() {
@@ -1361,7 +1383,7 @@
     const event = await signRoomEvent(1311, content, [['a', activeRoom.a]]);
     await publishSignedRoomEvent(event, activeRoomRelays);
     input.value = '';
-    refreshLiveRoom(activeRoomUrl).catch(function() {});
+    refreshActiveRoomChat(activeRoomUrl).catch(function() {});
   }
 
   function chooseCurrentMeeting(events) {
