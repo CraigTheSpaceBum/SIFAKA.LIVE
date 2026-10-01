@@ -1501,7 +1501,11 @@
     if (urlEl) urlEl.textContent = window.location.host + '/room/' + value;
 
     if (window.history && window.location.pathname !== '/room/' + value && opts.routeMode !== 'skip' && typeof window.showPage === 'function') {
-      window.showPage('nestsRoom', { routeMode: opts.routeMode || 'push', roomNaddr: value });
+      window.showPage('nestsRoom', {
+        routeMode: opts.routeMode || 'push',
+        roomNaddr: value,
+        autoJoin: opts.autoJoin !== false
+      });
       return true;
     }
 
@@ -1544,7 +1548,8 @@
     if (typeof window.showPage !== 'function') return false;
     window.showPage('nestsRoom', {
       routeMode: opts.routeMode || 'push',
-      roomNaddr: value
+      roomNaddr: value,
+      autoJoin: opts.autoJoin !== false
     });
     return true;
   };
@@ -1587,7 +1592,7 @@
     e.preventDefault();
     e.stopImmediatePropagation();
     if (typeof window.openNestsRoomPage === 'function') {
-      window.openNestsRoomPage(naddr, { routeMode: 'push' });
+      window.openNestsRoomPage(naddr, { routeMode: 'push', autoJoin: true });
     }
   }
 
@@ -1632,7 +1637,7 @@
     ) {
       const direct = normalizeRoomNaddr(window.location.pathname);
       if (direct) {
-        window.loadNestsRoomPage(direct, { routeMode: 'skip', autoJoin: true }).catch(function() {});
+        window.loadNestsRoomPage(direct, { routeMode: 'skip', autoJoin: false }).catch(function() {});
       }
     }
     if (!grid) return;
