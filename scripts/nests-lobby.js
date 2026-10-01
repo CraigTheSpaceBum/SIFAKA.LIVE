@@ -623,9 +623,17 @@
             : 'Disconnected';
       status.textContent = label;
       if (dot) dot.classList.toggle('connected', state === 'connected');
-      if (join && state === 'disconnected') {
-        join.disabled = false;
-        join.textContent = 'Join As Speak';
+      if (join) {
+        if (state === 'connecting' || state === 'reconnecting') {
+          join.disabled = true;
+          join.textContent = state === 'connecting' ? 'Connecting…' : 'Reconnecting…';
+        } else if (state === 'connected') {
+          join.disabled = !!activeRoomAudio.isPublishing;
+          join.textContent = activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speaker';
+        } else {
+          join.disabled = false;
+          join.textContent = 'Join As Speaker';
+        }
       }
     }
     if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute' : 'Mute';
@@ -639,9 +647,13 @@
     const join = $('#nestPreviewJoinBtn', root);
     if (join) {
       join.addEventListener('click', function() {
-        enterActiveRoom().catch(function(err) {
+        const action = (activeRoomAudio && activeRoomAudio.isPublishing)
+          ? Promise.resolve()
+          : (activeRoomAudio ? joinActiveRoomAsSpeaker() : enterActiveRoom());
+        action.catch(function(err) {
           const status = $('#nestRoomAudioStatus', root);
-          if (status) status.textContent = err && err.message ? err.message : 'Unable to join this Nest.';
+          if (status) status.textContent = err && err.message ? err.message : 'Unable to update Nest audio role.';
+          updateActiveRoomAudioUi();
         });
       });
     }
@@ -850,9 +862,13 @@
     modal.addEventListener('click', function(e) { if (e.target === modal) closePreview(); });
     $('#nestPreviewJoinBtn', modal).addEventListener('click', function() {
       if (!activeRoomUrl) return;
-      enterActiveRoom().catch(function(err) {
+      const action = (activeRoomAudio && activeRoomAudio.isPublishing)
+        ? Promise.resolve()
+        : (activeRoomAudio ? joinActiveRoomAsSpeaker() : enterActiveRoom());
+      action.catch(function(err) {
         const status = $('#nestRoomAudioStatus', modal);
-        if (status) status.textContent = err && err.message ? err.message : 'Unable to join this Nest.';
+        if (status) status.textContent = err && err.message ? err.message : 'Unable to update Nest audio role.';
+        updateActiveRoomAudioUi();
       });
     });
     $('#nestRoomMuteBtn', modal).addEventListener('click', function() {
@@ -1167,9 +1183,10 @@
     const joinButton = $('#nestPreviewJoinBtn', modal);
     if (joinButton) {
       joinButton.textContent = activeRoomAudio
-        ? (activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener')
-        : (live ? 'Join As Speak' : 'Open Nest');
-      joinButton.disabled = !!activeRoomAudio;
+        ? (activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speaker')
+        : (live ? 'Join As Listener' : 'Open Nest');
+      // A connected listener must remain upgradeable to speaker.
+      joinButton.disabled = !!activeRoomAudio && !!activeRoomAudio.isPublishing;
       joinButton.classList.remove('btn-danger');
     }
     const leaveButton = $('#nestRoomLeaveBtn', modal);
@@ -1178,13 +1195,8 @@
     $('#nestPreviewFootnote', modal).textContent = room.sourceCount > 1 ? 'Room details merged from ' + room.sourceCount + ' relays.' : 'Room details are read from Nostr NIP-53 events.';
   }
 
-  async function enterActiveRoom() {
+  async function connectActiveRoomAudio(publishRequested) {
     if (!activeRoomUrl) return;
-    if (activeRoomAudio && activeRoomAudio.state !== 'disconnected') return;
-    if (activeRoomAudio && activeRoomAudio.state === 'disconnected') {
-      try { await activeRoomAudio.disconnect(); } catch (_) {}
-      activeRoomAudio = null;
-    }
     if (!activeRoomEvent || !activeRoom) {
       await openPreview(activeRoomUrl, {
         title: $('#nestPreviewTitle', modal)?.textContent || 'Nostr Nest',
@@ -1206,12 +1218,9 @@
     const streamingUrl = normalizeNestStreamingUrl(tag(activeRoomEvent, 'streaming') || activeRoom.streaming || '');
 
     let token = '';
-    let publish = true;
-    try {
+    if (publishRequested) {
       token = await authenticateNestAudio(activeRoomEvent, namespace, true);
-    } catch (speakerErr) {
-      console.warn('[sifaka-nests] speaker auth failed; retrying listener auth', speakerErr);
-      publish = false;
+    } else {
       try {
         token = await authenticateNestAudio(activeRoomEvent, namespace, false);
       } catch (listenerErr) {
@@ -1234,23 +1243,19 @@
     if (leaveButton) leaveButton.disabled = false;
     modal.classList.add('is-live-room');
 
-    activeRoomAudio = new SifakaNestAudioTransport();
-    activeRoomAudio.onStateChange(function() { updateActiveRoomAudioUi(); });
+    const nextAudio = new SifakaNestAudioTransport();
+    nextAudio.onStateChange(function() { updateActiveRoomAudioUi(); });
+    activeRoomAudio = nextAudio;
 
     try {
-      await activeRoomAudio.connect({
+      await nextAudio.connect({
         serverUrl: streamingUrl,
         namespace: namespace,
         identity: String(user.pubkey),
         token: token,
-        publish: publish
+        publish: !!publishRequested
       });
-      if (join) {
-        join.disabled = true;
-        join.textContent = activeRoomAudio.state === 'connected'
-          ? (activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener')
-          : 'Connecting…';
-      }
+
       const stagePubkeys = (activeRoom && Array.isArray(activeRoom.participants) ? activeRoom.participants : [])
         .filter(function(person) {
           const role = String(person && person.role || '').toLowerCase();
@@ -1258,25 +1263,72 @@
         })
         .map(function(person) { return person && person.pubkey; })
         .filter(Boolean);
-      if (activeRoomAudio && typeof activeRoomAudio.setParticipants === 'function') {
-        activeRoomAudio.setParticipants(stagePubkeys);
+      if (nextAudio && typeof nextAudio.setParticipants === 'function') {
+        nextAudio.setParticipants(stagePubkeys);
       }
+
       startActiveRoomPresence();
       startActiveRoomRefresh();
       updateActiveRoomAudioUi();
     } catch (err) {
-      if (activeRoomAudio) {
-        await activeRoomAudio.disconnect();
-        activeRoomAudio = null;
-      }
+      try { await nextAudio.disconnect(); } catch (_) {}
+      if (activeRoomAudio === nextAudio) activeRoomAudio = null;
       if (bar) bar.hidden = true;
       if (compose) compose.hidden = true;
       if (join) {
         join.disabled = false;
-        join.textContent = 'Join As Speak';
+        join.textContent = 'Join As Speaker';
       }
       modal.classList.remove('is-live-room');
       throw err;
+    }
+  }
+
+  async function enterActiveRoom() {
+    if (!activeRoomUrl) return;
+    if (activeRoomAudio && activeRoomAudio.state !== 'disconnected') return;
+    if (activeRoomAudio && activeRoomAudio.state === 'disconnected') {
+      try { await activeRoomAudio.disconnect(); } catch (_) {}
+      activeRoomAudio = null;
+    }
+    await connectActiveRoomAudio(false);
+  }
+
+  async function joinActiveRoomAsSpeaker() {
+    if (!activeRoomUrl) return;
+    if (activeRoomAudio && activeRoomAudio.isPublishing && activeRoomAudio.state !== 'disconnected') return;
+    if (!activeRoomEvent || !activeRoom) {
+      await openPreview(activeRoomUrl, {
+        title: $('#nestPreviewTitle', modal)?.textContent || 'Nostr Nest',
+        summary: $('#nestPreviewSummary', modal)?.textContent || '',
+        img: $('#nestPreviewCover img', modal)?.getAttribute('src') || '',
+        badge: $('#nestPreviewStatus', modal)?.textContent || 'LIVE',
+        countText: $('#nestPreviewListenerCount', modal)?.textContent || '',
+        topics: []
+      });
+    }
+
+    // Upgrade the existing listener connection to a publishing connection.
+    // Disconnect first because the MoQ transport's publish permission is fixed
+    // when the connection is created.
+    const previous = activeRoomAudio;
+    if (previous) {
+      try { await previous.disconnect(); } catch (_) {}
+      if (activeRoomAudio === previous) activeRoomAudio = null;
+    }
+
+    try {
+      await connectActiveRoomAudio(true);
+    } catch (speakerErr) {
+      // Preserve the requested room experience: a failed speaker upgrade
+      // should leave the user connected as a listener rather than ejecting
+      // them from the room.
+      try {
+        await connectActiveRoomAudio(false);
+      } catch (listenerErr) {
+        throw speakerErr;
+      }
+      throw new Error('Could not join as a speaker. You remain connected as a listener.');
     }
   }
 
