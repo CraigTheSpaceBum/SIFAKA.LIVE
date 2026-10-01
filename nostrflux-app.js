@@ -21487,14 +21487,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
       );
       state.nestsPresenceSubId = state.pool.subscribe(
-        [{ kinds: [10312], limit: 500, since: Math.floor(Date.now() / 1000) - 60 * 15 }],
+        [{ kinds: [10312], limit: 500, since: Math.floor(Date.now() / 1000) - 60 * 5 }],
         {
           event: (ev) => {
             const a = Array.isArray(ev.tags) ? ev.tags.find(t => Array.isArray(t) && t[0] === 'a') : null;
             const roomRef = a ? String(a[1] || '') : '';
             if (!roomRef) return;
             state.nestsPresence.set(`${roomRef}:${ev.pubkey}`, Number(ev.created_at || 0));
-            const cutoff = Math.floor(Date.now() / 1000) - 60 * 15;
+            const cutoff = Math.floor(Date.now() / 1000) - 60 * 5;
             for (const [key, ts] of state.nestsPresence) if (ts < cutoff) state.nestsPresence.delete(key);
             renderNestsPage();
           }
