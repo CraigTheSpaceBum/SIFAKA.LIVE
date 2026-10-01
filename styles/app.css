@@ -3267,8 +3267,15 @@ nav .btn{
   cursor:pointer;
   text-align:left;
   word-break:break-all;
+  max-width:min(46vw,320px);
 }
-.profile-bio-meta .profile-bitcoin-send-btn:hover{text-decoration:underline;color:var(--text);}
+.profile-bio-meta .profile-bitcoin-send-btn::before{content:'₿ ';font-family:inherit;}
+.profile-bio-meta .profile-bitcoin-send-btn:hover{text-decoration:none;color:var(--text);}
+.profile-bio-meta:has(.profile-bitcoin-send-btn:not(:disabled)){border-color:rgba(247,147,26,.32);}
+@media(max-width:680px){
+  .profile-bio-meta .profile-bitcoin-send-btn{max-width:58vw;}
+}
+.profile-bio-meta .profile-bitcoin-send-btn:hover{text-decoration:none;color:var(--text);}
 .profile-bio-meta .profile-bitcoin-send-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px;}
 .profile-since{display:none;}
 .profile-right-stack{display:flex;flex-direction:column;gap:.85rem;align-items:stretch;}
