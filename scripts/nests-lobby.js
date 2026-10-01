@@ -1739,7 +1739,8 @@
     clearTimeout(liveRefreshTimer);
     if (modal && modal.classList.contains('open') && activeRoomUrl === url) {
       liveRefreshTimer = setTimeout(function() {
-        if (modal && modal.classList.contains('open') && activeRoomUrl === url) {
+        // Once audio is joined, startActiveRoomRefresh owns the 12s room refresh.
+        if (modal && modal.classList.contains('open') && activeRoomUrl === url && !modal.classList.contains('is-live-room')) {
           refreshLiveRoom(url);
         }
       }, 12000);
