@@ -7231,7 +7231,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const nowSec = Math.floor(Date.now() / 1000);
     const oldestSince = Math.max(0, nowSec - DM_SYNC_LOOKBACK_SECONDS);
     const recentSince = Math.max(oldestSince, nowSec - DM_SYNC_RECENT_SECONDS);
-    const expectedEose = Math.max(1, Number((state.pool.urls && state.pool.urls.length) || 1));
     const eoseSeen = new Set();
     let syncFinished = false;
     const finishSync = () => {
@@ -7263,6 +7262,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
       .slice(0, Math.max(1, Math.min(DM_SYNC_RELAY_COUNT, state.pool.urls.length || 1)))
       .map((item) => item.url);
+    const expectedEose = Math.max(1, dmRelayUrls.length);
 
     state.dmSubId = state.pool.subscribe(
       [
@@ -7271,25 +7271,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       ],
       {
         event: (ev) => {
-          const message = upsertDmMessageFromEvent(ev, owner);
-          if (!message) return;
-
-          if (!state.dmActivePeerPubkey) state.dmActivePeerPubkey = message.peerPubkey;
-          fetchProfileIfNeeded(message.peerPubkey);
-
-          // Do not start remote-signer decrypts from the relay event stream.
-          // During initial sync this can enqueue dozens of requests for the
-          // selected peer at once. renderDmThread() already queues only the
-          // messages currently visible on screen, and new active-thread
-          // messages are picked up by that render path.
-          if (isMessagesPageVisible()) {
-            if (!message.mine && state.dmActivePeerPubkey === message.peerPubkey) markDmPeerRead(message.peerPubkey);
-            scheduleDmRender({
-              conversations: true,
-              thread: state.dmActivePeerPubkey === message.peerPubkey,
-              scrollToBottom: state.dmActivePeerPubkey === message.peerPubkey
-            });
-          }
+          queueDmRelayEvent(ev, owner);
         },
         eose: (relayUrl) => {
           const relayKey = relayUrl || `relay_${eoseSeen.size + 1}`;
