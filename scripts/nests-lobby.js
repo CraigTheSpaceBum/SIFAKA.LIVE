@@ -1650,7 +1650,6 @@
         url: target
       }).catch(function() {});
     };
-    const grid = $('#nestsRoomsGrid');
     if (
       window.location.pathname &&
       /^\/room\/naddr1/i.test(window.location.pathname) &&
@@ -1661,9 +1660,14 @@
         window.loadNestsRoomPage(direct, { routeMode: 'skip', autoJoin: false }).catch(function() {});
       }
     }
-    if (!grid) return;
-    grid.addEventListener('click', interceptJoinClicks, true);
-    grid.addEventListener('keydown', interceptNestCardKeydown, true);
+
+    // Nests cards are rendered/re-rendered dynamically by nostrflux-app.js.
+    // Delegate from document so the handler survives every grid refresh.
+    if (!window.__sifakaNestsCardHandlersBound) {
+      document.addEventListener('click', interceptJoinClicks, true);
+      document.addEventListener('keydown', interceptNestCardKeydown, true);
+      window.__sifakaNestsCardHandlersBound = true;
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });

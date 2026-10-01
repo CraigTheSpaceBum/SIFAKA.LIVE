@@ -21391,7 +21391,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const availabilityHtml = dropIn
           ? '<div class="nests-card-availability"><strong>Drop-in room</strong><span>Join whenever the room is open.</span></div>'
           : (room.starts && !live ? '<div class="nests-card-availability"><strong>Starts ' + escapeHtml(new Date(room.starts * 1000).toLocaleString()) + '</strong><span>Come back when the room goes live.</span></div>' : '');
-        return `<article class="nests-room-card" data-room-url="${escapeHtml(roomUrl)}">
+        return `<article class="nests-room-card" data-room-url="${escapeHtml(roomUrl)}" role="link" tabindex="0" aria-label="Open ${title}">
           <button class="nests-room-cover nests-room-cover-btn" type="button" aria-label="Open ${title}">
             ${img}
             <span class="nests-live-badge ${live ? 'is-live' : ''}"><i></i>${statusLabel}</span>
