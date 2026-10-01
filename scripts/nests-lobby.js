@@ -697,8 +697,36 @@
         }
       }
     }
-    if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute' : 'Mute';
+    if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.micMuted ? 'Unmute Mic' : 'Mute Mic';
     if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
+    const micSlider = modal.querySelector('#nestRoomMicVolume');
+    if (micSlider && activeRoomAudio) {
+      micSlider.value = String(Math.round(activeRoomAudio.micVolume * 100));
+      micSlider.disabled = !activeRoomAudio.hasMicVolumeControl();
+      micSlider.title = activeRoomAudio.hasMicVolumeControl()
+        ? 'Your microphone volume'
+        : 'Microphone volume control is unavailable in this transport version';
+    }
+    const handButton = modal.querySelector('#nestRoomHandBtn');
+    if (handButton) {
+      handButton.textContent = activeRoomHandRaised ? '✋ Lower Hand' : '✋ Raise Hand';
+      handButton.classList.toggle('btn-primary', activeRoomHandRaised);
+    }
+    const reactionBar = modal.querySelector('#nestRoomReactions');
+    if (reactionBar) {
+      reactionBar.innerHTML = NEST_QUICK_REACTIONS.map(function(emoji) {
+        const count = activeRoom && activeRoom.reactionCounts ? Number(activeRoom.reactionCounts[emoji] || 0) : 0;
+        return '<button class="btn btn-ghost nest-room-reaction-btn" type="button" data-reaction="' + esc(emoji) + '" title="React ' + esc(emoji) + '">' + esc(emoji) + (count ? '<small>' + count + '</small>' : '') + '</button>';
+      }).join('');
+      Array.from(reactionBar.querySelectorAll('.nest-room-reaction-btn')).forEach(function(button) {
+        button.addEventListener('click', function() {
+          publishActiveRoomReaction(button.getAttribute('data-reaction')).catch(function(err) {
+            const status = $('#nestRoomAudioStatus', modal);
+            if (status) status.textContent = err && err.message ? err.message : 'Could not send reaction';
+          });
+        });
+      });
+    }
   }
 
   function wireRoomRootControls(root) {
@@ -722,8 +750,9 @@
     const mute = $('#nestRoomMuteBtn', root);
     if (mute) {
       mute.addEventListener('click', function() {
-        if (!activeRoomAudio) return;
-        activeRoomAudio.setMuted(!activeRoomAudio.muted);
+        if (!activeRoomAudio || !activeRoomAudio.isPublishing) return;
+        activeRoomAudio.setMicMuted(!activeRoomAudio.micMuted);
+        publishActiveRoomPresence().catch(function() {});
         updateActiveRoomAudioUi();
       });
     }
@@ -734,6 +763,25 @@
         if (!activeRoomAudio) return;
         activeRoomAudio.setVolume(Number(this.value) / 100);
         updateActiveRoomAudioUi();
+      });
+    }
+
+    const micVolume = $('#nestRoomMicVolume', root);
+    if (micVolume) {
+      micVolume.addEventListener('input', function() {
+        if (!activeRoomAudio || !activeRoomAudio.isPublishing) return;
+        activeRoomAudio.setMicVolume(Number(this.value) / 100);
+        updateActiveRoomAudioUi();
+      });
+    }
+
+    const hand = $('#nestRoomHandBtn', root);
+    if (hand) {
+      hand.addEventListener('click', function() {
+        toggleActiveRoomHand().catch(function(err) {
+          const status = $('#nestRoomAudioStatus', root);
+          if (status) status.textContent = err && err.message ? err.message : 'Could not update hand state';
+        });
       });
     }
 
@@ -939,14 +987,26 @@
       });
     });
     $('#nestRoomMuteBtn', modal).addEventListener('click', function() {
-      if (!activeRoomAudio) return;
-      activeRoomAudio.setMuted(!activeRoomAudio.muted);
+      if (!activeRoomAudio || !activeRoomAudio.isPublishing) return;
+      activeRoomAudio.setMicMuted(!activeRoomAudio.micMuted);
+      publishActiveRoomPresence().catch(function() {});
       updateActiveRoomAudioUi();
     });
     $('#nestRoomVolume', modal).addEventListener('input', function() {
       if (!activeRoomAudio) return;
       activeRoomAudio.setVolume(Number(this.value) / 100);
       updateActiveRoomAudioUi();
+    });
+    $('#nestRoomMicVolume', modal).addEventListener('input', function() {
+      if (!activeRoomAudio || !activeRoomAudio.isPublishing) return;
+      activeRoomAudio.setMicVolume(Number(this.value) / 100);
+      updateActiveRoomAudioUi();
+    });
+    $('#nestRoomHandBtn', modal).addEventListener('click', function() {
+      toggleActiveRoomHand().catch(function(err) {
+        const status = $('#nestRoomAudioStatus', modal);
+        if (status) status.textContent = err && err.message ? err.message : 'Could not update hand state';
+      });
     });
     $('#nestRoomChatSendBtn', modal).addEventListener('click', function() {
       sendActiveRoomChat().catch(function(err) {
