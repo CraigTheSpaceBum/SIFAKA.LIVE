@@ -21323,7 +21323,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         kind,
         roomRef,
         parentATag,
-        title: tag('room') || tag('title') || 'Nostr Nest',
+        title: tag('room') || tag('title') || (kind === 30312 ? 'Nostr Nest' : ''),
         summary: tag('summary'),
         image: tag('image'),
         status: tag('status') || (kind === 30312 ? 'open' : 'planned'),
@@ -21494,14 +21494,37 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             if (!room) return;
             const key = room.roomRef;
             const existing = state.nestsRooms.get(key) || {};
-            state.nestsRooms.set(key, { ...existing, ...room, ...(room.kind === 30313 ? {
-              pubkey: existing.pubkey || (room.parentATag || '').split(':')[1] || room.pubkey,
-              d: existing.d || (room.parentATag || '').split(':').slice(2).join(':') || room.d,
-              service: existing.service || room.service,
-              title: room.title || existing.title,
-              summary: room.summary || existing.summary,
-              image: room.image || existing.image
-            } : {}) });
+            const timestampKey = room.kind === 30313 ? '_kind30313CreatedAt' : '_kind30312CreatedAt';
+            const incomingCreatedAt = Number(room.createdAt || 0);
+            const previousCreatedAt = Number(existing[timestampKey] || 0);
+            // Relay delivery order is not guaranteed. Never let an older room
+            // or meeting event overwrite newer state already rendered.
+            if (incomingCreatedAt < previousCreatedAt) return;
+
+            const merged = {
+              ...existing,
+              ...room,
+              [timestampKey]: incomingCreatedAt,
+              ...(room.kind === 30313 ? {
+                pubkey: existing.pubkey || (room.parentATag || '').split(':')[1] || room.pubkey,
+                d: existing.d || (room.parentATag || '').split(':').slice(2).join(':') || room.d,
+                service: room.service || existing.service,
+                title: room.title || existing.title,
+                summary: room.summary || existing.summary,
+                image: room.image || existing.image
+              } : {})
+            };
+            // A 30313 meeting commonly omits room metadata; preserve the
+            // canonical 30312 room values instead of replacing them with blanks.
+            if (room.kind === 30313) {
+              if (!room.participantPubkeys.length && existing.participantPubkeys) merged.participantPubkeys = existing.participantPubkeys;
+              if (!room.participantRoles.length && existing.participantRoles) merged.participantRoles = existing.participantRoles;
+              if (!room.relays.length && existing.relays) merged.relays = existing.relays;
+              if (!room.topics.length && existing.topics) merged.topics = existing.topics;
+              if (!room.image && existing.image) merged.image = existing.image;
+              if (!room.summary && existing.summary) merged.summary = existing.summary;
+            }
+            state.nestsRooms.set(key, merged);
             if (room.pubkey) fetchProfileIfNeeded(room.pubkey).then(() => renderNestsPage()).catch(() => {});
             renderNestsPage();
           },
