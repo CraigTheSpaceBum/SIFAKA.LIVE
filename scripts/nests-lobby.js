@@ -1644,6 +1644,7 @@
     if (activeRoomAudio && activeRoomUrl === url) return;
     if (activeRoomAudio) await leaveActiveRoom();
     activeRoomUrl = url;
+    activeRoomHandRaised = false;
     activeRoomEvent = null;
     activeRoom = null;
     activeRoomRelays = [];
@@ -1662,17 +1663,28 @@
       { kinds: [30312], authors: [decoded.pubkey], '#d': [decoded.d], limit: 20 },
       { kinds: [30313], '#a': [decoded.a], limit: 20 },
       { kinds: [1311], '#a': [decoded.a], limit: 60 },
-      { kinds: [10312], '#a': [decoded.a], limit: 300 }
+      { kinds: [10312], '#a': [decoded.a], limit: 300 },
+      { kinds: [7, 9735], '#a': [decoded.a], limit: 200 }
     ], 5200, roomRelayUrls(null, decoded));
     if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
 
     const rooms = events.filter(function(e) { return Number(e.kind) === 30312; }).sort(function(a,b) { return Number(b.created_at||0)-Number(a.created_at||0); });
     const roomEvent = rooms[0] || null;
     const current = chooseCurrentMeeting(events);
-    const presence = new Set();
-    events.filter(function(e) { return Number(e.kind) === 10312; }).forEach(function(e) {
-      if (Number(e.created_at || 0) >= now() - PRESENCE_TTL) presence.add(String(e.pubkey || '').toLowerCase());
+    const presenceEvents = events.filter(function(e) {
+      return Number(e.kind) === 10312 && Number(e.created_at || 0) >= now() - PRESENCE_TTL;
     });
+    const presence = new Set(presenceEvents.map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean));
+    const handRaisedPubkeys = new Set(
+      presenceEvents.filter(function(e) { return tag(e, 'hand') === '1'; })
+        .map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean)
+    );
+    const reactionCounts = {};
+    events.filter(function(e) { return Number(e.kind) === 7 && NEST_QUICK_REACTIONS.includes(String(e.content || '').trim()); })
+      .forEach(function(e) {
+        const emoji = String(e.content || '').trim();
+        reactionCounts[emoji] = Number(reactionCounts[emoji] || 0) + 1;
+      });
 
     const people = pTags(roomEvent);
     pTags(current).forEach(function(p) { if (!people.some(function(x) { return x.pubkey === p.pubkey; })) people.push(p); });
@@ -1688,6 +1700,8 @@
       starts: Number(tag(roomEvent,'starts') || 0), ends: Number(tag(roomEvent,'ends') || 0),
       topics: tags(roomEvent,'t'), currentParticipants: Number(tag(roomEvent,'current_participants') || 0),
       participants: people, presence: presence,
+      handRaisedPubkeys: handRaisedPubkeys,
+      reactionCounts: reactionCounts,
       chat: events.filter(function(e) { return Number(e.kind) === 1311; }),
       meeting: current ? {
         title: tag(current,'title'), summary: tag(current,'summary'), image: tag(current,'image'),
@@ -1730,17 +1744,28 @@
     const events = await relayQuery([
       { kinds: [30313], '#a': [decoded.a], limit: 10 },
       { kinds: [1311], '#a': [decoded.a], limit: 30 },
-      { kinds: [10312], '#a': [decoded.a], limit: 200 }
+      { kinds: [10312], '#a': [decoded.a], limit: 200 },
+      { kinds: [7, 9735], '#a': [decoded.a], limit: 200 }
     ], 3600, roomRelayUrls(activeRoom, decoded));
 
     if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
 
     const current = chooseCurrentMeeting(events);
 
-    const presence = new Set();
-    events.filter(function(e) { return Number(e.kind) === 10312; }).forEach(function(e) {
-      if (Number(e.created_at || 0) >= now() - PRESENCE_TTL) presence.add(String(e.pubkey || '').toLowerCase());
+    const presenceEvents = events.filter(function(e) {
+      return Number(e.kind) === 10312 && Number(e.created_at || 0) >= now() - PRESENCE_TTL;
     });
+    const presence = new Set(presenceEvents.map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean));
+    const handRaisedPubkeys = new Set(
+      presenceEvents.filter(function(e) { return tag(e, 'hand') === '1'; })
+        .map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean)
+    );
+    const reactionCounts = {};
+    events.filter(function(e) { return Number(e.kind) === 7 && NEST_QUICK_REACTIONS.includes(String(e.content || '').trim()); })
+      .forEach(function(e) {
+        const emoji = String(e.content || '').trim();
+        reactionCounts[emoji] = Number(reactionCounts[emoji] || 0) + 1;
+      });
 
     const chat = events.filter(function(e) { return Number(e.kind) === 1311; });
     const chatPubkeys = chat.map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean);
@@ -1767,7 +1792,9 @@
       relays: (activeRoom && activeRoom.relays) || [],
       streaming: (activeRoom && activeRoom.streaming) || '',
       participants: roster,
-      presence: presence
+      presence: presence,
+      handRaisedPubkeys: handRaisedPubkeys,
+      reactionCounts: reactionCounts
     });
 
     if (activeRoomAudio && typeof activeRoomAudio.setParticipants === 'function') {
@@ -1792,6 +1819,8 @@
       currentParticipants: current ? Number(tag(current,'current_participants') || 0) : 0,
       participants: roster,
       presence: presence,
+      handRaisedPubkeys: handRaisedPubkeys,
+      reactionCounts: reactionCounts,
       chat: chat,
       meeting: null,
       sourceCount: 0,
