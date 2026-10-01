@@ -145,10 +145,11 @@
       try {
         const j = JSON.parse(ev.content || '{}');
         map.set(ev.pubkey.toLowerCase(), {
-          name: j.display_name || j.name || '',
-          picture: j.picture || '',
-          banner: j.banner || '',
-          about: j.about || ''
+          displayName: String(j.display_name || '').trim(),
+          name: String(j.name || '').trim(),
+          picture: String(j.picture || '').trim(),
+          banner: String(j.banner || '').trim(),
+          about: String(j.about || '').trim()
         });
       } catch (_) {}
     });
@@ -698,6 +699,34 @@
     $('#nestPreviewFootnote', modal).textContent = 'Loading Nostr room metadata…';
   }
 
+  function profileDisplayName(profile) {
+    if (!profile) return 'Anonymous';
+    const displayName = String(profile.displayName || '').trim();
+    const username = String(profile.name || '').trim();
+    return displayName || username || 'Anonymous';
+  }
+
+  function safeNestImageUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw || !/^https?:\/\//i.test(raw)) return '';
+    let inspected = raw;
+    for (let i = 0; i < 2; i += 1) {
+      try {
+        const decoded = decodeURIComponent(inspected);
+        if (decoded === inspected) break;
+        inspected = decoded;
+      } catch (_) {
+        break;
+      }
+    }
+    if (/^data:/i.test(inspected)
+      || /<\/?svg\b/i.test(inspected)
+      || /<\/?(?:rect|text|path|circle|ellipse|polygon|polyline)\b/i.test(inspected)) {
+      return '';
+    }
+    return raw;
+  }
+
   function renderChat(room, profiles) {
     const messages = Array.isArray(room.chat) ? room.chat.slice().sort(function(a, b) {
       return Number(a.created_at || 0) - Number(b.created_at || 0);
@@ -715,11 +744,12 @@
 
     $('#nestPreviewChat', modal).innerHTML = messages.map(function(ev) {
       const prof = profiles.get(String(ev.pubkey || '').toLowerCase()) || {};
-      const name = prof.name || String(ev.pubkey || '').slice(0, 8) + '…';
+      const name = profileDisplayName(prof);
+      const picture = safeNestImageUrl(prof.picture);
       const content = String(ev.content || '').trim();
       const when = ev.created_at ? new Date(Number(ev.created_at) * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
       return '<div class="nest-chat-message">' +
-        '<span class="nest-chat-avatar">' + (prof.picture ? '<img src="' + esc(prof.picture) + '" alt="">' : esc(name.slice(0, 1).toUpperCase())) + '</span>' +
+        '<span class="nest-chat-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : esc(name.slice(0, 1).toUpperCase())) + '</span>' +
         '<div class="nest-chat-copy"><div><strong>' + esc(name) + '</strong><time>' + esc(when) + '</time></div><p>' + esc(content) + '</p></div>' +
       '</div>';
     }).join('');
@@ -792,15 +822,17 @@
       if (!sheet || !pubkey) return;
       sheet.classList.add('open');
       const profile = profiles.get(String(pubkey).toLowerCase()) || {};
-      const name = profile.name || String(pubkey).slice(0, 8) + '…' + String(pubkey).slice(-6);
+      const name = profileDisplayName(profile);
+      const picture = safeNestImageUrl(profile.picture);
+      const banner = safeNestImageUrl(profile.banner);
       let npub = '';
       try { if (window.NostrTools?.nip19?.npubEncode) npub = window.NostrTools.nip19.npubEncode(pubkey); } catch (_) {}
       sheet.dataset.npub = npub;
       $('#nestProfileName', sheet).textContent = name;
       $('#nestProfileRole', sheet).textContent = role || 'Nest participant';
       $('#nestProfileAbout', sheet).textContent = profile.about || 'No profile bio published.';
-      $('#nestProfileAvatar', sheet).innerHTML = profile.picture ? '<img src="' + esc(profile.picture) + '" alt="">' : '<span>' + esc(name.slice(0,1).toUpperCase()) + '</span>';
-      $('#nestProfileHero', sheet).style.backgroundImage = profile.banner ? 'url("' + esc(profile.banner) + '")' : '';
+      $('#nestProfileAvatar', sheet).innerHTML = picture ? '<img src="' + esc(picture) + '" alt="">' : '<span>' + esc(name.slice(0,1).toUpperCase()) + '</span>';
+      $('#nestProfileHero', sheet).style.backgroundImage = banner ? 'url("' + esc(banner) + '")' : '';
       $('#nestProfileNpub', sheet).textContent = npub || 'npub unavailable';
       $('#nestProfileOpen', sheet).disabled = !npub;
       $('#nestProfileCopy', sheet).disabled = !npub;
@@ -808,9 +840,10 @@
 
     const peopleHtml = ordered.map(function(p) {
       const prof = profiles.get(p.pubkey) || {};
-      const name = prof.name || p.pubkey.slice(0, 8) + '…' + p.pubkey.slice(-6);
+      const name = profileDisplayName(prof);
+      const picture = safeNestImageUrl(prof.picture);
       return '<button class="nest-person" type="button">' +
-        '<span class="nest-person-avatar">' + (prof.picture ? '<img src="' + esc(prof.picture) + '" alt="">' : '<span>' + esc(name.slice(0,1).toUpperCase()) + '</span>') + '</span>' +
+        '<span class="nest-person-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : '<span>' + esc(name.slice(0,1).toUpperCase()) + '</span>') + '</span>' +
         '<span class="nest-person-copy"><strong>' + esc(name) + '</strong><small>' + esc(p.role || 'Participant') + '</small></span>' +
         '<span class="nest-person-dot ' + roleClass(p.role) + '"></span></button>';
     }).join('');
@@ -826,8 +859,10 @@
     $('#nestPreviewListeners', modal).innerHTML = listenerKeys.length
       ? listenerKeys.map(function(k) {
           const prof = profiles.get(k) || {};
-          return '<button class="nest-listener" type="button" title="' + esc(prof.name || k) + '" data-pubkey="' + esc(k) + '">' +
-            (prof.picture ? '<img src="' + esc(prof.picture) + '" alt="">' : esc((prof.name || k).slice(0,1).toUpperCase())) + '</button>';
+          const name = profileDisplayName(prof);
+          const picture = safeNestImageUrl(prof.picture);
+          return '<button class="nest-listener" type="button" title="' + esc(name) + '" data-pubkey="' + esc(k) + '">' +
+            (picture ? '<img src="' + esc(picture) + '" alt="">' : esc(name.slice(0,1).toUpperCase())) + '</button>';
         }).join('') + (count > listenerKeys.length ? '<span class="nest-listener-more">+' + (count - listenerKeys.length) + '</span>' : '')
       : '<span class="nest-listener-text">' + (count ? count + ' listener' + (count === 1 ? '' : 's') + ' currently in the room' : 'Presence is not currently published.') + '</span>';
     Array.from($('#nestPreviewListeners', modal).querySelectorAll('.nest-listener')).forEach(function(button) {
@@ -865,9 +900,10 @@
 
     const ctx = getSifakaContext();
     const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+    if (!user) throw new Error('Please sign in to join Nest audio.');
     const d = String(tag(activeRoomEvent, 'd') || activeRoom.d || '');
     const namespace = 'nests/30312:' + activeRoomEvent.pubkey + ':' + d;
-    const streamingUrl = tag(activeRoomEvent, 'streaming') || activeRoom.streaming || 'https://moq.nostrnests.com';
+    const streamingUrl = tag(activeRoomEvent, 'streaming') || activeRoom.streaming || 'https://moq.nostrnests.com:4443';
     let token = '';
     if (user) {
       try {
