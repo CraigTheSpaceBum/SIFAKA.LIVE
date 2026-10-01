@@ -19094,10 +19094,26 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (state.profileFeedBackfillInFlight.has(selectedKey)) return;
 
     const map = state.profileNotesByPubkey.get(pubkey) || new Map();
-    const loaded = Array.from(map.values()).filter((ev) => Number(ev && ev.created_at || 0) > 0);
+    const loaded = Array.from(map.values()).filter((ev) => {
+      if (!ev || Number(ev.created_at || 0) <= 0) return false;
+      if (normalizePubkeyHex(ev.pubkey || '') !== selectedKey) return false;
+      if (Number(ev.kind || 0) === 6) return true;
+      return isTopLevelProfilePost(ev, pubkey);
+    });
     const oldestLoaded = loaded.reduce((min, ev) => Math.min(min, Number(ev.created_at || 0)), Infinity);
     const until = Math.min(before, Number.isFinite(oldestLoaded) ? oldestLoaded - 1 : before);
     if (until < 1) return;
+    const since = Math.max(1, until - PROFILE_FEED_BACKFILL_CHUNK_SECONDS);
+
+    const profileRelayUrls = [...(state.pool.urls || [])]
+      .map((url, index) => ({
+        url,
+        index,
+        ms: Number(state.relayPingMsByUrl && state.relayPingMsByUrl.get(url) || Number.POSITIVE_INFINITY)
+      }))
+      .sort((x, y) => (x.ms - y.ms) || (x.index - y.index))
+      .slice(0, Math.max(1, Math.min(PROFILE_FEED_RELAY_COUNT, state.pool.urls.length || 1)))
+      .map((item) => item.url);
 
     const promise = new Promise((resolve) => {
       let subId = null;
@@ -19113,8 +19129,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       subId = state.pool.subscribe(
         [
-          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], until, limit: 320 },
-          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], until, limit: 620 }
+          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], since, until, limit: 320 },
+          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], since, until, limit: 620 }
         ],
         {
           event: (ev) => {
@@ -19126,7 +19142,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             }
           },
           eose: finish
-        }
+        },
+        { relayUrls: profileRelayUrls }
       );
       state.profileFeedBackfillSubIds.set(selectedKey, subId);
       setTimeout(finish, 8000);
@@ -19143,14 +19160,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function subscribeProfileFeed(pubkey) {
     if (!pubkey) return;
-    if (state.profileFeedSubId) state.pool.unsubscribe(state.profileFeedSubId);
+    if (state.profileFeedSubId) {
+      try { state.pool.unsubscribe(state.profileFeedSubId); } catch (_) {}
+      state.profileFeedSubId = null;
+    }
+
+    stopProfileFeedBackfills();
 
     const leftList = qs('#profileFeedList');
     const sideList = qs('#profileFeedListSide');
-    if (leftList) { leftList.innerHTML = '<div class="profile-feed-empty">Loading notes from relays...</div>'; leftList.dataset.feedLimit = '6'; }
-    if (sideList) { sideList.innerHTML = '<div class="profile-feed-empty">Loading notes from relays...</div>'; sideList.dataset.feedLimit = '6'; }
+    if (leftList) {
+      leftList.innerHTML = '<div class="profile-feed-empty">Loading notes from relays...</div>';
+      leftList.dataset.feedLimit = '6';
+    }
+    if (sideList) {
+      sideList.innerHTML = '<div class="profile-feed-empty">Loading notes from relays...</div>';
+      sideList.dataset.feedLimit = '6';
+    }
 
-    // Reset media limits
     const mediaEl = qs('#profileMediaList') || qs('#profileVideosList');
     const photosEl = qs('#profilePhotosList');
     if (mediaEl) mediaEl.dataset.mediaLimit = '9';
@@ -19159,6 +19186,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const selectedKey = normalizePubkeyHex(pubkey) || pubkey;
     const existing = state.profileNotesByPubkey.get(pubkey);
     if (!existing) state.profileNotesByPubkey.set(pubkey, new Map());
+
+    const profileRelayUrls = [...(state.pool.urls || [])]
+      .map((url, index) => ({
+        url,
+        index,
+        ms: Number(state.relayPingMsByUrl && state.relayPingMsByUrl.get(url) || Number.POSITIVE_INFINITY)
+      }))
+      .sort((x, y) => (x.ms - y.ms) || (x.index - y.index))
+      .slice(0, Math.max(1, Math.min(PROFILE_FEED_RELAY_COUNT, state.pool.urls.length || 1)))
+      .map((item) => item.url);
+    const profileSince = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * PROFILE_FEED_INITIAL_DAYS;
+
     let feedRenderTimer = null;
     const flushProfileFeedRender = () => {
       if (feedRenderTimer) {
@@ -19177,11 +19216,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.profileFeedSubId = state.pool.subscribe(
       [
-        // Keep the full profile event set so the profile can render the author's
-        // posts together with replies/comments, reactions, boosts, deletions, and zaps.
-        // This is especially important for the signed-in user's own profile.
-        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 420, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 },
-        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 720, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 }
+        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 320, since: profileSince },
+        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 520, since: profileSince }
       ],
       {
         event: (ev) => {
@@ -19196,7 +19232,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         eose: () => {
           flushProfileFeedRender();
         }
-      }
+      },
+      { relayUrls: profileRelayUrls }
     );
   }
 
