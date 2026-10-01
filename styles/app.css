@@ -6696,6 +6696,9 @@ footer p{font-size:.72rem;color:var(--muted);}
       "hero hero"
       "onchain-label lightning-label"
       "onchain lightning-dashboard"
+      "onchain lightning-actions"
+      "onchain lightning-address"
+      "onchain lightning-tx"
       "status status"
       ". prompt";
     column-gap:1rem;
@@ -6713,16 +6716,10 @@ footer p{font-size:.72rem;color:var(--muted);}
     gap:.75rem;
     margin:0;
   }
-  #walletPage .wallet-actions-card,
-  #walletPage .wallet-address-card,
-  #walletPage .wallet-transactions-card,
-  #walletPage .wallet-connect-prompt{
-    grid-column:2;
-  }
-  #walletPage .wallet-actions-card{grid-row:auto;margin-top:0;}
-  #walletPage .wallet-address-card{margin-top:0;}
-  #walletPage .wallet-transactions-card{margin-top:0;}
-  #walletPage .wallet-connect-prompt{margin-top:0;}
+  #walletPage .wallet-actions-card{grid-area:lightning-actions;margin-top:0;margin-bottom:0;}
+  #walletPage .wallet-address-card{grid-area:lightning-address;margin-top:0;}
+  #walletPage .wallet-transactions-card{grid-area:lightning-tx;margin-top:0;}
+  #walletPage .wallet-connect-prompt{grid-area:prompt;margin-top:0;}
   #walletPage .wallet-page-status{grid-area:status;margin-top:0;}
 
   /* Keep the right-side Lightning stack visually contiguous. */
@@ -6898,4 +6895,28 @@ footer p{font-size:.72rem;color:var(--muted);}
   color:var(--text2);
   font:600 .66rem/1.5 'DM Mono',monospace;
   overflow-wrap:anywhere;
+}
+
+@media (max-width:760px){
+  #walletPage .wallet-mainchain-receive{
+    margin-top:.65rem;
+    padding:.6rem .7rem;
+    text-align:left;
+    border:1px solid var(--border);
+    border-radius:10px;
+    background:var(--surface2);
+  }
+  #walletPage .wallet-mainchain-qr-wrap{display:none;}
+  #walletPage .wallet-mainchain-receive-label,
+  #walletPage .wallet-mainchain-receive-help{display:none;}
+  #walletPage .wallet-mainchain-receive-address{
+    margin:0;
+    font-size:.62rem;
+    font-weight:400;
+  }
+  #walletPage .wallet-mainchain-receive-actions{
+    justify-content:flex-start;
+    margin-top:.5rem;
+  }
+  #walletPage .wallet-onchain-action-grid{display:none;}
 }
