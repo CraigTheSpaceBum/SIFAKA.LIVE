@@ -20946,7 +20946,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       grid.innerHTML = rooms.slice(0, 80).map(room => {
         const profile = profileFor(room.pubkey) || {};
-        const name = escapeHtml(profile.display_name || profile.name || formatNpubForDisplay(room.pubkey));
+        const name = escapeHtml(profile.display_name || profile.name || 'Anonymous');
         const title = escapeHtml(room.title);
         const summary = escapeHtml(room.summary || 'Live audio conversation on Nostr.');
         const img = room.image ? `<img src="${escapeHtml(room.image)}" alt="" loading="lazy">` : '<div class="nests-room-art">N</div>';
@@ -20957,7 +20957,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const topicHtml = (room.topics || []).slice(0,3).map(t => `<span class="nests-topic">#${escapeHtml(t)}</span>`).join('');
         const roomUrl = getNestsRoomUrl(room);
         const shareUrl = roomUrl;
-        const avatar = profile.picture ? `<img src="${escapeHtml(profile.picture)}" alt="" loading="lazy">` : `<span>${escapeHtml((profile.display_name || profile.name || 'N').slice(0, 1).toUpperCase())}</span>`;
+        const avatar = profile.picture ? `<img src="${escapeHtml(profile.picture)}" alt="" loading="lazy">` : `<span>${escapeHtml((profile.display_name || profile.name || 'Anonymous').slice(0, 1).toUpperCase())}</span>`;
         const displayCount = room.participants ? formatCount(room.participants) : '—';
         const statusLabel = live ? 'LIVE' : (status === 'ended' ? 'ENDED' : (room.starts ? 'UPCOMING' : 'OPEN'));
         return `<article class="nests-room-card">
