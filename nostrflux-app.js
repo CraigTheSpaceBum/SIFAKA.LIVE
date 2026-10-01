@@ -318,6 +318,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     profilesByPubkey: new Map(),
     profileFetchInflightByPubkey: new Map(),
     profileNotesByPubkey: new Map(),
+    profileFeedBackfillExhausted: new Set(),
     profileStatsByPubkey: new Map(),
     liveSubId: null,
 
@@ -18311,8 +18312,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       listEl.appendChild(item);
     });
 
-    // Infinite scroll sentinel ? appear if more posts exist beyond current limit
-    if (notes.length > limit) {
+    // Keep the infinite-scroll sentinel available when the currently loaded window
+    // is exhausted so older history can still be fetched, including profiles with
+    // six or fewer recent posts.
+    const profileKey = normalizePubkeyHex(pubkey) || pubkey;
+    const canBackfillProfileHistory =
+      !isNostrFeedVirtualProfile(pubkey) &&
+      notes.length > 0 &&
+      !state.profileFeedBackfillExhausted.has(profileKey);
+    if (notes.length > limit || canBackfillProfileHistory) {
       const sentinel = document.createElement('div');
       sentinel.className = 'feed-sentinel';
       sentinel.innerHTML = '<span class="feed-sentinel-label">Loading more posts...</span>';
@@ -19069,6 +19077,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.profileFeedBackfillSubIds.clear();
     if (!(state.profileFeedBackfillInFlight instanceof Map)) state.profileFeedBackfillInFlight = new Map();
     state.profileFeedBackfillInFlight.clear();
+    state.profileFeedBackfillExhausted = new Set();
   }
 
   function startProfileFeedBackfill(pubkey, beforeSec) {
@@ -19112,6 +19121,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         try { if (subId && state.pool) state.pool.unsubscribe(subId); } catch (_) {}
         state.profileFeedBackfillSubIds.delete(selectedKey);
         state.profileFeedBackfillInFlight.delete(selectedKey);
+        const currentMap = state.profileNotesByPubkey.get(pubkey) || new Map();
+        const currentOldest = Array.from(currentMap.values())
+          .filter((ev) => {
+            if (!ev || Number(ev.created_at || 0) <= 0) return false;
+            if (normalizePubkeyHex(ev.pubkey || '') !== selectedKey) return false;
+            if (Number(ev.kind || 0) === 6) return true;
+            return isTopLevelProfilePost(ev, pubkey);
+          })
+          .reduce((min, ev) => Math.min(min, Number(ev.created_at || 0)), Infinity);
+        if (!Number.isFinite(currentOldest) || (Number.isFinite(oldestLoaded) && currentOldest >= oldestLoaded)) {
+          state.profileFeedBackfillExhausted.add(selectedKey);
+        }
         resolve();
       };
 
