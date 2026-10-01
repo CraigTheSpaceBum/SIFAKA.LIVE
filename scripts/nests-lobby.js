@@ -236,9 +236,9 @@
   async function loadNestAudioModules() {
     if (!activeRoomAudioModulesPromise) {
       activeRoomAudioModulesPromise = Promise.all([
-        import('https://esm.sh/@moq/lite@0.1.7'),
-        import('https://esm.sh/@moq/watch@0.2.3'),
-        import('https://esm.sh/@moq/publish@0.2.3')
+        import('https://esm.sh/@moq/lite@0.3.0'),
+        import('https://esm.sh/@moq/watch@0.5.2'),
+        import('https://esm.sh/@moq/publish@0.4.5')
       ]).then(function(modules) {
         return { Moq: modules[0], Watch: modules[1], Publish: modules[2] };
       });
@@ -569,10 +569,13 @@
     const fallback = 'https://moq.nostrnests.com:4443';
     try {
       const parsed = new URL(String(value || fallback));
-      if ((parsed.protocol === 'https:' || parsed.protocol === 'http:')
-        && parsed.hostname.toLowerCase() === 'moq.nostrnests.com'
-        && !parsed.port) {
-        parsed.port = '4443';
+      const host = parsed.hostname.toLowerCase();
+      if (host === 'moq.nostrnests.com') {
+        if (parsed.protocol === 'wss:' || parsed.protocol === 'ws:' || parsed.protocol === 'http:') {
+          parsed.protocol = 'https:';
+        }
+        if (!parsed.port) parsed.port = '4443';
+        parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '';
       }
       return parsed.toString().replace(/\/$/, '');
     } catch (_) {
@@ -1581,31 +1584,34 @@
     }
   };
 
-  function interceptJoinClicks(e) {
-    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
+  function openRoomFromCard(card, event) {
     if (!card) return;
-
-    const interactive = e.target.closest('button,a,input,textarea,select');
-    if (interactive && !interactive.matches(
-      '.nests-room-cover-btn, .nests-room-actions .btn-primary, .nests-room-join, [data-action="join"]'
-    )) {
-      return;
-    }
-
-    const primary = card.querySelector(
-      '.nests-room-actions .btn-primary, .nests-room-cover-btn, .nests-room-join, [data-action="join"]'
-    ) || card;
-    const fallback = getCardFallback(primary);
-    if (!fallback.url) return;
-
-    const naddr = normalizeRoomNaddr(fallback.url);
+    const target = String(card.getAttribute('data-room-url') || '').trim();
+    const naddr = normalizeRoomNaddr(target);
     if (!naddr) return;
-
-    e.preventDefault();
-    e.stopImmediatePropagation();
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     if (typeof window.openNestsRoomPage === 'function') {
       window.openNestsRoomPage(naddr, { routeMode: 'push', autoJoin: true });
     }
+  }
+
+  function interceptJoinClicks(e) {
+    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
+    if (!card) return;
+    if (e.target.closest && e.target.closest('.nests-card-share')) return;
+    openRoomFromCard(card, e);
+  }
+
+  function interceptNestCardKeydown(e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
+    if (!card) return;
+    if (e.target.closest && e.target.closest('.nests-card-share')) return;
+    e.preventDefault();
+    openRoomFromCard(card, e);
   }
 
   function boot() {
@@ -1657,6 +1663,7 @@
     }
     if (!grid) return;
     grid.addEventListener('click', interceptJoinClicks, true);
+    grid.addEventListener('keydown', interceptNestCardKeydown, true);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
