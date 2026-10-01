@@ -339,6 +339,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     selectedProfileLiveAddress: null,
     profileTab: 'streams',
     profileBioExpandedByPubkey: new Map(),
+    profileBitcoinAddressesByPubkey: new Map(),
     isLive: false,
     hlsInstance: null,
     playbackCleanup: null,
@@ -723,6 +724,28 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!hex || hex.length < 16) return hex || '';
     return `${hex.slice(0, 8)}...${hex.slice(-8)}`;
   }
+  function shortBitcoinAddress(address) {
+    const value = String(address || '').trim();
+    if (!value) return '';
+    if (value.length <= 22) return value;
+    return value.slice(0, 10) + '…' + value.slice(-8);
+  }
+
+  async function getProfileBitcoinAddress(pubkey) {
+    const key = normalizePubkeyHex(pubkey || '');
+    if (!key) return '';
+    const cached = state.profileBitcoinAddressesByPubkey.get(key);
+    if (cached) return cached;
+    try {
+      await ensureTaprootDerivationSelfTest();
+      const address = await deriveNipBcTaprootAddress(key);
+      state.profileBitcoinAddressesByPubkey.set(key, address);
+      return address;
+    } catch (_) {
+      return '';
+    }
+  }
+
 
   function toUnixSeconds(dtLocal) {
     if (!dtLocal) return null;
@@ -19322,6 +19345,30 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       lud16Row.style.display = 'none';
     }
 
+    const bitcoinRow = qs('#profBitcoinRow');
+    const bitcoinBio = qs('#profBitcoinBio');
+    const profileBitcoinPubkey = normalizePubkeyHex(pubkey);
+    if (bitcoinRow) bitcoinRow.style.display = profileBitcoinPubkey ? 'flex' : 'none';
+    if (bitcoinBio) {
+      bitcoinBio.textContent = profileBitcoinPubkey ? 'Deriving…' : '';
+      bitcoinBio.title = profileBitcoinPubkey ? 'Deriving on-chain Bitcoin address' : '';
+    }
+    if (profileBitcoinPubkey) {
+      getProfileBitcoinAddress(profileBitcoinPubkey).then((address) => {
+        if (!address) {
+          if (bitcoinRow) bitcoinRow.style.display = 'none';
+          return;
+        }
+        if (bitcoinBio) {
+          bitcoinBio.textContent = shortBitcoinAddress(address);
+          bitcoinBio.title = address;
+        }
+        if (bitcoinRow) bitcoinRow.style.display = 'flex';
+      }).catch(() => {
+        if (bitcoinRow) bitcoinRow.style.display = 'none';
+      });
+    }
+
     const twitterRow = qs('#profTwitterRow');
     const twitterBio = qs('#profTwitterBio');
     const tw = normalizeTwitterLink(p.twitter || '');
@@ -20833,12 +20880,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
         const websiteRow = qs('#profWebsiteRow');
         const lud16Row = qs('#profLud16Row');
+        const bitcoinRow = qs('#profBitcoinRow');
         const twitterRow = qs('#profTwitterRow');
         const githubRow = qs('#profGithubRow');
         const mainLinksWrap = qs('#profBioLinksMain');
         const bottomLinksWrap = qs('#profBioLinksBottom');
         if (websiteRow) websiteRow.style.display = 'none';
         if (lud16Row) lud16Row.style.display = 'none';
+        if (bitcoinRow) bitcoinRow.style.display = 'none';
         if (twitterRow) twitterRow.style.display = 'none';
         if (githubRow) githubRow.style.display = 'none';
         if (mainLinksWrap) mainLinksWrap.style.display = 'none';
@@ -21760,6 +21809,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const txEl = qs('#walletTransactionsList');
       const chipEl = qs('#walletStatusChip');
       const promptEl = qs('#walletConnectPrompt');
+      const lightningColumnEl = qs('#walletLightningColumn');
+      const lightningQrEl = qs('#walletLightningQr');
+      const lightningQrEmptyEl = qs('#walletLightningQrEmpty');
       const mainchainBalanceEl = qs('#walletMainchainBalance');
       const mainchainPendingEl = qs('#walletMainchainPending');
       const mainchainStatsEl = qs('#walletMainchainStats');
@@ -21791,6 +21843,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       };
 
       const savedUri = String(state.settings && state.settings.nwcConnectionUri || '').trim();
+      const setLightningConnectionLayout = (connected) => {
+        if (lightningColumnEl) lightningColumnEl.hidden = !connected;
+        if (promptEl) promptEl.hidden = !!connected;
+      };
+      setLightningConnectionLayout(false);
       const manualBitcoinAddress = String(state.settings && state.settings.bitcoinAddress || '').trim();
       const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
       let bitcoinAddress = '';
@@ -21926,6 +21983,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const qrBtn = qs('#walletAddressQrBtn');
           if (qrBtn) qrBtn.hidden = !lud16;
           state.walletPageLightningAddress = lud16;
+          renderWalletLightningAddressQr(lud16, lightningQrEl, lightningQrEmptyEl);
         }).catch(() => {});
       } else {
         const lud16 = String(state.settings && state.settings.lud16 || '').trim();
@@ -21945,7 +22003,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         infoEl.innerHTML = '<div class="wallet-info-empty">No NIP-47 wallet connection is configured.</div>';
         txEl.innerHTML = '<div class="wallet-empty-state">Connect a wallet in Settings → Wallet to load your live Lightning balance and transactions.</div>';
         if (chipEl) { chipEl.textContent = 'Not connected'; chipEl.className = 'wallet-status-chip'; }
-        if (promptEl) promptEl.hidden = false;
+        setLightningConnectionLayout(false);
         setStatus('', 'info');
         return;
       }
@@ -21968,6 +22026,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
         const infoResult = await sendNwcRequest(session, 'get_info', {}, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
         if (token !== state.walletPageLoadToken) return;
+
+        setLightningConnectionLayout(true);
 
         let balanceResult = null;
         try {
@@ -22036,6 +22096,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         balanceSubEl.textContent = 'Could not load the live wallet balance.';
         if (chipEl) { chipEl.textContent = 'Connection error'; chipEl.className = 'wallet-status-chip is-error'; }
         txEl.innerHTML = '<div class="wallet-empty-state">The wallet connection could not be reached. Check Settings → Wallet and try again.</div>';
+        setLightningConnectionLayout(false);
         setStatus(err && err.message ? err.message : 'Could not load wallet information.', 'error');
       } finally {
         if (token === state.walletPageLoadToken) setLoading(false);
@@ -22089,6 +22150,19 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         new window.QRCode(qr, { text: value, width: 220, height: 220, correctLevel: window.QRCode.CorrectLevel.M });
       } else {
         qr.textContent = 'QR generator unavailable. Copy the invoice instead.';
+      }
+    }
+
+    function renderWalletLightningAddressQr(value, qrEl = qs('#walletLightningQr'), emptyEl = qs('#walletLightningQrEmpty')) {
+      if (!qrEl) return;
+      const address = String(value || '').trim();
+      qrEl.innerHTML = '';
+      if (emptyEl) emptyEl.hidden = !!address;
+      if (!address) return;
+      if (window.QRCode) {
+        new window.QRCode(qrEl, { text: address, width: 240, height: 240, correctLevel: window.QRCode.CorrectLevel.M });
+      } else {
+        qrEl.textContent = 'QR generator unavailable. Copy the Lightning address instead.';
       }
     }
 
