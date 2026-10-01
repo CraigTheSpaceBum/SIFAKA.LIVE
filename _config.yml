@@ -1,1 +1,2 @@
 include: [".well-known"]
+exclude: [_upstream_compare, tmp-heavy-stream-dom.html, docs]

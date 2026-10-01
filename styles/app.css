@@ -6661,3 +6661,25 @@ footer p{font-size:.72rem;color:var(--muted);}
 @media(prefers-reduced-motion:reduce){
   .nest-preview-tab,.nest-person{transition:none}
 }
+
+/* Lightweight viewport rendering hints for high-volume UI. */
+.notif-item,
+.stream-card{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 96px;
+}
+.notif-show-more{
+  width:100%;
+  justify-content:center;
+  margin-top:.75rem;
+}
+@media (prefers-reduced-motion: reduce){
+  *,
+  *::before,
+  *::after{
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+    scroll-behavior:auto !important;
+  }
+}
