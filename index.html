@@ -1130,44 +1130,6 @@ body.nest-preview-open{overflow:hidden}
     <div class="wallet-desktop-column-label wallet-desktop-onchain-label">ON-CHAIN BITCOIN</div>
     <div class="wallet-desktop-column-label wallet-desktop-lightning-label">LIGHTNING / OFF-CHAIN</div>
 
-    <section class="wallet-dashboard-grid">
-      <article class="wallet-balance-card" id="walletBalanceCard">
-        <div class="wallet-card-label">Available Balance</div>
-        <div class="wallet-balance-value" id="walletBalanceValue">—</div>
-        <div class="wallet-balance-sub" id="walletBalanceSub">Connect a Nostr wallet to load your balance.</div>
-        <div class="wallet-quick-actions">
-          <button class="wallet-quick-btn primary" type="button" onclick="openWalletReceive()"><span>↓</span> Receive</button>
-          <button class="wallet-quick-btn" type="button" onclick="openSettings();">Wallet settings</button>
-        </div>
-      </article>
-
-      <article class="wallet-info-card">
-        <div class="wallet-card-label">Wallet</div>
-        <div class="wallet-info-list" id="walletInfoList">
-          <div class="wallet-info-empty">No wallet connected.</div>
-        </div>
-      </article>
-    </section>
-
-    <section class="wallet-actions-card" id="walletActionsCard">
-      <div class="wallet-section-head">
-        <div>
-          <div class="wallet-card-label">Lightning</div>
-          <h3>Send & Receive</h3>
-        </div>
-      </div>
-      <div class="wallet-action-grid">
-        <button class="wallet-action-tile receive" type="button" onclick="openWalletReceive()">
-          <span class="wallet-action-icon">↓</span>
-          <span><strong>Receive</strong><small>Create an invoice and show its QR code</small></span>
-        </button>
-        <button class="wallet-action-tile send" type="button" onclick="openWalletSend()">
-          <span class="wallet-action-icon">↑</span>
-          <span><strong>Send</strong><small>Pay a Lightning invoice</small></span>
-        </button>
-      </div>
-    </section>
-
     <section class="wallet-mainchain-card" id="walletMainchainCard">
       <div class="wallet-section-head">
         <div>
@@ -1217,34 +1179,76 @@ body.nest-preview-open{overflow:hidden}
       </div>
     </section>
 
-    <section class="wallet-address-card" id="walletAddressCard">
-      <div>
-        <div class="wallet-card-label">Lightning Address</div>
-        <div class="wallet-address-value" id="walletAddressValue">Not available</div>
-        <div class="wallet-address-help" id="walletAddressHelp">Your profile's lud16 address will appear here when available.</div>
-      </div>
-      <div class="wallet-address-actions">
-        <button class="btn btn-ghost wallet-small-btn" id="walletAddressQrBtn" type="button" onclick="showWalletAddressQr('lightning')" hidden>QR</button>
-        <button class="btn btn-ghost wallet-small-btn" id="walletAddressCopyBtn" type="button" onclick="copyWalletLightningAddress()" hidden>Copy</button>
-      </div>
-    </section>
+    <section class="wallet-lightning-column" id="walletLightningColumn">
+      <div class="wallet-lightning-overview">
+        <article class="wallet-balance-card" id="walletBalanceCard">
+          <div class="wallet-card-label">Available Balance</div>
+          <div class="wallet-balance-value" id="walletBalanceValue">—</div>
+          <div class="wallet-balance-sub" id="walletBalanceSub">Connect a Nostr wallet to load your balance.</div>
+          <div class="wallet-quick-actions">
+            <button class="wallet-quick-btn primary" type="button" onclick="openWalletReceive()"><span>↓</span> Receive</button>
+            <button class="wallet-quick-btn" type="button" onclick="openSettings();">Wallet settings</button>
+          </div>
+        </article>
 
-    <section class="wallet-transactions-card">
-      <div class="wallet-section-head">
-        <div>
-          <div class="wallet-card-label">Recent Transactions</div>
-          <h3>Lightning Activity</h3>
+        <article class="wallet-info-card">
+          <div class="wallet-card-label">Wallet</div>
+          <div class="wallet-info-list" id="walletInfoList">
+            <div class="wallet-info-empty">No wallet connected.</div>
+          </div>
+        </article>
+      </div>
+
+      <div class="wallet-lightning-receive">
+        <div class="wallet-lightning-qr-wrap" aria-label="Lightning address QR code">
+          <div id="walletLightningQr" class="wallet-lightning-qr"></div>
+          <div id="walletLightningQrEmpty" class="wallet-lightning-qr-empty">Add a Lightning address to your Nostr profile to show a receive QR here.</div>
         </div>
-        <span class="wallet-status-chip" id="walletStatusChip">Not connected</span>
+        <div class="wallet-lightning-receive-label">Receive Lightning</div>
+        <div class="wallet-lightning-receive-address" id="walletAddressValue">Not available</div>
+        <div class="wallet-lightning-receive-help" id="walletAddressHelp">Your profile's lud16 address will appear here when available.</div>
+        <div class="wallet-mainchain-receive-actions">
+          <button class="btn btn-ghost wallet-small-btn" id="walletAddressQrBtn" type="button" onclick="showWalletAddressQr('lightning')" hidden>Enlarge QR</button>
+          <button class="btn btn-ghost wallet-small-btn" id="walletAddressCopyBtn" type="button" onclick="copyWalletLightningAddress()" hidden>Copy address</button>
+        </div>
       </div>
-      <div id="walletTransactionsList" class="wallet-transactions-list">
-        <div class="wallet-empty-state">Connect a Nostr Wallet Connect wallet in Settings → Wallet to load your wallet activity.</div>
-      </div>
+
+      <section class="wallet-actions-card" id="walletActionsCard">
+        <div class="wallet-section-head">
+          <div>
+            <div class="wallet-card-label">Lightning</div>
+            <h3>Send & Receive</h3>
+          </div>
+        </div>
+        <div class="wallet-action-grid">
+          <button class="wallet-action-tile receive" type="button" onclick="openWalletReceive()">
+            <span class="wallet-action-icon">↓</span>
+            <span><strong>Receive</strong><small>Create an invoice and show its QR code</small></span>
+          </button>
+          <button class="wallet-action-tile send" type="button" onclick="openWalletSend()">
+            <span class="wallet-action-icon">↑</span>
+            <span><strong>Send</strong><small>Pay a Lightning invoice</small></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="wallet-transactions-card">
+        <div class="wallet-section-head">
+          <div>
+            <div class="wallet-card-label">Recent Transactions</div>
+            <h3>Lightning Activity</h3>
+          </div>
+          <span class="wallet-status-chip" id="walletStatusChip">Not connected</span>
+        </div>
+        <div id="walletTransactionsList" class="wallet-transactions-list">
+          <div class="wallet-empty-state">Connect a Nostr Wallet Connect wallet in Settings → Wallet to load your wallet activity.</div>
+        </div>
+      </section>
     </section>
 
     <div id="walletPageStatus" class="wallet-page-status" aria-live="polite"></div>
 
-    <section class="wallet-connect-prompt" id="walletConnectPrompt">
+    <section class="wallet-connect-prompt" id="walletConnectPrompt" hidden>
       <div>
         <strong>Connect your Nostr wallet</strong>
         <p>Use the existing NIP-47 wallet connection in Sifaka Settings. Your NWC secret stays local to this browser.</p>
@@ -1892,6 +1896,7 @@ body.nest-preview-open{overflow:hidden}
                 <div class="profile-bio-links profile-bio-links-bottom" id="profBioLinksBottom">
                   <div class="profile-bio-meta" id="profWebsiteRow" style="display:none;"><span class="lbl">Website</span><a id="profWebsiteBio" href="#" target="_blank" rel="noopener noreferrer"></a></div>
                   <div class="profile-bio-meta" id="profLud16Row" style="display:none;"><span class="lbl">Lightning</span><span class="val" id="profLud16Bio"></span></div>
+                  <div class="profile-bio-meta" id="profBitcoinRow" style="display:none;"><span class="lbl">Bitcoin</span><span class="val" id="profBitcoinBio" title="On-chain Bitcoin address"></span></div>
                 </div>
                 <div class="profile-since" id="profNostrSince" style="display:none"></div>
               </div>
