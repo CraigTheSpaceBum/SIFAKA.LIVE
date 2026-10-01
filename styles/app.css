@@ -7340,3 +7340,115 @@ body.nest-room-page-open{
     flex-wrap:wrap;
   }
 }
+
+
+/* NOSTR NEST — room-page visual refresh */
+.nests-card-availability{
+  display:flex;flex-direction:column;gap:.2rem;
+  margin:.1rem 0 .75rem;padding:.75rem .8rem;
+  border:1px solid color-mix(in srgb,var(--purple) 18%,var(--border));
+  border-radius:12px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--purple) 8%,var(--surface2)),color-mix(in srgb,var(--surface) 86%,transparent));
+}
+.nests-card-availability strong{font-size:.68rem;color:var(--text);letter-spacing:.01em}
+.nests-card-availability span{font-size:.58rem;color:var(--muted);line-height:1.35}
+.nests-room-actions{display:block}
+.nests-room-actions .btn{width:100%;min-height:42px}
+#nestRoomPage .nests-room-page-dialog{
+  border-color:color-mix(in srgb,var(--purple) 20%,var(--border));
+  box-shadow:0 28px 90px rgba(0,0,0,.32);
+}
+#nestRoomPage .nests-room-page-content{padding:1.25rem 1.25rem 1rem}
+#nestRoomPage .nests-room-page-overview-grid{
+  grid-template-columns:minmax(250px,.8fr) minmax(300px,1fr) minmax(360px,1.3fr);
+  gap:1rem;margin-top:1rem;
+}
+#nestRoomPage .nests-room-page-people-column,
+#nestRoomPage .nests-room-page-chat-column{
+  min-height:min(68dvh,760px);
+  padding:1rem;
+  border:1px solid color-mix(in srgb,var(--purple) 10%,var(--border));
+  border-radius:18px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--surface2) 60%,transparent),color-mix(in srgb,var(--surface) 94%,transparent));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+#nestRoomPage .nests-room-page-chat-column{
+  display:flex;flex-direction:column;min-width:0;
+}
+#nestRoomPage .nests-room-page-chat-column .nest-preview-panel{display:flex;flex-direction:column;min-height:0;height:100%}
+#nestRoomPage .nest-chat-header{
+  display:flex;align-items:center;justify-content:space-between;gap:.75rem;
+  margin:0 0 .7rem;padding:0 .1rem;
+}
+#nestRoomPage .nest-chat-header>div{display:flex;align-items:baseline;gap:.55rem}
+#nestRoomPage .nest-chat-header strong{font-size:.78rem;letter-spacing:-.01em}
+#nestRoomPage .nest-chat-header span:not(.nest-chat-live){font:500 .52rem/1 "DM Mono",monospace;color:var(--muted)}
+#nestRoomPage .nest-chat-live{
+  display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .5rem;
+  border:1px solid color-mix(in srgb,var(--live) 28%,var(--border));
+  border-radius:999px;background:color-mix(in srgb,var(--live) 7%,var(--surface2));
+  color:var(--text);font:700 .52rem/1 "DM Mono",monospace;letter-spacing:.08em;
+}
+#nestRoomPage .nest-chat-live i{width:6px;height:6px;border-radius:50%;background:var(--live);box-shadow:0 0 10px color-mix(in srgb,var(--live) 75%,transparent)}
+#nestRoomPage .nests-room-page-chat-column .nest-preview-chat{
+  flex:1;min-height:0;max-height:none;height:100%;
+  padding:.45rem .3rem .65rem;border:0;border-radius:0;background:transparent;
+  overflow:auto;scroll-behavior:smooth;
+}
+#nestRoomPage .nest-chat-message{padding:.55rem .5rem;border-radius:12px;transition:background .15s ease}
+#nestRoomPage .nest-chat-message:hover{background:color-mix(in srgb,var(--purple) 6%,var(--surface2))}
+#nestRoomPage .nest-chat-message.is-grouped{padding-top:.1rem}
+#nestRoomPage .nest-chat-avatar{width:30px;height:30px;flex-basis:30px;border:1px solid color-mix(in srgb,var(--border) 80%,transparent);background:var(--surface3)}
+#nestRoomPage .nest-chat-avatar-empty{visibility:hidden}
+#nestRoomPage .nest-chat-copy>div{gap:.5rem}
+#nestRoomPage .nest-chat-copy strong{font-size:.64rem}
+#nestRoomPage .nest-chat-copy time{font-size:.49rem}
+#nestRoomPage .nest-chat-copy p{margin-top:.18rem;font-size:.66rem;line-height:1.5;color:var(--text2)}
+#nestRoomPage .nest-preview-chat-empty{min-height:240px;align-content:center;color:var(--muted)}
+#nestRoomPage .nest-room-chat-compose{
+  display:flex;align-items:center;gap:.5rem;
+  margin:.55rem 0 0;padding:.45rem;
+  border:1px solid color-mix(in srgb,var(--border) 75%,transparent);
+  border-radius:14px;background:color-mix(in srgb,var(--surface2) 72%,transparent);
+  position:sticky;bottom:0;z-index:2;
+  box-shadow:0 -12px 24px rgba(0,0,0,.12);
+}
+#nestRoomPage .nest-room-chat-compose input{
+  flex:1;min-width:0;height:38px;padding:0 .75rem;
+  border:1px solid var(--border);border-radius:10px;outline:0;
+  background:var(--surface);color:var(--text);font-size:.68rem;
+}
+#nestRoomPage .nest-room-chat-compose input:focus{border-color:color-mix(in srgb,var(--purple) 55%,var(--border));box-shadow:0 0 0 3px color-mix(in srgb,var(--purple) 12%,transparent)}
+#nestRoomPage .nest-room-chat-compose .btn{min-height:38px;padding:0 .9rem}
+#nestRoomPage .nest-room-audio-bar{
+  display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;
+  padding:.8rem .9rem;margin-top:1rem;
+  border:1px solid color-mix(in srgb,var(--purple) 18%,var(--border));
+  border-radius:16px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--surface2) 88%,transparent),color-mix(in srgb,var(--purple) 5%,var(--surface2)));
+  box-shadow:0 12px 35px rgba(0,0,0,.2);
+}
+#nestRoomPage #nestRoomAudioStatus{min-width:160px;font-size:.68rem}
+#nestRoomPage .nest-room-audio-actions{display:flex;gap:.45rem;margin-left:auto}
+#nestRoomPage .nest-room-audio-actions .btn{min-height:38px}
+#nestRoomPage .nest-room-leave-btn{border-color:color-mix(in srgb,var(--live) 22%,var(--border))}
+#nestRoomPage .nest-room-leave-btn:hover{border-color:color-mix(in srgb,var(--live) 45%,var(--border));color:var(--text)}
+#nestRoomPage .nest-room-audio-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);box-shadow:none}
+#nestRoomPage .nest-room-audio-dot.connected{background:var(--live);box-shadow:0 0 12px color-mix(in srgb,var(--live) 75%,transparent)}
+@media(max-width:1100px) and (min-width:761px){
+  #nestRoomPage .nests-room-page-overview-grid{grid-template-columns:minmax(240px,.85fr) minmax(320px,1.15fr)}
+  #nestRoomPage .nests-room-page-chat-column{grid-column:1 / -1;min-height:520px}
+}
+@media(max-width:760px){
+  #nestRoomPage .nests-room-page-content{padding:.9rem}
+  #nestRoomPage .nests-room-page-overview-grid{grid-template-columns:1fr;gap:.7rem}
+  #nestRoomPage .nests-room-page-people-column,
+  #nestRoomPage .nests-room-page-chat-column{min-height:420px;padding:.8rem;border-radius:16px}
+  #nestRoomPage .nests-room-page-chat-column{min-height:520px}
+  #nestRoomPage .nest-room-audio-bar{align-items:flex-start;gap:.5rem;margin-top:.7rem}
+  #nestRoomPage #nestRoomAudioStatus{min-width:0;flex:1}
+  #nestRoomPage .nest-room-audio-actions{width:100%;margin-left:0;display:grid;grid-template-columns:1fr 1fr}
+  #nestRoomPage .nest-room-volume{order:3;width:100%}
+  #nestRoomPage .nest-room-volume input{width:100%}
+  #nestRoomPage .nest-room-chat-compose{margin-top:.45rem}
+}
