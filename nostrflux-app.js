@@ -307,6 +307,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     nestsPresence: new Map(),
     nestsTab: 'live',
     nestsSearch: '',
+    pendingNestsRoomNaddr: '',
     remoteLoginPending: false,
     remoteLoginAbortController: null,
     remoteLoginUri: '',
@@ -4520,6 +4521,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return lower === '/nest' || lower === '/nests';
   }
 
+  function isNestsRoomPath(pathname) {
+    const parts = pathParts(pathname);
+    return !!(
+      parts[0] &&
+      parts[0].toLowerCase() === 'room' &&
+      parts[1] &&
+      /^naddr1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(parts[1])
+    );
+  }
+
+  function extractNestsRoomNaddr(pathname) {
+    const parts = pathParts(pathname);
+    if (!parts[0] || parts[0].toLowerCase() !== 'room' || !parts[1]) return '';
+    const value = String(parts[1] || '').trim().toLowerCase();
+    return /^naddr1[023456789acdefghjklmnpqrstuvwxyz]+$/.test(value) ? value : '';
+  }
+
   function isWidgetsPath(pathname) {
     const raw = (pathname || '/').trim();
     const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
@@ -4994,6 +5012,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     try { window.history[method]({ view: 'nests' }, '', '/nests'); } catch (_) {}
   }
 
+  function syncNestsRoomRoute(naddr, mode = 'push') {
+    const value = String(naddr || '').trim().toLowerCase();
+    if (!/^naddr1[023456789acdefghjklmnpqrstuvwxyz]+$/.test(value)) return false;
+    const target = '/room/' + value;
+    if (window.location.pathname === target) return true;
+    if (!window.history || !window.history.pushState) return false;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try {
+      window.history[method]({ view: 'nestsRoom', naddr: value }, '', target);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function syncWidgetsRoute(mode = 'push') {
     if (!window.history || !window.history.pushState) return;
     if (isWidgetsPath(window.location.pathname)) return;
@@ -5160,6 +5193,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (window.showPage) window.showPage('nests', { routeMode: 'skip' });
   }
 
+  function showNestsRoomFromRoute() {
+    const naddr = extractNestsRoomNaddr(window.location.pathname);
+    if (!naddr) {
+      if (window.showPage) window.showPage('nests', { routeMode: 'replace' });
+      return;
+    }
+    state.pendingNestsRoomNaddr = naddr;
+    if (typeof window.openNestsRoomPage === 'function') {
+      window.openNestsRoomPage(naddr, { routeMode: 'skip' });
+      return;
+    }
+    if (window.showPage) {
+      window.showPage('nestsRoom', { routeMode: 'skip', roomNaddr: naddr });
+    }
+  }
+
   function showWidgetsFromRoute() {
     if (typeof window.openWidgets === 'function') {
       window.openWidgets({ routeMode: 'skip' });
@@ -5200,6 +5249,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (isWalletPath(window.location.pathname)) {
       showWalletFromRoute();
+      return;
+    }
+    if (isNestsRoomPath(window.location.pathname)) {
+      showNestsRoomFromRoute();
       return;
     }
     if (isNestsPath(window.location.pathname)) {
@@ -20612,6 +20665,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const myStreams = qs('#myStreamsPage');
       const wallet = qs('#walletPage');
       const nests = qs('#nestsPage');
+      const nestsRoom = qs('#nestRoomPage');
       const widgets = qs('#widgetsPage');
       const faq = qs('#faqPage');
       if (p !== 'video') {
@@ -20621,6 +20675,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         stopChatSubscription();
       }
       if (p !== 'nests') stopNestsSubscription();
+      if (p !== 'nestsRoom' && typeof window.closeNestsRoomPage === 'function') {
+        try { window.closeNestsRoomPage({ silent: true }); } catch (_) {}
+      }
       if (p !== 'wallet' && state.walletPageSession) {
         teardownNwcSessionObject(state.walletPageSession, 'Leaving wallet page.');
         state.walletPageSession = null;
@@ -20640,6 +20697,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (p === 'myStreams' && routeMode !== 'skip') syncMyStreamsRoute(routeMode);
       if (p === 'wallet' && routeMode !== 'skip') syncWalletRoute(routeMode);
       if (p === 'nests' && routeMode !== 'skip') syncNestsRoute(routeMode);
+      if (p === 'nestsRoom' && routeMode !== 'skip') {
+        syncNestsRoomRoute(opts.roomNaddr || state.pendingNestsRoomNaddr, routeMode);
+      }
       if (p === 'widgets' && routeMode !== 'skip') syncWidgetsRoute(routeMode);
       if (p === 'communities' && routeMode !== 'skip') syncCommunitiesRoute(routeMode);
       if (home) home.classList.toggle('active', p === 'home');
@@ -20653,10 +20713,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (myStreams) myStreams.style.display = p === 'myStreams' ? 'block' : 'none';
       if (wallet) wallet.style.display = p === 'wallet' ? 'block' : 'none';
       if (nests) nests.style.display = p === 'nests' ? 'block' : 'none';
+      if (nestsRoom) nestsRoom.style.display = p === 'nestsRoom' ? 'block' : 'none';
       if (widgets) widgets.style.display = p === 'widgets' ? 'block' : 'none';
       if (faq) faq.style.display = p === 'faq' ? 'block' : 'none';
       if (p === 'wallet' && typeof window.loadWalletPage === 'function') window.loadWalletPage();
       if (p === 'nests' && typeof window.loadNestsPage === 'function') window.loadNestsPage();
+      if (p === 'nestsRoom' && typeof window.loadNestsRoomPage === 'function') {
+        const roomNaddr = String(opts.roomNaddr || state.pendingNestsRoomNaddr || '').trim();
+        if (roomNaddr) {
+          window.loadNestsRoomPage(roomNaddr, { routeMode: 'skip', autoJoin: true });
+        }
+      }
       // Communities/home router behavior:
       // - home keeps hero playback and cycling
       // - all other top-level pages fully stop hero playback
