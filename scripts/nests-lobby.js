@@ -38,6 +38,21 @@
     return (ev && ev.tags || []).filter(x => Array.isArray(x) && x[0] === 'p' && x[1])
       .map(x => ({ pubkey: String(x[1]).toLowerCase(), role: String(x[3] || 'Participant'), relay: String(x[2] || '') }));
   }
+
+  function latestRoomPresenceEvents(events) {
+    const latest = new Map();
+    (Array.isArray(events) ? events : []).forEach(function(event) {
+      if (Number(event && event.kind || 0) !== 10312) return;
+      if (Number(event.created_at || 0) < now() - PRESENCE_TTL) return;
+      const pubkey = String(event.pubkey || '').toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(pubkey)) return;
+      const previous = latest.get(pubkey);
+      if (!previous || Number(event.created_at || 0) > Number(previous.created_at || 0)) {
+        latest.set(pubkey, event);
+      }
+    });
+    return Array.from(latest.values());
+  }
   function formatDate(ts) {
     if (!ts) return '';
     try {
@@ -1671,9 +1686,7 @@
     const rooms = events.filter(function(e) { return Number(e.kind) === 30312; }).sort(function(a,b) { return Number(b.created_at||0)-Number(a.created_at||0); });
     const roomEvent = rooms[0] || null;
     const current = chooseCurrentMeeting(events);
-    const presenceEvents = events.filter(function(e) {
-      return Number(e.kind) === 10312 && Number(e.created_at || 0) >= now() - PRESENCE_TTL;
-    });
+    const presenceEvents = latestRoomPresenceEvents(events);
     const presence = new Set(presenceEvents.map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean));
     const handRaisedPubkeys = new Set(
       presenceEvents.filter(function(e) { return tag(e, 'hand') === '1'; })
@@ -1752,9 +1765,7 @@
 
     const current = chooseCurrentMeeting(events);
 
-    const presenceEvents = events.filter(function(e) {
-      return Number(e.kind) === 10312 && Number(e.created_at || 0) >= now() - PRESENCE_TTL;
-    });
+    const presenceEvents = latestRoomPresenceEvents(events);
     const presence = new Set(presenceEvents.map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean));
     const handRaisedPubkeys = new Set(
       presenceEvents.filter(function(e) { return tag(e, 'hand') === '1'; })
