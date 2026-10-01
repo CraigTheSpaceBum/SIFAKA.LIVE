@@ -1463,7 +1463,9 @@
   }
 
   function boot() {
-    ensureModal();
+    if (!(window.location.pathname && /^\/room\/naddr1/i.test(window.location.pathname))) {
+      ensureModal();
+    }
     window.enterNestsRoom = function(url) {
       const target = String(url || '').trim();
       if (!target) return;
