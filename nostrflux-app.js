@@ -5711,6 +5711,65 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return message;
   }
 
+  function scheduleDmEventDrain(delayMs = 0) {
+    if (state.dmEventDrainTimer) return;
+    state.dmEventDrainTimer = setTimeout(() => {
+      state.dmEventDrainTimer = null;
+      drainDmEventQueue();
+    }, Math.max(0, Number(delayMs) || 0));
+  }
+
+  function queueDmRelayEvent(ev, ownerPubkey) {
+    if (!ev || !ev.id) return;
+    const owner = normalizePubkeyHex(ownerPubkey);
+    if (!owner || owner !== normalizePubkeyHex(state.dmOwnerPubkey)) return;
+    if (state.dmEventQueue.length >= 2400) return;
+    state.dmEventQueue.push({ ev, owner });
+    scheduleDmEventDrain(0);
+  }
+
+  function drainDmEventQueue() {
+    const owner = normalizePubkeyHex(state.dmOwnerPubkey);
+    if (!owner || !state.user || owner !== normalizePubkeyHex(state.user.pubkey)) {
+      state.dmEventQueue = [];
+      return;
+    }
+
+    const batch = state.dmEventQueue.splice(0, DM_EVENT_DRAIN_BATCH_SIZE);
+    if (!batch.length) return;
+
+    const profilePeers = new Set();
+    const activePeer = normalizePubkeyHex(state.dmActivePeerPubkey);
+    let activeTouched = false;
+    let sawMessage = false;
+
+    batch.forEach((item) => {
+      if (!item || !item.ev) return;
+      const message = upsertDmMessageFromEvent(item.ev, owner);
+      if (!message) return;
+      sawMessage = true;
+      profilePeers.add(message.peerPubkey);
+      if (activePeer && message.peerPubkey === activePeer) {
+        activeTouched = true;
+        if (!message.mine && isMessagesPageVisible()) markDmPeerRead(message.peerPubkey);
+      }
+    });
+
+    profilePeers.forEach((peer) => {
+      fetchProfileIfNeeded(peer);
+    });
+
+    if (sawMessage && isMessagesPageVisible()) {
+      scheduleDmRender({
+        conversations: true,
+        thread: activeTouched,
+        scrollToBottom: activeTouched
+      });
+    }
+
+    if (state.dmEventQueue.length) scheduleDmEventDrain(16);
+  }
+
   function getDmUnreadCountForPeer(peerPubkey) {
     const peer = normalizePubkeyHex(peerPubkey);
     if (!peer) return 0;
@@ -6497,16 +6556,43 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const messages = state.dmMessagesByPeer.get(activePeer) || [];
     if (!messages.length) return;
     const currentLimit = Number(state.dmThreadVisibleLimitByPeer.get(activePeer) || Math.min(DM_THREAD_INITIAL_LIMIT, messages.length));
-    if (currentLimit >= messages.length) return;
 
-    const snapshot = {
-      prevHeight: Number(threadEl.scrollHeight || 0),
-      prevTop: Number(threadEl.scrollTop || 0)
-    };
-    const nextLimit = Math.min(messages.length, currentLimit + DM_THREAD_PAGE_INCREMENT);
-    state.dmThreadVisibleLimitByPeer.set(activePeer, nextLimit);
+    if (currentLimit < messages.length) {
+      const snapshot = {
+        prevHeight: Number(threadEl.scrollHeight || 0),
+        prevTop: Number(threadEl.scrollTop || 0)
+      };
+      const nextLimit = Math.min(messages.length, currentLimit + DM_THREAD_PAGE_INCREMENT);
+      state.dmThreadVisibleLimitByPeer.set(activePeer, nextLimit);
+      state.dmThreadLastExpandAt = now;
+      renderDmThread({ preserveScrollAnchor: snapshot });
+      return;
+    }
+
+    if (state.dmBackfilling || state.dmBackfillExhaustedPeers.has(activePeer)) return;
+
+    const relayMessages = messages.filter((message) =>
+      message && !message.activity && Number(message.created_at || 0) > 0
+    );
+    const oldestLoaded = relayMessages.reduce(
+      (min, message) => Math.min(min, Number(message.created_at || Infinity)),
+      Infinity
+    );
+    if (!Number.isFinite(oldestLoaded)) return;
+
+    const oldestAllowed = Math.max(1, Math.floor(Date.now() / 1000) - DM_SYNC_LOOKBACK_SECONDS);
+    if (oldestLoaded <= oldestAllowed) {
+      state.dmBackfillExhaustedPeers.add(activePeer);
+      return;
+    }
+
+    const until = Math.max(1, Math.floor(oldestLoaded - 1));
+    const since = Math.max(oldestAllowed, until - DM_OLDER_BACKFILL_CHUNK_SECONDS);
     state.dmThreadLastExpandAt = now;
-    renderDmThread({ preserveScrollAnchor: snapshot });
+    startDmBackfillSubscription(normalizePubkeyHex(state.dmOwnerPubkey), since, until, {
+      peerPubkey: activePeer,
+      expandVisibleOnFinish: true
+    });
   }
 
   function ensureDmReactionEntry(messageId) {
