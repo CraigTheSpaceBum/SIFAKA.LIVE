@@ -1480,7 +1480,11 @@
     window.openNestsRoomPreview = function(url, fallback = {}) {
       const target = String(url || '').trim();
       if (!target) return;
-      const safeFallback = {
+      if (typeof window.openNestsRoomPage === 'function') {
+        window.openNestsRoomPage(target, { routeMode: 'push' });
+        return;
+      }
+      openPreview(target, {
         title: String(fallback.title || 'Nostr Nest'),
         summary: String(fallback.summary || 'Live audio conversation on Nostr.'),
         host: String(fallback.host || ''),
@@ -1489,19 +1493,7 @@
         badge: String(fallback.badge || 'ROOM PREVIEW'),
         topics: Array.isArray(fallback.topics) ? fallback.topics : [],
         url: target
-      };
-      openPreview(target, safeFallback).catch(function() {
-        renderRoom({
-          title: safeFallback.title,
-          summary: safeFallback.summary,
-          image: safeFallback.img,
-          pubkey: '',
-          status: /live/i.test(safeFallback.badge) ? 'live' : 'open',
-          currentParticipants: parseInt(safeFallback.countText, 10) || 0,
-          participants: [],
-          presence: new Set()
-        }, new Map(), safeFallback);
-      });
+      }).catch(function() {});
     };
     const grid = $('#nestsRoomsGrid');
     if (
