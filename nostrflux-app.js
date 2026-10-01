@@ -20721,7 +20721,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (p === 'nestsRoom' && typeof window.loadNestsRoomPage === 'function') {
         const roomNaddr = String(opts.roomNaddr || state.pendingNestsRoomNaddr || '').trim();
         if (roomNaddr) {
-          window.loadNestsRoomPage(roomNaddr, { routeMode: 'skip', autoJoin: true });
+          window.loadNestsRoomPage(roomNaddr, {
+            routeMode: 'skip',
+            autoJoin: opts.autoJoin !== false
+          });
         }
       }
       // Communities/home router behavior:
