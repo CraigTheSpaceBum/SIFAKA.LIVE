@@ -183,6 +183,8 @@
   const DM_SYNC_STATUS_TIMEOUT_MS = 4000;
   const DM_SYNC_LIMIT_PER_DIRECTION = 80;
   const DM_SYNC_RELAY_COUNT = 6;
+  const DM_EVENT_DRAIN_BATCH_SIZE = 24;
+  const DM_OLDER_BACKFILL_CHUNK_SECONDS = 60 * 60 * 24 * 365;
   const DM_BACKFILL_LIMIT_PER_DIRECTION = 240;
   const DM_DECRYPT_QUEUE_SOFT_CAP = 1800;
   const DM_PER_PEER_MEMORY_CAP = 1200;
@@ -282,6 +284,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   const SAVED_LISTS_STORAGE_KEY = 'nostrflux_saved_lists_v1';
   const NOSTR_FEED_FILTER_STORAGE_KEY = 'nostrflux_feed_filter_v1';
   const NOSTR_FEED_PROFILE_KEY = '__nostr_feed__';
+  const PROFILE_FEED_INITIAL_DAYS = 180;
+  const PROFILE_FEED_BACKFILL_CHUNK_SECONDS = 60 * 60 * 24 * 365;
+  const PROFILE_FEED_RELAY_COUNT = 6;
 
   const state = {
     relays: [...DEFAULT_RELAYS],
@@ -313,6 +318,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     profilesByPubkey: new Map(),
     profileFetchInflightByPubkey: new Map(),
     profileNotesByPubkey: new Map(),
+    profileFeedBackfillSubIds: new Map(),
+    profileFeedBackfillInFlight: new Map(),
     profileStatsByPubkey: new Map(),
     liveSubId: null,
 
@@ -473,6 +480,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     dmDecryptQueue: [],
     dmDecryptWorkers: 0,
     dmDecryptPumpTimer: null,
+    dmEventQueue: [],
+    dmEventDrainTimer: null,
+    dmBackfillCursorByPeer: new Map(),
+    dmBackfillExhaustedPeers: new Set(),
     dmLikedMessageIds: new Set(),
     dmEmojiReactionsByMessageId: new Map(),
     dmAddressBookOpen: false,
@@ -5417,6 +5428,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       state.dmDecryptPumpTimer = null;
     }
     state.dmDecryptPendingIds = new Set();
+    state.dmEventQueue = [];
+    if (state.dmEventDrainTimer) {
+      clearTimeout(state.dmEventDrainTimer);
+      state.dmEventDrainTimer = null;
+    }
     state.dmSyncing = false;
     state.dmBackfilling = false;
     if (state.dmSyncEoseTimer) {
@@ -5450,6 +5466,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.dmDecryptWorkers = 0;
     state.dmSyncing = false;
     state.dmBackfilling = false;
+    state.dmBackfillCursorByPeer = new Map();
+    state.dmBackfillExhaustedPeers = new Set();
     if (state.dmSyncEoseTimer) {
       clearTimeout(state.dmSyncEoseTimer);
       state.dmSyncEoseTimer = null;
@@ -7271,6 +7289,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       state.dmThreadVisibleLimitByPeer = new Map();
       state.dmDecryptQueue = [];
       state.dmDecryptWorkers = 0;
+      state.dmEventQueue = [];
+      if (state.dmEventDrainTimer) {
+        clearTimeout(state.dmEventDrainTimer);
+        state.dmEventDrainTimer = null;
+      }
+      state.dmBackfillCursorByPeer = new Map();
+      state.dmBackfillExhaustedPeers = new Set();
       if (state.dmDecryptPumpTimer) {
         clearTimeout(state.dmDecryptPumpTimer);
         state.dmDecryptPumpTimer = null;
