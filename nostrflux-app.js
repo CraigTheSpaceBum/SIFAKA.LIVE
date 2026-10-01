@@ -21384,11 +21384,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const effectiveListenerCount = Math.max(Number(room.participants || 0), livePresenceCount);
         const displayCount = effectiveListenerCount ? formatCount(effectiveListenerCount) : '—';
         const statusLabel = live ? 'LIVE' : (status === 'ended' ? 'ENDED' : (room.starts ? 'UPCOMING' : 'OPEN'));
+        const dropIn = live && !room.starts;
+        const availabilityHtml = dropIn
+          ? '<div class="nests-card-availability"><strong>Drop-in room</strong><span>Join whenever the room is open.</span></div>'
+          : (room.starts && !live ? '<div class="nests-card-availability"><strong>Starts ' + escapeHtml(new Date(room.starts * 1000).toLocaleString()) + '</strong><span>Come back when the room goes live.</span></div>' : '');
         return `<article class="nests-room-card">
           <button class="nests-room-cover nests-room-cover-btn" type="button" data-action="join" data-room-url="${escapeHtml(roomUrl)}" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})" aria-label="Open ${title}">
             ${img}
             <span class="nests-live-badge ${live ? 'is-live' : ''}"><i></i>${statusLabel}</span>
-            <span class="nests-cover-action">${live ? 'Listen now' : 'View room'} <b>→</b></span>
+            <span class="nests-cover-action">${live ? 'Join As Speak' : 'View room'} <b>→</b></span>
           </button>
           <div class="nests-room-body">
             <div class="nests-room-title-row">
@@ -21402,8 +21406,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               <span class="nests-room-listeners"><b>${displayCount}</b><small>listening</small></span>
             </div>
             ${topicHtml ? `<div class="nests-topic-row">${topicHtml}</div>` : ''}
+            ${availabilityHtml}
             <div class="nests-room-actions">
-              <button class="btn btn-primary" type="button" data-action="join" data-room-url="${escapeHtml(roomUrl)}" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})">${live ? 'Join Nest' : 'View Room'}</button>
+              <button class="btn btn-primary" type="button" data-action="join" data-room-url="${escapeHtml(roomUrl)}" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})">${live ? 'Join As Speak' : 'View Room'}</button>
             </div>
           </div>
         </article>`;
@@ -21431,7 +21436,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const target = String(url || '').trim();
       if (!target) return;
       if (typeof window.openNestsRoomPage === 'function') {
-        window.openNestsRoomPage(target, { routeMode: 'push' });
+        window.openNestsRoomPage(target, { routeMode: 'push', autoJoin: true });
         return;
       }
       if (typeof window.enterNestsRoom === 'function') {
