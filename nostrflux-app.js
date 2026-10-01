@@ -21575,22 +21575,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       return mod;
     }
 
-    async function deriveNipBcTaprootSpendSecret(internalSecretKey) {
+    async function deriveNipBcTaprootInternalSecret(internalSecretKey) {
       const secretBytes = normalizeSecretKey(internalSecretKey);
       if (!secretBytes || secretBytes.length !== 32) throw new Error('A locally controlled Nostr private key is required to send on-chain Bitcoin.');
       const scalar = btcBytesToBigInt(secretBytes);
       if (scalar <= 0n || scalar >= BTC_CURVE_ORDER) throw new Error('Invalid local Nostr private key.');
       const point = btcPointMultiply(scalar, { x: BTC_GX, y: BTC_GY });
       if (!point) throw new Error('Could not derive the Nostr public key.');
+      // BIP-341 works with the even-y lift of the x-only internal key.
       const normalizedScalar = (point.y & 1n) ? BTC_CURVE_ORDER - scalar : scalar;
-      const xOnly = btcBigIntTo32Bytes(point.x);
-      const tweak = btcBytesToBigInt(await btcTapTweakHash(xOnly));
-      if (tweak >= BTC_CURVE_ORDER) throw new Error('Invalid Taproot tweak.');
-      const tweaked = btcMod(normalizedScalar + tweak, BTC_CURVE_ORDER);
-      if (tweaked === 0n) throw new Error('Invalid Taproot spending key.');
-      return btcBigIntTo32Bytes(tweaked);
+      return btcBigIntTo32Bytes(normalizedScalar);
     }
-
     async function fetchWalletOnchainFeeRate() {
       const response = await fetch('https://mempool.space/api/v1/fees/recommended', { headers: { Accept: 'application/json' } });
       if (!response.ok) throw new Error('Could not load the current Bitcoin fee rate.');
@@ -21631,7 +21626,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     async function buildWalletOnchainTransaction(draft) {
       const secret = requireLocalOnchainSigner();
       const btc = await getWalletOnchainSignerModule();
-      const spendSecret = await deriveNipBcTaprootSpendSecret(secret);
+      const spendSecret = await deriveNipBcTaprootInternalSecret(secret);
       const spendPubkey = btc.utils.pubSchnorr(spendSecret);
       const spend = btc.p2tr(spendPubkey);
       const ownAddress = String(state.walletPageOnchainAddress || '').trim();
