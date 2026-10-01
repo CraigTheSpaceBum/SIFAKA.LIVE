@@ -21892,7 +21892,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const valueEl = qs('#walletAddressQrValue');
       if (!modal || !qr) return;
       const value = kind === 'bitcoin'
-        ? String(state.settings && state.settings.bitcoinAddress || '').trim()
+        ? String(state.walletPageOnchainAddress || state.settings && state.settings.bitcoinAddress || '').trim()
         : String(state.walletPageLightningAddress || '').trim();
       if (!value) return;
       const payload = kind === 'bitcoin' ? ('bitcoin:' + value) : value;
