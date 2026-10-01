@@ -702,8 +702,7 @@
   function profileDisplayName(profile) {
     if (!profile) return 'Anonymous';
     const displayName = String(profile.displayName || '').trim();
-    const username = String(profile.name || '').trim();
-    return displayName || username || 'Anonymous';
+    return displayName || 'Anonymous';
   }
 
   function safeNestImageUrl(value) {
