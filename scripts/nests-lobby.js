@@ -9,11 +9,12 @@
     'wss://relay.nostr.band',
     'wss://relay.nostr.net'
   ];
-  const PRESENCE_TTL = 15 * 60;
+  const PRESENCE_TTL = 5 * 60;
   let modal, activeRoomUrl = '', sockets = [], refreshTimer = null, liveRefreshTimer = null, countdownTimer = null, chatSince = 0;
   let activeRoom = null, activeRoomEvent = null, activeRoomRelays = [];
   let activeRoomAudio = null, activeRoomAudioModulesPromise = null;
   let activeRoomPresenceTimer = null, activeRoomRefreshTimer = null, activeRoomChatTimer = null;
+  let roomPageMode = false, roomPageRoot = null, roomPageNaddr = '';
 
   const $ = (s, root = document) => root.querySelector(s);
   const esc = (v) => {
@@ -61,6 +62,17 @@
     if (r.includes('speaker')) return 'speaker';
     return 'participant';
   }
+  function normalizeRoomNaddr(url) {
+    const token = String(url || '').trim().split('/').filter(Boolean).pop() || '';
+    const value = token.toLowerCase();
+    return /^naddr1[023456789acdefghjklmnpqrstuvwxyz]+$/.test(value) ? value : '';
+  }
+
+  function roomPageUrlFromNaddr(naddr) {
+    const value = normalizeRoomNaddr(naddr);
+    return value ? (window.location.origin + '/room/' + value) : '';
+  }
+
   function decodeRoom(url) {
     try {
       const nt = window.NostrTools;
@@ -499,16 +511,152 @@
     if (status && activeRoomAudio) {
       const state = activeRoomAudio.state || 'disconnected';
       const count = activeRoomAudio.entries ? activeRoomAudio.entries.size : 0;
-      status.textContent = state === 'connected'
+      const displayState = state === 'disconnected' && roomPageMode ? 'reconnecting' : state;
+      status.textContent = displayState === 'connected'
         ? ('Connected • ' + count + ' speaker' + (count === 1 ? '' : 's'))
-        : (state.charAt(0).toUpperCase() + state.slice(1) + '…');
-      if (dot) dot.classList.toggle('connected', state === 'connected');
+        : (displayState.charAt(0).toUpperCase() + displayState.slice(1) + '…');
+      if (dot) dot.classList.toggle('connected', displayState === 'connected');
     }
     if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute' : 'Mute';
     if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
   }
 
+  function wireRoomRootControls(root) {
+    if (!root || root._nestsRoomControlsWired) return root;
+    root._nestsRoomControlsWired = true;
+
+    const join = $('#nestPreviewJoinBtn', root);
+    if (join) {
+      join.addEventListener('click', function() {
+        enterActiveRoom().catch(function(err) {
+          const status = $('#nestRoomAudioStatus', root);
+          if (status) status.textContent = err && err.message ? err.message : 'Unable to join this Nest.';
+        });
+      });
+    }
+
+    const mute = $('#nestRoomMuteBtn', root);
+    if (mute) {
+      mute.addEventListener('click', function() {
+        if (!activeRoomAudio) return;
+        activeRoomAudio.setMuted(!activeRoomAudio.muted);
+        updateActiveRoomAudioUi();
+      });
+    }
+
+    const volume = $('#nestRoomVolume', root);
+    if (volume) {
+      volume.addEventListener('input', function() {
+        if (!activeRoomAudio) return;
+        activeRoomAudio.setVolume(Number(this.value) / 100);
+        updateActiveRoomAudioUi();
+      });
+    }
+
+    const send = $('#nestRoomChatSendBtn', root);
+    if (send) {
+      send.addEventListener('click', function() {
+        sendActiveRoomChat().catch(function(err) {
+          const status = $('#nestRoomAudioStatus', root);
+          if (status) status.textContent = err && err.message ? err.message : 'Could not send message';
+        });
+      });
+    }
+
+    const input = $('#nestRoomChatInput', root);
+    if (input) {
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          sendActiveRoomChat().catch(function(err) {
+            const status = $('#nestRoomAudioStatus', root);
+            if (status) status.textContent = err && err.message ? err.message : 'Could not send message';
+          });
+        }
+      });
+    }
+
+    const share = $('#nestPreviewShareBtn', root);
+    if (share) {
+      share.addEventListener('click', async function() {
+        const shareUrl = roomPageUrlFromNaddr(activeRoomUrl) || activeRoomUrl;
+        if (!shareUrl) return;
+        try {
+          if (navigator.share) await navigator.share({
+            title: $('#nestPreviewTitle', root)?.textContent || 'Nostr Nest',
+            url: shareUrl
+          });
+          else if (navigator.clipboard) {
+            await navigator.clipboard.writeText(shareUrl);
+            share.textContent = 'Copied';
+            setTimeout(function() { share.textContent = 'Share'; }, 1200);
+          }
+        } catch (_) {}
+      });
+    }
+
+    return root;
+  }
+
+  function ensureRoomPageRoot() {
+    const mount = document.getElementById('nestsRoomPageMount');
+    if (!mount) return null;
+    if (roomPageRoot) return roomPageRoot;
+
+    roomPageRoot = document.createElement('div');
+    roomPageRoot.id = 'nestRoomPageRoot';
+    roomPageRoot.className = 'nests-room-page-root';
+    roomPageRoot.innerHTML =
+      '<div class="nest-preview-dialog nests-room-page-dialog" role="main" aria-labelledby="nestPreviewTitle">' +
+        '<div class="nest-preview-cover nests-room-page-cover" id="nestPreviewCover"></div>' +
+        '<div class="nest-preview-content nests-room-page-content">' +
+          '<div class="nests-room-page-toolbar">' +
+            '<div class="nest-preview-status" id="nestPreviewStatus"></div>' +
+            '<div class="nests-room-page-toolbar-actions">' +
+              '<button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button>' +
+            '</div>' +
+          '</div>' +
+          '<h1 id="nestPreviewTitle">Nostr Nest</h1>' +
+          '<p class="nest-preview-summary" id="nestPreviewSummary"></p>' +
+          '<div class="nests-room-page-overview-grid">' +
+            '<div class="nest-preview-panel active" data-panel="overview">' +
+              '<div class="nest-preview-stats" id="nestPreviewStats"></div>' +
+              '<div class="nest-preview-schedule" id="nestPreviewSchedule"></div>' +
+              '<div class="nest-preview-topics" id="nestPreviewTopics"></div>' +
+            '</div>' +
+            '<div class="nests-room-page-people-column">' +
+              '<div class="nest-preview-panel active" data-panel="people">' +
+                '<div class="nest-preview-section"><div class="nest-preview-section-head"><span>On stage</span><span id="nestPreviewPeopleCount"></span></div><div class="nest-preview-people" id="nestPreviewPeople"></div></div>' +
+                '<div class="nest-preview-section"><div class="nest-preview-section-head"><span>Listeners</span><span id="nestPreviewListenerCount">—</span></div><div class="nest-preview-listeners" id="nestPreviewListeners"></div></div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="nests-room-page-chat-column">' +
+              '<div class="nest-preview-panel active" data-panel="chat">' +
+                '<div class="nest-preview-section nest-preview-chat-section"><div class="nest-preview-section-head"><span>Room chat</span><span id="nestPreviewChatCount">—</span></div><div class="nest-preview-chat" id="nestPreviewChat"></div></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
+            '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
+            '<strong id="nestRoomAudioStatus">Not connected</strong>' +
+            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute</button>' +
+            '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
+            '<button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join Nest</button>' +
+          '</div>' +
+          '<div class="nest-room-chat-compose" id="nestRoomChatCompose" hidden>' +
+            '<input id="nestRoomChatInput" type="text" maxlength="1000" placeholder="Say something in the room…" aria-label="Send a Nest room message">' +
+            '<button class="btn btn-primary" id="nestRoomChatSendBtn" type="button">Send</button>' +
+          '</div>' +
+          '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
+        '</div>' +
+      '</div>';
+    mount.replaceChildren(roomPageRoot);
+    wireRoomRootControls(roomPageRoot);
+    return roomPageRoot;
+  }
+
   function ensureModal() {
+    if (roomPageMode) return ensureRoomPageRoot();
     if (modal) return modal;
     modal = document.createElement('div');
     modal.id = 'nestRoomPreviewModal';
@@ -644,6 +792,7 @@
     modal.classList.remove('open');
     modal.classList.remove('is-live-room');
     document.body.classList.remove('nest-preview-open');
+    document.body.classList.remove('nest-room-page-open');
     sockets.forEach(function(ws) { try { ws.close(); } catch (_) {} });
     sockets = [];
     clearTimeout(refreshTimer);
@@ -677,7 +826,8 @@
   function renderLoading(fallback) {
     resetActiveRoomUi();
     ensureModal().classList.add('open');
-    document.body.classList.add('nest-preview-open');
+    if (roomPageMode) document.body.classList.add('nest-room-page-open');
+    else document.body.classList.add('nest-preview-open');
     $('#nestPreviewCover', modal).innerHTML = fallback.img ? '<img src="' + esc(fallback.img) + '" alt="">' : '<div class="nest-preview-cover-fallback">N</div>';
     $('#nestPreviewStatus', modal).textContent = fallback.badge || 'ROOM PREVIEW';
     $('#nestPreviewTitle', modal).textContent = fallback.title || 'Nostr Nest';
@@ -817,6 +967,10 @@
     }
 
     const showProfile = function(pubkey, role) {
+      if (roomPageMode && typeof window.showProfileByPubkey === 'function') {
+        window.showProfileByPubkey(pubkey, { routeMode: 'push' });
+        return;
+      }
       const sheet = modal && modal._profileSheet;
       if (!sheet || !pubkey) return;
       sheet.classList.add('open');
@@ -1197,41 +1351,111 @@
     }
   }
 
-  function interceptJoinClicks(e) {
-    // Only intercept actual room-open controls. Do not capture share buttons
-    // or other controls inside a room card; those have their own handlers.
-    const btn = e.target.closest && e.target.closest(
-      '#nestsRoomsGrid .nests-room-cover-btn, ' +
-      '#nestsRoomsGrid .nests-room-actions .btn-primary, ' +
-      '#nestsRoomsGrid .nests-room-join, ' +
-      '#nestsRoomsGrid [data-action="join"]'
-    );
-    if (!btn) return;
+  window.loadNestsRoomPage = async function(naddr, opts = {}) {
+    const value = normalizeRoomNaddr(naddr);
+    if (!value) return false;
 
-    const fallback = getCardFallback(btn);
-    if (!fallback.url) {
-      // Never swallow a working legacy join button if the room URL cannot be
-      // recovered from the new card markup.
-      if (typeof window.joinNestsRoom === 'function') {
-        const onclick = btn.getAttribute('onclick') || '';
-        if (/joinNestsRoom/.test(onclick)) return;
+    roomPageMode = true;
+    roomPageNaddr = value;
+    const root = ensureRoomPageRoot();
+    if (!root) return false;
+    modal = root;
+    root.classList.add('open');
+    document.body.classList.add('nest-room-page-open');
+
+    const urlEl = document.getElementById('nestsRoomPageUrl');
+    if (urlEl) urlEl.textContent = window.location.host + '/room/' + value;
+
+    if (window.history && window.location.pathname !== '/room/' + value && opts.routeMode !== 'skip' && typeof window.showPage === 'function') {
+      window.showPage('nestsRoom', { routeMode: opts.routeMode || 'push', roomNaddr: value });
+      return true;
+    }
+
+    const fallback = {
+      title: 'Nostr Nest',
+      summary: 'Live audio conversation on Nostr.',
+      host: '',
+      countText: '',
+      img: '',
+      badge: 'NEST ROOM',
+      topics: [],
+      url: value
+    };
+
+    try {
+      await openPreview(value, fallback);
+      if (opts.autoJoin !== false && activeRoomEvent) {
+        const liveStatus = String(
+          (activeRoom && activeRoom.status) ||
+          tag(activeRoomEvent, 'status') ||
+          ''
+        ).toLowerCase();
+        if (liveStatus === 'live' || liveStatus === 'open' || !liveStatus) {
+          await enterActiveRoom();
+        }
       }
+      const pageUrlEl = document.getElementById('nestsRoomPageUrl');
+      if (pageUrlEl) pageUrlEl.textContent = window.location.host + '/room/' + value;
+      return true;
+    } catch (err) {
+      const status = $('#nestRoomAudioStatus', root);
+      if (status) status.textContent = err && err.message ? err.message : 'Unable to load this Nest.';
+      return false;
+    }
+  };
+
+  window.openNestsRoomPage = function(url, opts = {}) {
+    const value = normalizeRoomNaddr(url);
+    if (!value) return false;
+    if (typeof window.showPage !== 'function') return false;
+    state.pendingNestsRoomNaddr = value;
+    window.showPage('nestsRoom', {
+      routeMode: opts.routeMode || 'push',
+      roomNaddr: value
+    });
+    return true;
+  };
+
+  window.closeNestsRoomPage = async function(opts = {}) {
+    if (!roomPageMode && !roomPageRoot) return;
+    try { await closePreview(); } catch (_) {}
+    if (roomPageRoot) {
+      roomPageRoot.remove();
+      roomPageRoot = null;
+    }
+    modal = null;
+    roomPageMode = false;
+    roomPageNaddr = '';
+    if (opts.silent !== true && typeof window.showPage === 'function') {
+      window.showPage('nests', { routeMode: 'push' });
+    }
+  };
+
+  function interceptJoinClicks(e) {
+    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
+    if (!card) return;
+
+    const interactive = e.target.closest('button,a,input,textarea,select');
+    if (interactive && !interactive.matches(
+      '.nests-room-cover-btn, .nests-room-actions .btn-primary, .nests-room-join, [data-action="join"]'
+    )) {
       return;
     }
+
+    const primary = card.querySelector(
+      '.nests-room-actions .btn-primary, .nests-room-cover-btn, .nests-room-join, [data-action="join"]'
+    ) || card;
+    const fallback = getCardFallback(primary);
+    if (!fallback.url) return;
+
+    const naddr = normalizeRoomNaddr(fallback.url);
+    if (!naddr) return;
 
     e.preventDefault();
     e.stopImmediatePropagation();
-    if (btn.matches('#nestsRoomsGrid .nests-room-actions .btn-primary')) {
-      activeRoomUrl = fallback.url;
-      activeRoomEvent = null;
-      activeRoom = null;
-      activeRoomRelays = [];
-      enterActiveRoom().catch(function(err) {
-        openPreview(fallback.url, fallback).catch(function() {});
-      });
-      return;
+    if (typeof window.openNestsRoomPage === 'function') {
+      window.openNestsRoomPage(naddr, { routeMode: 'push' });
     }
-    openPreview(fallback.url, fallback);
   }
 
   function boot() {
@@ -1274,6 +1498,12 @@
       });
     };
     const grid = $('#nestsRoomsGrid');
+    if (window.location.pathname && /^\/room\/naddr1/i.test(window.location.pathname)) {
+      const direct = normalizeRoomNaddr(window.location.pathname);
+      if (direct) {
+        window.loadNestsRoomPage(direct, { routeMode: 'skip', autoJoin: true }).catch(function() {});
+      }
+    }
     if (!grid) return;
     grid.addEventListener('click', interceptJoinClicks, true);
   }
