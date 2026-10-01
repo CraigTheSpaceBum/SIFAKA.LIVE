@@ -397,6 +397,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     notificationsTargetFetchPending: false,
     notificationsTargetFetchPromise: null,
     notificationsSubId: null,
+    notificationsRenderTimer: null,
+    notificationsRenderLimit: 60,
     // Hero featured stream cycling
     heroHlsInstance: null,
     heroPlaybackToken: 0,
@@ -3466,6 +3468,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function applySettings(newSettings, opts = { reconnect: false }) {
+    const previousSettings = state.settings || {};
+    const notificationSettingsChanged = [
+      'notificationsMentions', 'notificationsReplies', 'notificationsLikes',
+      'notificationsReposts', 'notificationsZaps', 'notificationsFollows'
+    ].some((key) => previousSettings[key] !== newSettings[key]);
     const safeCache = sanitizeCacheSettings(newSettings);
     const relayBuckets = normalizeRelayBuckets(newSettings.relayBuckets, newSettings.relays);
     const activeRelays = buildActiveRelayListFromBuckets(relayBuckets);
@@ -3486,9 +3493,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     if (opts.reconnect) {
       rebuildRelayPool();
+    } else if (notificationSettingsChanged && state.user && state.pool) {
+      startNotificationsSubscription();
+      loadNotifications({ force: true, silent: true, minIntervalMs: 0 }).catch(() => {});
     }
   }
-
   function formatCount(n) {
     const v = Number(n || 0);
     if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
@@ -7128,7 +7137,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (peerProfile && peerProfile.nip05) ensureNip05Verification(message.peerPubkey, peerProfile.nip05).catch(() => {});
 
           const isActivePeer = normalizePubkeyHex(state.dmActivePeerPubkey) === normalizePubkeyHex(message.peerPubkey);
-          if (isActivePeer) queueDmDecrypt(message);
+          if (isActivePeer && isMessagesPageVisible()) queueDmDecrypt(message);
 
           if (isMessagesPageVisible()) {
             if (!message.mine && state.dmActivePeerPubkey === message.peerPubkey) markDmPeerRead(message.peerPubkey);
@@ -9590,7 +9599,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (state.videoThumbObserver) return state.videoThumbObserver;
     if (!('IntersectionObserver' in window)) return null;
     state.videoThumbObserver = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
+      const frag = document.createDocumentFragment();
+    entries.forEach((entry) => {
         if (!entry || !entry.isIntersecting) return;
         const videoEl = entry.target;
         try { state.videoThumbObserver.unobserve(videoEl); } catch (_) {}
@@ -10094,7 +10104,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     video.muted = false;
     video.defaultMuted = false;
     video.playsInline = true;
-    video.preload = 'auto';
+    video.preload = 'metadata';
 
     const showFailure = (message) => {
       if (isStale()) return;
@@ -11645,6 +11655,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function scheduleRenderNotifications() {
+    if (state.notificationsRenderTimer) return;
+    state.notificationsRenderTimer = setTimeout(() => {
+      state.notificationsRenderTimer = null;
+      scheduleRenderNotifications();
+    }, 250);
+  }
+
   function fetchNotificationProfileIfNeeded(pubkey) {
     const key = normalizePubkeyHex(pubkey);
     if (!key) return;
@@ -11676,7 +11694,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       return;
     }
 
-    const entries = visibleNotificationEntries();
+    const allEntries = visibleNotificationEntries();
+    const renderLimit = Math.max(60, Number(state.notificationsRenderLimit || 60));
+    const entries = allEntries.slice(0, renderLimit);
     const unread = notificationUnreadCount();
     const lastRead = Number(state.notificationsLastReadAt || 0);
 
@@ -11689,7 +11709,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         statusEl.innerHTML = '<span class="lf-spinner"></span>Loading notifications...';
       } else {
         statusEl.style.color = '';
-        statusEl.textContent = `${entries.length} notifications - ${unread} unread`;
+        const countLabel = allEntries.length > entries.length
+          ? entries.length + ' of ' + allEntries.length
+          : String(allEntries.length);
+        statusEl.textContent = countLabel + ' notifications - ' + unread + ' unread';
       }
     }
 
@@ -11777,10 +11800,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       row.addEventListener('click', () => {
         showProfileByPubkey(actorPubkey);
       });
-      listEl.appendChild(row);
+      frag.appendChild(row);
 
       if (actorPubkey) fetchNotificationProfileIfNeeded(actorPubkey);
     });
+
+    listEl.appendChild(frag);
+    if (allEntries.length > entries.length) {
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = 'btn btn-ghost notif-show-more';
+      moreBtn.textContent = 'Show more notifications';
+      moreBtn.addEventListener('click', () => {
+        state.notificationsRenderLimit = Math.max(60, Number(state.notificationsRenderLimit || 60) + 60);
+        renderNotifications();
+      });
+      listEl.appendChild(moreBtn);
+    }
   }
 
   function stopNotificationsSubscription() {
@@ -11809,7 +11845,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           state.notificationsById.set(entry.id, entry);
           if (entry.actorPubkey) fetchNotificationProfileIfNeeded(entry.actorPubkey);
           renderNotificationsBell();
-          if (isNotificationsPageVisible()) renderNotifications();
+          scheduleRenderNotifications();
         }
       }
     });
@@ -11819,18 +11855,31 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const key = normalizePubkeyHex(pubkey);
     if (!key) return [];
     const now = Math.floor(Date.now() / 1000);
-    const sinceSec = Math.max(0, Number(opts.sinceSec || (now - 60 * 60 * 24 * 21)));
-    const limit = Math.max(60, Number(opts.limit || 420));
-    return [
-      { kinds: [1], '#p': [key], since: sinceSec, limit },
-      { kinds: [KIND_REACTION], '#p': [key], since: sinceSec, limit },
-      { kinds: [6], '#p': [key], since: sinceSec, limit },
-      { kinds: [KIND_ZAP_RECEIPT], '#p': [key], since: sinceSec, limit },
-      { kinds: [KIND_CONTACTS], '#p': [key], since: sinceSec, limit: Math.min(limit, 260) },
-      { kinds: [KIND_DIRECT_MESSAGE], '#p': [key], since: sinceSec, limit }
-    ];
-  }
+    const sinceSec = Math.max(0, Number(opts.sinceSec || (now - 60 * 60 * 24 * 7)));
+    const limit = Math.max(60, Number(opts.limit || 120));
+    const filters = [];
+    const settings = state.settings || {};
 
+    if (settings.notificationsMentions || settings.notificationsReplies) {
+      filters.push({ kinds: [1], '#p': [key], since: sinceSec, limit });
+    }
+    if (settings.notificationsLikes) {
+      filters.push({ kinds: [KIND_REACTION], '#p': [key], since: sinceSec, limit });
+    }
+    if (settings.notificationsReposts) {
+      filters.push({ kinds: [6], '#p': [key], since: sinceSec, limit });
+    }
+    if (settings.notificationsZaps) {
+      filters.push({ kinds: [KIND_ZAP_RECEIPT], '#p': [key], since: sinceSec, limit });
+    }
+    if (settings.notificationsFollows) {
+      filters.push({ kinds: [KIND_CONTACTS], '#p': [key], since: sinceSec, limit: Math.min(limit, 80) });
+    }
+
+    // Keep kind:4 because DM activity is intentionally shown in the notification center.
+    filters.push({ kinds: [KIND_DIRECT_MESSAGE], '#p': [key], since: sinceSec, limit });
+    return filters;
+  }
   function notificationTargetPreviewState(entry) {
     if (!entry || entry.type !== 'like') return { state: 'none', note: null };
     const targetId = String(entry.targetId || '').trim().toLowerCase();
@@ -11960,7 +12009,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         state.notificationsTargetNotesById.set(id, { id, __missing: true, checkedAt });
         if (!existing || existing.__missing !== true) changed = true;
       });
-      if (changed && isNotificationsPageVisible()) renderNotifications();
+      if (changed) scheduleRenderNotifications();
       return events || [];
     }).catch(() => {
       return [];
@@ -12030,11 +12079,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!silent && isNotificationsPageVisible()) renderNotifications();
 
     const ownPubkey = normalizePubkeyHex(state.user.pubkey || '');
-    const filters = notificationFiltersForUser(ownPubkey);
+    const filters = notificationFiltersForUser(ownPubkey, {
+      sinceSec: Math.floor(Date.now() / 1000) - (7 * 86400),
+      limit: 120
+    });
     const fetchPromise = fetchEventsCached(filters, {
       scope: 'notifications-feed',
       timeoutMs: 3600,
-      maxEvents: 2600,
+      maxEvents: 800,
       ttlMs: 45000,
       warmMs: 180000,
       allowStale: true,
@@ -12049,7 +12101,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       state.notificationsError = '';
       hydrateNotificationTargetNotes(Array.from(state.notificationsById.values()), { force }).catch(() => {});
       renderNotificationsBell();
-      if (!silent || isNotificationsPageVisible()) renderNotifications();
+      scheduleRenderNotifications();
       return Array.from(state.notificationsById.values());
     }).catch(() => {
       state.notificationsLoading = false;
@@ -12995,7 +13047,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     // A click/tap anywhere after autoplay begins should immediately retry audio.
     const unlockHeroAudio = () => {
-      if (token !== state.heroPlaybackToken || !video.muted) return;
+      if (token !== state.heroPlaybackToken) return;
+      if (document.hidden) {
+        try { video.pause(); } catch (_) {}
+        return;
+      }
+      if (video.paused) {
+        try { video.play().catch(() => {}); } catch (_) {}
+      }
+      if (!video.muted) return;
       tryHeroAudio().catch(() => {});
     };
     document.addEventListener('pointerdown', unlockHeroAudio, { passive: true });
@@ -13031,12 +13091,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (Hls.isSupported()) {
             hlsObj = new Hls({
               enableWorker: true,
-              lowLatencyMode: true,
+              lowLatencyMode: false,
               liveSyncDurationCount: 3,
               liveMaxLatencyDurationCount: 9,
-              maxBufferLength: 45,
-              maxMaxBufferLength: 120,
-              backBufferLength: 30
+              maxBufferLength: 12,
+              maxMaxBufferLength: 24,
+              backBufferLength: 10
             });
             state.heroHlsInstance = hlsObj;
             hlsObj.loadSource(url);
@@ -13298,20 +13358,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       enableWorker: true,
       // Theater mode prioritizes playback stability over ultra-low latency.
       lowLatencyMode: false,
-      backBufferLength: 30,
-      maxBufferLength: 45,
-      maxMaxBufferLength: 120,
+      backBufferLength: 10,
+      maxBufferLength: 12,
+      maxMaxBufferLength: 24,
       // Start close to the live edge. Long startup waits are worse than a
       // quick retry for a live-stream client.
-      liveSyncDurationCount: 2,
-      liveMaxLatencyDurationCount: 6,
-      manifestLoadingTimeOut: 5000,
-      manifestLoadingMaxRetry: 1,
-      manifestLoadingRetryDelay: 350,
-      levelLoadingTimeOut: 5000,
-      levelLoadingMaxRetry: 1,
-      fragLoadingTimeOut: 7000,
-      fragLoadingMaxRetry: 1,
+      liveSyncDurationCount: 4,
+      liveMaxLatencyDurationCount: 10,
+      manifestLoadingTimeOut: 20000,
+      manifestLoadingMaxRetry: 3,
+      manifestLoadingRetryDelay: 500,
+      levelLoadingTimeOut: 20000,
+      levelLoadingMaxRetry: 3,
+      fragLoadingTimeOut: 20000,
+      fragLoadingMaxRetry: 5,
+      fragLoadingRetryDelay: 500,
+
       ...hlsConfig
     });
 
