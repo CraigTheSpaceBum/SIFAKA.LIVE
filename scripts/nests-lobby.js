@@ -1355,6 +1355,11 @@
     const value = normalizeRoomNaddr(naddr);
     if (!value) return false;
 
+    if (roomPageMode && roomPageNaddr === value && activeRoomAudio) {
+      updateActiveRoomAudioUi();
+      return true;
+    }
+
     roomPageMode = true;
     roomPageNaddr = value;
     const root = ensureRoomPageRoot();
@@ -1497,7 +1502,11 @@
       });
     };
     const grid = $('#nestsRoomsGrid');
-    if (window.location.pathname && /^\/room\/naddr1/i.test(window.location.pathname)) {
+    if (
+      window.location.pathname &&
+      /^\/room\/naddr1/i.test(window.location.pathname) &&
+      (!roomPageMode || roomPageNaddr !== normalizeRoomNaddr(window.location.pathname))
+    ) {
       const direct = normalizeRoomNaddr(window.location.pathname);
       if (direct) {
         window.loadNestsRoomPage(direct, { routeMode: 'skip', autoJoin: true }).catch(function() {});
