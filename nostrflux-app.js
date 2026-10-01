@@ -21332,7 +21332,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     function getNestsRoomUrl(room) {
       const naddr = getNestsRoomNaddr(room);
-      return naddr ? `https://nostrnests.com/${naddr}` : 'https://nostrnests.com/lobby';
+      if (!naddr) return window.location.origin + '/nests';
+      return window.location.origin + '/room/' + naddr;
     }
 
     function renderNestsPage() {
