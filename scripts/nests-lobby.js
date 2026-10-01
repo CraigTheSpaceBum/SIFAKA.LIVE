@@ -14,6 +14,8 @@
   let activeRoom = null, activeRoomEvent = null, activeRoomRelays = [];
   let activeRoomAudio = null, activeRoomAudioModulesPromise = null;
   let activeRoomPresenceTimer = null, activeRoomRefreshTimer = null, activeRoomChatTimer = null;
+  let activeRoomHandRaised = false;
+  const NEST_QUICK_REACTIONS = ['🔥', '❤️', '👏', '😂', '🤙', '💯'];
   let roomPageMode = false, roomPageRoot = null, roomPageNaddr = '';
 
   const $ = (s, root = document) => root.querySelector(s);
@@ -262,6 +264,9 @@
       this.state = 'disconnected';
       this.volume = 1;
       this.muted = false;
+      this.micVolume = 1;
+      this.micMuted = false;
+      this.participantVolumes = new Map();
       this.listeners = new Set();
       this.announcementDispose = null;
       this.statusDispose = null;
@@ -360,6 +365,8 @@
       this.microphone = microphone;
       this.publishBroadcast = broadcast;
       this.isPublishing = true;
+      this.micMuted = false;
+      this.applyMicVolume();
       updateActiveRoomAudioUi();
     }
 
@@ -373,6 +380,57 @@
         this.microphone = null;
       }
       this.isPublishing = false;
+      this.micMuted = false;
+      updateActiveRoomAudioUi();
+    }
+
+    applyMicVolume() {
+      const audio = this.publishBroadcast && this.publishBroadcast.audio;
+      if (!audio) return false;
+      try {
+        if (audio.volume && typeof audio.volume.set === 'function') {
+          audio.volume.set(this.micVolume);
+          if (audio.muted && typeof audio.muted.set === 'function') audio.muted.set(this.micMuted);
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    }
+
+    hasMicVolumeControl() {
+      const audio = this.publishBroadcast && this.publishBroadcast.audio;
+      return !!(audio && audio.volume && typeof audio.volume.set === 'function');
+    }
+
+    setMicVolume(value) {
+      this.micVolume = Math.max(0, Math.min(1, Number(value) || 0));
+      this.applyMicVolume();
+      updateActiveRoomAudioUi();
+    }
+
+    setMicMuted(value) {
+      this.micMuted = !!value;
+      const audio = this.publishBroadcast && this.publishBroadcast.audio;
+      try {
+        if (audio && audio.muted && typeof audio.muted.set === 'function') audio.muted.set(this.micMuted);
+      } catch (_) {}
+      updateActiveRoomAudioUi();
+    }
+
+    getParticipantVolume(pubkey) {
+      const key = String(pubkey || '').toLowerCase();
+      return this.participantVolumes.has(key) ? this.participantVolumes.get(key) : 1;
+    }
+
+    setParticipantVolume(pubkey, value) {
+      const key = String(pubkey || '').toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(key)) return;
+      const volume = Math.max(0, Math.min(1, Number(value) || 0));
+      this.participantVolumes.set(key, volume);
+      const entry = this.entries.get(key);
+      if (entry && entry.emitter) {
+        try { entry.emitter.volume.set(this.muted ? 0 : volume * this.volume); } catch (_) {}
+      }
       updateActiveRoomAudioUi();
     }
 
@@ -435,8 +493,9 @@
         const sync = new this.Watch.Sync({ jitter: 150 });
         const audioSource = new this.Watch.Audio.Source(sync, { broadcast: broadcast });
         const decoder = new this.Watch.Audio.Decoder(audioSource, { enabled: true });
+        const participantVolume = this.getParticipantVolume(pubkey);
         const emitter = new this.Watch.Audio.Emitter(decoder, {
-          volume: this.muted ? 0 : this.volume,
+          volume: this.muted ? 0 : participantVolume * this.volume,
           muted: this.muted
         });
         this.entries.set(pubkey, { broadcast, sync, audioSource, decoder, emitter });
@@ -467,17 +526,19 @@
 
     setVolume(value) {
       this.volume = Math.max(0, Math.min(1, Number(value) || 0));
-      this.entries.forEach(function(entry) {
-        try { entry.emitter.volume.set(this.muted ? 0 : this.volume); } catch (_) {}
+      this.entries.forEach(function(entry, pubkey) {
+        const participantVolume = this.getParticipantVolume(pubkey);
+        try { entry.emitter.volume.set(this.muted ? 0 : participantVolume * this.volume); } catch (_) {}
       }, this);
     }
 
     setMuted(value) {
       this.muted = !!value;
-      this.entries.forEach(function(entry) {
+      this.entries.forEach(function(entry, pubkey) {
+        const participantVolume = this.getParticipantVolume(pubkey);
         try {
           entry.emitter.muted.set(this.muted);
-          entry.emitter.volume.set(this.muted ? 0 : this.volume);
+          entry.emitter.volume.set(this.muted ? 0 : participantVolume * this.volume);
         } catch (_) {}
       }, this);
     }
@@ -1349,6 +1410,7 @@
       try { await activeRoomAudio.disconnect(); } catch (_) {}
       activeRoomAudio = null;
     }
+    activeRoomHandRaised = false;
     if (!modal) return;
     const bar = $('#nestRoomAudioBar', modal);
     const compose = $('#nestRoomChatCompose', modal);
@@ -1367,10 +1429,11 @@
     if (!activeRoom || !activeRoom.a) return;
     try {
       const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
-      const muted = !!(activeRoomAudio ? activeRoomAudio.muted : true);
+      const muted = !!(activeRoomAudio ? activeRoomAudio.micMuted : true);
       const onstage = !!(activeRoomAudio && activeRoomAudio.publishRequested);
       const event = await signRoomEvent(10312, '', [
         ['a', activeRoom.a],
+        ['hand', activeRoomHandRaised ? '1' : '0'],
         ['publishing', publishing ? '1' : '0'],
         ['muted', muted ? '1' : '0'],
         ['onstage', onstage ? '1' : '0']
@@ -1378,6 +1441,28 @@
       await publishSignedRoomEvent(event, activeRoomRelays);
     } catch (err) {
       console.warn('[sifaka-nests] presence publish failed', err);
+    }
+  }
+
+  async function publishActiveRoomReaction(emoji) {
+    const value = String(emoji || '').trim();
+    if (!NEST_QUICK_REACTIONS.includes(value)) return;
+    if (!activeRoom || !activeRoom.a) throw new Error('This room does not expose a valid Nostr room address.');
+    const event = await signRoomEvent(7, value, [['a', activeRoom.a]]);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+    refreshLiveRoom(activeRoomUrl).catch(function() {});
+  }
+
+  async function toggleActiveRoomHand() {
+    if (!activeRoom || !activeRoom.a) throw new Error('This room does not expose a valid Nostr room address.');
+    activeRoomHandRaised = !activeRoomHandRaised;
+    try {
+      await publishActiveRoomPresence();
+      updateActiveRoomAudioUi();
+      refreshLiveRoom(activeRoomUrl).catch(function() {});
+    } catch (err) {
+      activeRoomHandRaised = !activeRoomHandRaised;
+      throw err;
     }
   }
 
