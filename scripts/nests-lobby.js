@@ -237,9 +237,10 @@
     if (!activeRoomAudioModulesPromise) {
       activeRoomAudioModulesPromise = Promise.all([
         import('https://esm.sh/@moq/lite@0.1.7'),
-        import('https://esm.sh/@moq/watch@0.2.3')
+        import('https://esm.sh/@moq/watch@0.2.3'),
+        import('https://esm.sh/@moq/publish@0.2.3')
       ]).then(function(modules) {
-        return { Moq: modules[0], Watch: modules[1] };
+        return { Moq: modules[0], Watch: modules[1], Publish: modules[2] };
       });
     }
     return activeRoomAudioModulesPromise;
@@ -266,8 +267,13 @@
       this.statusDispose = null;
       this.pollTimer = null;
       this.identity = '';
+      this.publishRequested = false;
+      this.isPublishing = false;
+      this.microphone = null;
+      this.publishBroadcast = null;
       this.Moq = null;
       this.Watch = null;
+      this.Publish = null;
     }
 
     onStateChange(cb) {
@@ -286,7 +292,9 @@
       const libs = await loadNestAudioModules();
       this.Moq = libs.Moq;
       this.Watch = libs.Watch;
-      this.identity = String(config.identity || '');
+      this.Publish = libs.Publish;
+      this.identity = String(config.identity || '').toLowerCase();
+      this.publishRequested = !!config.publish;
       this.emitState('connecting');
 
       const relayUrl = new URL(String(config.serverUrl));
@@ -307,14 +315,65 @@
           if (status === 'connected') {
             self.emitState('connected');
             self.startAnnouncements();
+            if (self.publishRequested && !self.isPublishing) {
+              self.startMicrophonePublish().catch(function(err) {
+                console.warn('[sifaka-nests] microphone publish unavailable; continuing as listener', err);
+              });
+            }
           } else if (status === 'connecting') {
             self.emitState(self.state === 'disconnected' ? 'connecting' : 'reconnecting');
           } else if (status === 'disconnected') {
             self.emitState('disconnected');
             self.stopAnnouncements();
+            self.closeMicrophonePublish();
           }
         });
       }
+
+      const initialState = this.connection.status && this.connection.status.peek
+        ? this.connection.status.peek()
+        : 'connecting';
+      if (initialState === 'connected') {
+        this.emitState('connected');
+        this.startAnnouncements();
+        if (this.publishRequested && !this.isPublishing) {
+          try { await this.startMicrophonePublish(); } catch (err) {
+            console.warn('[sifaka-nests] microphone publish unavailable; continuing as listener', err);
+          }
+        }
+      }
+    }
+
+    async startMicrophonePublish() {
+      if (!this.connection || !this.Publish || this.isPublishing) return;
+      this.closeMicrophonePublish();
+      const microphone = new this.Publish.Source.Microphone({ enabled: true });
+      const broadcast = new this.Publish.Broadcast({
+        connection: this.connection.established,
+        enabled: true,
+        name: this.Moq.Path.from(this.identity),
+        audio: {
+          source: microphone.source,
+          enabled: true
+        }
+      });
+      this.microphone = microphone;
+      this.publishBroadcast = broadcast;
+      this.isPublishing = true;
+      updateActiveRoomAudioUi();
+    }
+
+    closeMicrophonePublish() {
+      if (this.publishBroadcast) {
+        try { this.publishBroadcast.close(); } catch (_) {}
+        this.publishBroadcast = null;
+      }
+      if (this.microphone) {
+        try { this.microphone.close(); } catch (_) {}
+        this.microphone = null;
+      }
+      this.isPublishing = false;
+      updateActiveRoomAudioUi();
     }
 
     startAnnouncements() {
@@ -406,6 +465,7 @@
 
     async disconnect() {
       this.stopAnnouncements();
+      this.closeMicrophonePublish();
       if (this.statusDispose) {
         try { this.statusDispose(); } catch (_) {}
         this.statusDispose = null;
@@ -420,7 +480,6 @@
       this.emitState('disconnected');
     }
   }
-
   function roomRelayUrls(room, decoded) {
     const ctx = getSifakaContext();
     const defaults = ctx && typeof ctx.getRelays === 'function' ? ctx.getRelays() : [];
@@ -482,10 +541,10 @@
     if (!results.some(Boolean)) throw new Error('Could not publish the Nest event to any room relay.');
   }
 
-  async function authenticateNestAudio(roomEvent, namespace) {
+  async function authenticateNestAudio(roomEvent, namespace, publish) {
     const ctx = getSifakaContext();
     const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
-    if (!user || typeof ctx.signEvent !== 'function') return '';
+    if (!user || typeof ctx.signEvent !== 'function') throw new Error('Please sign in to join Nest audio.');
     const authUrl = tag(roomEvent, 'auth') || 'https://moq-auth.nostrnests.com';
     const endpoint = authUrl.replace(/\/$/, '') + '/auth';
     const signed = await ctx.signEvent(27235, '', [['u', endpoint], ['method', 'POST']]);
@@ -495,11 +554,30 @@
         'Content-Type': 'application/json',
         Authorization: 'Nostr ' + btoa(JSON.stringify(signed))
       },
-      body: JSON.stringify({ namespace: namespace, publish: false })
+      body: JSON.stringify({ namespace: namespace, publish: !!publish })
     });
-    if (!response.ok) throw new Error('Nest audio authentication failed (' + response.status + ').');
+    if (!response.ok) {
+      const detail = (await response.text().catch(function() { return ''; })).trim();
+      throw new Error('Nest audio authentication failed (' + response.status + ')' + (detail ? ': ' + detail : '.'));
+    }
     const data = await response.json();
-    return String(data.token || '');
+    if (!data || !data.token) throw new Error('Nest audio authentication returned no token.');
+    return String(data.token);
+  }
+
+  function normalizeNestStreamingUrl(value) {
+    const fallback = 'https://moq.nostrnests.com:4443';
+    try {
+      const parsed = new URL(String(value || fallback));
+      if ((parsed.protocol === 'https:' || parsed.protocol === 'http:')
+        && parsed.hostname.toLowerCase() === 'moq.nostrnests.com'
+        && !parsed.port) {
+        parsed.port = '4443';
+      }
+      return parsed.toString().replace(/\/$/, '');
+    } catch (_) {
+      return fallback;
+    }
   }
 
   function updateActiveRoomAudioUi() {
@@ -508,14 +586,23 @@
     const btn = modal.querySelector('#nestRoomMuteBtn');
     const slider = modal.querySelector('#nestRoomVolume');
     const dot = modal.querySelector('#nestRoomAudioDot');
+    const join = modal.querySelector('#nestPreviewJoinBtn');
     if (status && activeRoomAudio) {
       const state = activeRoomAudio.state || 'disconnected';
       const count = activeRoomAudio.entries ? activeRoomAudio.entries.size : 0;
-      const displayState = state === 'disconnected' && roomPageMode ? 'reconnecting' : state;
-      status.textContent = displayState === 'connected'
+      const label = state === 'connected'
         ? ('Connected • ' + count + ' speaker' + (count === 1 ? '' : 's'))
-        : (displayState.charAt(0).toUpperCase() + displayState.slice(1) + '…');
-      if (dot) dot.classList.toggle('connected', displayState === 'connected');
+        : state === 'reconnecting'
+          ? 'Reconnecting…'
+          : state === 'connecting'
+            ? 'Connecting…'
+            : 'Disconnected';
+      status.textContent = label;
+      if (dot) dot.classList.toggle('connected', state === 'connected');
+      if (join && state === 'disconnected') {
+        join.disabled = false;
+        join.textContent = 'Join As Speak';
+      }
     }
     if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute' : 'Mute';
     if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
@@ -550,6 +637,13 @@
         if (!activeRoomAudio) return;
         activeRoomAudio.setVolume(Number(this.value) / 100);
         updateActiveRoomAudioUi();
+      });
+    }
+
+    const leave = $('#nestRoomLeaveBtn', root);
+    if (leave) {
+      leave.addEventListener('click', function() {
+        window.leaveNestsRoom();
       });
     }
 
@@ -632,7 +726,12 @@
             '</div>' +
             '<div class="nests-room-page-chat-column">' +
               '<div class="nest-preview-panel active" data-panel="chat">' +
-                '<div class="nest-preview-section nest-preview-chat-section"><div class="nest-preview-section-head"><span>Room chat</span><span id="nestPreviewChatCount">—</span></div><div class="nest-preview-chat" id="nestPreviewChat"></div></div>' +
+                '<div class="nest-chat-header"><div><strong>Live chat</strong><span id="nestPreviewChatCount">—</span></div><span class="nest-chat-live"><i></i>LIVE</span></div>' +
+                '<div class="nest-preview-chat" id="nestPreviewChat"></div>' +
+                '<div class="nest-room-chat-compose" id="nestRoomChatCompose" hidden>' +
+                  '<input id="nestRoomChatInput" type="text" maxlength="1000" placeholder="Say something…" aria-label="Send a Nest room message">' +
+                  '<button class="btn btn-primary" id="nestRoomChatSendBtn" type="button" aria-label="Send message">Send</button>' +
+                '</div>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -641,11 +740,10 @@
             '<strong id="nestRoomAudioStatus">Not connected</strong>' +
             '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute</button>' +
             '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
-            '<button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join Nest</button>' +
-          '</div>' +
-          '<div class="nest-room-chat-compose" id="nestRoomChatCompose" hidden>' +
-            '<input id="nestRoomChatInput" type="text" maxlength="1000" placeholder="Say something in the room…" aria-label="Send a Nest room message">' +
-            '<button class="btn btn-primary" id="nestRoomChatSendBtn" type="button">Send</button>' +
+            '<div class="nest-room-audio-actions">' +
+              '<button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speak</button>' +
+              '<button class="btn btn-ghost nest-room-leave-btn" id="nestRoomLeaveBtn" type="button">Leave Nest</button>' +
+            '</div>' +
           '</div>' +
           '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
         '</div>' +
@@ -696,7 +794,7 @@
             '<input id="nestRoomChatInput" type="text" maxlength="1000" placeholder="Say something in the room…" aria-label="Send a Nest room message">' +
             '<button class="btn btn-primary" id="nestRoomChatSendBtn" type="button">Send</button>' +
           '</div>' +
-          '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join Nest</button></div>' +
+          '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speak/button></div>' +
           '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
         '</div>' +
       '</div>';
@@ -877,31 +975,42 @@
   }
 
   function renderChat(room, profiles) {
+    const chatEl = $('#nestPreviewChat', modal);
+    if (!chatEl) return;
+    const stickToBottom = (chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight) < 64;
     const messages = Array.isArray(room.chat) ? room.chat.slice().sort(function(a, b) {
       return Number(a.created_at || 0) - Number(b.created_at || 0);
-    }).slice(-12) : [];
+    }).slice(-80) : [];
 
-    $('#nestPreviewChatCount', modal).textContent = messages.length
-      ? messages.length + (messages.length === 1 ? ' recent message' : ' recent messages')
+    const countEl = $('#nestPreviewChatCount', modal);
+    if (countEl) countEl.textContent = messages.length
+      ? messages.length + (messages.length === 1 ? ' message' : ' messages')
       : 'No messages';
 
     if (!messages.length) {
-      $('#nestPreviewChat', modal).innerHTML =
-        '<div class="nest-preview-chat-empty"><span class="nest-chat-empty-icon">✦</span><strong>No room chat yet</strong><small>Be the first to say hello when you join.</small></div>';
+      chatEl.innerHTML =
+        '<div class="nest-preview-chat-empty"><span class="nest-chat-empty-icon">✦</span><strong>No live chat yet</strong><small>Messages from this room will appear here in real time.</small></div>';
       return;
     }
 
-    $('#nestPreviewChat', modal).innerHTML = messages.map(function(ev) {
+    chatEl.innerHTML = messages.map(function(ev, index) {
       const prof = profiles.get(String(ev.pubkey || '').toLowerCase()) || {};
       const name = profileDisplayName(prof);
       const picture = safeNestImageUrl(prof.picture);
       const content = String(ev.content || '').trim();
       const when = ev.created_at ? new Date(Number(ev.created_at) * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-      return '<div class="nest-chat-message">' +
-        '<span class="nest-chat-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : esc(name.slice(0, 1).toUpperCase())) + '</span>' +
+      const previous = messages[index - 1];
+      const sameSender = previous &&
+        String(previous.pubkey || '').toLowerCase() === String(ev.pubkey || '').toLowerCase() &&
+        Number(ev.created_at || 0) - Number(previous.created_at || 0) < 300;
+      return '<div class="nest-chat-message' + (sameSender ? ' is-grouped' : '') + '">' +
+        (sameSender ? '<span class="nest-chat-avatar nest-chat-avatar-empty"></span>' :
+          '<span class="nest-chat-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : esc(name.slice(0, 1).toUpperCase())) + '</span>') +
         '<div class="nest-chat-copy"><div><strong>' + esc(name) + '</strong><time>' + esc(when) + '</time></div><p>' + esc(content) + '</p></div>' +
       '</div>';
     }).join('');
+
+    if (stickToBottom) chatEl.scrollTop = chatEl.scrollHeight;
   }
 
   function renderRoom(room, profiles, fallback) {
@@ -963,8 +1072,9 @@
         renderSchedule();
       }, 1000);
     } else {
-      $('#nestPreviewSchedule', modal).innerHTML = '<div class="nest-preview-schedule-icon">◉</div><div><strong>Drop-in room</strong><span>Join whenever the room is open.</span></div>';
+      $('#nestPreviewSchedule', modal).innerHTML = '';
     }
+    $('#nestPreviewSchedule', modal).style.display = (starts && starts > now()) ? '' : 'none';
 
     const showProfile = function(pubkey, role) {
       if (roomPageMode && typeof window.showProfileByPubkey === 'function') {
@@ -1027,17 +1137,26 @@
 
     const topicValues = Array.from(new Set((room.topics || []).concat((meeting && meeting.topics) || []))).slice(0, 8);
     $('#nestPreviewTopics', modal).innerHTML = topicValues.map(function(t) { return '<span>#' + esc(t) + '</span>'; }).join('');
-    $('#nestPreviewJoinBtn', modal).textContent = activeRoomAudio ? 'Leave Nest' : (live ? 'Join Nest' : 'Open Nest');
-    $('#nestPreviewJoinBtn', modal).classList.toggle('btn-danger', !!activeRoomAudio);
+    const joinButton = $('#nestPreviewJoinBtn', modal);
+    if (joinButton) {
+      joinButton.textContent = activeRoomAudio
+        ? (activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener')
+        : (live ? 'Join As Speak' : 'Open Nest');
+      joinButton.disabled = !!activeRoomAudio;
+      joinButton.classList.remove('btn-danger');
+    }
+    const leaveButton = $('#nestRoomLeaveBtn', modal);
+    if (leaveButton) leaveButton.disabled = false;
     updateActiveRoomAudioUi();
     $('#nestPreviewFootnote', modal).textContent = room.sourceCount > 1 ? 'Room details merged from ' + room.sourceCount + ' relays.' : 'Room details are read from Nostr NIP-53 events.';
   }
 
   async function enterActiveRoom() {
     if (!activeRoomUrl) return;
-    if (activeRoomAudio) {
-      await leaveActiveRoom();
-      return;
+    if (activeRoomAudio && activeRoomAudio.state !== 'disconnected') return;
+    if (activeRoomAudio && activeRoomAudio.state === 'disconnected') {
+      try { await activeRoomAudio.disconnect(); } catch (_) {}
+      activeRoomAudio = null;
     }
     if (!activeRoomEvent || !activeRoom) {
       await openPreview(activeRoomUrl, {
@@ -1054,15 +1173,23 @@
     const ctx = getSifakaContext();
     const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
     if (!user) throw new Error('Please sign in to join Nest audio.');
+
     const d = String(tag(activeRoomEvent, 'd') || activeRoom.d || '');
     const namespace = 'nests/30312:' + activeRoomEvent.pubkey + ':' + d;
-    const streamingUrl = tag(activeRoomEvent, 'streaming') || activeRoom.streaming || 'https://moq.nostrnests.com:4443';
+    const streamingUrl = normalizeNestStreamingUrl(tag(activeRoomEvent, 'streaming') || activeRoom.streaming || '');
+
     let token = '';
-    if (user) {
+    let publish = true;
+    try {
+      token = await authenticateNestAudio(activeRoomEvent, namespace, true);
+    } catch (speakerErr) {
+      console.warn('[sifaka-nests] speaker auth failed; retrying listener auth', speakerErr);
+      publish = false;
       try {
-        token = await authenticateNestAudio(activeRoomEvent, namespace);
-      } catch (err) {
-        console.warn('[sifaka-nests] audio auth failed; trying public listener mode', err);
+        token = await authenticateNestAudio(activeRoomEvent, namespace, false);
+      } catch (listenerErr) {
+        console.warn('[sifaka-nests] listener auth failed; trying without JWT', listenerErr);
+        token = '';
       }
     }
 
@@ -1076,6 +1203,8 @@
       join.disabled = true;
       join.classList.remove('btn-danger');
     }
+    const leaveButton = $('#nestRoomLeaveBtn', modal);
+    if (leaveButton) leaveButton.disabled = false;
     modal.classList.add('is-live-room');
 
     activeRoomAudio = new SifakaNestAudioTransport();
@@ -1085,13 +1214,13 @@
       await activeRoomAudio.connect({
         serverUrl: streamingUrl,
         namespace: namespace,
-        identity: user ? String(user.pubkey) : '',
-        token: token
+        identity: String(user.pubkey),
+        token: token,
+        publish: publish
       });
       if (join) {
-        join.disabled = false;
-        join.textContent = 'Leave Nest';
-        join.classList.add('btn-danger');
+        join.disabled = true;
+        join.textContent = activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener';
       }
       startActiveRoomPresence();
       startActiveRoomRefresh();
@@ -1105,7 +1234,7 @@
       if (compose) compose.hidden = true;
       if (join) {
         join.disabled = false;
-        join.textContent = 'Join Nest';
+        join.textContent = 'Join As Speak';
       }
       modal.classList.remove('is-live-room');
       throw err;
