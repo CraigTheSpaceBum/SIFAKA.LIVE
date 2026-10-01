@@ -19401,10 +19401,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const bitcoinRow = qs('#profBitcoinRow');
     const bitcoinBio = qs('#profBitcoinBio');
     const profileBitcoinPubkey = normalizePubkeyHex(pubkey);
-    if (bitcoinRow) bitcoinRow.style.display = profileBitcoinPubkey ? 'flex' : 'none';
+    if (bitcoinRow) bitcoinRow.style.display = 'none';
     if (bitcoinBio) {
-      bitcoinBio.textContent = profileBitcoinPubkey ? 'Deriving…' : '';
-      bitcoinBio.title = profileBitcoinPubkey ? 'Deriving on-chain Bitcoin address' : '';
+      bitcoinBio.textContent = '';
+      bitcoinBio.title = '';
+      bitcoinBio.disabled = true;
+      bitcoinBio.onclick = null;
     }
     if (profileBitcoinPubkey) {
       getProfileBitcoinAddress(profileBitcoinPubkey).then((address) => {
@@ -19414,8 +19416,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           return;
         }
         if (bitcoinBio) {
-          bitcoinBio.textContent = shortBitcoinAddress(address);
-          bitcoinBio.title = address;
+          bitcoinBio.textContent = 'On Chain ' + shortBitcoinAddress(address);
+          bitcoinBio.title = 'Send Bitcoin to ' + address;
+          bitcoinBio.disabled = false;
+          bitcoinBio.onclick = function (event) {
+            if (event) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+            if (typeof window.openWalletOnchainSend === 'function') {
+              window.openWalletOnchainSend(address, {
+                recipientPubkey: profileBitcoinPubkey,
+                recipientName: String(p.display_name || p.name || 'this profile').trim()
+              });
+            }
+          };
         }
         if (bitcoinRow) bitcoinRow.style.display = 'flex';
       }).catch(() => {
@@ -21788,17 +21803,30 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       showWalletAddressQr('bitcoin');
     };
 
-    window.openWalletOnchainSend = function () {
+    window.openWalletOnchainSend = function (destination = '', recipientMeta = {}) {
       const modal = qs('#walletOnchainSendModal');
       if (!modal) return;
       modal.hidden = false;
       modal.setAttribute('aria-hidden', 'false');
       resetWalletOnchainSendDraft();
+      const destinationEl = qs('#walletOnchainSendAddress');
+      if (destinationEl) {
+        destinationEl.value = String(destination || '').trim();
+      }
       const note = qs('#walletOnchainSendNote');
-      if (note) note.textContent = state.authMode === 'local' && state.localSecretKey
-        ? 'Your transaction will be prepared locally and only broadcast after you confirm the destination, amount, and fee.'
-        : 'On-chain sending currently requires a local Nostr key login. The receive wallet remains available with remote signer or extension login.';
-      setTimeout(() => qs('#walletOnchainSendAddress')?.focus(), 0);
+      const recipientName = String(recipientMeta.recipientName || '').trim();
+      if (note) {
+        note.textContent = state.authMode === 'local' && state.localSecretKey
+          ? (recipientName
+            ? 'Sending on-chain Bitcoin to ' + recipientName + '. Review the address, amount, and fee before confirming.'
+            : 'Your transaction will be prepared locally and only broadcast after you confirm the destination, amount, and fee.')
+          : 'On-chain sending currently requires a local Nostr key login. The receive wallet remains available with remote signer or extension login.';
+      }
+      setTimeout(() => {
+        const input = qs('#walletOnchainSendAddress');
+        if (destination && qs('#walletOnchainSendAmount')) qs('#walletOnchainSendAmount').focus();
+        else if (input) input.focus();
+      }, 0);
     };
 
     window.closeWalletOnchainSend = function () {
@@ -21824,8 +21852,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
         if (status) status.textContent = 'Loading UTXOs and fee rate…';
         if (!Number.isFinite(feeRate) || feeRate <= 0) { feeRate = await fetchWalletOnchainFeeRate(); if (feeRateEl) feeRateEl.value = String(feeRate); }
-        const ownAddress = String(state.walletPageOnchainAddress || '').trim();
-        if (!ownAddress) throw new Error('Your Taproot wallet address is not available yet.');
+        let ownAddress = String(state.walletPageOnchainAddress || '').trim();
+        if (!ownAddress) {
+          const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+          if (!ownPubkey) throw new Error('Your Nostr public key is not available yet.');
+          await ensureTaprootDerivationSelfTest();
+          ownAddress = await deriveNipBcTaprootAddress(ownPubkey);
+          state.walletPageOnchainAddress = ownAddress;
+        }
         const utxos = (await fetchWalletOnchainUtxos(ownAddress)).sort((a,b) => Number(b.value || 0) - Number(a.value || 0));
         if (!utxos.length) throw new Error('No spendable on-chain UTXOs were found for this address.');
         const selected = [];
