@@ -305,6 +305,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     nestsPresenceSubId: null,
     nestsRooms: new Map(),
     nestsPresence: new Map(),
+    nestsPresenceLatestByPubkey: new Map(),
     nestsTab: 'live',
     nestsSearch: '',
     pendingNestsRoomNaddr: '',
@@ -21297,6 +21298,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       state.nestsSubId = null;
       state.nestsPresenceSubId = null;
       state.nestsPresence.clear();
+      state.nestsPresenceLatestByPubkey.clear();
     }
 
     function chooseEffectiveNestsMeeting(meetings, nowTs = Math.floor(Date.now() / 1000)) {
@@ -21586,15 +21588,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             const a = Array.isArray(ev.tags) ? ev.tags.find(t => Array.isArray(t) && t[0] === 'a') : null;
             const roomRef = a ? String(a[1] || '') : '';
             if (!roomRef) return;
-            const presenceKey = `${roomRef}:${ev.pubkey}`;
+            const pubkey = String(ev.pubkey || '').toLowerCase();
+            if (!pubkey || !roomRef) return;
+            const presenceKey = roomRef + ':' + pubkey;
             const incomingTs = Number(ev.created_at || 0);
-            const previousTs = Number(state.nestsPresence.get(presenceKey) || 0);
-            // Relay delivery order is not guaranteed. Keep the newest presence
-            // timestamp so a delayed older event cannot make a listener appear
-            // stale sooner than it should.
-            if (incomingTs >= previousTs) state.nestsPresence.set(presenceKey, incomingTs);
+            const previous = state.nestsPresenceLatestByPubkey.get(pubkey);
+            // NIP-53 defines 10312 as a replaceable room-presence event, so a
+            // pubkey should only count in its newest announced room.
+            if (previous && incomingTs < Number(previous.ts || 0)) return;
+            if (previous && previous.key && previous.key !== presenceKey) {
+              state.nestsPresence.delete(previous.key);
+            }
+            state.nestsPresenceLatestByPubkey.set(pubkey, { key: presenceKey, ts: incomingTs });
+            state.nestsPresence.set(presenceKey, incomingTs);
+
             const cutoff = Math.floor(Date.now() / 1000) - 60 * 5;
             for (const [key, ts] of state.nestsPresence) if (ts < cutoff) state.nestsPresence.delete(key);
+            for (const [key, item] of state.nestsPresenceLatestByPubkey) {
+              if (Number(item && item.ts || 0) < cutoff) state.nestsPresenceLatestByPubkey.delete(key);
+            }
             renderNestsPage();
           }
         }

@@ -756,6 +756,12 @@
     const join = $('#nestPreviewJoinBtn', root);
     if (join) {
       join.addEventListener('click', function() {
+        const ctx = getSifakaContext();
+        const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+        if (!user) {
+          if (ctx && typeof ctx.openLogin === 'function') ctx.openLogin();
+          return;
+        }
         const action = (activeRoomAudio && activeRoomAudio.isPublishing)
           ? Promise.resolve()
           : (activeRoomAudio ? joinActiveRoomAsSpeaker() : enterActiveRoom());
@@ -997,6 +1003,12 @@
     modal.addEventListener('click', function(e) { if (e.target === modal) closePreview(); });
     $('#nestPreviewJoinBtn', modal).addEventListener('click', function() {
       if (!activeRoomUrl) return;
+      const ctx = getSifakaContext();
+      const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+      if (!user) {
+        if (ctx && typeof ctx.openLogin === 'function') ctx.openLogin();
+        return;
+      }
       const action = (activeRoomAudio && activeRoomAudio.isPublishing)
         ? Promise.resolve()
         : (activeRoomAudio ? joinActiveRoomAsSpeaker() : enterActiveRoom());
@@ -1200,10 +1212,26 @@
     if (stickToBottom) chatEl.scrollTop = chatEl.scrollHeight;
   }
 
-  function renderRoom(room, profiles, fallback) {
-    const status = String(room.status || '').toLowerCase();
-    const live = status === 'live' || status === 'open';
+  function isRoomAudioJoinable(room) {
+    if (!room) return false;
     const meeting = room.meeting;
+    if (meeting) {
+      const status = String(meeting.status || '').toLowerCase();
+      const starts = Number(meeting.starts || 0);
+      const ends = Number(meeting.ends || 0);
+      if (status === 'ended' || status === 'closed' || (ends && ends <= now())) return false;
+      if (status === 'live' || status === 'open') return !starts || starts <= now();
+      if (status === 'planned') return !!starts && starts <= now() && (!ends || ends > now());
+      return (!starts || starts <= now()) && (!ends || ends > now());
+    }
+    const status = String(room.status || '').toLowerCase();
+    return status === 'live' || status === 'open';
+  }
+
+  function renderRoom(room, profiles, fallback) {
+    const meeting = room.meeting;
+    const status = String((meeting && meeting.status) || room.status || '').toLowerCase();
+    const live = status === 'live' || (!meeting && status === 'open');
     const title = (meeting && meeting.title) || room.title || fallback.title || 'Nostr Nest';
     const summary = (meeting && meeting.summary) || room.summary || fallback.summary || 'Live audio conversation on Nostr.';
     const image = (meeting && meeting.image) || room.image || fallback.img || '';
@@ -1359,6 +1387,9 @@
 
   async function connectActiveRoomAudio(publishRequested) {
     if (!activeRoomUrl) return;
+    if (activeRoom && !isRoomAudioJoinable(activeRoom)) {
+      throw new Error('This Nest meeting is not live right now.');
+    }
     if (!activeRoomEvent || !activeRoom) {
       await openPreview(activeRoomUrl, {
         title: $('#nestPreviewTitle', modal)?.textContent || 'Nostr Nest',
@@ -1817,6 +1848,17 @@
       d: decoded.d,
       a: decoded.a,
       status: current ? tag(current,'status') : (activeRoom && activeRoom.status) || 'open',
+      meeting: current ? {
+        title: tag(current,'title'),
+        summary: tag(current,'summary'),
+        image: tag(current,'image'),
+        starts: Number(tag(current,'starts') || 0),
+        ends: Number(tag(current,'ends') || 0),
+        status: tag(current,'status'),
+        currentParticipants: Number(tag(current,'current_participants') || 0),
+        participants: pTags(current),
+        topics: tags(current,'t')
+      } : (activeRoom && activeRoom.meeting) || null,
       relays: (activeRoom && activeRoom.relays) || [],
       streaming: (activeRoom && activeRoom.streaming) || '',
       participants: roster,
@@ -1824,6 +1866,10 @@
       handRaisedPubkeys: handRaisedPubkeys,
       reactionCounts: reactionCounts
     });
+
+    if (activeRoomAudio && !isRoomAudioJoinable(activeRoom)) {
+      try { await leaveActiveRoom(); } catch (_) {}
+    }
 
     if (activeRoomAudio && typeof activeRoomAudio.setParticipants === 'function') {
       const stagePubkeys = roster
@@ -1911,15 +1957,10 @@
 
     try {
       await openPreview(value, fallback);
-      if (opts.autoJoin !== false && activeRoomEvent) {
-        const liveStatus = String(
-          (activeRoom && activeRoom.status) ||
-          tag(activeRoomEvent, 'status') ||
-          ''
-        ).toLowerCase();
-        if (liveStatus === 'live' || liveStatus === 'open' || !liveStatus) {
-          await enterActiveRoom();
-        }
+      if (opts.autoJoin !== false && activeRoomEvent && isRoomAudioJoinable(activeRoom)) {
+        const ctx = getSifakaContext();
+        const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+        if (user) await enterActiveRoom();
       }
       const pageUrlEl = document.getElementById('nestsRoomPageUrl');
       if (pageUrlEl) pageUrlEl.textContent = window.location.host + '/room/' + value;
