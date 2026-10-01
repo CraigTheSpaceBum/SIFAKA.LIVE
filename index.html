@@ -1127,6 +1127,9 @@ body.nest-preview-open{overflow:hidden}
       <button class="btn btn-ghost" id="walletRefreshBtn" type="button" onclick="loadWalletPage(true)">Refresh</button>
     </section>
 
+    <div class="wallet-desktop-column-label wallet-desktop-onchain-label">ON-CHAIN BITCOIN</div>
+    <div class="wallet-desktop-column-label wallet-desktop-lightning-label">LIGHTNING / OFF-CHAIN</div>
+
     <section class="wallet-dashboard-grid">
       <article class="wallet-balance-card" id="walletBalanceCard">
         <div class="wallet-card-label">Available Balance</div>
@@ -1173,6 +1176,33 @@ body.nest-preview-open{overflow:hidden}
         </div>
         <span class="wallet-status-chip" id="walletMainchainStatus">Not configured</span>
       </div>
+
+      <div class="wallet-mainchain-receive">
+        <div class="wallet-mainchain-qr-wrap" aria-label="On-chain Bitcoin receive QR code">
+          <div id="walletMainchainQr" class="wallet-mainchain-qr"></div>
+          <div id="walletMainchainQrEmpty" class="wallet-mainchain-qr-empty">Your Taproot address will appear here after signing in.</div>
+        </div>
+        <div class="wallet-mainchain-receive-label">Receive Bitcoin</div>
+        <div class="wallet-mainchain-receive-address" id="walletMainchainAddress">No address available</div>
+        <div class="wallet-mainchain-receive-help">This is your NIP-BC Taproot receive address, derived directly from your Nostr public key.</div>
+        <div class="wallet-mainchain-receive-actions">
+          <button class="btn btn-ghost wallet-small-btn" id="walletMainchainCopyBtn" type="button" onclick="copyWalletOnchainAddress()">Copy address</button>
+          <button class="btn btn-ghost wallet-small-btn" type="button" onclick="showWalletAddressQr('bitcoin')">Enlarge QR</button>
+          <a id="walletMainchainExplorer" href="#" target="_blank" rel="noopener" hidden>Explorer</a>
+        </div>
+      </div>
+
+      <div class="wallet-onchain-action-grid">
+        <button class="wallet-onchain-action receive" type="button" onclick="openWalletOnchainReceive()">
+          <span class="wallet-action-icon">↓</span>
+          <span><strong>Receive</strong><small>Show your Bitcoin receive address and QR</small></span>
+        </button>
+        <button class="wallet-onchain-action send" type="button" onclick="openWalletOnchainSend()">
+          <span class="wallet-action-icon">↑</span>
+          <span><strong>Send</strong><small>Send BTC from your NIP-BC Taproot wallet</small></span>
+        </button>
+      </div>
+
       <div class="wallet-mainchain-grid">
         <div class="wallet-mainchain-balance">
           <span>Confirmed Balance</span>
@@ -1181,14 +1211,7 @@ body.nest-preview-open{overflow:hidden}
         </div>
         <div class="wallet-mainchain-stats" id="walletMainchainStats"></div>
       </div>
-      <div class="wallet-mainchain-address-row">
-        <span id="walletMainchainAddress">No address configured</span>
-        <div class="wallet-address-actions">
-          <button class="btn btn-ghost wallet-small-btn" id="walletMainchainCopyBtn" type="button" onclick="copyWalletOnchainAddress()">Copy</button>
-          <button class="btn btn-ghost wallet-small-btn" type="button" onclick="showWalletAddressQr('bitcoin')">QR</button>
-          <a id="walletMainchainExplorer" href="#" target="_blank" rel="noopener" hidden>View on mempool.space</a>
-        </div>
-      </div>
+
       <div id="walletMainchainTransactions" class="wallet-transactions-list wallet-mainchain-transactions">
         <div class="wallet-empty-state">Your on-chain Bitcoin transactions will appear here.</div>
       </div>
@@ -1228,6 +1251,37 @@ body.nest-preview-open{overflow:hidden}
       </div>
       <button class="btn btn-primary" type="button" onclick="openSettings();">Open Wallet Settings</button>
     </section>
+  </div>
+</div>
+
+<div class="wallet-modal" id="walletOnchainSendModal" hidden aria-hidden="true">
+  <div class="wallet-modal-backdrop" onclick="closeWalletOnchainSend()"></div>
+  <div class="wallet-modal-card wallet-onchain-send-card" role="dialog" aria-modal="true" aria-labelledby="walletOnchainSendTitle">
+    <div class="wallet-modal-head">
+      <div>
+        <div class="wallet-card-label">Bitcoin Mainchain</div>
+        <h3 id="walletOnchainSendTitle">Send Bitcoin</h3>
+      </div>
+      <button class="wallet-modal-close" type="button" onclick="closeWalletOnchainSend()" aria-label="Close">×</button>
+    </div>
+    <div class="wallet-onchain-send-note" id="walletOnchainSendNote"></div>
+    <div class="wallet-onchain-send-form">
+      <label>Recipient Bitcoin address
+        <input id="walletOnchainSendAddress" type="text" autocomplete="off" spellcheck="false" placeholder="bc1p...">
+      </label>
+      <label>Amount (sats)
+        <input id="walletOnchainSendAmount" type="number" min="1" step="1" inputmode="numeric" placeholder="10000">
+      </label>
+      <label>Fee rate (sat/vB)
+        <input id="walletOnchainSendFeeRate" type="number" min="1" step="0.1" inputmode="decimal" placeholder="1">
+      </label>
+    </div>
+    <div class="wallet-onchain-send-summary" id="walletOnchainSendSummary">Enter a recipient and amount to prepare the transaction.</div>
+    <div class="wallet-modal-actions">
+      <button class="btn btn-primary" type="button" id="walletOnchainReviewBtn" onclick="prepareWalletOnchainSend()">Review transaction</button>
+      <button class="btn btn-ghost" type="button" onclick="closeWalletOnchainSend()">Cancel</button>
+    </div>
+    <div class="wallet-modal-status" id="walletOnchainSendStatus" aria-live="polite"></div>
   </div>
 </div>
 
