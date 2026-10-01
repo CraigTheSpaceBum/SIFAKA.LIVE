@@ -21409,9 +21409,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               <span class="nests-room-listeners"><b>${displayCount}</b><small>listening</small></span>
             </div>
             ${topicHtml ? `<div class="nests-topic-row">${topicHtml}</div>` : ''}
-            \${availabilityHtml}
+            ${availabilityHtml}
             <div class="nests-room-actions">
-              <button class="btn btn-primary" type="button" data-action="join" data-room-url="\${escapeHtml(roomUrl)}" onclick="joinNestsRoom(\${JSON.stringify(roomUrl)})">\${live ? 'Join As Speak' : 'View Room'}</button>
+              <button class="btn btn-primary" type="button" data-action="join" data-room-url="${escapeHtml(roomUrl)}" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})">${live ? 'Join As Speak' : 'View Room'}</button>
             </div>
           </div>
         </article>`;
