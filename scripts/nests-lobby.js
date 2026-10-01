@@ -1074,7 +1074,8 @@
     } else {
       $('#nestPreviewSchedule', modal).innerHTML = '';
     }
-    $('#nestPreviewSchedule', modal).style.display = (starts && starts > now()) ? '' : 'none';
+    const showSchedule = !!start && (!live || !!end);
+    $('#nestPreviewSchedule', modal).style.display = showSchedule ? '' : 'none';
 
     const showProfile = function(pubkey, role) {
       if (roomPageMode && typeof window.showProfileByPubkey === 'function') {
@@ -1105,10 +1106,12 @@
       const prof = profiles.get(p.pubkey) || {};
       const name = profileDisplayName(prof);
       const picture = safeNestImageUrl(prof.picture);
+      const role = String(p.role || 'Participant');
       return '<button class="nest-person" type="button">' +
         '<span class="nest-person-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : '<span>' + esc(name.slice(0,1).toUpperCase()) + '</span>') + '</span>' +
-        '<span class="nest-person-copy"><strong>' + esc(name) + '</strong><small>' + esc(p.role || 'Participant') + '</small></span>' +
-        '<span class="nest-person-dot ' + roleClass(p.role) + '"></span></button>';
+        '<span class="nest-person-copy"><strong>' + esc(name) + '</strong><small>' + esc(role) + '</small></span>' +
+        '<span class="nest-person-role nest-person-role-' + roleClass(role) + '">' + esc(role) + '</span>' +
+        '<span class="nest-person-dot ' + roleClass(role) + '"></span></button>';
     }).join('');
     $('#nestPreviewPeople', modal).innerHTML = peopleHtml || '<div class="nest-preview-empty">No named speakers were published yet.</div>';
     Array.from($('#nestPreviewPeople', modal).querySelectorAll('.nest-person')).forEach(function(button, index) {
@@ -1220,7 +1223,9 @@
       });
       if (join) {
         join.disabled = true;
-        join.textContent = activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener';
+        join.textContent = activeRoomAudio.state === 'connected'
+          ? (activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener')
+          : 'Connecting…';
       }
       startActiveRoomPresence();
       startActiveRoomRefresh();
@@ -1431,14 +1436,21 @@
     });
 
     const chat = events.filter(function(e) { return Number(e.kind) === 1311; });
-    const profiles = await loadProfiles(Array.from(presence).concat(
-      (current ? pTags(current).map(function(p) { return p.pubkey; }) : [])
-    ));
-
-    const people = current ? pTags(current) : [];
-    if (decoded.pubkey && !people.some(function(p) { return p.pubkey === decoded.pubkey; })) {
-      people.unshift({ pubkey: decoded.pubkey, role: 'Host' });
+    const chatPubkeys = chat.map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean);
+    const roster = [];
+    (activeRoom && Array.isArray(activeRoom.participants) ? activeRoom.participants : []).forEach(function(p) {
+      if (p && p.pubkey && !roster.some(function(x) { return x.pubkey === p.pubkey; })) roster.push(p);
+    });
+    (current ? pTags(current) : []).forEach(function(p) {
+      if (p && p.pubkey && !roster.some(function(x) { return x.pubkey === p.pubkey; })) roster.push(p);
+    });
+    if (decoded.pubkey && !roster.some(function(p) { return p.pubkey === decoded.pubkey; })) {
+      roster.unshift({ pubkey: decoded.pubkey, role: 'Host' });
     }
+
+    const profiles = await loadProfiles(Array.from(new Set(
+      presence.concat(roster.map(function(p) { return p.pubkey; }), chatPubkeys)
+    )));
 
     activeRoom = Object.assign({}, activeRoom || {}, {
       pubkey: decoded.pubkey,
@@ -1446,8 +1458,8 @@
       a: decoded.a,
       status: current ? tag(current,'status') : (activeRoom && activeRoom.status) || 'open',
       relays: (activeRoom && activeRoom.relays) || [],
-      streaming: activeRoom && activeRoom.streaming || '',
-      participants: people,
+      streaming: (activeRoom && activeRoom.streaming) || '',
+      participants: roster,
       presence: presence
     });
     renderRoom({
@@ -1460,7 +1472,7 @@
       ends: current ? Number(tag(current,'ends') || 0) : 0,
       topics: current ? tags(current,'t') : [],
       currentParticipants: current ? Number(tag(current,'current_participants') || 0) : 0,
-      participants: people,
+      participants: roster,
       presence: presence,
       chat: chat,
       meeting: null,
@@ -1608,8 +1620,11 @@
         console.warn('[sifaka-nests] native room join failed', err);
       });
     };
-    window.leaveNestsRoom = function() {
-      leaveActiveRoom();
+    window.leaveNestsRoom = async function() {
+      try { await leaveActiveRoom(); } catch (_) {}
+      if (typeof window.showPage === 'function') {
+        window.showPage('nests', { routeMode: 'push' });
+      }
     };
     window.openNestsRoomPreview = function(url, fallback = {}) {
       const target = String(url || '').trim();
