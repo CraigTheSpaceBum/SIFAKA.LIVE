@@ -1076,6 +1076,17 @@ body.nest-preview-open{overflow:hidden}
   </div>
 </div>
 
+<!-- ========= NOSTR NEST ROOM PAGE ========= -->
+<div id="nestRoomPage" aria-live="polite">
+  <div class="nests-room-page-shell">
+    <div class="nests-room-page-head">
+      <button class="btn btn-ghost nests-room-back-btn" type="button" onclick="showPage('nests')">← Back to Nests</button>
+      <div class="nests-room-page-url" id="nestsRoomPageUrl"></div>
+    </div>
+    <div id="nestsRoomPageMount"></div>
+  </div>
+</div>
+
 <!-- ========= MY STREAMS PAGE ========= -->
 <div id="myStreamsPage">
   <div class="my-streams-page-wrap">
@@ -2063,8 +2074,8 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=2d5fb9e5" defer></script>
-<script src="scripts/nests-lobby.js?v=9ffa5759" defer></script>
+<script src="./nostrflux-app.js?v=nest-room-20261001" defer></script>
+<script src="scripts/nests-lobby.js?v=nest-room-20261001" defer></script>
 </body>
 </html>
 
