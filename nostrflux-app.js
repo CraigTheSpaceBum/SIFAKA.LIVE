@@ -7284,11 +7284,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     );
   }
 
-  function startDmBackfillSubscription(ownerPubkey, since, until) {
+  function startDmBackfillSubscription(ownerPubkey, since, until, opts = {}) {
     const owner = normalizePubkeyHex(ownerPubkey);
     if (!owner || !state.pool) return;
     if (state.dmBackfillSubId) return;
+
+    const peer = normalizePubkeyHex(opts.peerPubkey || '');
     state.dmBackfilling = true;
+    if (peer) state.dmBackfillExhaustedPeers.delete(peer);
 
     let backfillDone = false;
     const finishBackfill = () => {
@@ -7300,30 +7303,72 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (subId && state.pool) {
         try { state.pool.unsubscribe(subId); } catch (_) {}
       }
+
+      if (peer) {
+        const peerMessages = state.dmMessagesByPeer.get(peer) || [];
+        const oldestPeerMessage = peerMessages
+          .filter((message) => message && !message.activity && Number(message.created_at || 0) > 0)
+          .reduce((min, message) => Math.min(min, Number(message.created_at || Infinity)), Infinity);
+
+        if (Number.isFinite(oldestPeerMessage)) {
+          state.dmBackfillCursorByPeer.set(peer, oldestPeerMessage);
+        }
+        const oldestAllowed = Math.max(1, Math.floor(Date.now() / 1000) - DM_SYNC_LOOKBACK_SECONDS);
+        if (!Number.isFinite(oldestPeerMessage) || oldestPeerMessage <= oldestAllowed) {
+          state.dmBackfillExhaustedPeers.add(peer);
+        }
+
+        if (opts.expandVisibleOnFinish && isMessagesPageVisible() && normalizePubkeyHex(state.dmActivePeerPubkey) === peer) {
+          const currentLimit = Number(
+            state.dmThreadVisibleLimitByPeer.get(peer) ||
+            Math.min(DM_THREAD_INITIAL_LIMIT, peerMessages.length)
+          );
+          state.dmThreadVisibleLimitByPeer.set(
+            peer,
+            Math.min(peerMessages.length, currentLimit + DM_THREAD_PAGE_INCREMENT)
+          );
+        }
+      }
+
       if (isMessagesPageVisible()) {
         scheduleDmRender({ conversations: true, thread: true });
       }
     };
 
+    const relayUrls = [...(state.pool.urls || [])]
+      .map((url, index) => ({
+        url,
+        index,
+        ms: Number(state.relayPingMsByUrl && state.relayPingMsByUrl.get(url) || Number.POSITIVE_INFINITY)
+      }))
+      .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
+      .slice(0, Math.max(1, Math.min(DM_SYNC_RELAY_COUNT, state.pool.urls.length || 1)))
+      .map((item) => item.url);
+
     state.dmBackfillSubId = state.pool.subscribe(
-      [
-        { kinds: [KIND_DIRECT_MESSAGE], authors: [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION },
-        { kinds: [KIND_DIRECT_MESSAGE], '#p': [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION }
-      ],
+      peer
+        ? [
+            { kinds: [KIND_DIRECT_MESSAGE], authors: [owner], '#p': [peer], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION },
+            { kinds: [KIND_DIRECT_MESSAGE], authors: [peer], '#p': [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION }
+          ]
+        : [
+            { kinds: [KIND_DIRECT_MESSAGE], authors: [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION },
+            { kinds: [KIND_DIRECT_MESSAGE], '#p': [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION }
+          ],
       {
         event: (ev) => {
           const message = upsertDmMessageFromEvent(ev, owner);
           if (!message) return;
           if (!state.dmActivePeerPubkey) state.dmActivePeerPubkey = message.peerPubkey;
-          fetchProfileIfNeeded(message.peerPubkey);
-          if (isMessagesPageVisible()) {
+          if (isMessagesPageVisible() && normalizePubkeyHex(state.dmActivePeerPubkey) === message.peerPubkey) {
             scheduleDmRender({ conversations: true, thread: false });
           }
         },
         eose: () => {
           finishBackfill();
         }
-      }
+      },
+      { relayUrls }
     );
 
     setTimeout(finishBackfill, DM_SYNC_STATUS_TIMEOUT_MS + 3000);
