@@ -661,12 +661,27 @@
     return String(data.token);
   }
 
+  async function authenticateNestAudioWithRetry(roomEvent, namespace, publish) {
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await authenticateNestAudio(roomEvent, namespace, publish);
+      } catch (err) {
+        lastError = err;
+        if (attempt === 0) {
+          await new Promise(function(resolve) { setTimeout(resolve, 750); });
+        }
+      }
+    }
+    throw lastError || new Error('Nest audio authentication failed.');
+  }
+
   function normalizeNestStreamingUrl(value) {
     // Keep the room's advertised MoQ endpoint authoritative. Nostr Nests
     // publishes https://moq.nostrnests.com for production and the upstream
     // Nests client uses that URL unchanged; forcing :4443 breaks deployments
     // that terminate HTTPS/WebTransport on the public 443 endpoint.
-    const fallback = 'https://moq.nostrnests.com';
+    const fallback = 'https://moq.nostrnests.com:4443';
     try {
       const parsed = new URL(String(value || fallback));
       if (parsed.protocol === 'wss:' || parsed.protocol === 'ws:' || parsed.protocol === 'http:') {
@@ -1410,17 +1425,11 @@
     const namespace = 'nests/30312:' + activeRoomEvent.pubkey + ':' + d;
     const streamingUrl = normalizeNestStreamingUrl(tag(activeRoomEvent, 'streaming') || activeRoom.streaming || '');
 
-    let token = '';
-    if (publishRequested) {
-      token = await authenticateNestAudio(activeRoomEvent, namespace, true);
-    } else {
-      try {
-        token = await authenticateNestAudio(activeRoomEvent, namespace, false);
-      } catch (listenerErr) {
-        console.warn('[sifaka-nests] listener auth failed; trying without JWT', listenerErr);
-        token = '';
-      }
-    }
+    const token = await authenticateNestAudioWithRetry(
+      activeRoomEvent,
+      namespace,
+      !!publishRequested
+    );
 
     const bar = $('#nestRoomAudioBar', modal);
     const compose = $('#nestRoomChatCompose', modal);
