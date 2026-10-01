@@ -7136,8 +7136,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const peerProfile = profileFor(message.peerPubkey);
           if (peerProfile && peerProfile.nip05) ensureNip05Verification(message.peerPubkey, peerProfile.nip05).catch(() => {});
 
+          // Do not start remote-signer decrypts from the relay event stream.
+          // During initial sync this can enqueue dozens of requests for the
+          // selected peer at once. renderDmThread() already queues only the
+          // messages currently visible on screen, and new active-thread
+          // messages are picked up by that render path.
           const isActivePeer = normalizePubkeyHex(state.dmActivePeerPubkey) === normalizePubkeyHex(message.peerPubkey);
-          if (isActivePeer && isMessagesPageVisible()) queueDmDecrypt(message);
 
           if (isMessagesPageVisible()) {
             if (!message.mine && state.dmActivePeerPubkey === message.peerPubkey) markDmPeerRead(message.peerPubkey);
