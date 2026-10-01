@@ -14,6 +14,7 @@
   let activeRoom = null, activeRoomEvent = null, activeRoomRelays = [];
   let activeRoomAudio = null, activeRoomAudioModulesPromise = null;
   let activeRoomPresenceTimer = null, activeRoomRefreshTimer = null, activeRoomChatTimer = null;
+  const activeRoomRefreshInFlight = new Set();
   let activeRoomHandRaised = false;
   const NEST_QUICK_REACTIONS = ['🔥', '❤️', '👏', '😂', '🤙', '💯'];
   let roomPageMode = false, roomPageRoot = null, roomPageNaddr = '';
@@ -705,14 +706,18 @@
           join.textContent = state === 'connecting' ? 'Connecting…' : 'Reconnecting…';
         } else if (state === 'connected') {
           join.disabled = !!activeRoomAudio.isPublishing;
-          join.textContent = activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speakerer';
+          join.textContent = activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speaker';
         } else {
           join.disabled = false;
-          join.textContent = 'Join As Speakerer';
+          join.textContent = 'Join As Speaker';
         }
       }
     }
-    if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.micMuted ? 'Unmute Mic' : 'Mute Mic';
+    if (btn) {
+      const canPublish = !!(activeRoomAudio && activeRoomAudio.isPublishing);
+      btn.disabled = !canPublish;
+      btn.textContent = canPublish && activeRoomAudio.micMuted ? 'Unmute Mic' : 'Mute Mic';
+    }
     if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
     const micSlider = modal.querySelector('#nestRoomMicVolume');
     if (micSlider && activeRoomAudio) {
@@ -960,7 +965,7 @@
             '<input id="nestRoomChatInput" type="text" maxlength="1000" placeholder="Say something in the room…" aria-label="Send a Nest room message">' +
             '<button class="btn btn-primary" id="nestRoomChatSendBtn" type="button">Send</button>' +
           '</div>' +
-          '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speakerer</button></div>' +
+          '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speaker</button></div>' +
           '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
         '</div>' +
       '</div>';
@@ -1340,7 +1345,7 @@
     const joinButton = $('#nestPreviewJoinBtn', modal);
     if (joinButton) {
       joinButton.textContent = activeRoomAudio
-        ? (activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speakerer')
+        ? (activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speaker')
         : (live ? 'Join As Listener' : 'Open Nest');
       // A connected listener must remain upgradeable to speaker.
       joinButton.disabled = !!activeRoomAudio && !!activeRoomAudio.isPublishing;
@@ -1434,7 +1439,7 @@
       if (compose) compose.hidden = true;
       if (join) {
         join.disabled = false;
-        join.textContent = 'Join As Speakerer';
+        join.textContent = 'Join As Speaker';
       }
       modal.classList.remove('is-live-room');
       throw err;
@@ -1752,6 +1757,17 @@
   }
 
   async function refreshLiveRoom(url) {
+    const key = String(url || '');
+    if (!key || activeRoomRefreshInFlight.has(key)) return;
+    activeRoomRefreshInFlight.add(key);
+    try {
+      return await refreshLiveRoomNow(key);
+    } finally {
+      activeRoomRefreshInFlight.delete(key);
+    }
+  }
+
+  async function refreshLiveRoomNow(url) {
     const decoded = decodeRoom(url);
     if (!decoded || !modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
 
@@ -1846,7 +1862,9 @@
     });
 
     clearTimeout(liveRefreshTimer);
-    if (modal && modal.classList.contains('open') && activeRoomUrl === url) {
+    // A joined room already has its own 12s active-room refresh loop.
+    // Keep the preview timer only for rooms that have not been joined.
+    if (!activeRoomAudio && modal && modal.classList.contains('open') && activeRoomUrl === url) {
       liveRefreshTimer = setTimeout(function() { refreshLiveRoom(url); }, 12000);
     }
   }

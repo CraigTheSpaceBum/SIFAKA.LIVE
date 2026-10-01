@@ -21299,6 +21299,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       state.nestsPresence.clear();
     }
 
+    function chooseEffectiveNestsMeeting(meetings, nowTs = Math.floor(Date.now() / 1000)) {
+      const list = Object.values(meetings || {})
+        .filter(Boolean)
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+      const active = list.find((meeting) => {
+        const status = String(meeting.status || '').toLowerCase();
+        const starts = Number(meeting.starts || 0);
+        const ends = Number(meeting.ends || 0);
+        if (starts && starts <= nowTs && (!ends || ends > nowTs)) return true;
+        if ((status === 'live' || status === 'open') && (!ends || ends > nowTs)) return true;
+        return false;
+      });
+      if (active) return active;
+      const upcoming = list
+        .filter((meeting) => Number(meeting.starts || 0) > nowTs)
+        .sort((a, b) => Number(a.starts || 0) - Number(b.starts || 0) || Number(b.createdAt || 0) - Number(a.createdAt || 0));
+      return upcoming[0] || list[0] || null;
+    }
+
     function parseNestsEvent(ev) {
       const tags = Array.isArray(ev && ev.tags) ? ev.tags : [];
       const tag = (name) => {
@@ -21494,17 +21513,30 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             if (!room) return;
             const key = room.roomRef;
             const existing = state.nestsRooms.get(key) || {};
-            const timestampKey = room.kind === 30313 ? '_kind30313CreatedAt' : '_kind30312CreatedAt';
             const incomingCreatedAt = Number(room.createdAt || 0);
-            const previousCreatedAt = Number(existing[timestampKey] || 0);
-            // Relay delivery order is not guaranteed. Never let an older room
-            // or meeting event overwrite newer state already rendered.
-            if (incomingCreatedAt < previousCreatedAt) return;
+            const meetingMap = { ...(existing._meetingsByD || {}) };
+
+            if (room.kind === 30312) {
+              const previousRoomCreatedAt = Number(existing._kind30312CreatedAt || 0);
+              // Relay delivery order is not guaranteed for room metadata.
+              if (incomingCreatedAt < previousRoomCreatedAt) return;
+            } else {
+              const previousMeeting = meetingMap[room.d] || null;
+              const previousMeetingCreatedAt = Number(previousMeeting && previousMeeting.createdAt || 0);
+              // Kind 30313 is parameterized-replaceable by d-tag. Different
+              // meetings in the same room must coexist.
+              if (previousMeeting && incomingCreatedAt < previousMeetingCreatedAt) return;
+              meetingMap[room.d] = room;
+            }
+
+            if (room.kind === 30313) meetingMap[room.d] = room;
+            const selectedMeeting = chooseEffectiveNestsMeeting(meetingMap);
 
             const merged = {
               ...existing,
               ...room,
-              [timestampKey]: incomingCreatedAt,
+              _meetingsByD: meetingMap,
+              ...(room.kind === 30312 ? { _kind30312CreatedAt: incomingCreatedAt } : {}),
               ...(room.kind === 30313 ? {
                 pubkey: existing.pubkey || (room.parentATag || '').split(':')[1] || room.pubkey,
                 d: existing.d || (room.parentATag || '').split(':').slice(2).join(':') || room.d,
@@ -21514,16 +21546,28 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
                 image: room.image || existing.image
               } : {})
             };
-            // A 30313 meeting commonly omits room metadata; preserve the
-            // canonical 30312 room values instead of replacing them with blanks.
-            if (room.kind === 30313) {
-              if (!room.participantPubkeys.length && existing.participantPubkeys) merged.participantPubkeys = existing.participantPubkeys;
-              if (!room.participantRoles.length && existing.participantRoles) merged.participantRoles = existing.participantRoles;
-              if (!room.relays.length && existing.relays) merged.relays = existing.relays;
-              if (!room.topics.length && existing.topics) merged.topics = existing.topics;
-              if (!room.image && existing.image) merged.image = existing.image;
-              if (!room.summary && existing.summary) merged.summary = existing.summary;
+
+            if (selectedMeeting) {
+              // Select the live meeting first, otherwise the next scheduled
+              // meeting, otherwise the newest historical meeting.
+              merged.status = selectedMeeting.status || merged.status || 'open';
+              merged.starts = Number(selectedMeeting.starts || 0) || merged.starts || 0;
+              merged.ends = Number(selectedMeeting.ends || 0) || merged.ends || 0;
+              merged.participants = Number(selectedMeeting.participants || 0);
+              merged.participantPubkeys = selectedMeeting.participantPubkeys?.length
+                ? selectedMeeting.participantPubkeys
+                : (existing.participantPubkeys || []);
+              merged.participantRoles = selectedMeeting.participantRoles?.length
+                ? selectedMeeting.participantRoles
+                : (existing.participantRoles || []);
+              merged.relays = selectedMeeting.relays?.length ? selectedMeeting.relays : (existing.relays || []);
+              merged.topics = selectedMeeting.topics?.length ? selectedMeeting.topics : (existing.topics || []);
+              merged.title = selectedMeeting.title || merged.title || 'Nostr Nest';
+              merged.summary = selectedMeeting.summary || merged.summary || '';
+              merged.image = selectedMeeting.image || merged.image || '';
+              merged._effectiveMeetingD = selectedMeeting.d || '';
             }
+
             state.nestsRooms.set(key, merged);
             if (room.pubkey) fetchProfileIfNeeded(room.pubkey).then(() => renderNestsPage()).catch(() => {});
             renderNestsPage();
