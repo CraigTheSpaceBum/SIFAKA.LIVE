@@ -21307,9 +21307,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const status = String(meeting.status || '').toLowerCase();
         const starts = Number(meeting.starts || 0);
         const ends = Number(meeting.ends || 0);
-        if (starts && starts <= nowTs && (!ends || ends > nowTs)) return true;
-        if ((status === 'live' || status === 'open') && (!ends || ends > nowTs)) return true;
-        return false;
+        if (status === 'ended' || status === 'closed' || (ends && ends <= nowTs)) return false;
+        if (status === 'live' || status === 'open') return !starts || starts <= nowTs;
+        if (status === 'planned') return starts > 0 && starts <= nowTs;
+        return !!(starts && starts <= nowTs && (!ends || ends > nowTs));
       });
       if (active) return active;
       const upcoming = list
