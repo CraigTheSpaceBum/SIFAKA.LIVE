@@ -729,7 +729,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const value = String(address || '').trim();
     if (!value) return '';
     if (value.length <= 22) return value;
-    return value.slice(0, 10) + '…' + value.slice(-8);
+    return value.slice(0, 20) + '…';
   }
 
   async function getProfileBitcoinAddress(pubkey) {
@@ -19418,6 +19418,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (bitcoinBio) {
           bitcoinBio.textContent = 'On Chain ' + shortBitcoinAddress(address);
           bitcoinBio.title = 'Send Bitcoin to ' + address;
+          bitcoinBio.setAttribute('aria-label', 'Send Bitcoin to ' + String(p.display_name || p.name || 'this profile').trim());
           bitcoinBio.disabled = false;
           bitcoinBio.onclick = function (event) {
             if (event) {
