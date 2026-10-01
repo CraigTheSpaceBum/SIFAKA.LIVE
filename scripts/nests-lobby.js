@@ -237,9 +237,10 @@
     if (!activeRoomAudioModulesPromise) {
       activeRoomAudioModulesPromise = Promise.all([
         import('https://esm.sh/@moq/lite@0.1.7'),
-        import('https://esm.sh/@moq/watch@0.2.3')
+        import('https://esm.sh/@moq/watch@0.2.3'),
+        import('https://esm.sh/@moq/publish@0.2.3')
       ]).then(function(modules) {
-        return { Moq: modules[0], Watch: modules[1] };
+        return { Moq: modules[0], Watch: modules[1], Publish: modules[2] };
       });
     }
     return activeRoomAudioModulesPromise;
@@ -266,8 +267,13 @@
       this.statusDispose = null;
       this.pollTimer = null;
       this.identity = '';
+      this.publishRequested = false;
+      this.isPublishing = false;
+      this.microphone = null;
+      this.publishBroadcast = null;
       this.Moq = null;
       this.Watch = null;
+      this.Publish = null;
     }
 
     onStateChange(cb) {
@@ -286,7 +292,9 @@
       const libs = await loadNestAudioModules();
       this.Moq = libs.Moq;
       this.Watch = libs.Watch;
-      this.identity = String(config.identity || '');
+      this.Publish = libs.Publish;
+      this.identity = String(config.identity || '').toLowerCase();
+      this.publishRequested = !!config.publish;
       this.emitState('connecting');
 
       const relayUrl = new URL(String(config.serverUrl));
@@ -307,14 +315,65 @@
           if (status === 'connected') {
             self.emitState('connected');
             self.startAnnouncements();
+            if (self.publishRequested && !self.isPublishing) {
+              self.startMicrophonePublish().catch(function(err) {
+                console.warn('[sifaka-nests] microphone publish unavailable; continuing as listener', err);
+              });
+            }
           } else if (status === 'connecting') {
             self.emitState(self.state === 'disconnected' ? 'connecting' : 'reconnecting');
           } else if (status === 'disconnected') {
             self.emitState('disconnected');
             self.stopAnnouncements();
+            self.closeMicrophonePublish();
           }
         });
       }
+
+      const initialState = this.connection.status && this.connection.status.peek
+        ? this.connection.status.peek()
+        : 'connecting';
+      if (initialState === 'connected') {
+        this.emitState('connected');
+        this.startAnnouncements();
+        if (this.publishRequested && !this.isPublishing) {
+          try { await this.startMicrophonePublish(); } catch (err) {
+            console.warn('[sifaka-nests] microphone publish unavailable; continuing as listener', err);
+          }
+        }
+      }
+    }
+
+    async startMicrophonePublish() {
+      if (!this.connection || !this.Publish || this.isPublishing) return;
+      this.closeMicrophonePublish();
+      const microphone = new this.Publish.Source.Microphone({ enabled: true });
+      const broadcast = new this.Publish.Broadcast({
+        connection: this.connection.established,
+        enabled: true,
+        name: this.Moq.Path.from(this.identity),
+        audio: {
+          source: microphone.source,
+          enabled: true
+        }
+      });
+      this.microphone = microphone;
+      this.publishBroadcast = broadcast;
+      this.isPublishing = true;
+      updateActiveRoomAudioUi();
+    }
+
+    closeMicrophonePublish() {
+      if (this.publishBroadcast) {
+        try { this.publishBroadcast.close(); } catch (_) {}
+        this.publishBroadcast = null;
+      }
+      if (this.microphone) {
+        try { this.microphone.close(); } catch (_) {}
+        this.microphone = null;
+      }
+      this.isPublishing = false;
+      updateActiveRoomAudioUi();
     }
 
     startAnnouncements() {
@@ -406,6 +465,7 @@
 
     async disconnect() {
       this.stopAnnouncements();
+      this.closeMicrophonePublish();
       if (this.statusDispose) {
         try { this.statusDispose(); } catch (_) {}
         this.statusDispose = null;
@@ -420,7 +480,6 @@
       this.emitState('disconnected');
     }
   }
-
   function roomRelayUrls(room, decoded) {
     const ctx = getSifakaContext();
     const defaults = ctx && typeof ctx.getRelays === 'function' ? ctx.getRelays() : [];
@@ -482,10 +541,10 @@
     if (!results.some(Boolean)) throw new Error('Could not publish the Nest event to any room relay.');
   }
 
-  async function authenticateNestAudio(roomEvent, namespace) {
+  async function authenticateNestAudio(roomEvent, namespace, publish) {
     const ctx = getSifakaContext();
     const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
-    if (!user || typeof ctx.signEvent !== 'function') return '';
+    if (!user || typeof ctx.signEvent !== 'function') throw new Error('Please sign in to join Nest audio.');
     const authUrl = tag(roomEvent, 'auth') || 'https://moq-auth.nostrnests.com';
     const endpoint = authUrl.replace(/\/$/, '') + '/auth';
     const signed = await ctx.signEvent(27235, '', [['u', endpoint], ['method', 'POST']]);
@@ -495,11 +554,30 @@
         'Content-Type': 'application/json',
         Authorization: 'Nostr ' + btoa(JSON.stringify(signed))
       },
-      body: JSON.stringify({ namespace: namespace, publish: false })
+      body: JSON.stringify({ namespace: namespace, publish: !!publish })
     });
-    if (!response.ok) throw new Error('Nest audio authentication failed (' + response.status + ').');
+    if (!response.ok) {
+      const detail = (await response.text().catch(function() { return ''; })).trim();
+      throw new Error('Nest audio authentication failed (' + response.status + ')' + (detail ? ': ' + detail : '.'));
+    }
     const data = await response.json();
-    return String(data.token || '');
+    if (!data || !data.token) throw new Error('Nest audio authentication returned no token.');
+    return String(data.token);
+  }
+
+  function normalizeNestStreamingUrl(value) {
+    const fallback = 'https://moq.nostrnests.com:4443';
+    try {
+      const parsed = new URL(String(value || fallback));
+      if ((parsed.protocol === 'https:' || parsed.protocol === 'http:')
+        && parsed.hostname.toLowerCase() === 'moq.nostrnests.com'
+        && !parsed.port) {
+        parsed.port = '4443';
+      }
+      return parsed.toString().replace(/\/$/, '');
+    } catch (_) {
+      return fallback;
+    }
   }
 
   function updateActiveRoomAudioUi() {
@@ -948,11 +1026,7 @@
   }
 
   async function enterActiveRoom() {
-    if (!activeRoomUrl) return;
-    if (activeRoomAudio) {
-      await leaveActiveRoom();
-      return;
-    }
+    if (!activeRoomUrl || activeRoomAudio) return;
     if (!activeRoomEvent || !activeRoom) {
       await openPreview(activeRoomUrl, {
         title: $('#nestPreviewTitle', modal)?.textContent || 'Nostr Nest',
@@ -968,15 +1042,23 @@
     const ctx = getSifakaContext();
     const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
     if (!user) throw new Error('Please sign in to join Nest audio.');
+
     const d = String(tag(activeRoomEvent, 'd') || activeRoom.d || '');
     const namespace = 'nests/30312:' + activeRoomEvent.pubkey + ':' + d;
-    const streamingUrl = tag(activeRoomEvent, 'streaming') || activeRoom.streaming || 'https://moq.nostrnests.com:4443';
+    const streamingUrl = normalizeNestStreamingUrl(tag(activeRoomEvent, 'streaming') || activeRoom.streaming || '');
+
     let token = '';
-    if (user) {
+    let publish = true;
+    try {
+      token = await authenticateNestAudio(activeRoomEvent, namespace, true);
+    } catch (speakerErr) {
+      console.warn('[sifaka-nests] speaker auth failed; retrying listener auth', speakerErr);
+      publish = false;
       try {
-        token = await authenticateNestAudio(activeRoomEvent, namespace);
-      } catch (err) {
-        console.warn('[sifaka-nests] audio auth failed; trying public listener mode', err);
+        token = await authenticateNestAudio(activeRoomEvent, namespace, false);
+      } catch (listenerErr) {
+        console.warn('[sifaka-nests] listener auth failed; trying without JWT', listenerErr);
+        token = '';
       }
     }
 
@@ -990,6 +1072,8 @@
       join.disabled = true;
       join.classList.remove('btn-danger');
     }
+    const leaveButton = $('#nestRoomLeaveBtn', modal);
+    if (leaveButton) leaveButton.disabled = false;
     modal.classList.add('is-live-room');
 
     activeRoomAudio = new SifakaNestAudioTransport();
@@ -999,13 +1083,13 @@
       await activeRoomAudio.connect({
         serverUrl: streamingUrl,
         namespace: namespace,
-        identity: user ? String(user.pubkey) : '',
-        token: token
+        identity: String(user.pubkey),
+        token: token,
+        publish: publish
       });
       if (join) {
-        join.disabled = false;
-        join.textContent = 'Leave Nest';
-        join.classList.add('btn-danger');
+        join.disabled = true;
+        join.textContent = activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener';
       }
       startActiveRoomPresence();
       startActiveRoomRefresh();
@@ -1019,7 +1103,7 @@
       if (compose) compose.hidden = true;
       if (join) {
         join.disabled = false;
-        join.textContent = 'Join Nest';
+        join.textContent = 'Join As Speak';
       }
       modal.classList.remove('is-live-room');
       throw err;
