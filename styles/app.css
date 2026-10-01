@@ -7452,3 +7452,23 @@ body.nest-room-page-open{
   #nestRoomPage .nest-room-volume input{width:100%}
   #nestRoomPage .nest-room-chat-compose{margin-top:.45rem}
 }
+
+/* NOSTR NEST — second-pass interaction polish */
+.nests-room-card{cursor:pointer}
+.nests-room-card:focus-within{border-color:color-mix(in srgb,var(--purple) 45%,var(--border));box-shadow:0 18px 44px rgba(0,0,0,.16)}
+.nests-card-availability{position:relative}
+#nestRoomPage .nest-person{position:relative;text-align:left}
+#nestRoomPage .nest-person-role{
+  display:inline-flex;align-items:center;justify-content:center;
+  margin-left:auto;padding:.22rem .4rem;border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--surface3);
+  color:var(--muted);
+  font:700 .47rem/1 "DM Mono",monospace;
+  text-transform:uppercase;letter-spacing:.05em;
+}
+#nestRoomPage .nest-person-role-host{color:var(--purple);border-color:color-mix(in srgb,var(--purple) 30%,var(--border));background:color-mix(in srgb,var(--purple) 8%,var(--surface3))}
+#nestRoomPage .nest-person-role-speaker{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 30%,var(--border));background:color-mix(in srgb,var(--accent) 7%,var(--surface3))}
+#nestRoomPage .nest-person-role-moderator{color:var(--live);border-color:color-mix(in srgb,var(--live) 30%,var(--border));background:color-mix(in srgb,var(--live) 7%,var(--surface3))}
+#nestRoomPage .nest-preview-section-head{display:flex;align-items:center;justify-content:space-between}
+#nestRoomPage .nests-room-page-people-column .nest-preview-section:first-child{margin-top:0}

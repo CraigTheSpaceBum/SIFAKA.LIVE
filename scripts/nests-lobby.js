@@ -236,9 +236,9 @@
   async function loadNestAudioModules() {
     if (!activeRoomAudioModulesPromise) {
       activeRoomAudioModulesPromise = Promise.all([
-        import('https://esm.sh/@moq/lite@0.1.7'),
-        import('https://esm.sh/@moq/watch@0.2.3'),
-        import('https://esm.sh/@moq/publish@0.2.3')
+        import('https://esm.sh/@moq/lite@0.3.0'),
+        import('https://esm.sh/@moq/watch@0.5.2'),
+        import('https://esm.sh/@moq/publish@0.4.5')
       ]).then(function(modules) {
         return { Moq: modules[0], Watch: modules[1], Publish: modules[2] };
       });
@@ -569,10 +569,13 @@
     const fallback = 'https://moq.nostrnests.com:4443';
     try {
       const parsed = new URL(String(value || fallback));
-      if ((parsed.protocol === 'https:' || parsed.protocol === 'http:')
-        && parsed.hostname.toLowerCase() === 'moq.nostrnests.com'
-        && !parsed.port) {
-        parsed.port = '4443';
+      const host = parsed.hostname.toLowerCase();
+      if (host === 'moq.nostrnests.com') {
+        if (parsed.protocol === 'wss:' || parsed.protocol === 'ws:' || parsed.protocol === 'http:') {
+          parsed.protocol = 'https:';
+        }
+        if (!parsed.port) parsed.port = '4443';
+        parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '';
       }
       return parsed.toString().replace(/\/$/, '');
     } catch (_) {
@@ -1074,7 +1077,8 @@
     } else {
       $('#nestPreviewSchedule', modal).innerHTML = '';
     }
-    $('#nestPreviewSchedule', modal).style.display = (starts && starts > now()) ? '' : 'none';
+    const showSchedule = !!start && (!live || !!end);
+    $('#nestPreviewSchedule', modal).style.display = showSchedule ? '' : 'none';
 
     const showProfile = function(pubkey, role) {
       if (roomPageMode && typeof window.showProfileByPubkey === 'function') {
@@ -1105,10 +1109,12 @@
       const prof = profiles.get(p.pubkey) || {};
       const name = profileDisplayName(prof);
       const picture = safeNestImageUrl(prof.picture);
+      const role = String(p.role || 'Participant');
       return '<button class="nest-person" type="button">' +
         '<span class="nest-person-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : '<span>' + esc(name.slice(0,1).toUpperCase()) + '</span>') + '</span>' +
-        '<span class="nest-person-copy"><strong>' + esc(name) + '</strong><small>' + esc(p.role || 'Participant') + '</small></span>' +
-        '<span class="nest-person-dot ' + roleClass(p.role) + '"></span></button>';
+        '<span class="nest-person-copy"><strong>' + esc(name) + '</strong><small>' + esc(role) + '</small></span>' +
+        '<span class="nest-person-role nest-person-role-' + roleClass(role) + '">' + esc(role) + '</span>' +
+        '<span class="nest-person-dot ' + roleClass(role) + '"></span></button>';
     }).join('');
     $('#nestPreviewPeople', modal).innerHTML = peopleHtml || '<div class="nest-preview-empty">No named speakers were published yet.</div>';
     Array.from($('#nestPreviewPeople', modal).querySelectorAll('.nest-person')).forEach(function(button, index) {
@@ -1220,7 +1226,9 @@
       });
       if (join) {
         join.disabled = true;
-        join.textContent = activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener';
+        join.textContent = activeRoomAudio.state === 'connected'
+          ? (activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener')
+          : 'Connecting…';
       }
       startActiveRoomPresence();
       startActiveRoomRefresh();
@@ -1431,14 +1439,21 @@
     });
 
     const chat = events.filter(function(e) { return Number(e.kind) === 1311; });
-    const profiles = await loadProfiles(Array.from(presence).concat(
-      (current ? pTags(current).map(function(p) { return p.pubkey; }) : [])
-    ));
-
-    const people = current ? pTags(current) : [];
-    if (decoded.pubkey && !people.some(function(p) { return p.pubkey === decoded.pubkey; })) {
-      people.unshift({ pubkey: decoded.pubkey, role: 'Host' });
+    const chatPubkeys = chat.map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean);
+    const roster = [];
+    (activeRoom && Array.isArray(activeRoom.participants) ? activeRoom.participants : []).forEach(function(p) {
+      if (p && p.pubkey && !roster.some(function(x) { return x.pubkey === p.pubkey; })) roster.push(p);
+    });
+    (current ? pTags(current) : []).forEach(function(p) {
+      if (p && p.pubkey && !roster.some(function(x) { return x.pubkey === p.pubkey; })) roster.push(p);
+    });
+    if (decoded.pubkey && !roster.some(function(p) { return p.pubkey === decoded.pubkey; })) {
+      roster.unshift({ pubkey: decoded.pubkey, role: 'Host' });
     }
+
+    const profiles = await loadProfiles(Array.from(new Set(
+      presence.concat(roster.map(function(p) { return p.pubkey; }), chatPubkeys)
+    )));
 
     activeRoom = Object.assign({}, activeRoom || {}, {
       pubkey: decoded.pubkey,
@@ -1446,8 +1461,8 @@
       a: decoded.a,
       status: current ? tag(current,'status') : (activeRoom && activeRoom.status) || 'open',
       relays: (activeRoom && activeRoom.relays) || [],
-      streaming: activeRoom && activeRoom.streaming || '',
-      participants: people,
+      streaming: (activeRoom && activeRoom.streaming) || '',
+      participants: roster,
       presence: presence
     });
     renderRoom({
@@ -1460,7 +1475,7 @@
       ends: current ? Number(tag(current,'ends') || 0) : 0,
       topics: current ? tags(current,'t') : [],
       currentParticipants: current ? Number(tag(current,'current_participants') || 0) : 0,
-      participants: people,
+      participants: roster,
       presence: presence,
       chat: chat,
       meeting: null,
@@ -1569,31 +1584,34 @@
     }
   };
 
-  function interceptJoinClicks(e) {
-    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
+  function openRoomFromCard(card, event) {
     if (!card) return;
-
-    const interactive = e.target.closest('button,a,input,textarea,select');
-    if (interactive && !interactive.matches(
-      '.nests-room-cover-btn, .nests-room-actions .btn-primary, .nests-room-join, [data-action="join"]'
-    )) {
-      return;
-    }
-
-    const primary = card.querySelector(
-      '.nests-room-actions .btn-primary, .nests-room-cover-btn, .nests-room-join, [data-action="join"]'
-    ) || card;
-    const fallback = getCardFallback(primary);
-    if (!fallback.url) return;
-
-    const naddr = normalizeRoomNaddr(fallback.url);
+    const target = String(card.getAttribute('data-room-url') || '').trim();
+    const naddr = normalizeRoomNaddr(target);
     if (!naddr) return;
-
-    e.preventDefault();
-    e.stopImmediatePropagation();
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     if (typeof window.openNestsRoomPage === 'function') {
       window.openNestsRoomPage(naddr, { routeMode: 'push', autoJoin: true });
     }
+  }
+
+  function interceptJoinClicks(e) {
+    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
+    if (!card) return;
+    if (e.target.closest && e.target.closest('.nests-card-share')) return;
+    openRoomFromCard(card, e);
+  }
+
+  function interceptNestCardKeydown(e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
+    if (!card) return;
+    if (e.target.closest && e.target.closest('.nests-card-share')) return;
+    e.preventDefault();
+    openRoomFromCard(card, e);
   }
 
   function boot() {
@@ -1608,8 +1626,11 @@
         console.warn('[sifaka-nests] native room join failed', err);
       });
     };
-    window.leaveNestsRoom = function() {
-      leaveActiveRoom();
+    window.leaveNestsRoom = async function() {
+      try { await leaveActiveRoom(); } catch (_) {}
+      if (typeof window.showPage === 'function') {
+        window.showPage('nests', { routeMode: 'push' });
+      }
     };
     window.openNestsRoomPreview = function(url, fallback = {}) {
       const target = String(url || '').trim();
@@ -1642,6 +1663,7 @@
     }
     if (!grid) return;
     grid.addEventListener('click', interceptJoinClicks, true);
+    grid.addEventListener('keydown', interceptNestCardKeydown, true);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });

@@ -21391,11 +21391,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const availabilityHtml = dropIn
           ? '<div class="nests-card-availability"><strong>Drop-in room</strong><span>Join whenever the room is open.</span></div>'
           : (room.starts && !live ? '<div class="nests-card-availability"><strong>Starts ' + escapeHtml(new Date(room.starts * 1000).toLocaleString()) + '</strong><span>Come back when the room goes live.</span></div>' : '');
-        return `<article class="nests-room-card">
-          <button class="nests-room-cover nests-room-cover-btn" type="button" data-action="join" data-room-url="${escapeHtml(roomUrl)}" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})" aria-label="Open ${title}">
+        return `<article class="nests-room-card" data-room-url="${escapeHtml(roomUrl)}">
+          <button class="nests-room-cover nests-room-cover-btn" type="button" aria-label="Open ${title}">
             ${img}
             <span class="nests-live-badge ${live ? 'is-live' : ''}"><i></i>${statusLabel}</span>
-            <span class="nests-cover-action">${live ? 'Join As Speak' : 'View room'} <b>→</b></span>
+            <span class="nests-cover-action">Open room <b>→</b></span>
           </button>
           <div class="nests-room-body">
             <div class="nests-room-title-row">
@@ -21410,9 +21410,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             </div>
             ${topicHtml ? `<div class="nests-topic-row">${topicHtml}</div>` : ''}
             ${availabilityHtml}
-            <div class="nests-room-actions">
-              <button class="btn btn-primary" type="button" data-action="join" data-room-url="${escapeHtml(roomUrl)}" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})">${live ? 'Join As Speak' : 'View Room'}</button>
-            </div>
           </div>
         </article>`;
       }).join('');
