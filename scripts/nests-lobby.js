@@ -1274,16 +1274,31 @@
       const name = profileDisplayName(prof);
       const picture = safeNestImageUrl(prof.picture);
       const role = String(p.role || 'Participant');
-      return '<button class="nest-person" type="button">' +
-        '<span class="nest-person-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : '<span>' + esc(name.slice(0,1).toUpperCase()) + '</span>') + '</span>' +
-        '<span class="nest-person-copy"><strong>' + esc(name) + '</strong><small>' + esc(role) + '</small></span>' +
-        '<span class="nest-person-role nest-person-role-' + roleClass(role) + '">' + esc(role) + '</span>' +
-        '<span class="nest-person-dot ' + roleClass(role) + '"></span></button>';
+      const handRaised = room.handRaisedPubkeys && room.handRaisedPubkeys.has(p.pubkey);
+      const own = activeRoomAudio && activeRoomAudio.identity === String(p.pubkey || '').toLowerCase();
+      const speakerVolume = activeRoomAudio ? Math.round(activeRoomAudio.getParticipantVolume(p.pubkey) * 100) : 100;
+      return '<div class="nest-person-wrap">' +
+        '<button class="nest-person" type="button">' +
+          '<span class="nest-person-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : '<span>' + esc(name.slice(0,1).toUpperCase()) + '</span>') + '</span>' +
+          '<span class="nest-person-copy"><strong>' + esc(name) + '</strong><small>' + esc(role) + (handRaised ? ' · ✋' : '') + '</small></span>' +
+          '<span class="nest-person-role nest-person-role-' + roleClass(role) + '">' + esc(role) + '</span>' +
+          '<span class="nest-person-dot ' + roleClass(role) + '"></span></button>' +
+        '<label class="nest-person-volume"><span>Speaker volume</span><input class="nest-person-volume-input" type="range" min="0" max="100" value="' + speakerVolume + '" data-pubkey="' + esc(p.pubkey) + '" aria-label="Volume for ' + esc(name) + '"' + (own ? ' disabled' : '') + '></label>' +
+      '</div>';
     }).join('');
     $('#nestPreviewPeople', modal).innerHTML = peopleHtml || '<div class="nest-preview-empty">No named speakers were published yet.</div>';
     Array.from($('#nestPreviewPeople', modal).querySelectorAll('.nest-person')).forEach(function(button, index) {
       const person = ordered[index];
       if (person) button.addEventListener('click', function() { showProfile(person.pubkey, person.role); });
+    });
+    Array.from($('#nestPreviewPeople', modal).querySelectorAll('.nest-person-volume-input')).forEach(function(input) {
+      input.addEventListener('input', function() {
+        if (!activeRoomAudio) return;
+        activeRoomAudio.setParticipantVolume(input.getAttribute('data-pubkey'), Number(input.value) / 100);
+      });
+    });
+    Array.from($('#nestPreviewPeople', modal).querySelectorAll('.nest-person-volume')).forEach(function(label) {
+      label.addEventListener('click', function(e) { e.stopPropagation(); });
     });
     $('#nestPreviewPeopleCount', modal).textContent = ordered.length ? ordered.length + ' shown' : '';
 
