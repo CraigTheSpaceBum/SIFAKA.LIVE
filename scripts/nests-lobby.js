@@ -1408,7 +1408,6 @@
     const value = normalizeRoomNaddr(url);
     if (!value) return false;
     if (typeof window.showPage !== 'function') return false;
-    state.pendingNestsRoomNaddr = value;
     window.showPage('nestsRoom', {
       routeMode: opts.routeMode || 'push',
       roomNaddr: value
