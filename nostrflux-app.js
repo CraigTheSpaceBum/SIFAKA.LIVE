@@ -21425,12 +21425,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     window.joinNestsRoom = function(url) {
       const target = String(url || '').trim();
       if (!target) return;
-      if (typeof window.enterNestsRoom === 'function') {
-        window.enterNestsRoom(target);
+      if (typeof window.openNestsRoomPage === 'function') {
+        window.openNestsRoomPage(target, { routeMode: 'push' });
         return;
       }
-      if (typeof window.openNestsRoomPreview === 'function') {
-        window.openNestsRoomPreview(target);
+      if (typeof window.enterNestsRoom === 'function') {
+        window.enterNestsRoom(target);
       }
     };
 
