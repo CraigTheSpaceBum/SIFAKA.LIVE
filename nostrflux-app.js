@@ -171,17 +171,18 @@
   const FOLLOWING_STORAGE_KEY = 'nostrflux_following_pubkeys_v1';
   const DM_LAST_READ_STORAGE_KEY = 'nostrflux_dm_last_read_v1';
   const DM_LOCAL_ACTIVITY_STORAGE_KEY = 'nostrflux_dm_local_activity_v1';
-  const DM_THREAD_INITIAL_LIMIT = 24;
+  const DM_THREAD_INITIAL_LIMIT = 12;
   const DM_THREAD_PAGE_INCREMENT = 120;
   const DM_RENDER_BATCH_DELAY_MS = 80;
-  const DM_DECRYPT_CONCURRENCY = 2;
+  const DM_DECRYPT_CONCURRENCY = 1;
   const DM_SYNC_LOOKBACK_YEARS = 48;
   const DM_SYNC_LOOKBACK_SECONDS = 60 * 60 * 24 * 365 * DM_SYNC_LOOKBACK_YEARS;
   // Keep the first DM view fast. Older history is still available through the backfill path.
   const DM_SYNC_RECENT_YEARS = 1;
   const DM_SYNC_RECENT_SECONDS = 60 * 60 * 24 * 365 * DM_SYNC_RECENT_YEARS;
   const DM_SYNC_STATUS_TIMEOUT_MS = 4000;
-  const DM_SYNC_LIMIT_PER_DIRECTION = 160;
+  const DM_SYNC_LIMIT_PER_DIRECTION = 80;
+  const DM_SYNC_RELAY_COUNT = 6;
   const DM_BACKFILL_LIMIT_PER_DIRECTION = 240;
   const DM_DECRYPT_QUEUE_SOFT_CAP = 1800;
   const DM_PER_PEER_MEMORY_CAP = 1200;
@@ -471,6 +472,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     dmThreadVisibleLimitByPeer: new Map(),
     dmDecryptQueue: [],
     dmDecryptWorkers: 0,
+    dmDecryptPumpTimer: null,
     dmLikedMessageIds: new Set(),
     dmEmojiReactionsByMessageId: new Map(),
     dmAddressBookOpen: false,
@@ -5410,6 +5412,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.dmRenderScrollToBottom = false;
     state.dmDecryptQueue = [];
     state.dmDecryptWorkers = 0;
+    if (state.dmDecryptPumpTimer) {
+      clearTimeout(state.dmDecryptPumpTimer);
+      state.dmDecryptPumpTimer = null;
+    }
     state.dmDecryptPendingIds = new Set();
     state.dmSyncing = false;
     state.dmBackfilling = false;
@@ -7042,11 +7048,32 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     throw new Error('Login required for encrypted DM sending.');
   }
 
+  function scheduleDmDecryptPump(delayMs = 0) {
+    if (state.dmDecryptPumpTimer) return;
+    state.dmDecryptPumpTimer = setTimeout(() => {
+      state.dmDecryptPumpTimer = null;
+      pumpDmDecryptQueue();
+    }, Math.max(0, Number(delayMs) || 0));
+  }
+
   function pumpDmDecryptQueue() {
-    while (state.dmDecryptWorkers < DM_DECRYPT_CONCURRENCY && state.dmDecryptQueue.length) {
-      const message = state.dmDecryptQueue.shift();
-      if (!message || !message.id) continue;
-      state.dmDecryptWorkers += 1;
+    const concurrency = Math.max(1, Number(DM_DECRYPT_CONCURRENCY || 1));
+    if (state.dmDecryptWorkers >= concurrency || !state.dmDecryptQueue.length) return;
+
+    const message = state.dmDecryptQueue.shift();
+    if (!message || !message.id) {
+      scheduleDmDecryptPump(0);
+      return;
+    }
+
+    // Yield before beginning crypto so the Messages UI gets a paint opportunity.
+    state.dmDecryptWorkers += 1;
+    setTimeout(() => {
+      if (!message || !message.id) {
+        state.dmDecryptWorkers = Math.max(0, Number(state.dmDecryptWorkers || 0) - 1);
+        scheduleDmDecryptPump(0);
+        return;
+      }
 
       decryptDmContent(message.peerPubkey, message.ciphertext)
         .then((plaintext) => {
@@ -7071,12 +7098,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               thread: !!(activePeer && messagePeer && activePeer === messagePeer)
             });
           }
-          if (state.dmDecryptQueue.length) {
-            setTimeout(pumpDmDecryptQueue, 0);
-          }
+          if (state.dmDecryptQueue.length) scheduleDmDecryptPump(0);
         });
-    }
+    }, 0);
+
+    // Keep the browser responsive between decryption jobs.
+    if (state.dmDecryptQueue.length) scheduleDmDecryptPump(0);
   }
+
 
   function queueDmDecrypt(message) {
     if (!message || !message.id || state.dmDecryptPendingIds.has(message.id)) return;
@@ -7086,7 +7115,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     state.dmDecryptPendingIds.add(message.id);
     state.dmDecryptQueue.push(message);
-    pumpDmDecryptQueue();
+    scheduleDmDecryptPump(0);
   }
 
   function subscribeDirectMessages() {
@@ -7121,6 +7150,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.dmSyncEoseTimer = setTimeout(finishSync, DM_SYNC_STATUS_TIMEOUT_MS);
     setDmStatus('Syncing encrypted DMs...', 'info');
 
+    const dmRelayUrls = [...(state.pool.urls || [])]
+      .map((url, index) => ({
+        url,
+        index,
+        ms: Number(state.relayPingMsByUrl && state.relayPingMsByUrl.get(url) || Number.POSITIVE_INFINITY)
+      }))
+      .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
+      .slice(0, Math.max(1, Math.min(DM_SYNC_RELAY_COUNT, state.pool.urls.length || 1)))
+      .map((item) => item.url);
+
     state.dmSubId = state.pool.subscribe(
       [
         { kinds: [KIND_DIRECT_MESSAGE], authors: [owner], since: recentSince, limit: DM_SYNC_LIMIT_PER_DIRECTION },
@@ -7133,8 +7172,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
           if (!state.dmActivePeerPubkey) state.dmActivePeerPubkey = message.peerPubkey;
           fetchProfileIfNeeded(message.peerPubkey);
-          const peerProfile = profileFor(message.peerPubkey);
-          if (peerProfile && peerProfile.nip05) ensureNip05Verification(message.peerPubkey, peerProfile.nip05).catch(() => {});
 
           // Do not start remote-signer decrypts from the relay event stream.
           // During initial sync this can enqueue dozens of requests for the
@@ -7158,7 +7195,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (eoseSeen.size < expectedEose) return;
           finishSync();
         }
-      }
+      },
+      { relayUrls: dmRelayUrls }
     );
   }
 
@@ -7235,6 +7273,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       state.dmThreadVisibleLimitByPeer = new Map();
       state.dmDecryptQueue = [];
       state.dmDecryptWorkers = 0;
+      if (state.dmDecryptPumpTimer) {
+        clearTimeout(state.dmDecryptPumpTimer);
+        state.dmDecryptPumpTimer = null;
+      }
       state.dmSyncing = false;
       state.dmBackfilling = false;
       state.dmBackfillSubId = null;
