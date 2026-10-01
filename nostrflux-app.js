@@ -21378,7 +21378,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const roomUrl = getNestsRoomUrl(room);
         const shareUrl = roomUrl;
         const avatar = profile.picture ? `<img src="${escapeHtml(profile.picture)}" alt="" loading="lazy">` : `<span>${escapeHtml((profile.display_name || profile.name || 'Anonymous').slice(0, 1).toUpperCase())}</span>`;
-        const displayCount = room.participants ? formatCount(room.participants) : '—';
+        const livePresenceCount = room.roomRef
+          ? Array.from(state.nestsPresence.keys()).filter(key => key.startsWith(room.roomRef + ':')).length
+          : 0;
+        const effectiveListenerCount = Math.max(Number(room.participants || 0), livePresenceCount);
+        const displayCount = effectiveListenerCount ? formatCount(effectiveListenerCount) : '—';
         const statusLabel = live ? 'LIVE' : (status === 'ended' ? 'ENDED' : (room.starts ? 'UPCOMING' : 'OPEN'));
         return `<article class="nests-room-card">
           <button class="nests-room-cover nests-room-cover-btn" type="button" data-action="join" data-room-url="${escapeHtml(roomUrl)}" onclick="joinNestsRoom(${JSON.stringify(roomUrl)})" aria-label="Open ${title}">
