@@ -586,20 +586,29 @@
     const btn = modal.querySelector('#nestRoomMuteBtn');
     const slider = modal.querySelector('#nestRoomVolume');
     const dot = modal.querySelector('#nestRoomAudioDot');
+    const join = modal.querySelector('#nestPreviewJoinBtn');
     if (status && activeRoomAudio) {
       const state = activeRoomAudio.state || 'disconnected';
       const count = activeRoomAudio.entries ? activeRoomAudio.entries.size : 0;
-      const displayState = state === 'disconnected' && roomPageMode ? 'reconnecting' : state;
-      status.textContent = displayState === 'connected'
+      const label = state === 'connected'
         ? ('Connected • ' + count + ' speaker' + (count === 1 ? '' : 's'))
-        : (displayState.charAt(0).toUpperCase() + displayState.slice(1) + '…');
-      if (dot) dot.classList.toggle('connected', displayState === 'connected');
+        : state === 'reconnecting'
+          ? 'Reconnecting…'
+          : state === 'connecting'
+            ? 'Connecting…'
+            : 'Disconnected';
+      status.textContent = label;
+      if (dot) dot.classList.toggle('connected', state === 'connected');
+      if (join && state === 'disconnected') {
+        join.disabled = false;
+        join.textContent = 'Join As Speak';
+      }
     }
     if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute' : 'Mute';
     if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
   }
 
-    function wireRoomRootControls(root) {
+  function wireRoomRootControls(root) {
     if (!root || root._nestsRoomControlsWired) return root;
     root._nestsRoomControlsWired = true;
 
@@ -785,7 +794,7 @@
             '<input id="nestRoomChatInput" type="text" maxlength="1000" placeholder="Say something in the room…" aria-label="Send a Nest room message">' +
             '<button class="btn btn-primary" id="nestRoomChatSendBtn" type="button">Send</button>' +
           '</div>' +
-          '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join Nest</button></div>' +
+          '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speak/button></div>' +
           '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
         '</div>' +
       '</div>';
