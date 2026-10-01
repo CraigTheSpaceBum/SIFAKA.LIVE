@@ -1074,6 +1074,7 @@
     } else {
       $('#nestPreviewSchedule', modal).innerHTML = '';
     }
+    $('#nestPreviewSchedule', modal).style.display = (starts && starts > now()) ? '' : 'none';
 
     const showProfile = function(pubkey, role) {
       if (roomPageMode && typeof window.showProfileByPubkey === 'function') {
@@ -1151,7 +1152,12 @@
   }
 
   async function enterActiveRoom() {
-    if (!activeRoomUrl || activeRoomAudio) return;
+    if (!activeRoomUrl) return;
+    if (activeRoomAudio && activeRoomAudio.state !== 'disconnected') return;
+    if (activeRoomAudio && activeRoomAudio.state === 'disconnected') {
+      try { await activeRoomAudio.disconnect(); } catch (_) {}
+      activeRoomAudio = null;
+    }
     if (!activeRoomEvent || !activeRoom) {
       await openPreview(activeRoomUrl, {
         title: $('#nestPreviewTitle', modal)?.textContent || 'Nostr Nest',
