@@ -529,9 +529,9 @@ body.nest-preview-open{overflow:hidden}
     <div class="smv2-panel" id="smPanelWallet">
       <div class="smv2-panel-label">NIP-47 / Nostr Wallet Connect - connect an external Lightning wallet for zaps</div>
       <div class="fg wallet-mainchain-address-field" style="margin-bottom:.7rem">
-        <label for="settingsBitcoinAddressInput">₿ Bitcoin Mainchain Address</label>
+        <label for="settingsBitcoinAddressInput">₿ External Bitcoin Address (optional)</label>
         <input id="settingsBitcoinAddressInput" type="text" placeholder="bc1... or 1... / 3..." spellcheck="false" autocomplete="off">
-        <div class="smv2-field-hint">Optional. Stored locally in this browser and used to display your on-chain Bitcoin balance and transactions.</div>
+        <div class="smv2-field-hint">Sifaka now derives your personal bc1p… Taproot address automatically from your Nostr public key. This field is only a legacy fallback for accounts without a usable Nostr key.</div>
       </div>
       <div class="wallet-connect-card">
         <div class="wallet-connect-head">
@@ -1122,7 +1122,7 @@ body.nest-preview-open{overflow:hidden}
       <div>
         <div class="wallet-page-eyebrow">NOSTR WALLET</div>
         <h2>Your Bitcoin Wallet</h2>
-        <p>View your connected Lightning wallet, balance, wallet service, Lightning address, and recent activity through NIP-47 Nostr Wallet Connect.</p>
+        <p>Use your Nostr identity as your on-chain Bitcoin wallet. Sifaka derives a native Taproot address from your Nostr public key and shows its Bitcoin balance alongside your Lightning wallet.</p>
       </div>
       <button class="btn btn-ghost" id="walletRefreshBtn" type="button" onclick="loadWalletPage(true)">Refresh</button>
     </section>
@@ -1168,8 +1168,8 @@ body.nest-preview-open{overflow:hidden}
     <section class="wallet-mainchain-card" id="walletMainchainCard">
       <div class="wallet-section-head">
         <div>
-          <div class="wallet-card-label">₿ Bitcoin Mainchain</div>
-          <h3>On-chain Wallet</h3>
+          <div class="wallet-card-label">₿ Bitcoin Mainchain · Taproot</div>
+          <h3>On-chain Bitcoin Wallet</h3>
         </div>
         <span class="wallet-status-chip" id="walletMainchainStatus">Not configured</span>
       </div>
@@ -1177,7 +1177,7 @@ body.nest-preview-open{overflow:hidden}
         <div class="wallet-mainchain-balance">
           <span>Confirmed Balance</span>
           <strong id="walletMainchainBalance">—</strong>
-          <small id="walletMainchainPending">Add a Bitcoin address in Settings → Wallet.</small>
+          <small id="walletMainchainPending">Derived automatically from your Nostr public key using NIP-BC / BIP-341.</small>
         </div>
         <div class="wallet-mainchain-stats" id="walletMainchainStats"></div>
       </div>
