@@ -446,6 +446,27 @@
       updateActiveRoomAudioUi();
     }
 
+    setParticipants(pubkeys) {
+      if (!this.connection) return;
+      const wanted = new Set((Array.isArray(pubkeys) ? pubkeys : [])
+        .map(function(value) { return String(value || '').trim().toLowerCase(); })
+        .filter(function(value) {
+          return /^[0-9a-f]{64}$/.test(value) && value !== String(this.identity || '').toLowerCase();
+        }, this));
+
+      wanted.forEach(function(pubkey) {
+        if (!this.entries.has(pubkey)) this.subscribeParticipant(pubkey);
+      }, this);
+
+      Array.from(this.entries.keys()).forEach(function(pubkey) {
+        if (wanted.has(pubkey)) return;
+        closeAudioEntry(this.entries.get(pubkey));
+        this.entries.delete(pubkey);
+      }, this);
+
+      updateActiveRoomAudioUi();
+    }
+
     setVolume(value) {
       this.volume = Math.max(0, Math.min(1, Number(value) || 0));
       this.entries.forEach(function(entry) {
@@ -566,15 +587,17 @@
   }
 
   function normalizeNestStreamingUrl(value) {
-    const fallback = 'https://moq.nostrnests.com:4443';
+    // Keep the room's advertised MoQ endpoint authoritative. Nostr Nests
+    // publishes https://moq.nostrnests.com for production and the upstream
+    // Nests client uses that URL unchanged; forcing :4443 breaks deployments
+    // that terminate HTTPS/WebTransport on the public 443 endpoint.
+    const fallback = 'https://moq.nostrnests.com';
     try {
       const parsed = new URL(String(value || fallback));
-      const host = parsed.hostname.toLowerCase();
-      if (host === 'moq.nostrnests.com') {
-        if (parsed.protocol === 'wss:' || parsed.protocol === 'ws:' || parsed.protocol === 'http:') {
-          parsed.protocol = 'https:';
-        }
-        if (!parsed.port) parsed.port = '4443';
+      if (parsed.protocol === 'wss:' || parsed.protocol === 'ws:' || parsed.protocol === 'http:') {
+        parsed.protocol = 'https:';
+      }
+      if (parsed.hostname.toLowerCase() === 'moq.nostrnests.com') {
         parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '';
       }
       return parsed.toString().replace(/\/$/, '');
@@ -1230,6 +1253,16 @@
           ? (activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener')
           : 'Connecting…';
       }
+      const stagePubkeys = (activeRoom && Array.isArray(activeRoom.participants) ? activeRoom.participants : [])
+        .filter(function(person) {
+          const role = String(person && person.role || '').toLowerCase();
+          return /host|speaker|moderator/.test(role);
+        })
+        .map(function(person) { return person && person.pubkey; })
+        .filter(Boolean);
+      if (activeRoomAudio && typeof activeRoomAudio.setParticipants === 'function') {
+        activeRoomAudio.setParticipants(stagePubkeys);
+      }
       startActiveRoomPresence();
       startActiveRoomRefresh();
       updateActiveRoomAudioUi();
@@ -1353,7 +1386,7 @@
       { kinds: [30313], '#a': [decoded.a], limit: 20 },
       { kinds: [1311], '#a': [decoded.a], limit: 60 },
       { kinds: [10312], '#a': [decoded.a], limit: 300 }
-    ], 5200);
+    ], 5200, roomRelayUrls(null, decoded));
     if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
 
     const rooms = events.filter(function(e) { return Number(e.kind) === 30312; }).sort(function(a,b) { return Number(b.created_at||0)-Number(a.created_at||0); });
@@ -1423,7 +1456,7 @@
       { kinds: [30313], '#a': [decoded.a], limit: 10 },
       { kinds: [1311], '#a': [decoded.a], limit: 30 },
       { kinds: [10312], '#a': [decoded.a], limit: 200 }
-    ], 3600);
+    ], 3600, roomRelayUrls(activeRoom, decoded));
 
     if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
 
@@ -1465,6 +1498,17 @@
       participants: roster,
       presence: presence
     });
+
+    if (activeRoomAudio && typeof activeRoomAudio.setParticipants === 'function') {
+      const stagePubkeys = roster
+        .filter(function(person) {
+          const role = String(person && person.role || '').toLowerCase();
+          return /host|speaker|moderator/.test(role);
+        })
+        .map(function(person) { return person && person.pubkey; })
+        .filter(Boolean);
+      activeRoomAudio.setParticipants(stagePubkeys);
+    }
     renderRoom({
       pubkey: decoded.pubkey,
       title: current ? tag(current,'title') : (activeRoom && activeRoom.title) || 'Nostr Nest',
@@ -1650,17 +1694,6 @@
         url: target
       }).catch(function() {});
     };
-    if (
-      window.location.pathname &&
-      /^\/room\/naddr1/i.test(window.location.pathname) &&
-      (!roomPageMode || roomPageNaddr !== normalizeRoomNaddr(window.location.pathname))
-    ) {
-      const direct = normalizeRoomNaddr(window.location.pathname);
-      if (direct) {
-        window.loadNestsRoomPage(direct, { routeMode: 'skip', autoJoin: false }).catch(function() {});
-      }
-    }
-
     // Nests cards are rendered/re-rendered dynamically by nostrflux-app.js.
     // Delegate from document so the handler survives every grid refresh.
     if (!window.__sifakaNestsCardHandlersBound) {
