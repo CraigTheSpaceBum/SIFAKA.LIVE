@@ -19355,6 +19355,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (profileBitcoinPubkey) {
       getProfileBitcoinAddress(profileBitcoinPubkey).then((address) => {
+        if (state.selectedProfilePubkey !== profileBitcoinPubkey) return;
         if (!address) {
           if (bitcoinRow) bitcoinRow.style.display = 'none';
           return;
@@ -19365,7 +19366,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
         if (bitcoinRow) bitcoinRow.style.display = 'flex';
       }).catch(() => {
-        if (bitcoinRow) bitcoinRow.style.display = 'none';
+        if (state.selectedProfilePubkey === profileBitcoinPubkey && bitcoinRow) bitcoinRow.style.display = 'none';
       });
     }
 
@@ -22008,7 +22009,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         return;
       }
 
-      if (promptEl) promptEl.hidden = true;
       setLoading(true);
       setStatus('Connecting to your Nostr wallet…', 'loading');
       if (chipEl) { chipEl.textContent = 'Connecting'; chipEl.className = 'wallet-status-chip is-loading'; }
