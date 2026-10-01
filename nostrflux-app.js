@@ -183,6 +183,8 @@
   const DM_SYNC_STATUS_TIMEOUT_MS = 4000;
   const DM_SYNC_LIMIT_PER_DIRECTION = 80;
   const DM_SYNC_RELAY_COUNT = 6;
+  const DM_EVENT_DRAIN_BATCH_SIZE = 24;
+  const DM_OLDER_BACKFILL_CHUNK_SECONDS = 60 * 60 * 24 * 365;
   const DM_BACKFILL_LIMIT_PER_DIRECTION = 240;
   const DM_DECRYPT_QUEUE_SOFT_CAP = 1800;
   const DM_PER_PEER_MEMORY_CAP = 1200;
@@ -282,6 +284,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   const SAVED_LISTS_STORAGE_KEY = 'nostrflux_saved_lists_v1';
   const NOSTR_FEED_FILTER_STORAGE_KEY = 'nostrflux_feed_filter_v1';
   const NOSTR_FEED_PROFILE_KEY = '__nostr_feed__';
+  const PROFILE_FEED_INITIAL_DAYS = 180;
+  const PROFILE_FEED_BACKFILL_CHUNK_SECONDS = 60 * 60 * 24 * 365;
+  const PROFILE_FEED_RELAY_COUNT = 6;
 
   const state = {
     relays: [...DEFAULT_RELAYS],
@@ -313,6 +318,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     profilesByPubkey: new Map(),
     profileFetchInflightByPubkey: new Map(),
     profileNotesByPubkey: new Map(),
+    profileFeedBackfillExhausted: new Set(),
     profileStatsByPubkey: new Map(),
     liveSubId: null,
 
@@ -473,6 +479,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     dmDecryptQueue: [],
     dmDecryptWorkers: 0,
     dmDecryptPumpTimer: null,
+    dmEventQueue: [],
+    dmEventDrainTimer: null,
+    dmBackfillExhaustedPeers: new Set(),
     dmLikedMessageIds: new Set(),
     dmEmojiReactionsByMessageId: new Map(),
     dmAddressBookOpen: false,
@@ -5417,6 +5426,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       state.dmDecryptPumpTimer = null;
     }
     state.dmDecryptPendingIds = new Set();
+    state.dmEventQueue = [];
+    if (state.dmEventDrainTimer) {
+      clearTimeout(state.dmEventDrainTimer);
+      state.dmEventDrainTimer = null;
+    }
     state.dmSyncing = false;
     state.dmBackfilling = false;
     if (state.dmSyncEoseTimer) {
@@ -5450,6 +5464,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.dmDecryptWorkers = 0;
     state.dmSyncing = false;
     state.dmBackfilling = false;
+    state.dmBackfillExhaustedPeers = new Set();
     if (state.dmSyncEoseTimer) {
       clearTimeout(state.dmSyncEoseTimer);
       state.dmSyncEoseTimer = null;
@@ -5691,6 +5706,60 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     capDmMessagesForPeer(peer, messages);
     state.dmMessagesByPeer.set(peer, messages);
     return message;
+  }
+
+  function scheduleDmEventDrain(delayMs = 0) {
+    if (state.dmEventDrainTimer) return;
+    state.dmEventDrainTimer = setTimeout(() => {
+      state.dmEventDrainTimer = null;
+      drainDmEventQueue();
+    }, Math.max(0, Number(delayMs) || 0));
+  }
+
+  function queueDmRelayEvent(ev, ownerPubkey) {
+    if (!ev || !ev.id) return;
+    const owner = normalizePubkeyHex(ownerPubkey);
+    if (!owner || owner !== normalizePubkeyHex(state.dmOwnerPubkey)) return;
+    if (state.dmEventQueue.length >= 2400) return;
+    state.dmEventQueue.push({ ev, owner });
+    scheduleDmEventDrain(0);
+  }
+
+  function drainDmEventQueue() {
+    const owner = normalizePubkeyHex(state.dmOwnerPubkey);
+    if (!owner || !state.user || owner !== normalizePubkeyHex(state.user.pubkey)) {
+      state.dmEventQueue = [];
+      return;
+    }
+    const batch = state.dmEventQueue.splice(0, DM_EVENT_DRAIN_BATCH_SIZE);
+    if (!batch.length) return;
+
+    const activePeer = normalizePubkeyHex(state.dmActivePeerPubkey);
+    const profilePeers = new Set();
+    let activeTouched = false;
+    let sawMessage = false;
+
+    batch.forEach((item) => {
+      if (!item || !item.ev) return;
+      const message = upsertDmMessageFromEvent(item.ev, owner);
+      if (!message) return;
+      sawMessage = true;
+      profilePeers.add(message.peerPubkey);
+      if (activePeer && activePeer === message.peerPubkey) {
+        activeTouched = true;
+        if (!message.mine && isMessagesPageVisible()) markDmPeerRead(message.peerPubkey);
+      }
+    });
+
+    profilePeers.forEach((peer) => fetchProfileIfNeeded(peer));
+    if (sawMessage && isMessagesPageVisible()) {
+      scheduleDmRender({
+        conversations: true,
+        thread: activeTouched,
+        scrollToBottom: activeTouched
+      });
+    }
+    if (state.dmEventQueue.length) scheduleDmEventDrain(16);
   }
 
   function getDmUnreadCountForPeer(peerPubkey) {
@@ -6478,17 +6547,47 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const messages = state.dmMessagesByPeer.get(activePeer) || [];
     if (!messages.length) return;
-    const currentLimit = Number(state.dmThreadVisibleLimitByPeer.get(activePeer) || Math.min(DM_THREAD_INITIAL_LIMIT, messages.length));
-    if (currentLimit >= messages.length) return;
+    const currentLimit = Number(
+      state.dmThreadVisibleLimitByPeer.get(activePeer) ||
+      Math.min(DM_THREAD_INITIAL_LIMIT, messages.length)
+    );
 
-    const snapshot = {
-      prevHeight: Number(threadEl.scrollHeight || 0),
-      prevTop: Number(threadEl.scrollTop || 0)
-    };
-    const nextLimit = Math.min(messages.length, currentLimit + DM_THREAD_PAGE_INCREMENT);
-    state.dmThreadVisibleLimitByPeer.set(activePeer, nextLimit);
+    if (currentLimit < messages.length) {
+      const snapshot = {
+        prevHeight: Number(threadEl.scrollHeight || 0),
+        prevTop: Number(threadEl.scrollTop || 0)
+      };
+      const nextLimit = Math.min(messages.length, currentLimit + DM_THREAD_PAGE_INCREMENT);
+      state.dmThreadVisibleLimitByPeer.set(activePeer, nextLimit);
+      state.dmThreadLastExpandAt = now;
+      renderDmThread({ preserveScrollAnchor: snapshot });
+      return;
+    }
+
+    if (state.dmBackfilling || state.dmBackfillExhaustedPeers.has(activePeer)) return;
+
+    const relayMessages = messages.filter((message) =>
+      message && !message.activity && Number(message.created_at || 0) > 0
+    );
+    const oldestLoaded = relayMessages.reduce(
+      (min, message) => Math.min(min, Number(message.created_at || Infinity)),
+      Infinity
+    );
+    if (!Number.isFinite(oldestLoaded)) return;
+
+    const oldestAllowed = Math.max(1, Math.floor(Date.now() / 1000) - DM_SYNC_LOOKBACK_SECONDS);
+    if (oldestLoaded <= oldestAllowed) {
+      state.dmBackfillExhaustedPeers.add(activePeer);
+      return;
+    }
+
+    const until = Math.max(1, Math.floor(oldestLoaded - 1));
+    const since = Math.max(oldestAllowed, until - DM_OLDER_BACKFILL_CHUNK_SECONDS);
     state.dmThreadLastExpandAt = now;
-    renderDmThread({ preserveScrollAnchor: snapshot });
+    startDmBackfillSubscription(normalizePubkeyHex(state.dmOwnerPubkey), since, until, {
+      peerPubkey: activePeer,
+      expandVisibleOnFinish: true
+    });
   }
 
   function ensureDmReactionEntry(messageId) {
@@ -7127,9 +7226,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const nowSec = Math.floor(Date.now() / 1000);
     const oldestSince = Math.max(0, nowSec - DM_SYNC_LOOKBACK_SECONDS);
     const recentSince = Math.max(oldestSince, nowSec - DM_SYNC_RECENT_SECONDS);
-    const expectedEose = Math.max(1, Number((state.pool.urls && state.pool.urls.length) || 1));
     const eoseSeen = new Set();
     let syncFinished = false;
+
     const finishSync = () => {
       if (syncFinished) return;
       syncFinished = true;
@@ -7143,10 +7242,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         scheduleDmRender({ conversations: true, thread: true });
       }
       if (!hasRelayBackedDmMessages() && oldestSince < recentSince) {
-        state.dmBackfilling = true;
         startDmBackfillSubscription(owner, oldestSince, Math.max(oldestSince, recentSince - 1));
       }
     };
+
     state.dmSyncEoseTimer = setTimeout(finishSync, DM_SYNC_STATUS_TIMEOUT_MS);
     setDmStatus('Syncing encrypted DMs...', 'info');
 
@@ -7159,6 +7258,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
       .slice(0, Math.max(1, Math.min(DM_SYNC_RELAY_COUNT, state.pool.urls.length || 1)))
       .map((item) => item.url);
+    const expectedEose = Math.max(1, dmRelayUrls.length);
 
     state.dmSubId = state.pool.subscribe(
       [
@@ -7167,77 +7267,98 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       ],
       {
         event: (ev) => {
-          const message = upsertDmMessageFromEvent(ev, owner);
-          if (!message) return;
-
-          if (!state.dmActivePeerPubkey) state.dmActivePeerPubkey = message.peerPubkey;
-          fetchProfileIfNeeded(message.peerPubkey);
-
-          // Do not start remote-signer decrypts from the relay event stream.
-          // During initial sync this can enqueue dozens of requests for the
-          // selected peer at once. renderDmThread() already queues only the
-          // messages currently visible on screen, and new active-thread
-          // messages are picked up by that render path.
-          if (isMessagesPageVisible()) {
-            if (!message.mine && state.dmActivePeerPubkey === message.peerPubkey) markDmPeerRead(message.peerPubkey);
-            scheduleDmRender({
-              conversations: true,
-              thread: state.dmActivePeerPubkey === message.peerPubkey,
-              scrollToBottom: state.dmActivePeerPubkey === message.peerPubkey
-            });
-          }
+          queueDmRelayEvent(ev, owner);
         },
         eose: (relayUrl) => {
           const relayKey = relayUrl || `relay_${eoseSeen.size + 1}`;
           eoseSeen.add(String(relayKey));
-          if (eoseSeen.size < expectedEose) return;
-          finishSync();
+          if (eoseSeen.size >= expectedEose) finishSync();
         }
       },
       { relayUrls: dmRelayUrls }
     );
   }
 
-  function startDmBackfillSubscription(ownerPubkey, since, until) {
+  function startDmBackfillSubscription(ownerPubkey, since, until, opts = {}) {
     const owner = normalizePubkeyHex(ownerPubkey);
     if (!owner || !state.pool) return;
     if (state.dmBackfillSubId) return;
-    state.dmBackfilling = true;
 
+    const peer = normalizePubkeyHex(opts.peerPubkey || '');
+    state.dmBackfilling = true;
+    let addedCount = 0;
     let backfillDone = false;
+
     const finishBackfill = () => {
       if (backfillDone) return;
       backfillDone = true;
       state.dmBackfilling = false;
+
       const subId = state.dmBackfillSubId;
       state.dmBackfillSubId = null;
       if (subId && state.pool) {
         try { state.pool.unsubscribe(subId); } catch (_) {}
       }
+
+      if (peer) {
+        const peerMessages = state.dmMessagesByPeer.get(peer) || [];
+        const oldestPeerMessage = peerMessages
+          .filter((message) => message && !message.activity && Number(message.created_at || 0) > 0)
+          .reduce((min, message) => Math.min(min, Number(message.created_at || Infinity)), Infinity);
+        const oldestAllowed = Math.max(1, Math.floor(Date.now() / 1000) - DM_SYNC_LOOKBACK_SECONDS);
+
+        if (addedCount === 0 || !Number.isFinite(oldestPeerMessage) || oldestPeerMessage <= oldestAllowed) {
+          state.dmBackfillExhaustedPeers.add(peer);
+        }
+
+        if (opts.expandVisibleOnFinish && addedCount > 0 && isMessagesPageVisible()
+          && normalizePubkeyHex(state.dmActivePeerPubkey) === peer) {
+          const currentLimit = Number(
+            state.dmThreadVisibleLimitByPeer.get(peer) ||
+            Math.min(DM_THREAD_INITIAL_LIMIT, peerMessages.length)
+          );
+          state.dmThreadVisibleLimitByPeer.set(
+            peer,
+            Math.min(peerMessages.length, currentLimit + DM_THREAD_PAGE_INCREMENT)
+          );
+        }
+      }
+
       if (isMessagesPageVisible()) {
         scheduleDmRender({ conversations: true, thread: true });
       }
     };
 
+    const relayUrls = [...(state.pool.urls || [])]
+      .map((url, index) => ({
+        url,
+        index,
+        ms: Number(state.relayPingMsByUrl && state.relayPingMsByUrl.get(url) || Number.POSITIVE_INFINITY)
+      }))
+      .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
+      .slice(0, Math.max(1, Math.min(DM_SYNC_RELAY_COUNT, state.pool.urls.length || 1)))
+      .map((item) => item.url);
+
     state.dmBackfillSubId = state.pool.subscribe(
-      [
-        { kinds: [KIND_DIRECT_MESSAGE], authors: [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION },
-        { kinds: [KIND_DIRECT_MESSAGE], '#p': [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION }
-      ],
+      peer
+        ? [
+            { kinds: [KIND_DIRECT_MESSAGE], authors: [owner], '#p': [peer], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION },
+            { kinds: [KIND_DIRECT_MESSAGE], authors: [peer], '#p': [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION }
+          ]
+        : [
+            { kinds: [KIND_DIRECT_MESSAGE], authors: [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION },
+            { kinds: [KIND_DIRECT_MESSAGE], '#p': [owner], since, until, limit: DM_BACKFILL_LIMIT_PER_DIRECTION }
+          ],
       {
         event: (ev) => {
           const message = upsertDmMessageFromEvent(ev, owner);
           if (!message) return;
+          addedCount += 1;
           if (!state.dmActivePeerPubkey) state.dmActivePeerPubkey = message.peerPubkey;
-          fetchProfileIfNeeded(message.peerPubkey);
-          if (isMessagesPageVisible()) {
-            scheduleDmRender({ conversations: true, thread: false });
-          }
         },
-        eose: () => {
-          finishBackfill();
-        }
-      }
+        eose: () => finishBackfill()
+      },
+      { relayUrls }
     );
 
     setTimeout(finishBackfill, DM_SYNC_STATUS_TIMEOUT_MS + 3000);
@@ -7271,6 +7392,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       state.dmThreadVisibleLimitByPeer = new Map();
       state.dmDecryptQueue = [];
       state.dmDecryptWorkers = 0;
+      state.dmEventQueue = [];
+      state.dmBackfillExhaustedPeers = new Set();
+      if (state.dmEventDrainTimer) {
+        clearTimeout(state.dmEventDrainTimer);
+        state.dmEventDrainTimer = null;
+      }
       if (state.dmDecryptPumpTimer) {
         clearTimeout(state.dmDecryptPumpTimer);
         state.dmDecryptPumpTimer = null;
@@ -18185,8 +18312,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       listEl.appendChild(item);
     });
 
-    // Infinite scroll sentinel ? appear if more posts exist beyond current limit
-    if (notes.length > limit) {
+    // Keep the infinite-scroll sentinel available when the currently loaded window
+    // is exhausted so older history can still be fetched, including profiles with
+    // six or fewer recent posts.
+    const profileKey = normalizePubkeyHex(pubkey) || pubkey;
+    const canBackfillProfileHistory =
+      !isNostrFeedVirtualProfile(pubkey) &&
+      notes.length > 0 &&
+      !state.profileFeedBackfillExhausted.has(profileKey);
+    if (notes.length > limit || canBackfillProfileHistory) {
       const sentinel = document.createElement('div');
       sentinel.className = 'feed-sentinel';
       sentinel.innerHTML = '<span class="feed-sentinel-label">Loading more posts...</span>';
@@ -18943,6 +19077,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.profileFeedBackfillSubIds.clear();
     if (!(state.profileFeedBackfillInFlight instanceof Map)) state.profileFeedBackfillInFlight = new Map();
     state.profileFeedBackfillInFlight.clear();
+    state.profileFeedBackfillExhausted = new Set();
   }
 
   function startProfileFeedBackfill(pubkey, beforeSec) {
@@ -18956,10 +19091,26 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (state.profileFeedBackfillInFlight.has(selectedKey)) return;
 
     const map = state.profileNotesByPubkey.get(pubkey) || new Map();
-    const loaded = Array.from(map.values()).filter((ev) => Number(ev && ev.created_at || 0) > 0);
+    const loaded = Array.from(map.values()).filter((ev) => {
+      if (!ev || Number(ev.created_at || 0) <= 0) return false;
+      if (normalizePubkeyHex(ev.pubkey || '') !== selectedKey) return false;
+      if (Number(ev.kind || 0) === 6) return true;
+      return isTopLevelProfilePost(ev, pubkey);
+    });
     const oldestLoaded = loaded.reduce((min, ev) => Math.min(min, Number(ev.created_at || 0)), Infinity);
     const until = Math.min(before, Number.isFinite(oldestLoaded) ? oldestLoaded - 1 : before);
     if (until < 1) return;
+    const since = Math.max(1, until - PROFILE_FEED_BACKFILL_CHUNK_SECONDS);
+
+    const profileRelayUrls = [...(state.pool.urls || [])]
+      .map((url, index) => ({
+        url,
+        index,
+        ms: Number(state.relayPingMsByUrl && state.relayPingMsByUrl.get(url) || Number.POSITIVE_INFINITY)
+      }))
+      .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
+      .slice(0, Math.max(1, Math.min(PROFILE_FEED_RELAY_COUNT, state.pool.urls.length || 1)))
+      .map((item) => item.url);
 
     const promise = new Promise((resolve) => {
       let subId = null;
@@ -18970,13 +19121,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         try { if (subId && state.pool) state.pool.unsubscribe(subId); } catch (_) {}
         state.profileFeedBackfillSubIds.delete(selectedKey);
         state.profileFeedBackfillInFlight.delete(selectedKey);
+        const currentMap = state.profileNotesByPubkey.get(pubkey) || new Map();
+        const currentOldest = Array.from(currentMap.values())
+          .filter((ev) => {
+            if (!ev || Number(ev.created_at || 0) <= 0) return false;
+            if (normalizePubkeyHex(ev.pubkey || '') !== selectedKey) return false;
+            if (Number(ev.kind || 0) === 6) return true;
+            return isTopLevelProfilePost(ev, pubkey);
+          })
+          .reduce((min, ev) => Math.min(min, Number(ev.created_at || 0)), Infinity);
+        if (!Number.isFinite(currentOldest) || (Number.isFinite(oldestLoaded) && currentOldest >= oldestLoaded)) {
+          state.profileFeedBackfillExhausted.add(selectedKey);
+        }
         resolve();
       };
 
       subId = state.pool.subscribe(
         [
-          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], until, limit: 320 },
-          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], until, limit: 620 }
+          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], since, until, limit: 320 },
+          { kinds: [1, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], since, until, limit: 620 }
         ],
         {
           event: (ev) => {
@@ -18988,7 +19151,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             }
           },
           eose: finish
-        }
+        },
+        { relayUrls: profileRelayUrls }
       );
       state.profileFeedBackfillSubIds.set(selectedKey, subId);
       setTimeout(finish, 8000);
@@ -19005,14 +19169,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function subscribeProfileFeed(pubkey) {
     if (!pubkey) return;
-    if (state.profileFeedSubId) state.pool.unsubscribe(state.profileFeedSubId);
+    if (state.profileFeedSubId) {
+      try { state.pool.unsubscribe(state.profileFeedSubId); } catch (_) {}
+      state.profileFeedSubId = null;
+    }
+
+    stopProfileFeedBackfills();
 
     const leftList = qs('#profileFeedList');
     const sideList = qs('#profileFeedListSide');
-    if (leftList) { leftList.innerHTML = '<div class="profile-feed-empty">Loading notes from relays...</div>'; leftList.dataset.feedLimit = '6'; }
-    if (sideList) { sideList.innerHTML = '<div class="profile-feed-empty">Loading notes from relays...</div>'; sideList.dataset.feedLimit = '6'; }
+    if (leftList) {
+      leftList.innerHTML = '<div class="profile-feed-empty">Loading notes from relays...</div>';
+      leftList.dataset.feedLimit = '6';
+    }
+    if (sideList) {
+      sideList.innerHTML = '<div class="profile-feed-empty">Loading notes from relays...</div>';
+      sideList.dataset.feedLimit = '6';
+    }
 
-    // Reset media limits
     const mediaEl = qs('#profileMediaList') || qs('#profileVideosList');
     const photosEl = qs('#profilePhotosList');
     if (mediaEl) mediaEl.dataset.mediaLimit = '9';
@@ -19021,6 +19195,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const selectedKey = normalizePubkeyHex(pubkey) || pubkey;
     const existing = state.profileNotesByPubkey.get(pubkey);
     if (!existing) state.profileNotesByPubkey.set(pubkey, new Map());
+
+    const profileRelayUrls = [...(state.pool.urls || [])]
+      .map((url, index) => ({
+        url,
+        index,
+        ms: Number(state.relayPingMsByUrl && state.relayPingMsByUrl.get(url) || Number.POSITIVE_INFINITY)
+      }))
+      .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
+      .slice(0, Math.max(1, Math.min(PROFILE_FEED_RELAY_COUNT, state.pool.urls.length || 1)))
+      .map((item) => item.url);
+    const profileSince = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * PROFILE_FEED_INITIAL_DAYS;
+
     let feedRenderTimer = null;
     const flushProfileFeedRender = () => {
       if (feedRenderTimer) {
@@ -19039,11 +19225,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.profileFeedSubId = state.pool.subscribe(
       [
-        // Keep the full profile event set so the profile can render the author's
-        // posts together with replies/comments, reactions, boosts, deletions, and zaps.
-        // This is especially important for the signed-in user's own profile.
-        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 420, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 },
-        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 720, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 180 }
+        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 320, since: profileSince },
+        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 520, since: profileSince }
       ],
       {
         event: (ev) => {
@@ -19055,10 +19238,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           }
           scheduleProfileFeedRender();
         },
-        eose: () => {
-          flushProfileFeedRender();
-        }
-      }
+        eose: () => flushProfileFeedRender()
+      },
+      { relayUrls: profileRelayUrls }
     );
   }
 
