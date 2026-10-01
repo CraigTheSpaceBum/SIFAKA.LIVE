@@ -705,10 +705,10 @@
           join.textContent = state === 'connecting' ? 'Connecting…' : 'Reconnecting…';
         } else if (state === 'connected') {
           join.disabled = !!activeRoomAudio.isPublishing;
-          join.textContent = activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speaker';
+          join.textContent = activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speakerer';
         } else {
           join.disabled = false;
-          join.textContent = 'Join As Speaker';
+          join.textContent = 'Join As Speakerer';
         }
       }
     }
@@ -904,8 +904,8 @@
             '<button class="btn btn-ghost" id="nestRoomHandBtn" type="button">Raise Hand</button>' +
             '<div class="nest-room-reactions" id="nestRoomReactions" aria-label="Room reactions"></div>' +
             '<div class="nest-room-audio-actions">' +
-              '<button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speak</button>' +
-              '<button class="btn btn-ghost nest-room-leave-btn" id="nestRoomLeaveBtn" type="button">Leave Nest</button>' +
+              '<button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speaker</button>' +
+              '<button class="btn btn-ghost nest-room-leave-btn" id="nestRoomLeaveBtn" type="button">Exit Nest</button>' +
             '</div>' +
           '</div>' +
           '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
@@ -960,7 +960,7 @@
             '<input id="nestRoomChatInput" type="text" maxlength="1000" placeholder="Say something in the room…" aria-label="Send a Nest room message">' +
             '<button class="btn btn-primary" id="nestRoomChatSendBtn" type="button">Send</button>' +
           '</div>' +
-          '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speak/button></div>' +
+          '<div class="nest-preview-actions"><button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button><button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speakerer</button></div>' +
           '<div class="nest-preview-footnote" id="nestPreviewFootnote">Room details are read from Nostr NIP-53 events.</div>' +
         '</div>' +
       '</div>';
@@ -1340,7 +1340,7 @@
     const joinButton = $('#nestPreviewJoinBtn', modal);
     if (joinButton) {
       joinButton.textContent = activeRoomAudio
-        ? (activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speaker')
+        ? (activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Join As Speakerer')
         : (live ? 'Join As Listener' : 'Open Nest');
       // A connected listener must remain upgradeable to speaker.
       joinButton.disabled = !!activeRoomAudio && !!activeRoomAudio.isPublishing;
@@ -1434,7 +1434,7 @@
       if (compose) compose.hidden = true;
       if (join) {
         join.disabled = false;
-        join.textContent = 'Join As Speaker';
+        join.textContent = 'Join As Speakerer';
       }
       modal.classList.remove('is-live-room');
       throw err;
