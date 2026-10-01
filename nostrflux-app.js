@@ -7178,8 +7178,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           // selected peer at once. renderDmThread() already queues only the
           // messages currently visible on screen, and new active-thread
           // messages are picked up by that render path.
-          const isActivePeer = normalizePubkeyHex(state.dmActivePeerPubkey) === normalizePubkeyHex(message.peerPubkey);
-
           if (isMessagesPageVisible()) {
             if (!message.mine && state.dmActivePeerPubkey === message.peerPubkey) markDmPeerRead(message.peerPubkey);
             scheduleDmRender({
@@ -19380,6 +19378,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function setAuthenticatedUser(pubkey, authMode) {
     const previousUser = normalizePubkeyHex(state.user && state.user.pubkey || '');
+    const previousAuthMode = state.authMode;
     const nextUser = normalizePubkeyHex(pubkey);
     cancelRemoteLoginAttempt({ silent: true });
     persistAuthSession(nextUser, authMode);
@@ -19420,7 +19419,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     window.closeLogin();
     subscribeProfiles([pubkey]);
 
-    if (previousUser && nextUser && previousUser !== nextUser) {
+    if (previousUser && nextUser && (previousUser !== nextUser || previousAuthMode !== authMode)) {
+      // Changing signer type can leave an in-flight decrypt queue from the
+      // previous crypto provider. Reset DM state even when the public key is
+      // unchanged (for example, Remote Signer -> local nsec login).
       clearDmState({ keepLastRead: false });
     }
     if (isMessagesPageVisible()) {
