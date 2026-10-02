@@ -779,6 +779,18 @@
     });
   }
 
+  async function isNestUserInList(kind, targetPubkey) {
+    const user = getCurrentNestUser();
+    if (!user || !targetPubkey) return false;
+    const events = await relayQuery([{ kinds: [kind], authors: [user.pubkey], limit: 1 }], 2600, activeRoomRelays);
+    const latest = events.sort(function(a,b) { return Number(b.created_at || 0) - Number(a.created_at || 0); })[0];
+    if (!latest) return false;
+    const target = String(targetPubkey).toLowerCase();
+    return (latest.tags || []).some(function(t) {
+      return Array.isArray(t) && t[0] === 'p' && String(t[1] || '').toLowerCase() === target;
+    });
+  }
+
   async function publishNestUserList(kind, targetPubkey, add) {
     const user = getCurrentNestUser();
     if (!user || !targetPubkey) throw new Error('Please sign in first.');
@@ -871,10 +883,9 @@
     const callback = new URL(meta.callback);
     callback.searchParams.set('amount', String(amount * 1000));
     callback.searchParams.set('nostr', JSON.stringify(signed));
-    const invoiceData = await callback.toString() && await fetch(callback.toString()).then(function(res) {
-      if (!res.ok) throw new Error('Lightning callback failed.');
-      return res.json();
-    });
+    const invoiceResponse = await fetch(callback.toString());
+    if (!invoiceResponse.ok) throw new Error('Lightning callback failed.');
+    const invoiceData = await invoiceResponse.json();
     const invoice = invoiceData && invoiceData.pr;
     if (!invoice) throw new Error('No Lightning invoice returned.');
     if (window.webln) {
@@ -1248,7 +1259,7 @@
         '<button class="btn btn-ghost" id="nestProfileMuteBtn" type="button">Mute</button>' +
         '<button class="btn btn-ghost" id="nestProfileZapBtn" type="button">Zap</button>' +
       '</div>' +
-      '<div class="nest-profile-actions"><button class="btn btn-ghost" id="nestProfileStageBtn" type="button">Add to Stage</button><button class="btn btn-ghost" id="nestProfileKickBtn" type="button">Kick</button></div>' +
+      '<div class="nest-profile-actions"><button class="btn btn-ghost" id="nestProfileStageBtn" type="button">Add to Stage</button><button class="btn btn-ghost" id="nestProfileAdminBtn" type="button">Make Admin</button><button class="btn btn-ghost" id="nestProfileKickBtn" type="button">Kick</button></div>' +
       '<div class="nest-profile-actions"><button class="btn btn-ghost" id="nestProfileCopy" type="button">Copy npub</button><button class="btn btn-primary" id="nestProfileOpen" type="button">Open profile</button></div>' +
       '<div class="nest-profile-npub" id="nestProfileNpub"></div></div></div>';
     document.body.appendChild(profileSheet);
@@ -1633,9 +1644,12 @@
       const muteBtn = $('#nestProfileMuteBtn', sheet);
       const zapBtn = $('#nestProfileZapBtn', sheet);
       const stageBtn = $('#nestProfileStageBtn', sheet);
+      const adminBtn = $('#nestProfileAdminBtn', sheet);
       const kickBtn = $('#nestProfileKickBtn', sheet);
+      const isTargetAdmin = !!(currentEntry && /admin/i.test(String(currentEntry.role || '')));
+      const isTargetHost = String(activeRoom && activeRoom.pubkey || '').toLowerCase() === normalizedPubkey;
 
-      [followBtn, muteBtn, zapBtn, stageBtn, kickBtn].forEach(function(btn) { if (btn) btn.hidden = true; });
+      [followBtn, muteBtn, zapBtn, stageBtn, adminBtn, kickBtn].forEach(function(btn) { if (btn) btn.hidden = true; });
       if (!isSelf && user) {
         if (followBtn) { followBtn.hidden = false; followBtn.textContent = 'Follow'; }
         if (muteBtn) { muteBtn.hidden = false; muteBtn.textContent = 'Mute'; }
@@ -1646,6 +1660,10 @@
           stageBtn.hidden = false;
           stageBtn.textContent = onStage ? 'Remove from Stage' : 'Add to Stage';
         }
+        if (String((activeRoomEvent && activeRoomEvent.pubkey) || '').toLowerCase() === String(getCurrentNestUser().pubkey).toLowerCase() && !isTargetHost && adminBtn) {
+          adminBtn.hidden = false;
+          adminBtn.textContent = isTargetAdmin ? 'Remove Admin' : 'Make Admin';
+        }
         if (kickBtn) {
           kickBtn.hidden = false;
           kickBtn.textContent = 'Kick';
@@ -1653,18 +1671,24 @@
       }
 
       if (followBtn) {
-        followBtn.onclick = function() {
-          publishNestUserList(3, normalizedPubkey, true).then(function() {
-            followBtn.textContent = 'Following';
-          }).catch(function(err) { window.alert(err && err.message ? err.message : 'Could not follow user.'); });
-        };
+        isNestUserInList(3, normalizedPubkey).then(function(isFollowing) {
+          followBtn.textContent = isFollowing ? 'Unfollow' : 'Follow';
+          followBtn.onclick = function() {
+            publishNestUserList(3, normalizedPubkey, !isFollowing).then(function() {
+              followBtn.textContent = isFollowing ? 'Follow' : 'Unfollow';
+            }).catch(function(err) { window.alert(err && err.message ? err.message : 'Could not update follow state.'); });
+          };
+        }).catch(function() {});
       }
       if (muteBtn) {
-        muteBtn.onclick = function() {
-          publishNestUserList(10000, normalizedPubkey, true).then(function() {
-            muteBtn.textContent = 'Muted';
-          }).catch(function(err) { window.alert(err && err.message ? err.message : 'Could not mute user.'); });
-        };
+        isNestUserInList(10000, normalizedPubkey).then(function(isMuted) {
+          muteBtn.textContent = isMuted ? 'Unmute' : 'Mute';
+          muteBtn.onclick = function() {
+            publishNestUserList(10000, normalizedPubkey, !isMuted).then(function() {
+              muteBtn.textContent = isMuted ? 'Mute' : 'Unmute';
+            }).catch(function(err) { window.alert(err && err.message ? err.message : 'Could not update mute state.'); });
+          };
+        }).catch(function() {});
       }
       if (zapBtn) {
         zapBtn.onclick = function() {
@@ -1677,6 +1701,13 @@
         stageBtn.onclick = function() {
           updateNestParticipantRole(normalizedPubkey, onStage ? null : 'speaker').catch(function(err) {
             window.alert(err && err.message ? err.message : 'Could not update stage.');
+          });
+        };
+      }
+      if (adminBtn) {
+        adminBtn.onclick = function() {
+          updateNestParticipantRole(normalizedPubkey, isTargetAdmin ? 'speaker' : 'admin').catch(function(err) {
+            window.alert(err && err.message ? err.message : 'Could not update admin role.');
           });
         };
       }
@@ -2073,6 +2104,7 @@
     if (kickEvents.length && getCurrentNestUser()) {
       const status = $('#nestRoomAudioStatus', modal);
       if (status) status.textContent = 'You were removed from this Nest.';
+      leaveActiveRoom().catch(function() {});
     }
 
     // Keep a live room lobby feeling live: refresh presence/chat more often than
