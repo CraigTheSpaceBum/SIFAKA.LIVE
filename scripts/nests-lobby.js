@@ -917,6 +917,31 @@
     }
   }
 
+  function updateNestInteractionUi() {
+    if (!modal) return;
+    const hand = $('#nestHandBtn', modal);
+    const react = $('#nestReactBtn', modal);
+    const broadcast = $('#nestBroadcastBtn', modal);
+    const edit = $('#nestEditBtn', modal);
+    const end = $('#nestEndBtn', modal);
+    const reactionMenu = $('#nestReactionMenu', modal);
+    if (hand) {
+      hand.disabled = !getCurrentNestUser();
+      hand.textContent = activeRoomHandRaised ? 'Lower Hand' : 'Raise Hand';
+      hand.classList.toggle('is-active', !!activeRoomHandRaised);
+    }
+    if (react) react.disabled = !getCurrentNestUser();
+    if (broadcast) broadcast.disabled = !getCurrentNestUser();
+    const admin = activeRoomUserIsAdmin();
+    if (edit) edit.hidden = !admin;
+    if (end) end.hidden = !admin;
+    if (reactionMenu && reactionMenu.dataset.initialized !== '1') {
+      populateNestReactionMenu();
+      reactionMenu.dataset.initialized = '1';
+    }
+    renderNestReactionOverlay();
+  }
+
   function updateActiveRoomAudioUi() {
     if (!modal) return;
     const status = modal.querySelector('#nestRoomAudioStatus');
@@ -1042,6 +1067,50 @@
       });
     }
 
+    const hand = $('#nestHandBtn', root);
+    if (hand) hand.addEventListener('click', function() {
+      setNestHandRaised(!activeRoomHandRaised).catch(function(err) {
+        const status = $('#nestRoomAudioStatus', root);
+        if (status) status.textContent = err && err.message ? err.message : 'Could not update hand raise.';
+      });
+    });
+
+    const react = $('#nestReactBtn', root);
+    const reactionMenu = $('#nestReactionMenu', root);
+    if (react && reactionMenu) {
+      react.addEventListener('click', function() {
+        reactionMenu.hidden = !reactionMenu.hidden;
+        if (!reactionMenu.hidden) {
+          populateNestReactionMenu();
+          reactionMenu.dataset.initialized = '1';
+        }
+      });
+    }
+
+    const broadcast = $('#nestBroadcastBtn', root);
+    if (broadcast) broadcast.addEventListener('click', function() {
+      shareNestRoomToNostr().catch(function(err) {
+        const status = $('#nestRoomAudioStatus', root);
+        if (status) status.textContent = err && err.message ? err.message : 'Could not share to Nostr.';
+      });
+    });
+
+    const edit = $('#nestEditBtn', root);
+    if (edit) edit.addEventListener('click', function() {
+      editNestRoomDetails().catch(function(err) {
+        const status = $('#nestRoomAudioStatus', root);
+        if (status) status.textContent = err && err.message ? err.message : 'Could not edit room.';
+      });
+    });
+
+    const end = $('#nestEndBtn', root);
+    if (end) end.addEventListener('click', function() {
+      endNestRoom().catch(function(err) {
+        const status = $('#nestRoomAudioStatus', root);
+        if (status) status.textContent = err && err.message ? err.message : 'Could not end room.';
+      });
+    });
+
     return root;
   }
 
@@ -1061,8 +1130,19 @@
             '<div class="nest-preview-status" id="nestPreviewStatus"></div>' +
             '<div class="nests-room-page-toolbar-actions">' +
               '<button class="btn btn-ghost" id="nestPreviewShareBtn" type="button">Share</button>' +
+              '<button class="btn btn-ghost" id="nestBroadcastBtn" type="button">Share on Nostr</button>' +
+              '<button class="btn btn-ghost" id="nestEditBtn" type="button" hidden>Edit Room</button>' +
+              '<button class="btn btn-ghost" id="nestEndBtn" type="button" hidden>End Room</button>' +
             '</div>' +
           '</div>' +
+          '<div class="nest-room-interaction-bar">' +
+            '<button class="btn btn-ghost" id="nestHandBtn" type="button">Raise Hand</button>' +
+            '<div class="nest-reaction-wrap">' +
+              '<button class="btn btn-ghost" id="nestReactBtn" type="button">React</button>' +
+              '<div class="nest-reaction-menu" id="nestReactionMenu" hidden></div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="nest-reaction-overlay" id="nestReactionOverlay" hidden></div>' +
           '<h1 id="nestPreviewTitle">Nostr Nest</h1>' +
           '<p class="nest-preview-summary" id="nestPreviewSummary"></p>' +
           '<div class="nests-room-page-overview-grid">' +
@@ -1162,7 +1242,14 @@
       '<div class="nest-profile-hero" id="nestProfileHero"></div>' +
       '<div class="nest-profile-body"><div class="nest-profile-avatar" id="nestProfileAvatar"></div>' +
       '<div class="nest-profile-role" id="nestProfileRole"></div><h3 id="nestProfileName">Profile</h3>' +
-      '<p id="nestProfileAbout"></p><div class="nest-profile-actions"><button class="btn btn-ghost" id="nestProfileCopy" type="button">Copy npub</button><button class="btn btn-primary" id="nestProfileOpen" type="button">Open profile</button></div>' +
+      '<p id="nestProfileAbout"></p>' +
+      '<div class="nest-profile-actions nest-profile-social-actions">' +
+        '<button class="btn btn-ghost" id="nestProfileFollowBtn" type="button">Follow</button>' +
+        '<button class="btn btn-ghost" id="nestProfileMuteBtn" type="button">Mute</button>' +
+        '<button class="btn btn-ghost" id="nestProfileZapBtn" type="button">Zap</button>' +
+      '</div>' +
+      '<div class="nest-profile-actions"><button class="btn btn-ghost" id="nestProfileStageBtn" type="button">Add to Stage</button><button class="btn btn-ghost" id="nestProfileKickBtn" type="button">Kick</button></div>' +
+      '<div class="nest-profile-actions"><button class="btn btn-ghost" id="nestProfileCopy" type="button">Copy npub</button><button class="btn btn-primary" id="nestProfileOpen" type="button">Open profile</button></div>' +
       '<div class="nest-profile-npub" id="nestProfileNpub"></div></div></div>';
     document.body.appendChild(profileSheet);
     $('.nest-profile-close', profileSheet).addEventListener('click', function() { profileSheet.classList.remove('open'); });
