@@ -292,6 +292,7 @@
       this.announcementConsumer = null;
       this.identity = '';
       this.publishRequested = false;
+      this.publishDeclined = false;
       this.isPublishing = false;
       this.microphoneReady = false;
       this.microphoneError = '';
@@ -351,7 +352,7 @@
           if (status === 'connected') {
             self.emitState('connected');
             self.startAnnouncements();
-            if (self.publishRequested && !self.isPublishing) {
+            if (self.publishRequested && !self.publishDeclined && !self.isPublishing) {
               self.startMicrophonePublish().catch(function(err) {
                 console.warn('[sifaka-nests] microphone publish unavailable; continuing as listener', err);
               });
@@ -372,7 +373,7 @@
       if (initialState === 'connected') {
         this.emitState('connected');
         this.startAnnouncements();
-        if (this.publishRequested && !this.isPublishing) {
+        if (this.publishRequested && !this.publishDeclined && !this.isPublishing) {
           try { await this.startMicrophonePublish(); } catch (err) {
             console.warn('[sifaka-nests] microphone publish unavailable; continuing as listener', err);
           }
@@ -381,7 +382,7 @@
     }
 
     async startMicrophonePublish() {
-      if (!this.connection || !this.Publish || this.isPublishing) return;
+      if (!this.connection || !this.Publish || this.isPublishing || this.publishDeclined) return;
       this.closeMicrophonePublish();
       const microphone = new this.Publish.Source.Microphone({ enabled: true });
       const audioSource = new this.Publish.Signals.Computed(function(effect) {
@@ -433,6 +434,21 @@
       }
 
       this.isPublishing = true;
+      updateActiveRoomAudioUi();
+    }
+
+    async leaveStage() {
+      this.publishDeclined = true;
+      await publishActiveRoomDeparture();
+      this.closeMicrophonePublish();
+      updateActiveRoomAudioUi();
+    }
+
+    async rejoinStage() {
+      if (!this.publishRequested || !this.connection) return;
+      this.publishDeclined = false;
+      await this.startMicrophonePublish();
+      publishCurrentRoomPresence().catch(function() {});
       updateActiveRoomAudioUi();
     }
 
@@ -1157,6 +1173,7 @@
     const dot = modal.querySelector('#nestRoomAudioDot');
     const join = modal.querySelector('#nestPreviewJoinBtn');
     const micBtn = modal.querySelector('#nestRoomMicBtn');
+    const stageBtn = modal.querySelector('#nestRoomStageBtn');
     if (status && activeRoomAudio) {
       const state = activeRoomAudio.state || 'disconnected';
       const count = activeRoomAudio.entries ? activeRoomAudio.entries.size : 0;
@@ -1176,6 +1193,13 @@
     }
     if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute Room' : 'Mute Room';
     if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
+    if (stageBtn) {
+      const canPublish = !!(activeRoomAudio && activeRoomAudio.publishRequested && activeRoomCanPublish());
+      const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
+      stageBtn.hidden = !canPublish;
+      stageBtn.textContent = publishing ? 'Leave Stage' : 'Join Stage';
+      stageBtn.disabled = !activeRoomAudio || activeRoomAudio.state === 'connecting';
+    }
     if (micBtn) {
       const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
       const ready = !!(activeRoomAudio && activeRoomAudio.microphoneReady);
@@ -1205,7 +1229,21 @@
       });
     }
 
-    const mic = $('#nestRoomMicBtn', root);
+    const stage = $('#nestRoomStageBtn', root);
+    if (stage) {
+      stage.addEventListener('click', function() {
+        if (!activeRoomAudio) return;
+        const op = activeRoomAudio.isPublishing
+          ? activeRoomAudio.leaveStage()
+          : activeRoomAudio.rejoinStage();
+        Promise.resolve(op).catch(function(err) {
+          const status = $('#nestRoomAudioStatus', root);
+          if (status) status.textContent = err && err.message ? err.message : 'Could not update stage status.';
+        });
+      });
+    }
+
+
     if (mic) {
       mic.addEventListener('click', function() {
         if (!activeRoomAudio || !activeRoomAudio.isPublishing) return;
@@ -1495,6 +1533,30 @@
         const status = $('#nestRoomAudioStatus', modal);
         if (status) status.textContent = err && err.message ? err.message : 'Unable to join this Nest.';
       });
+    });
+    $('#nestRoomStageBtn', modal).addEventListener('click', function() {
+      if (!activeRoomAudio) return;
+      const op = activeRoomAudio.isPublishing
+        ? activeRoomAudio.leaveStage()
+        : activeRoomAudio.rejoinStage();
+      Promise.resolve(op).catch(function(err) {
+        const status = $('#nestRoomAudioStatus', modal);
+        if (status) status.textContent = err && err.message ? err.message : 'Could not update stage status.';
+      });
+    });
+    $('#nestRoomMicBtn', modal).addEventListener('click', function() {
+      if (!activeRoomAudio || !activeRoomAudio.isPublishing) return;
+      if (!activeRoomAudio.microphoneReady) {
+        activeRoomAudio.startMicrophonePublish().catch(function(err) {
+          const status = $('#nestRoomAudioStatus', modal);
+          if (status) status.textContent = err && err.message ? err.message : 'Could not enable the microphone.';
+          updateActiveRoomAudioUi();
+        });
+        return;
+      }
+      activeRoomAudio.setMicrophoneMuted(!activeRoomAudio.microphoneMuted);
+      publishCurrentRoomPresence().catch(function() {});
+      updateActiveRoomAudioUi();
     });
     $('#nestRoomMuteBtn', modal).addEventListener('click', function() {
       if (!activeRoomAudio) return;
