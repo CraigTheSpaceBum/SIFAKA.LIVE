@@ -259,9 +259,9 @@
   async function loadNestAudioModules() {
     if (!activeRoomAudioModulesPromise) {
       activeRoomAudioModulesPromise = Promise.all([
-        import('https://esm.sh/@moq/net@0.3.5'),
-        import('https://esm.sh/@moq/watch@0.5.2'),
-        import('https://esm.sh/@moq/publish@0.4.5')
+        import('https://esm.sh/@moq/net@0.3.8'),
+        import('https://esm.sh/@moq/watch@0.5.4'),
+        import('https://esm.sh/@moq/publish@0.4.7')
       ]).then(function(modules) {
         return { Moq: modules[0], Watch: modules[1], Publish: modules[2] };
       });
@@ -928,7 +928,7 @@
     if (!user) return;
     const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
     const muted = !!(activeRoomAudio ? activeRoomAudio.microphoneMuted : false);
-    const onstage = publishing || activeRoomUserCanPublish();
+    const onstage = publishing;
     const event = await signRoomEvent(10312, '', [
       ['a', activeRoom.a],
       ['hand', activeRoomHandRaised ? '1' : '0'],
@@ -1102,7 +1102,16 @@
     const event = await signRoomEvent(30312, activeRoomEvent.content || '', nextTags);
     await publishSignedRoomEvent(event, activeRoomRelays);
     activeRoomEvent = event;
-    activeRoom = Object.assign({}, activeRoom || {}, { participants: pTags(event), roomParticipants: pTags(event) });
+    activeRoom = Object.assign({}, activeRoom || {}, {
+      participants: pTags(event),
+      roomParticipants: pTags(event),
+      title: tag(event, 'title') || tag(event, 'room') || (activeRoom && activeRoom.title) || 'Nostr Nest',
+      summary: tag(event, 'summary') || (activeRoom && activeRoom.summary) || '',
+      image: tag(event, 'image') || (activeRoom && activeRoom.image) || '',
+      status: tag(event, 'status') || (activeRoom && activeRoom.status) || 'open',
+      starts: Number(tag(event, 'starts') || (activeRoom && activeRoom.starts) || 0),
+      ends: Number(tag(event, 'ends') || (activeRoom && activeRoom.ends) || 0)
+    });
     await refreshLiveRoom(activeRoomUrl);
   }
 
@@ -1117,12 +1126,18 @@
   async function endNestRoom() {
     if (!activeRoomEvent || !activeRoomUserIsAdmin()) throw new Error('Only the host or an admin can end the room.');
     if (!window.confirm('End this Nostr Nest for everyone?')) return;
-    const nextTags = (activeRoomEvent.tags || []).filter(function(t) { return !(Array.isArray(t) && t[0] === 'status'); });
+    const nextTags = (activeRoomEvent.tags || []).filter(function(t) {
+      return !(Array.isArray(t) && (t[0] === 'status' || t[0] === 'ends'));
+    });
     nextTags.push(['status', 'ended']);
+    nextTags.push(['ends', String(now())]);
     const event = await signRoomEvent(30312, activeRoomEvent.content || '', nextTags);
     await publishSignedRoomEvent(event, activeRoomRelays);
     activeRoomEvent = event;
-    activeRoom = Object.assign({}, activeRoom || {}, { status: 'ended' });
+    activeRoom = Object.assign({}, activeRoom || {}, {
+      status: 'ended',
+      ends: Number(tag(event, 'ends') || now())
+    });
     await refreshLiveRoom(activeRoomUrl);
   }
 
@@ -1146,6 +1161,14 @@
     const event = await signRoomEvent(30312, activeRoomEvent.content || '', nextTags);
     await publishSignedRoomEvent(event, activeRoomRelays);
     activeRoomEvent = event;
+    activeRoom = Object.assign({}, activeRoom || {}, {
+      title: tag(event, 'title') || tag(event, 'room') || 'Nostr Nest',
+      summary: tag(event, 'summary') || '',
+      image: tag(event, 'image') || '',
+      status: tag(event, 'status') || 'open',
+      starts: Number(tag(event, 'starts') || 0),
+      ends: Number(tag(event, 'ends') || 0)
+    });
     await refreshLiveRoom(activeRoomUrl);
   }
 
@@ -1519,6 +1542,7 @@
           '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
             '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
             '<strong id="nestRoomAudioStatus">Not connected</strong>' +
+            '<button class="btn btn-ghost" id="nestRoomStageBtn" type="button" hidden>Join Stage</button>' +
             '<button class="btn btn-ghost" id="nestRoomMicBtn" type="button" disabled>Mute Mic</button>' +
             '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute Room</button>' +
             '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
@@ -1569,6 +1593,7 @@
           '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
             '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
             '<strong id="nestRoomAudioStatus">Not connected</strong>' +
+            '<button class="btn btn-ghost" id="nestRoomStageBtn" type="button" hidden>Join Stage</button>' +
             '<button class="btn btn-ghost" id="nestRoomMicBtn" type="button" disabled>Mute Mic</button>' +
             '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute Room</button>' +
             '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
@@ -2210,7 +2235,7 @@
       if (join) {
         join.disabled = true;
         join.textContent = activeRoomAudio.state === 'connected'
-          ? (activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener')
+          ? (activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Joined As Listener')
           : 'Connecting…';
       }
       const stagePubkeys = (activeRoom && Array.isArray(activeRoom.participants) ? activeRoom.participants : [])
@@ -2415,7 +2440,16 @@
     const interactionEvents = events.filter(function(e) { return Number(e.kind) === 7 || Number(e.kind) === 9735; });
     const reactionMaps = buildRoomReactionMaps(interactionEvents);
     activeRoomReactions = reactionMaps.roomReactions.map(function(ev) {
-      return { id: ev.id, content: ev.content, pubkey: ev.pubkey, created_at: ev.created_at, emojiUrl: '' };
+      const emojiTag = (ev.tags || []).find(function(t) {
+        return Array.isArray(t) && t[0] === 'emoji' && t[1] && t[2];
+      });
+      return {
+        id: ev.id,
+        content: ev.content,
+        pubkey: ev.pubkey,
+        created_at: ev.created_at,
+        emojiUrl: emojiTag ? String(emojiTag[2] || '') : ''
+      };
     }).sort(function(a,b) { return Number(b.created_at || 0) - Number(a.created_at || 0); }).slice(0, 24);
     activeRoomChatReactions = reactionMaps.chatMap;
     activeRoomHandRaised = false;
@@ -2492,6 +2526,7 @@
     if (!decoded || !modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
 
     const events = await relayQuery([
+      { kinds: [30312], authors: [decoded.pubkey], '#d': [decoded.d], limit: 5 },
       { kinds: [30313], '#a': [decoded.a], limit: 10 },
       { kinds: [1311], '#a': [decoded.a], limit: 60 },
       { kinds: [7, 9735], '#a': [decoded.a], limit: 220 },
@@ -2501,12 +2536,28 @@
 
     if (!modal || !modal.classList.contains('open') || activeRoomUrl !== url) return;
 
-    const current = chooseCurrentMeeting(events);
+    const refreshedRoomEvents = events
+      .filter(function(e) { return Number(e.kind) === 30312; })
+      .sort(function(a,b) { return Number(b.created_at || 0) - Number(a.created_at || 0); });
+    const refreshedRoomEvent = refreshedRoomEvents[0] || activeRoomEvent || null;
+    if (refreshedRoomEvent) activeRoomEvent = refreshedRoomEvent;
+
+    const roomEnded = String(tag(refreshedRoomEvent, 'status') || '').toLowerCase() === 'ended';
+    const current = roomEnded ? null : chooseCurrentMeeting(events);
 
     const interactionEvents = events.filter(function(e) { return Number(e.kind) === 7 || Number(e.kind) === 9735; });
     const reactionMaps = buildRoomReactionMaps(interactionEvents);
     activeRoomReactions = reactionMaps.roomReactions.map(function(ev) {
-      return { id: ev.id, content: ev.content, pubkey: ev.pubkey, created_at: ev.created_at, emojiUrl: '' };
+      const emojiTag = (ev.tags || []).find(function(t) {
+        return Array.isArray(t) && t[0] === 'emoji' && t[1] && t[2];
+      });
+      return {
+        id: ev.id,
+        content: ev.content,
+        pubkey: ev.pubkey,
+        created_at: ev.created_at,
+        emojiUrl: emojiTag ? String(emojiTag[2] || '') : ''
+      };
     }).sort(function(a,b) { return Number(b.created_at || 0) - Number(a.created_at || 0); }).slice(0, 24);
     activeRoomChatReactions = reactionMaps.chatMap;
     const currentUser = getCurrentNestUser();
@@ -2542,11 +2593,18 @@
       pubkey: decoded.pubkey,
       d: decoded.d,
       a: decoded.a,
-      status: current ? tag(current,'status') : (activeRoom && activeRoom.status) || 'open',
-      relays: (activeRoom && activeRoom.relays) || [],
-      streaming: (activeRoom && activeRoom.streaming) || '',
+      title: tag(refreshedRoomEvent, 'title') || tag(refreshedRoomEvent, 'room') || (activeRoom && activeRoom.title) || 'Nostr Nest',
+      summary: tag(refreshedRoomEvent, 'summary') || (activeRoom && activeRoom.summary) || '',
+      image: tag(refreshedRoomEvent, 'image') || (activeRoom && activeRoom.image) || '',
+      status: roomEnded ? 'ended' : (current ? tag(current,'status') : (activeRoom && activeRoom.status) || 'open'),
+      starts: Number(tag(refreshedRoomEvent, 'starts') || (activeRoom && activeRoom.starts) || 0),
+      ends: Number(tag(refreshedRoomEvent, 'ends') || (activeRoom && activeRoom.ends) || 0),
+      relays: tags(refreshedRoomEvent, 'relays').length ? tags(refreshedRoomEvent, 'relays') : ((activeRoom && activeRoom.relays) || []),
+      streaming: tag(refreshedRoomEvent, 'streaming') || (activeRoom && activeRoom.streaming) || '',
+      auth: tag(refreshedRoomEvent, 'auth') || (activeRoom && activeRoom.auth) || '',
       participants: roster,
-      roomParticipants: (activeRoom && Array.isArray(activeRoom.roomParticipants)) ? activeRoom.roomParticipants : [],
+      roomParticipants: pTags(refreshedRoomEvent),
+
       meetingParticipants: current ? pTags(current) : [],
       presence: presence
     });
@@ -2589,6 +2647,10 @@
       countText: $('#nestPreviewListenerCount', modal).textContent || ''
     });
 
+    if (roomEnded && activeRoomAudio) {
+      await leaveActiveRoom();
+    }
+
     clearTimeout(liveRefreshTimer);
     if (modal && modal.classList.contains('open') && activeRoomUrl === url) {
       liveRefreshTimer = setTimeout(function() { refreshLiveRoom(url); }, 12000);
@@ -2619,7 +2681,8 @@
       window.showPage('nestsRoom', {
         routeMode: opts.routeMode || 'push',
         roomNaddr: value,
-        autoJoin: opts.autoJoin !== false
+        autoJoin: opts.autoJoin !== false,
+        joinAsListener: opts.joinAsListener !== false
       });
       return true;
     }
