@@ -269,6 +269,8 @@
       this.identity = '';
       this.publishRequested = false;
       this.isPublishing = false;
+      this.microphoneMuted = false;
+      this.stageParticipants = new Set();
       this.microphone = null;
       this.publishBroadcast = null;
       this.Moq = null;
@@ -359,6 +361,7 @@
       });
       this.microphone = microphone;
       this.publishBroadcast = broadcast;
+      try { this.publishBroadcast.audio.muted.set(this.microphoneMuted); } catch (_) {}
       this.isPublishing = true;
       updateActiveRoomAudioUi();
     }
@@ -414,6 +417,15 @@
         current.add(pubkey);
         if (!self.entries.has(pubkey)) self.subscribeParticipant(pubkey);
       });
+
+      // Keep explicitly advertised on-stage speakers subscribed even when the
+      // MoQ announcement set temporarily lags during reconnects or relay churn.
+      self.stageParticipants.forEach(function(pubkey) {
+        if (!pubkey || pubkey === String(self.identity || '').toLowerCase()) return;
+        current.add(pubkey);
+        if (!self.entries.has(pubkey)) self.subscribeParticipant(pubkey);
+      });
+
       Array.from(this.entries.keys()).forEach(function(pubkey) {
         if (!current.has(pubkey)) {
           closeAudioEntry(self.entries.get(pubkey));
@@ -450,18 +462,27 @@
       if (!this.connection) return;
       // Treat the NIP-53 stage roster as an additive hint, not an authoritative
       // replacement for MoQ announcements. A room event can lag behind the
-      // transport announcement by several seconds; removing an announced
-      // speaker here would otherwise mute them until a new announcement arrives.
+      // transport announcement by several seconds; keep stage speakers alive
+      // until the roster itself changes.
       const wanted = new Set((Array.isArray(pubkeys) ? pubkeys : [])
         .map(function(value) { return String(value || '').trim().toLowerCase(); })
         .filter(function(value) {
           return /^[0-9a-f]{64}$/.test(value) && value !== String(this.identity || '').toLowerCase();
         }, this));
 
+      this.stageParticipants = wanted;
       wanted.forEach(function(pubkey) {
         if (!this.entries.has(pubkey)) this.subscribeParticipant(pubkey);
       }, this);
 
+      updateActiveRoomAudioUi();
+    }
+
+    setMicrophoneMuted(value) {
+      this.microphoneMuted = !!value;
+      if (this.publishBroadcast && this.publishBroadcast.audio && this.publishBroadcast.audio.muted) {
+        try { this.publishBroadcast.audio.muted.set(this.microphoneMuted); } catch (_) {}
+      }
       updateActiveRoomAudioUi();
     }
 
@@ -585,9 +606,9 @@
   }
 
   function normalizeNestStreamingUrl(value) {
-    // The reference Nostr Nests client uses https://moq.nostrnests.com:4443
-    // as its default MoQ relay endpoint. Keep an explicit room endpoint intact,
-    // but restore the public relay's :4443 default when the room omits a port.
+    // The reference Nostr Nests client uses the public MoQ relay endpoint.
+    // Keep an explicit room endpoint intact; otherwise use the production
+    // listener-compatible endpoint.
     const fallback = 'https://moq.nostrnests.com:4443';
     try {
       const parsed = new URL(String(value || fallback));
@@ -611,6 +632,7 @@
     const slider = modal.querySelector('#nestRoomVolume');
     const dot = modal.querySelector('#nestRoomAudioDot');
     const join = modal.querySelector('#nestPreviewJoinBtn');
+    const micBtn = modal.querySelector('#nestRoomMicBtn');
     if (status && activeRoomAudio) {
       const state = activeRoomAudio.state || 'disconnected';
       const count = activeRoomAudio.entries ? activeRoomAudio.entries.size : 0;
@@ -628,8 +650,13 @@
         join.textContent = 'Join As Speak';
       }
     }
-    if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute' : 'Mute';
+    if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute Room' : 'Mute Room';
     if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
+    if (micBtn) {
+      const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
+      micBtn.disabled = !publishing;
+      micBtn.textContent = publishing && activeRoomAudio.microphoneMuted ? 'Unmute Mic' : 'Mute Mic';
+    }
   }
 
   function wireRoomRootControls(root) {
@@ -643,6 +670,16 @@
           const status = $('#nestRoomAudioStatus', root);
           if (status) status.textContent = err && err.message ? err.message : 'Unable to join this Nest.';
         });
+      });
+    }
+
+    const mic = $('#nestRoomMicBtn', root);
+    if (mic) {
+      mic.addEventListener('click', function() {
+        if (!activeRoomAudio || !activeRoomAudio.isPublishing) return;
+        activeRoomAudio.setMicrophoneMuted(!activeRoomAudio.microphoneMuted);
+        publishActiveRoomPresence().catch(function() {});
+        updateActiveRoomAudioUi();
       });
     }
 
@@ -762,7 +799,8 @@
           '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
             '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
             '<strong id="nestRoomAudioStatus">Not connected</strong>' +
-            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute</button>' +
+            '<button class="btn btn-ghost" id="nestRoomMicBtn" type="button" disabled>Mute Mic</button>' +
+            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute Room</button>' +
             '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
             '<div class="nest-room-audio-actions">' +
               '<button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speak</button>' +
@@ -811,7 +849,8 @@
           '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
             '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
             '<strong id="nestRoomAudioStatus">Not connected</strong>' +
-            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute</button>' +
+            '<button class="btn btn-ghost" id="nestRoomMicBtn" type="button" disabled>Mute Mic</button>' +
+            '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute Room</button>' +
             '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
           '</div>' +
           '<div class="nest-room-chat-compose" id="nestRoomChatCompose" hidden>' +
@@ -1332,8 +1371,8 @@
     if (!activeRoom || !activeRoom.a) return;
     try {
       const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
-      const muted = !!(activeRoomAudio ? activeRoomAudio.muted : true);
-      const onstage = !!(activeRoomAudio && activeRoomAudio.publishRequested);
+      const muted = !!(activeRoomAudio ? activeRoomAudio.microphoneMuted : true);
+      const onstage = publishing;
       const event = await signRoomEvent(10312, '', [
         ['a', activeRoom.a],
         ['publishing', publishing ? '1' : '0'],
