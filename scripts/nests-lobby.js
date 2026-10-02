@@ -525,7 +525,8 @@
           probe: this.connection.probe
         });
         const audioSource = new this.Watch.Audio.Source({
-          broadcast: broadcast
+          broadcast: broadcast,
+          supported: this.Watch.Audio.Decoder.supported
         });
         const decoder = new this.Watch.Audio.Decoder({
           source: audioSource,
