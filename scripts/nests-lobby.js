@@ -610,6 +610,69 @@
     return String(data.token);
   }
 
+  function parseNestThemeTags(tagsList) {
+    const tagsArray = Array.isArray(tagsList) ? tagsList : [];
+    const theme = { colors: {}, font: null, background: null };
+    tagsArray.forEach(function(t) {
+      if (!Array.isArray(t)) return;
+      if (t[0] === 'c' && t[1] && t[2]) {
+        if (t[2] === 'background') theme.colors.background = String(t[1]);
+        if (t[2] === 'text') theme.colors.text = String(t[1]);
+        if (t[2] === 'primary') theme.colors.primary = String(t[1]);
+      } else if (t[0] === 'f' && t[1]) {
+        const url = String(t[2] || '');
+        theme.font = { family: String(t[1]), url: /^https?:\/\//i.test(url) ? url : '' };
+      } else if (t[0] === 'bg' && t[1]) {
+        let url = '', mode = 'cover';
+        (t.slice(1) || []).forEach(function(v) {
+          const value = String(v || '');
+          if (value.indexOf('url ') === 0) url = value.slice(4);
+          else if (value.indexOf('mode ') === 0) mode = value.slice(5) === 'tile' ? 'tile' : 'cover';
+        });
+        if (/^https?:\/\//i.test(url)) theme.background = { url: url, mode: mode };
+      }
+    });
+    return theme;
+  }
+
+  function applyNestRoomTheme(event) {
+    const root = roomPageRoot || modal;
+    if (!root || !event) return;
+    const theme = parseNestThemeTags(event.tags);
+    const colors = theme.colors || {};
+    if (colors.background) root.style.setProperty('--surface', colors.background);
+    if (colors.background) root.style.setProperty('--surface2', colors.background);
+    if (colors.background) root.style.setProperty('--surface3', colors.background);
+    if (colors.text) root.style.setProperty('--text', colors.text);
+    if (colors.text) root.style.setProperty('--text2', colors.text);
+    if (colors.primary) root.style.setProperty('--purple', colors.primary);
+    if (colors.primary) root.style.setProperty('--accent', colors.primary);
+    const dialog = $('.nests-room-page-dialog', root) || $('.nest-preview-dialog', root);
+    if (dialog && colors.background) dialog.style.backgroundColor = colors.background;
+    if (dialog && colors.text) dialog.style.color = colors.text;
+    const title = $('#nestPreviewTitle', root);
+    if (title && colors.text) title.style.color = colors.text;
+    const summary = $('#nestPreviewSummary', root);
+    if (summary && colors.text) summary.style.color = colors.text;
+    if (dialog && theme.background) {
+      dialog.style.backgroundImage = 'url("' + theme.background.url.replace(/"/g, '%22') + '")';
+      dialog.style.backgroundSize = theme.background.mode === 'tile' ? 'auto' : 'cover';
+      dialog.style.backgroundRepeat = theme.background.mode === 'tile' ? 'repeat' : 'no-repeat';
+      dialog.style.backgroundPosition = 'center';
+    }
+    if (theme.font && theme.font.url && /^https?:\/\//i.test(theme.font.url)) {
+      const fontId = 'nest-room-theme-font';
+      if (!document.getElementById(fontId)) {
+        const link = document.createElement('link');
+        link.id = fontId;
+        link.rel = 'stylesheet';
+        link.href = theme.font.url;
+        document.head.appendChild(link);
+      }
+      if (dialog) dialog.style.fontFamily = '"' + theme.font.family.replace(/"/g, '') + '", sans-serif';
+    }
+  }
+
   function getCurrentNestUser() {
     const ctx = getSifakaContext();
     return ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
@@ -847,11 +910,15 @@
     if (title === null) return;
     const summary = window.prompt('Nest room description:', currentSummary);
     if (summary === null) return;
+    const currentImage = tag(activeRoomEvent, 'image') || '';
+    const image = window.prompt('Nest banner image URL (leave blank to remove):', currentImage);
+    if (image === null) return;
     const nextTags = (activeRoomEvent.tags || []).filter(function(t) {
-      return !(Array.isArray(t) && (t[0] === 'title' || t[0] === 'room' || t[0] === 'summary'));
+      return !(Array.isArray(t) && (t[0] === 'title' || t[0] === 'room' || t[0] === 'summary' || t[0] === 'image'));
     });
     nextTags.push(['title', title.trim() || 'Nostr Nest']);
     if (summary.trim()) nextTags.push(['summary', summary.trim()]);
+    if (image.trim()) nextTags.push(['image', image.trim()]);
     const event = await signRoomEvent(30312, activeRoomEvent.content || '', nextTags);
     await publishSignedRoomEvent(event, activeRoomRelays);
     activeRoomEvent = event;
@@ -2095,6 +2162,7 @@
     activeRoomEvent = roomEvent;
     activeRoom = room;
     activeRoomRelays = roomRelayUrls(room, decoded);
+    applyNestRoomTheme(roomEvent);
     updateNestInteractionUi();
     renderRoom(room, profiles, fallback);
     const kickEvents = events.filter(function(e) {
@@ -2188,6 +2256,7 @@
       presence: presence
     });
 
+    applyNestRoomTheme(activeRoomEvent);
     updateNestInteractionUi();
     if (activeRoomAudio && typeof activeRoomAudio.setParticipants === 'function') {
       const stagePubkeys = roster
