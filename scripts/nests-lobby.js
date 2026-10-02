@@ -616,7 +616,9 @@
         parsed.protocol = 'https:';
       }
       if (parsed.hostname.toLowerCase() === 'moq.nostrnests.com') {
-        if (!parsed.port) parsed.port = '4443';
+        // Do not rewrite a room's explicitly advertised port. NIP-19/naddr
+        // links and room events may point at either the public 443 endpoint or
+        // the native 4443 relay endpoint.
         parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '';
       }
       return parsed.toString().replace(/\/$/, '');
