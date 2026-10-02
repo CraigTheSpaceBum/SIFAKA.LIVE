@@ -14,6 +14,11 @@
   let activeRoom = null, activeRoomEvent = null, activeRoomRelays = [];
   let activeRoomAudio = null, activeRoomAudioModulesPromise = null;
   let activeRoomPresenceTimer = null, activeRoomRefreshTimer = null, activeRoomChatTimer = null;
+  let activeRoomAdminTimer = null;
+  let activeRoomHandRaised = false;
+  let activeRoomReactions = [];
+  let activeRoomChatReactions = new Map();
+  let activeRoomCustomEmojis = [];
   let roomPageMode = false, roomPageRoot = null, roomPageNaddr = '';
 
   const $ = (s, root = document) => root.querySelector(s);
@@ -605,7 +610,292 @@
     return String(data.token);
   }
 
-  function normalizeNestStreamingUrl(value) {
+  function getCurrentNestUser() {
+    const ctx = getSifakaContext();
+    return ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+  }
+
+  function activeRoomUserIsAdmin() {
+    const user = getCurrentNestUser();
+    if (!user || !activeRoomEvent) return false;
+    const pubkey = String(user.pubkey || '').toLowerCase();
+    if (pubkey === String(activeRoomEvent.pubkey || '').toLowerCase()) return true;
+    return pTags(activeRoomEvent).some(function(person) {
+      return person.pubkey === pubkey && /admin|host|owner/i.test(person.role);
+    });
+  }
+
+  function activeRoomUserCanPublish() {
+    const user = getCurrentNestUser();
+    if (!user || !activeRoomEvent) return false;
+    const pubkey = String(user.pubkey || '').toLowerCase();
+    if (pubkey === String(activeRoomEvent.pubkey || '').toLowerCase()) return true;
+    return pTags(activeRoomEvent).some(function(person) {
+      return person.pubkey === pubkey && /speaker|admin|host|owner/i.test(person.role);
+    });
+  }
+
+  async function publishCurrentRoomPresence() {
+    if (!activeRoom || !activeRoom.a) return;
+    const user = getCurrentNestUser();
+    if (!user) return;
+    const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
+    const muted = !!(activeRoomAudio ? activeRoomAudio.microphoneMuted : false);
+    const onstage = publishing || activeRoomUserCanPublish();
+    const event = await signRoomEvent(10312, '', [
+      ['a', activeRoom.a],
+      ['hand', activeRoomHandRaised ? '1' : '0'],
+      ['publishing', publishing ? '1' : '0'],
+      ['muted', muted ? '1' : '0'],
+      ['onstage', onstage ? '1' : '0']
+    ]);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+  }
+
+  async function setNestHandRaised(next) {
+    if (!getCurrentNestUser()) throw new Error('Please sign in to raise your hand.');
+    activeRoomHandRaised = !!next;
+    await publishCurrentRoomPresence();
+    updateNestInteractionUi();
+    refreshLiveRoom(activeRoomUrl).catch(function() {});
+  }
+
+  async function loadNestCustomEmojis() {
+    const user = getCurrentNestUser();
+    if (!user) return [];
+    try {
+      const listEvents = await relayQuery([{ kinds: [10030], authors: [user.pubkey], limit: 1 }], 2500, activeRoomRelays);
+      if (!listEvents.length) return [];
+      const emojis = [];
+      const setRefs = [];
+      (listEvents[0].tags || []).forEach(function(t) {
+        if (!Array.isArray(t)) return;
+        if (t[0] === 'emoji' && t[1] && t[2]) emojis.push({ shortcode: String(t[1]), url: String(t[2]) });
+        if (t[0] === 'a' && /^30030:[0-9a-f]{64}:.+/i.test(String(t[1] || ''))) {
+          const parts = String(t[1]).split(':');
+          setRefs.push({ pubkey: parts[1], d: parts.slice(2).join(':') });
+        }
+      });
+      if (setRefs.length) {
+        const events = await relayQuery(setRefs.map(function(ref) {
+          return { kinds: [30030], authors: [ref.pubkey], '#d': [ref.d], limit: 1 };
+        }), 2500, activeRoomRelays);
+        events.forEach(function(ev) {
+          (ev.tags || []).forEach(function(t) {
+            if (Array.isArray(t) && t[0] === 'emoji' && t[1] && t[2]) emojis.push({ shortcode: String(t[1]), url: String(t[2]) });
+          });
+        });
+      }
+      const seen = new Set();
+      return emojis.filter(function(e) {
+        if (seen.has(e.shortcode)) return false;
+        seen.add(e.shortcode);
+        return /^https?:\/\//i.test(e.url);
+      }).slice(0, 64);
+    } catch (_) { return []; }
+  }
+
+  async function sendNestReaction(value, customEmoji) {
+    const user = getCurrentNestUser();
+    if (!user || !activeRoom || !activeRoom.a) throw new Error('Please sign in to react.');
+    const emoji = String(value || '').trim();
+    if (!emoji) return;
+    const eventTags = [['a', activeRoom.a]];
+    let content = emoji;
+    if (customEmoji) {
+      content = ':' + customEmoji.shortcode + ':';
+      eventTags.push(['emoji', customEmoji.shortcode, customEmoji.url]);
+    }
+    const event = await signRoomEvent(7, content, eventTags);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+    activeRoomReactions = [{ id: event.id || ('local-' + now()), content: content, pubkey: user.pubkey, created_at: event.created_at || now(), emojiUrl: customEmoji ? customEmoji.url : '' }].concat(activeRoomReactions).slice(0, 24);
+    renderNestReactionOverlay();
+  }
+
+  function buildRoomReactionMaps(events) {
+    const chatMap = new Map();
+    const roomReactions = [];
+    (Array.isArray(events) ? events : []).forEach(function(ev) {
+      if (Number(ev.kind) === 7) {
+        const eTag = tag(ev, 'e');
+        if (eTag) {
+          if (!chatMap.has(eTag)) chatMap.set(eTag, []);
+          chatMap.get(eTag).push(ev);
+        } else {
+          roomReactions.push(ev);
+        }
+      }
+    });
+    return { chatMap: chatMap, roomReactions: roomReactions };
+  }
+
+  function renderNestReactionOverlay() {
+    if (!modal) return;
+    const overlay = $('#nestReactionOverlay', modal);
+    if (!overlay) return;
+    const recent = activeRoomReactions.slice(0, 12);
+    overlay.innerHTML = recent.map(function(ev) {
+      const content = String(ev.content || '✨');
+      const custom = String(ev.emojiUrl || tag(ev, 'emoji') || '');
+      return '<span class="nest-floating-reaction">' + (custom ? '<img src="' + esc(custom) + '" alt="' + esc(content) + '">' : esc(content)) + '</span>';
+    }).join('');
+    overlay.hidden = !recent.length;
+  }
+
+  function populateNestReactionMenu() {
+    if (!modal) return;
+    const menu = $('#nestReactionMenu', modal);
+    if (!menu) return;
+    const basics = ['🤙','💯','🔥','😂','❤️','👏','🙌','✨','🚀','⚡','🎉','💜'];
+    menu.innerHTML = basics.map(function(emoji) {
+      return '<button type="button" class="nest-reaction-btn" data-emoji="' + esc(emoji) + '">' + emoji + '</button>';
+    }).join('');
+    if (activeRoomCustomEmojis.length) {
+      const customHtml = activeRoomCustomEmojis.map(function(e) {
+        return '<button type="button" class="nest-reaction-btn nest-custom-reaction-btn" data-custom-shortcode="' + esc(e.shortcode) + '" data-custom-url="' + esc(e.url) + '"><img src="' + esc(e.url) + '" alt="' + esc(e.shortcode) + '"></button>';
+      }).join('');
+      menu.insertAdjacentHTML('beforeend', customHtml);
+    }
+    Array.from(menu.querySelectorAll('[data-emoji]')).forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        sendNestReaction(btn.getAttribute('data-emoji')).catch(function(err) {
+          const status = $('#nestRoomAudioStatus', modal);
+          if (status) status.textContent = err && err.message ? err.message : 'Reaction failed.';
+        });
+        menu.hidden = true;
+      });
+    });
+    Array.from(menu.querySelectorAll('[data-custom-shortcode]')).forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        sendNestReaction('', {
+          shortcode: btn.getAttribute('data-custom-shortcode') || '',
+          url: btn.getAttribute('data-custom-url') || ''
+        }).catch(function(err) {
+          const status = $('#nestRoomAudioStatus', modal);
+          if (status) status.textContent = err && err.message ? err.message : 'Reaction failed.';
+        });
+        menu.hidden = true;
+      });
+    });
+  }
+
+  async function publishNestUserList(kind, targetPubkey, add) {
+    const user = getCurrentNestUser();
+    if (!user || !targetPubkey) throw new Error('Please sign in first.');
+    const events = await relayQuery([{ kinds: [kind], authors: [user.pubkey], limit: 1 }], 3000, activeRoomRelays);
+    const latest = events.sort(function(a,b) { return Number(b.created_at || 0) - Number(a.created_at || 0); })[0] || null;
+    const existingTags = latest && Array.isArray(latest.tags) ? latest.tags : [];
+    const target = String(targetPubkey).toLowerCase();
+    const newTags = existingTags.filter(function(t) { return Array.isArray(t) && !(t[0] === 'p' && String(t[1] || '').toLowerCase() === target); });
+    if (add) newTags.push(['p', target]);
+    const event = await signRoomEvent(kind, latest ? latest.content : '', newTags);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+    return add;
+  }
+
+  async function updateNestParticipantRole(targetPubkey, role) {
+    if (!activeRoomEvent || !activeRoomUserIsAdmin()) throw new Error('Only the host or an admin can manage the stage.');
+    const target = String(targetPubkey || '').toLowerCase();
+    const nextTags = (activeRoomEvent.tags || []).filter(function(t) {
+      return !(Array.isArray(t) && t[0] === 'p' && String(t[1] || '').toLowerCase() === target);
+    });
+    if (role) nextTags.push(['p', target, '', role]);
+    const event = await signRoomEvent(30312, activeRoomEvent.content || '', nextTags);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+    activeRoomEvent = event;
+    activeRoom = Object.assign({}, activeRoom || {}, { participants: pTags(event), roomParticipants: pTags(event) });
+    await refreshLiveRoom(activeRoomUrl);
+  }
+
+  async function kickNestParticipant(targetPubkey) {
+    if (!activeRoomEvent || !activeRoomUserIsAdmin()) throw new Error('Only the host or an admin can kick participants.');
+    const target = String(targetPubkey || '').toLowerCase();
+    const command = await signRoomEvent(4312, '', [['a', activeRoom.a], ['p', target], ['action', 'kick']]);
+    await publishSignedRoomEvent(command, activeRoomRelays);
+    await updateNestParticipantRole(target, null);
+  }
+
+  async function endNestRoom() {
+    if (!activeRoomEvent || !activeRoomUserIsAdmin()) throw new Error('Only the host or an admin can end the room.');
+    if (!window.confirm('End this Nostr Nest for everyone?')) return;
+    const nextTags = (activeRoomEvent.tags || []).filter(function(t) { return !(Array.isArray(t) && t[0] === 'status'); });
+    nextTags.push(['status', 'ended']);
+    const event = await signRoomEvent(30312, activeRoomEvent.content || '', nextTags);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+    activeRoomEvent = event;
+    activeRoom = Object.assign({}, activeRoom || {}, { status: 'ended' });
+    await refreshLiveRoom(activeRoomUrl);
+  }
+
+  async function editNestRoomDetails() {
+    if (!activeRoomEvent || !activeRoomUserIsAdmin()) throw new Error('Only the host or an admin can edit this room.');
+    const currentTitle = tag(activeRoomEvent, 'title') || tag(activeRoomEvent, 'room') || '';
+    const currentSummary = tag(activeRoomEvent, 'summary') || '';
+    const title = window.prompt('Nest room title:', currentTitle);
+    if (title === null) return;
+    const summary = window.prompt('Nest room description:', currentSummary);
+    if (summary === null) return;
+    const nextTags = (activeRoomEvent.tags || []).filter(function(t) {
+      return !(Array.isArray(t) && (t[0] === 'title' || t[0] === 'room' || t[0] === 'summary'));
+    });
+    nextTags.push(['title', title.trim() || 'Nostr Nest']);
+    if (summary.trim()) nextTags.push(['summary', summary.trim()]);
+    const event = await signRoomEvent(30312, activeRoomEvent.content || '', nextTags);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+    activeRoomEvent = event;
+    await refreshLiveRoom(activeRoomUrl);
+  }
+
+  async function zapNestParticipant(targetPubkey, targetProfile) {
+    const user = getCurrentNestUser();
+    if (!user || !targetPubkey || String(targetPubkey).toLowerCase() === String(user.pubkey).toLowerCase()) return;
+    const lud16 = String(targetProfile && (targetProfile.lud16 || targetProfile.lud06) || '').trim();
+    if (!lud16 || !lud16.includes('@')) throw new Error('This profile does not expose a Lightning address.');
+    const amount = Number.parseInt(window.prompt('Zap amount (sats):', '100') || '', 10);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const tools = window.NostrTools;
+    if (!tools || !tools.nip57 || typeof tools.nip57.makeZapRequest !== 'function') throw new Error('Nostr zap support is not available in this browser.');
+    const [name, domain] = lud16.split('@');
+    const meta = await fetch('https://' + domain + '/.well-known/lnurlp/' + encodeURIComponent(name)).then(function(res) {
+      if (!res.ok) throw new Error('Lightning address lookup failed.');
+      return res.json();
+    });
+    if (meta.allowsNostr !== true || !meta.callback) throw new Error('This Lightning address does not support Nostr zaps.');
+    const zapReq = tools.nip57.makeZapRequest({
+      profile: String(targetPubkey).toLowerCase(),
+      amount: amount * 1000,
+      relays: activeRoomRelays,
+      comment: 'Nostr Nest'
+    });
+    const signed = await signRoomEvent(zapReq.kind, zapReq.content, zapReq.tags);
+    const callback = new URL(meta.callback);
+    callback.searchParams.set('amount', String(amount * 1000));
+    callback.searchParams.set('nostr', JSON.stringify(signed));
+    const invoiceData = await callback.toString() && await fetch(callback.toString()).then(function(res) {
+      if (!res.ok) throw new Error('Lightning callback failed.');
+      return res.json();
+    });
+    const invoice = invoiceData && invoiceData.pr;
+    if (!invoice) throw new Error('No Lightning invoice returned.');
+    if (window.webln) {
+      await window.webln.enable();
+      await window.webln.sendPayment(invoice);
+      return;
+    }
+    try { await navigator.clipboard.writeText(invoice); } catch (_) {}
+    window.alert('Invoice copied. Pay it with your Lightning wallet.');
+  }
+
+  async function shareNestRoomToNostr() {
+    const user = getCurrentNestUser();
+    if (!user || !activeRoom || !activeRoomEvent) throw new Error('Please sign in to share this room to Nostr.');
+    const title = tag(activeRoomEvent, 'title') || tag(activeRoomEvent, 'room') || 'Nostr Nest';
+    const event = await signRoomEvent(1, 'Join me in "' + title + '" on Nostr Nest!\n\nnostr:' + activeRoomUrl, [['a', activeRoom.a]]);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+    window.alert('Shared to Nostr.');
+  }
+
+    function normalizeNestStreamingUrl(value) {
     // The reference Nostr Nests client uses the public MoQ relay endpoint.
     // Keep an explicit room endpoint intact; otherwise use the production
     // listener-compatible endpoint.
