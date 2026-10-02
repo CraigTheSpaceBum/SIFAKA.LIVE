@@ -21345,7 +21345,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const match = String(room.roomRef || '').match(/^30312:([0-9a-f]{64}):(.+)$/i);
       if (!match) return '';
       try {
-        return window.NostrTools.nip19.naddrEncode({ identifier: match[2], pubkey: match[1], kind: 30312 });
+        return window.NostrTools.nip19.naddrEncode({
+          identifier: match[2],
+          pubkey: match[1],
+          kind: 30312,
+          relays: Array.isArray(room.relays) ? room.relays.filter(r => /^wss:\/\//i.test(String(r || ''))) : []
+        });
       } catch (_) { return ''; }
     }
 
