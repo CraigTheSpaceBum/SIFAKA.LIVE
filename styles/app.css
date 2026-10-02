@@ -7486,3 +7486,80 @@ body.nest-room-page-open{
 #nestRoomPage .nest-person-role-moderator{color:var(--live);border-color:color-mix(in srgb,var(--live) 30%,var(--border));background:color-mix(in srgb,var(--live) 7%,var(--surface3))}
 #nestRoomPage .nest-preview-section-head{display:flex;align-items:center;justify-content:space-between}
 #nestRoomPage .nests-room-page-people-column .nest-preview-section:first-child{margin-top:0}
+
+
+/* NOSTR NEST — feature parity controls */
+#nestRoomPage .nest-room-interaction-bar{
+  display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;
+  margin:.75rem 0 0;
+}
+#nestRoomPage .nest-room-interaction-bar .btn.is-active{
+  border-color:color-mix(in srgb,#eab308 55%,var(--border));
+  background:color-mix(in srgb,#eab308 12%,var(--surface2));
+  color:#facc15;
+}
+#nestRoomPage .nest-reaction-wrap{position:relative}
+#nestRoomPage .nest-reaction-menu{
+  position:absolute;left:0;bottom:calc(100% + .45rem);z-index:40;
+  display:grid;grid-template-columns:repeat(4,42px);gap:.35rem;
+  max-width:250px;padding:.55rem;
+  border:1px solid var(--border);border-radius:14px;
+  background:var(--surface);box-shadow:0 20px 60px rgba(0,0,0,.28);
+}
+#nestRoomPage .nest-reaction-menu[hidden]{display:none}
+#nestRoomPage .nest-reaction-btn{
+  width:42px;height:42px;border:0;border-radius:10px;
+  background:var(--surface2);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:1.35rem;
+}
+#nestRoomPage .nest-reaction-btn:hover{background:var(--surface3)}
+#nestRoomPage .nest-reaction-btn img{width:28px;height:28px;object-fit:contain}
+#nestRoomPage .nest-reaction-overlay{
+  display:flex;gap:.35rem;flex-wrap:wrap;align-items:flex-end;justify-content:flex-end;
+  position:fixed;right:1.1rem;bottom:5.9rem;z-index:35;max-width:280px;
+  pointer-events:none;
+}
+#nestRoomPage .nest-reaction-overlay[hidden]{display:none}
+#nestRoomPage .nest-floating-reaction{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border-radius:50%;
+  background:color-mix(in srgb,var(--surface2) 86%,transparent);
+  border:1px solid var(--border);font-size:1.25rem;
+  animation:nest-reaction-pop .9s ease both;
+}
+#nestRoomPage .nest-floating-reaction img{width:24px;height:24px;object-fit:contain}
+@keyframes nest-reaction-pop{
+  0%{transform:translateY(10px) scale(.8);opacity:0}
+  35%{transform:translateY(-5px) scale(1);opacity:1}
+  100%{transform:translateY(-16px) scale(.96);opacity:.15}
+}
+#nestRoomPage .nest-chat-action-row{display:flex;align-items:center;gap:.25rem;margin-top:.25rem}
+#nestRoomPage .nest-chat-quick-react,
+#nestRoomPage .nest-chat-zap-btn{
+  border:1px solid transparent;background:transparent;color:var(--muted);
+  border-radius:8px;padding:.15rem .35rem;font-size:.56rem;cursor:pointer;
+}
+#nestRoomPage .nest-chat-quick-react:hover,
+#nestRoomPage .nest-chat-zap-btn:hover{
+  background:var(--surface2);color:var(--text);border-color:var(--border)
+}
+#nestRoomPage .nest-chat-reactions{display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.25rem}
+#nestRoomPage .nest-chat-reaction-chip,
+#nestRoomPage .nest-chat-zap-chip{
+  display:inline-flex;align-items:center;gap:.2rem;border:1px solid var(--border);
+  border-radius:999px;background:var(--surface2);padding:.15rem .35rem;
+  color:var(--text);font-size:.55rem;cursor:pointer;
+}
+#nestRoomPage .nest-chat-reaction-chip span{color:var(--muted)}
+#nestRoomPage .nest-chat-zap-chip{color:#facc15}
+#nestRoomPage .nest-profile-social-actions{flex-wrap:wrap}
+#nestRoomPage .nest-profile-social-actions .btn{flex:1;min-width:80px}
+@media(max-width:760px){
+  #nestRoomPage .nest-reaction-menu{
+    left:auto;right:0;grid-template-columns:repeat(4,40px);
+    max-width:210px;
+  }
+  #nestRoomPage .nest-reaction-overlay{
+    right:.6rem;bottom:7.2rem;max-width:220px;
+  }
+}
