@@ -289,11 +289,13 @@
       this.announcementDispose = null;
       this.statusDispose = null;
       this.pollTimer = null;
+      this.announcementConsumer = null;
       this.identity = '';
       this.publishRequested = false;
       this.isPublishing = false;
       this.microphoneMuted = false;
       this.stageParticipants = new Set();
+      this.announcedParticipants = new Set();
       this.microphone = null;
       this.publishBroadcast = null;
       this.publishAudioSource = null;
@@ -332,10 +334,11 @@
       relayUrl.pathname = '/' + String(config.namespace || '');
       if (config.token) relayUrl.searchParams.set('jwt', config.token);
 
-      this.connection = new this.Moq.Connection.Reload({
+      this.connection = new this.Moq.Connection({
         url: relayUrl,
         enabled: true,
         delay: { initial: 1000, multiplier: 2, max: 30000 },
+        discovery: true,
         webtransport: {},
         websocket: {}
       });
@@ -401,7 +404,9 @@
       this.publishAudioSource = audioSource;
       this.publishCapture = capture;
       this.publishEncoder = encoder;
-      try { this.publishBroadcast.audio.muted.set(this.microphoneMuted); } catch (_) {}
+      if (this.publishEncoder && this.publishEncoder.volume) {
+        try { this.publishEncoder.volume.set(this.microphoneMuted ? 0 : 1); } catch (_) {}
+      }
       this.isPublishing = true;
       updateActiveRoomAudioUi();
     }
@@ -435,16 +440,27 @@
       this.stopAnnouncements();
       if (!this.connection) return;
       const self = this;
-      if (this.connection.announced && this.connection.announced.subscribe) {
-        this.announcementDispose = this.connection.announced.subscribe(function(announced) {
-          self.processAnnouncements(announced);
-        });
+      try {
+        const consumer = this.connection.announced();
+        this.announcementConsumer = consumer;
+        this.announcementDispose = function() {
+          try { consumer.close(); } catch (_) {}
+          self.announcementConsumer = null;
+        };
+        (async function() {
+          try {
+            for (;;) {
+              const update = await consumer.next();
+              if (!update) break;
+              self.processAnnouncementUpdate(update);
+            }
+          } catch (err) {
+            if (self.connection) console.warn('[sifaka-nests] announcement stream failed', err);
+          }
+        })();
+      } catch (err) {
+        console.warn('[sifaka-nests] could not start announcement stream', err);
       }
-      this.pollTimer = setInterval(function() {
-        if (!self.connection || !self.connection.announced) return;
-        try { self.processAnnouncements(self.connection.announced.peek()); } catch (_) {}
-      }, 3000);
-      try { this.processAnnouncements(this.connection.announced.peek()); } catch (_) {}
     }
 
     stopAnnouncements() {
@@ -452,29 +468,38 @@
         try { this.announcementDispose(); } catch (_) {}
         this.announcementDispose = null;
       }
+      this.announcementConsumer = null;
       if (this.pollTimer) {
         clearInterval(this.pollTimer);
         this.pollTimer = null;
       }
+      this.announcedParticipants = new Set();
+      this.reconcileParticipants();
     }
 
-    processAnnouncements(announced) {
-      if (!this.connection || !announced) return;
-      const current = new Set();
+    processAnnouncementUpdate(update) {
+      if (!this.connection || !update) return;
+      const pubkey = String(update.prefix || '').toLowerCase();
+      if (!pubkey || pubkey === String(this.identity || '').toLowerCase()) return;
+      if (!/^[0-9a-f]{64}$/.test(pubkey)) return;
+      if (update.kind === 'retracted') this.announcedParticipants.delete(pubkey);
+      else this.announcedParticipants.add(pubkey);
+      this.reconcileParticipants();
+    }
+
+    reconcileParticipants() {
+      if (!this.connection) return;
+      const current = new Set(this.announcedParticipants || []);
       const self = this;
-      announced.forEach(function(path) {
-        const pubkey = String(path || '').toLowerCase();
-        if (!pubkey || pubkey === String(self.identity || '').toLowerCase()) return;
-        if (!/^[0-9a-f]{64}$/.test(pubkey)) return;
-        current.add(pubkey);
-        if (!self.entries.has(pubkey)) self.subscribeParticipant(pubkey);
-      });
 
       // Keep explicitly advertised on-stage speakers subscribed even when the
       // MoQ announcement set temporarily lags during reconnects or relay churn.
       self.stageParticipants.forEach(function(pubkey) {
         if (!pubkey || pubkey === String(self.identity || '').toLowerCase()) return;
         current.add(pubkey);
+      });
+
+      current.forEach(function(pubkey) {
         if (!self.entries.has(pubkey)) self.subscribeParticipant(pubkey);
       });
 
@@ -546,10 +571,7 @@
         }, this));
 
       this.stageParticipants = wanted;
-      wanted.forEach(function(pubkey) {
-        if (!this.entries.has(pubkey)) this.subscribeParticipant(pubkey);
-      }, this);
-
+      this.reconcileParticipants();
       updateActiveRoomAudioUi();
     }
 
@@ -587,6 +609,7 @@
       }
       this.entries.forEach(function(entry) { closeAudioEntry(entry); });
       this.entries.clear();
+      this.announcedParticipants = new Set();
       if (this.connection) {
         try { this.connection.close(); } catch (_) {}
         try { this.connection.enabled.set(false); } catch (_) {}
