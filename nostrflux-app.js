@@ -20739,7 +20739,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (roomNaddr) {
           window.loadNestsRoomPage(roomNaddr, {
             routeMode: 'skip',
-            autoJoin: opts.autoJoin !== false
+            autoJoin: opts.autoJoin !== false,
+            joinAsListener: opts.joinAsListener !== false
           });
         }
       }
