@@ -1507,8 +1507,10 @@
       if (Number(e.created_at || 0) >= now() - PRESENCE_TTL) presence.add(String(e.pubkey || '').toLowerCase());
     });
 
-    const people = pTags(roomEvent);
-    pTags(current).forEach(function(p) { if (!people.some(function(x) { return x.pubkey === p.pubkey; })) people.push(p); });
+    const roomParticipants = pTags(roomEvent);
+    const meetingParticipants = pTags(current);
+    const people = roomParticipants.slice();
+    meetingParticipants.forEach(function(p) { if (!people.some(function(x) { return x.pubkey === p.pubkey; })) people.push(p); });
     if (decoded.pubkey && !people.some(function(p) { return p.pubkey === decoded.pubkey; })) people.unshift({ pubkey: decoded.pubkey, role: 'Host' });
 
     const profiles = await loadProfiles(Array.from(new Set(people.map(function(p) { return p.pubkey; }).concat(Array.from(presence)))));
@@ -1520,7 +1522,8 @@
       status: tag(roomEvent,'status') || 'open',
       starts: Number(tag(roomEvent,'starts') || 0), ends: Number(tag(roomEvent,'ends') || 0),
       topics: tags(roomEvent,'t'), currentParticipants: Number(tag(roomEvent,'current_participants') || 0),
-      participants: people, presence: presence,
+      participants: people, roomParticipants: roomParticipants, meetingParticipants: meetingParticipants,
+      presence: presence,
       chat: events.filter(function(e) { return Number(e.kind) === 1311; }),
       meeting: current ? {
         title: tag(current,'title'), summary: tag(current,'summary'), image: tag(current,'image'),
@@ -1578,12 +1581,11 @@
     const chat = events.filter(function(e) { return Number(e.kind) === 1311; });
     const chatPubkeys = chat.map(function(e) { return String(e.pubkey || '').toLowerCase(); }).filter(Boolean);
     const roster = [];
-    (activeRoom && Array.isArray(activeRoom.participants) ? activeRoom.participants : []).forEach(function(p) {
-      if (p && p.pubkey && !roster.some(function(x) { return x.pubkey === p.pubkey; })) roster.push(p);
-    });
-    (current ? pTags(current) : []).forEach(function(p) {
-      if (p && p.pubkey && !roster.some(function(x) { return x.pubkey === p.pubkey; })) roster.push(p);
-    });
+    const addRoster = function(person) {
+      if (person && person.pubkey && !roster.some(function(x) { return x.pubkey === person.pubkey; })) roster.push(person);
+    };
+    (activeRoom && Array.isArray(activeRoom.roomParticipants) ? activeRoom.roomParticipants : []).forEach(addRoster);
+    (current ? pTags(current) : []).forEach(addRoster);
     if (decoded.pubkey && !roster.some(function(p) { return p.pubkey === decoded.pubkey; })) {
       roster.unshift({ pubkey: decoded.pubkey, role: 'Host' });
     }
@@ -1600,6 +1602,8 @@
       relays: (activeRoom && activeRoom.relays) || [],
       streaming: (activeRoom && activeRoom.streaming) || '',
       participants: roster,
+      roomParticipants: (activeRoom && Array.isArray(activeRoom.roomParticipants)) ? activeRoom.roomParticipants : [],
+      meetingParticipants: current ? pTags(current) : [],
       presence: presence
     });
 
