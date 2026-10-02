@@ -238,6 +238,24 @@
     return window.__SIFAKA_CONTEXT || null;
   }
 
+  let nestAudioUnlockBound = false;
+  function bindNestAudioUnlock() {
+    if (nestAudioUnlockBound) return;
+    nestAudioUnlockBound = true;
+    const resume = function() {
+      try {
+        document.querySelectorAll('#nestRoomPageRoot, #nestRoomPreviewModal').forEach(function(root) {
+          if (!root) return;
+        });
+      } catch (_) {}
+      if (!activeRoomAudio) return;
+      if (activeRoomAudio.resumeAudio) activeRoomAudio.resumeAudio().catch(function() {});
+    };
+    ['pointerdown','touchstart','mousedown','keydown','click'].forEach(function(name) {
+      document.addEventListener(name, resume, { passive: true });
+    });
+  }
+
   async function loadNestAudioModules() {
     if (!activeRoomAudioModulesPromise) {
       activeRoomAudioModulesPromise = Promise.all([
@@ -278,9 +296,15 @@
       this.stageParticipants = new Set();
       this.microphone = null;
       this.publishBroadcast = null;
+      this.publishAudioSource = null;
+      this.publishCapture = null;
+      this.publishEncoder = null;
       this.Moq = null;
       this.Watch = null;
       this.Publish = null;
+      this.publishAudioSource = null;
+      this.publishCapture = null;
+      this.publishEncoder = null;
     }
 
     onStateChange(cb) {
@@ -315,6 +339,7 @@
         webtransport: {},
         websocket: {}
       });
+      bindNestAudioUnlock();
 
       const self = this;
       if (this.connection.status && this.connection.status.watch) {
@@ -355,23 +380,45 @@
       if (!this.connection || !this.Publish || this.isPublishing) return;
       this.closeMicrophonePublish();
       const microphone = new this.Publish.Source.Microphone({ enabled: true });
+      const audioSource = new this.Publish.Signals.Computed(function(effect) {
+        const source = effect.get(microphone.out.source);
+        return source && source.audio;
+      });
+      const capture = new this.Publish.Audio.Capture({ source: audioSource });
       const broadcast = new this.Publish.Broadcast({
-        connection: this.connection.established,
+        origin: this.connection.origin,
         enabled: true,
-        name: this.Moq.Path.from(this.identity),
-        audio: {
-          source: microphone.source,
-          enabled: true
-        }
+        announce: true,
+        name: this.Moq.Path.from(this.identity)
+      });
+      const encoder = new this.Publish.Audio.Encoder('audio', {
+        broadcast: broadcast,
+        capture: capture,
+        enabled: true
       });
       this.microphone = microphone;
       this.publishBroadcast = broadcast;
+      this.publishAudioSource = audioSource;
+      this.publishCapture = capture;
+      this.publishEncoder = encoder;
       try { this.publishBroadcast.audio.muted.set(this.microphoneMuted); } catch (_) {}
       this.isPublishing = true;
       updateActiveRoomAudioUi();
     }
 
     closeMicrophonePublish() {
+      if (this.publishEncoder) {
+        try { this.publishEncoder.close(); } catch (_) {}
+        this.publishEncoder = null;
+      }
+      if (this.publishCapture) {
+        try { this.publishCapture.close(); } catch (_) {}
+        this.publishCapture = null;
+      }
+      if (this.publishAudioSource) {
+        try { this.publishAudioSource.close(); } catch (_) {}
+        this.publishAudioSource = null;
+      }
       if (this.publishBroadcast) {
         try { this.publishBroadcast.close(); } catch (_) {}
         this.publishBroadcast = null;
@@ -444,15 +491,24 @@
       if (!this.connection || !this.Watch || !this.Moq || this.entries.has(pubkey)) return;
       try {
         const broadcast = new this.Watch.Broadcast({
-          connection: this.connection.established,
+          origin: this.connection.origin,
           enabled: true,
           name: this.Moq.Path.from(pubkey),
-          reload: true
+          announced: true
         });
-        const sync = new this.Watch.Sync({ jitter: 150 });
-        const audioSource = new this.Watch.Audio.Source(sync, { broadcast: broadcast });
-        const decoder = new this.Watch.Audio.Decoder(audioSource, { enabled: true });
-        const emitter = new this.Watch.Audio.Emitter(decoder, {
+        const sync = new this.Watch.Sync({
+          probe: this.connection.probe
+        });
+        const audioSource = new this.Watch.Audio.Source({
+          broadcast: broadcast
+        });
+        const decoder = new this.Watch.Audio.Decoder({
+          source: audioSource,
+          sync: sync,
+          enabled: true
+        });
+        const emitter = new this.Watch.Audio.Emitter({
+          source: decoder,
           volume: this.muted ? 0 : this.volume,
           muted: this.muted
         });
@@ -461,6 +517,20 @@
         console.warn('[sifaka-nests] participant audio failed', err);
       }
       updateActiveRoomAudioUi();
+    }
+
+    async resumeAudio() {
+      this.entries.forEach(function(entry) {
+        try {
+          const contextSignal = entry.decoder && entry.decoder.out && entry.decoder.out.context;
+          const context = contextSignal && typeof contextSignal.peek === 'function' ? contextSignal.peek() : null;
+          if (context && context.state === 'suspended') context.resume().catch(function() {});
+        } catch (_) {}
+      });
+      try {
+        const microphoneContext = this.microphone && this.microphone.out && this.microphone.out.source;
+        void microphoneContext;
+      } catch (_) {}
     }
 
     setParticipants(pubkeys) {
@@ -485,8 +555,8 @@
 
     setMicrophoneMuted(value) {
       this.microphoneMuted = !!value;
-      if (this.publishBroadcast && this.publishBroadcast.audio && this.publishBroadcast.audio.muted) {
-        try { this.publishBroadcast.audio.muted.set(this.microphoneMuted); } catch (_) {}
+      if (this.publishEncoder && this.publishEncoder.volume) {
+        try { this.publishEncoder.volume.set(this.microphoneMuted ? 0 : 1); } catch (_) {}
       }
       updateActiveRoomAudioUi();
     }
