@@ -585,17 +585,17 @@
   }
 
   function normalizeNestStreamingUrl(value) {
-    // Keep the room's advertised MoQ endpoint authoritative. Nostr Nests
-    // publishes https://moq.nostrnests.com for production and the upstream
-    // Nests client uses that URL unchanged; forcing :4443 breaks deployments
-    // that terminate HTTPS/WebTransport on the public 443 endpoint.
-    const fallback = 'https://moq.nostrnests.com';
+    // The reference Nostr Nests client uses https://moq.nostrnests.com:4443
+    // as its default MoQ relay endpoint. Keep an explicit room endpoint intact,
+    // but restore the public relay's :4443 default when the room omits a port.
+    const fallback = 'https://moq.nostrnests.com:4443';
     try {
       const parsed = new URL(String(value || fallback));
       if (parsed.protocol === 'wss:' || parsed.protocol === 'ws:' || parsed.protocol === 'http:') {
         parsed.protocol = 'https:';
       }
       if (parsed.hostname.toLowerCase() === 'moq.nostrnests.com') {
+        if (!parsed.port) parsed.port = '4443';
         parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '';
       }
       return parsed.toString().replace(/\/$/, '');
@@ -1206,16 +1206,33 @@
     const streamingUrl = normalizeNestStreamingUrl(tag(activeRoomEvent, 'streaming') || activeRoom.streaming || '');
 
     let token = '';
-    let publish = true;
+    const userPubkey = String(user.pubkey || '').toLowerCase();
+    const canPublish = !!(activeRoom && Array.isArray(activeRoom.participants) && activeRoom.participants.some(function(person) {
+      if (!person || String(person.pubkey || '').toLowerCase() !== userPubkey) return false;
+      return /host|speaker|moderator|admin|owner/i.test(String(person.role || ''));
+    }));
+    let publish = canPublish;
+
     try {
-      token = await authenticateNestAudio(activeRoomEvent, namespace, true);
-    } catch (speakerErr) {
-      console.warn('[sifaka-nests] speaker auth failed; retrying listener auth', speakerErr);
-      publish = false;
-      try {
-        token = await authenticateNestAudio(activeRoomEvent, namespace, false);
-      } catch (listenerErr) {
-        console.warn('[sifaka-nests] listener auth failed; trying without JWT', listenerErr);
+      // Match the reference Nostr Nests client: ordinary listeners authenticate
+      // with listen-only scope. Only a room participant explicitly marked as
+      // host/speaker/moderator/admin/owner requests publish rights.
+      token = await authenticateNestAudio(activeRoomEvent, namespace, publish);
+      if (publish) {
+        console.info('[sifaka-nests] authenticated with speaker scope');
+      }
+    } catch (authErr) {
+      if (publish) {
+        console.warn('[sifaka-nests] speaker auth failed; retrying listener auth', authErr);
+        publish = false;
+        try {
+          token = await authenticateNestAudio(activeRoomEvent, namespace, false);
+        } catch (listenerErr) {
+          console.warn('[sifaka-nests] listener auth failed; trying without JWT', listenerErr);
+          token = '';
+        }
+      } else {
+        console.warn('[sifaka-nests] listener auth failed; trying without JWT', authErr);
         token = '';
       }
     }
