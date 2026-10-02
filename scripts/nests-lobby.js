@@ -1416,6 +1416,30 @@
     return raw;
   }
 
+  async function sendNestChatReaction(messageEvent, emoji) {
+    if (!messageEvent || !activeRoom || !activeRoom.a) return;
+    const event = await signRoomEvent(7, emoji, [
+      ['a', activeRoom.a],
+      ['e', String(messageEvent.id || '')],
+      ['p', String(messageEvent.pubkey || '').toLowerCase()]
+    ]);
+    await publishSignedRoomEvent(event, activeRoomRelays);
+    refreshLiveRoom(activeRoomUrl).catch(function() {});
+  }
+
+  function summarizeChatReactions(reactionEvents) {
+    const byEmoji = new Map();
+    let zapCount = 0;
+    (Array.isArray(reactionEvents) ? reactionEvents : []).forEach(function(ev) {
+      if (Number(ev.kind) === 7 && ev.content) {
+        const key = String(ev.content);
+        byEmoji.set(key, (byEmoji.get(key) || 0) + 1);
+      }
+      if (Number(ev.kind) === 9735) zapCount++;
+    });
+    return { byEmoji: byEmoji, zapCount: zapCount };
+  }
+
   function renderChat(room, profiles) {
     const chatEl = $('#nestPreviewChat', modal);
     if (!chatEl) return;
@@ -1445,12 +1469,46 @@
       const sameSender = previous &&
         String(previous.pubkey || '').toLowerCase() === String(ev.pubkey || '').toLowerCase() &&
         Number(ev.created_at || 0) - Number(previous.created_at || 0) < 300;
+      const reactionEvents = room.chatReactions && typeof room.chatReactions.get === 'function'
+        ? (room.chatReactions.get(ev.id) || [])
+        : [];
+      const reactionSummary = summarizeChatReactions(reactionEvents);
+      const reactionHtml = Array.from(reactionSummary.byEmoji.entries()).map(function(entry) {
+        return '<button type="button" class="nest-chat-reaction-chip" data-chat-id="' + esc(ev.id) + '" data-chat-emoji="' + esc(entry[0]) + '">' + esc(entry[0]) + '<span>' + entry[1] + '</span></button>';
+      }).join('') + (reactionSummary.zapCount ? '<span class="nest-chat-zap-chip">⚡ ' + reactionSummary.zapCount + '</span>' : '');
       return '<div class="nest-chat-message' + (sameSender ? ' is-grouped' : '') + '">' +
         (sameSender ? '<span class="nest-chat-avatar nest-chat-avatar-empty"></span>' :
           '<span class="nest-chat-avatar">' + (picture ? '<img src="' + esc(picture) + '" alt="">' : esc(name.slice(0, 1).toUpperCase())) + '</span>') +
-        '<div class="nest-chat-copy"><div><strong>' + esc(name) + '</strong><time>' + esc(when) + '</time></div><p>' + esc(content) + '</p></div>' +
-      '</div>';
+        '<div class="nest-chat-copy"><div><strong>' + esc(name) + '</strong><time>' + esc(when) + '</time></div><p>' + esc(content) + '</p>' +
+          '<div class="nest-chat-action-row">' +
+            '<button type="button" class="nest-chat-quick-react" data-chat-id="' + esc(ev.id) + '" data-chat-emoji="🔥">🔥</button>' +
+            '<button type="button" class="nest-chat-quick-react" data-chat-id="' + esc(ev.id) + '" data-chat-emoji="❤️">❤️</button>' +
+            (prof.lud16 || prof.lud06 ? '<button type="button" class="nest-chat-zap-btn" data-chat-pubkey="' + esc(ev.pubkey) + '">Zap</button>' : '') +
+          '</div>' +
+          (reactionHtml ? '<div class="nest-chat-reactions">' + reactionHtml + '</div>' : '') +
+        '</div></div>';
     }).join('');
+
+    Array.from(chatEl.querySelectorAll('.nest-chat-quick-react,.nest-chat-reaction-chip')).forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const message = messages.find(function(ev) { return String(ev.id) === String(btn.getAttribute('data-chat-id')); });
+        if (!message) return;
+        sendNestChatReaction(message, btn.getAttribute('data-chat-emoji') || '👍').catch(function(err) {
+          const status = $('#nestRoomAudioStatus', modal);
+          if (status) status.textContent = err && err.message ? err.message : 'Could not react to chat.';
+        });
+      });
+    });
+    Array.from(chatEl.querySelectorAll('.nest-chat-zap-btn')).forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const pubkey = btn.getAttribute('data-chat-pubkey') || '';
+        const profile = profiles.get(pubkey.toLowerCase()) || {};
+        zapNestParticipant(pubkey, profile).catch(function(err) {
+          const status = $('#nestRoomAudioStatus', modal);
+          if (status) status.textContent = err && err.message ? err.message : 'Zap failed.';
+        });
+      });
+    });
 
     if (stickToBottom) chatEl.scrollTop = chatEl.scrollHeight;
   }
