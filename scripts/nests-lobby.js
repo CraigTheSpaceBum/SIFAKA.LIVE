@@ -288,6 +288,8 @@
       this.listeners = new Set();
       this.announcementDispose = null;
       this.statusDispose = null;
+      this.errorDispose = null;
+      this.connectionError = '';
       this.pollTimer = null;
       this.announcementConsumer = null;
       this.identity = '';
@@ -330,6 +332,7 @@
       this.Publish = libs.Publish;
       this.identity = String(config.identity || '').toLowerCase();
       this.publishRequested = !!config.publish;
+      this.connectionError = '';
       this.emitState('connecting');
 
       const relayUrl = new URL(String(config.serverUrl));
@@ -364,6 +367,16 @@
             self.stopAnnouncements();
             self.closeMicrophonePublish();
           }
+        });
+      }
+
+      if (this.connection.error && this.connection.error.watch) {
+        this.errorDispose = this.connection.error.watch(function(error) {
+          if (!error) return;
+          self.connectionError = error && error.message ? error.message : String(error);
+          self.emitState('error');
+          updateActiveRoomAudioUi();
+          console.warn('[sifaka-nests] MoQ connection error', error);
         });
       }
 
@@ -720,6 +733,11 @@
         try { this.statusDispose(); } catch (_) {}
         this.statusDispose = null;
       }
+      if (this.errorDispose) {
+        try { this.errorDispose(); } catch (_) {}
+        this.errorDispose = null;
+      }
+      this.connectionError = '';
       this.entries.forEach(function(entry) { closeAudioEntry(entry); });
       this.entries.clear();
       this.announcedParticipants = new Set();
@@ -1190,9 +1208,10 @@
         parsed.protocol = 'https:';
       }
       if (parsed.hostname.toLowerCase() === 'moq.nostrnests.com') {
-        // Do not rewrite a room's explicitly advertised port. NIP-19/naddr
-        // links and room events may point at either the public 443 endpoint or
-        // the native 4443 relay endpoint.
+        // The production Nostr Nests relay serves the MoQ transport on 4443.
+        // A room event may omit the port or carry the web origin; normalize
+        // that production hostname to the actual relay endpoint.
+        if (!parsed.port || parsed.port === '443') parsed.port = '4443';
         parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '';
       }
       return parsed.toString().replace(/\/$/, '');
@@ -1239,7 +1258,10 @@
       const state = activeRoomAudio.state || 'disconnected';
       const count = activeRoomAudio.entries ? activeRoomAudio.entries.size : 0;
       const micError = String(activeRoomAudio.microphoneError || '').trim();
-      const label = state === 'connected'
+      const connectionError = String(activeRoomAudio.connectionError || '').trim();
+      const label = state === 'error'
+        ? ('Audio error' + (connectionError ? ' • ' + connectionError : ''))
+        : state === 'connected'
         ? (micError && activeRoomAudio.publishRequested
           ? 'Connected • Microphone unavailable'
           : ('Connected • ' + count + ' speaker' + (count === 1 ? '' : 's')))
@@ -1250,9 +1272,9 @@
             : 'Disconnected';
       status.textContent = label;
       if (dot) dot.classList.toggle('connected', state === 'connected');
-      if (join && state === 'disconnected') {
+      if (join && (state === 'disconnected' || state === 'error')) {
         join.disabled = false;
-        join.textContent = roomJoinLabel(true);
+        join.textContent = state === 'error' ? 'Retry Audio' : roomJoinLabel(true);
       }
     }
     if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute Room' : 'Mute Room';
@@ -1262,7 +1284,7 @@
       const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
       stageBtn.hidden = !canPublish;
       stageBtn.textContent = publishing ? 'Leave Stage' : 'Join Stage';
-      stageBtn.disabled = !activeRoomAudio || activeRoomAudio.state === 'connecting';
+      stageBtn.disabled = !activeRoomAudio || activeRoomAudio.state !== 'connected';
     }
     if (micBtn) {
       const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
@@ -2113,8 +2135,8 @@
 
   async function enterActiveRoom(options = {}) {
     if (!activeRoomUrl) return;
-    if (activeRoomAudio && activeRoomAudio.state !== 'disconnected') return;
-    if (activeRoomAudio && activeRoomAudio.state === 'disconnected') {
+    if (activeRoomAudio && activeRoomAudio.state === 'connected') return;
+    if (activeRoomAudio && (activeRoomAudio.state === 'disconnected' || activeRoomAudio.state === 'error')) {
       try { await activeRoomAudio.disconnect(); } catch (_) {}
       activeRoomAudio = null;
     }
@@ -2154,15 +2176,9 @@
       if (publish) {
         console.warn('[sifaka-nests] speaker auth failed; retrying listener auth', authErr);
         publish = false;
-        try {
-          token = await authenticateNestAudio(activeRoomEvent, namespace, false);
-        } catch (listenerErr) {
-          console.warn('[sifaka-nests] listener auth failed; trying without JWT', listenerErr);
-          token = '';
-        }
+        token = await authenticateNestAudio(activeRoomEvent, namespace, false);
       } else {
-        console.warn('[sifaka-nests] listener auth failed; trying without JWT', authErr);
-        token = '';
+        throw authErr;
       }
     }
 
