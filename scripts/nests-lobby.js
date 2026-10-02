@@ -647,7 +647,7 @@
       if (dot) dot.classList.toggle('connected', state === 'connected');
       if (join && state === 'disconnected') {
         join.disabled = false;
-        join.textContent = 'Join As Speak';
+        join.textContent = roomJoinLabel(true);
       }
     }
     if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute Room' : 'Mute Room';
@@ -1076,10 +1076,28 @@
     if (stickToBottom) chatEl.scrollTop = chatEl.scrollHeight;
   }
 
+  function activeRoomCanPublish() {
+    const ctx = getSifakaContext();
+    const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+    if (!user || !activeRoom) return false;
+    const pubkey = String(user.pubkey || '').toLowerCase();
+    if (pubkey && pubkey === String(activeRoom.pubkey || '').toLowerCase()) return true;
+    return Array.isArray(activeRoom.participants) && activeRoom.participants.some(function(person) {
+      if (!person || String(person.pubkey || '').toLowerCase() !== pubkey) return false;
+      return /host|speaker|moderator|admin|owner/i.test(String(person.role || ''));
+    });
+  }
+
+  function roomJoinLabel(isLive) {
+    if (!isLive) return 'Open Room';
+    return activeRoomCanPublish() ? 'Join As Speaker' : 'Join As Listener';
+  }
+
   function renderRoom(room, profiles, fallback) {
     const status = String(room.status || '').toLowerCase();
-    const live = status === 'live' || status === 'open';
     const meeting = room.meeting;
+    const meetingStatus = String(meeting && meeting.status || '').toLowerCase();
+    const live = meetingStatus ? meetingStatus === 'live' : (status === 'live' || status === 'open');
     const title = (meeting && meeting.title) || room.title || fallback.title || 'Nostr Nest';
     const summary = (meeting && meeting.summary) || room.summary || fallback.summary || 'Live audio conversation on Nostr.';
     const image = (meeting && meeting.image) || room.image || fallback.img || '';
@@ -1206,8 +1224,8 @@
     const joinButton = $('#nestPreviewJoinBtn', modal);
     if (joinButton) {
       joinButton.textContent = activeRoomAudio
-        ? (activeRoomAudio.isPublishing ? 'Joined As Speak' : 'Joined As Listener')
-        : (live ? 'Join As Speak' : 'Open Nest');
+        ? (activeRoomAudio.isPublishing ? 'Joined As Speaker' : 'Joined As Listener')
+        : roomJoinLabel(live);
       joinButton.disabled = !!activeRoomAudio;
       joinButton.classList.remove('btn-danger');
     }
@@ -1245,11 +1263,7 @@
     const streamingUrl = normalizeNestStreamingUrl(tag(activeRoomEvent, 'streaming') || activeRoom.streaming || '');
 
     let token = '';
-    const userPubkey = String(user.pubkey || '').toLowerCase();
-    const canPublish = !!(activeRoom && Array.isArray(activeRoom.participants) && activeRoom.participants.some(function(person) {
-      if (!person || String(person.pubkey || '').toLowerCase() !== userPubkey) return false;
-      return /host|speaker|moderator|admin|owner/i.test(String(person.role || ''));
-    }));
+    const canPublish = activeRoomCanPublish();
     let publish = canPublish;
 
     try {
@@ -1329,7 +1343,7 @@
       if (compose) compose.hidden = true;
       if (join) {
         join.disabled = false;
-        join.textContent = 'Join As Speak';
+        join.textContent = roomJoinLabel(true);
       }
       modal.classList.remove('is-live-room');
       throw err;
@@ -1361,7 +1375,8 @@
     if (compose) compose.hidden = true;
     if (join) {
       join.disabled = false;
-      join.textContent = String($('#nestPreviewStatus', modal)?.textContent || '').toLowerCase().includes('live') ? 'Join Nest' : 'View Room';
+      const liveNow = String($('#nestPreviewStatus', modal)?.textContent || '').toLowerCase().includes('live');
+      join.textContent = roomJoinLabel(liveNow);
       join.classList.remove('btn-danger');
     }
     modal.classList.remove('is-live-room');
