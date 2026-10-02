@@ -293,6 +293,10 @@
       this.identity = '';
       this.publishRequested = false;
       this.isPublishing = false;
+      this.microphoneReady = false;
+      this.microphoneError = '';
+      this.microphoneSourceDispose = null;
+      this.microphoneErrorDispose = null;
       this.microphoneMuted = false;
       this.stageParticipants = new Set();
       this.announcedParticipants = new Set();
@@ -304,9 +308,6 @@
       this.Moq = null;
       this.Watch = null;
       this.Publish = null;
-      this.publishAudioSource = null;
-      this.publishCapture = null;
-      this.publishEncoder = null;
     }
 
     onStateChange(cb) {
@@ -399,19 +400,53 @@
         capture: capture,
         enabled: true
       });
+
       this.microphone = microphone;
       this.publishBroadcast = broadcast;
       this.publishAudioSource = audioSource;
       this.publishCapture = capture;
       this.publishEncoder = encoder;
-      if (this.publishEncoder && this.publishEncoder.volume) {
-        try { this.publishEncoder.volume.set(this.microphoneMuted ? 0 : 1); } catch (_) {}
+      this.microphoneReady = false;
+      this.microphoneError = '';
+
+      const self = this;
+      this.microphoneSourceDispose = microphone.out.source.subscribe(function(source) {
+        self.microphoneReady = !!source;
+        if (source) self.microphoneError = '';
+        updateActiveRoomAudioUi();
+        if (activeRoom && activeRoom.a) publishCurrentRoomPresence().catch(function() {});
+      });
+      this.microphoneErrorDispose = microphone.out.error.subscribe(function(error) {
+        self.microphoneError = error ? (error.message || String(error)) : '';
+        if (error) self.microphoneReady = false;
+        updateActiveRoomAudioUi();
+        if (error) publishCurrentRoomPresence().catch(function() {});
+      });
+
+      const initialSource = microphone.out.source.peek();
+      const initialError = microphone.out.error.peek();
+      this.microphoneReady = !!initialSource;
+      this.microphoneError = initialError ? (initialError.message || String(initialError)) : '';
+
+      if (encoder.volume) {
+        try { encoder.volume.set(this.microphoneMuted ? 0 : 1); } catch (_) {}
       }
+
       this.isPublishing = true;
       updateActiveRoomAudioUi();
     }
 
     closeMicrophonePublish() {
+      if (this.microphoneSourceDispose) {
+        try { this.microphoneSourceDispose(); } catch (_) {}
+        this.microphoneSourceDispose = null;
+      }
+      if (this.microphoneErrorDispose) {
+        try { this.microphoneErrorDispose(); } catch (_) {}
+        this.microphoneErrorDispose = null;
+      }
+      this.microphoneReady = false;
+      this.microphoneError = '';
       if (this.publishEncoder) {
         try { this.publishEncoder.close(); } catch (_) {}
         this.publishEncoder = null;
@@ -1143,8 +1178,16 @@
     if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
     if (micBtn) {
       const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
+      const ready = !!(activeRoomAudio && activeRoomAudio.microphoneReady);
+      const micError = String((activeRoomAudio && activeRoomAudio.microphoneError) || '').trim();
       micBtn.disabled = !publishing;
-      micBtn.textContent = publishing && activeRoomAudio.microphoneMuted ? 'Unmute Mic' : 'Mute Mic';
+      if (publishing && !ready) {
+        micBtn.textContent = micError ? 'Retry Mic' : 'Enable Mic';
+        micBtn.title = micError || 'Microphone is not ready yet.';
+      } else {
+        micBtn.textContent = publishing && activeRoomAudio.microphoneMuted ? 'Unmute Mic' : 'Mute Mic';
+        micBtn.title = 'Toggle your microphone';
+      }
     }
   }
 
@@ -1166,8 +1209,16 @@
     if (mic) {
       mic.addEventListener('click', function() {
         if (!activeRoomAudio || !activeRoomAudio.isPublishing) return;
+        if (!activeRoomAudio.microphoneReady) {
+          activeRoomAudio.startMicrophonePublish().catch(function(err) {
+            const status = $('#nestRoomAudioStatus', root);
+            if (status) status.textContent = err && err.message ? err.message : 'Could not enable the microphone.';
+            updateActiveRoomAudioUi();
+          });
+          return;
+        }
         activeRoomAudio.setMicrophoneMuted(!activeRoomAudio.microphoneMuted);
-        publishActiveRoomPresence().catch(function() {});
+        publishCurrentRoomPresence().catch(function() {});
         updateActiveRoomAudioUi();
       });
     }
@@ -2062,6 +2113,7 @@
       activeRoomChatTimer = null;
     }
     if (activeRoomAudio) {
+      await publishActiveRoomDeparture();
       try { await activeRoomAudio.disconnect(); } catch (_) {}
       activeRoomAudio = null;
     }
@@ -2081,20 +2133,26 @@
   }
 
   async function publishActiveRoomPresence() {
-    if (!activeRoom || !activeRoom.a) return;
     try {
-      const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
-      const muted = !!(activeRoomAudio ? activeRoomAudio.microphoneMuted : true);
-      const onstage = publishing;
+      await publishCurrentRoomPresence();
+    } catch (err) {
+      console.warn('[sifaka-nests] presence publish failed', err);
+    }
+  }
+
+  async function publishActiveRoomDeparture() {
+    if (!activeRoom || !activeRoom.a || !getCurrentNestUser()) return;
+    try {
       const event = await signRoomEvent(10312, '', [
         ['a', activeRoom.a],
-        ['publishing', publishing ? '1' : '0'],
-        ['muted', muted ? '1' : '0'],
-        ['onstage', onstage ? '1' : '0']
+        ['hand', '0'],
+        ['publishing', '0'],
+        ['muted', '1'],
+        ['onstage', '0']
       ]);
       await publishSignedRoomEvent(event, activeRoomRelays);
     } catch (err) {
-      console.warn('[sifaka-nests] presence publish failed', err);
+      console.warn('[sifaka-nests] departure presence publish failed', err);
     }
   }
 
