@@ -384,57 +384,82 @@
     async startMicrophonePublish() {
       if (!this.connection || !this.Publish || this.isPublishing || this.publishDeclined) return;
       this.closeMicrophonePublish();
-      const microphone = new this.Publish.Source.Microphone({ enabled: true });
-      const audioSource = new this.Publish.Signals.Computed(function(effect) {
-        const source = effect.get(microphone.out.source);
-        return source && source.audio;
-      });
-      const capture = new this.Publish.Audio.Capture({ source: audioSource });
-      const broadcast = new this.Publish.Broadcast({
-        origin: this.connection.origin,
-        enabled: true,
-        announce: true,
-        name: this.Moq.Path.from(this.identity)
-      });
-      const encoder = new this.Publish.Audio.Encoder('audio', {
-        broadcast: broadcast,
-        capture: capture,
-        enabled: true
-      });
 
-      this.microphone = microphone;
-      this.publishBroadcast = broadcast;
-      this.publishAudioSource = audioSource;
-      this.publishCapture = capture;
-      this.publishEncoder = encoder;
-      this.microphoneReady = false;
-      this.microphoneError = '';
+      let microphone = null;
+      let audioSource = null;
+      let capture = null;
+      let broadcast = null;
+      let encoder = null;
 
-      const self = this;
-      this.microphoneSourceDispose = microphone.out.source.subscribe(function(source) {
-        self.microphoneReady = !!source;
-        if (source) self.microphoneError = '';
+      try {
+        microphone = new this.Publish.Source.Microphone({ enabled: true });
+        audioSource = new this.Publish.Signals.Computed(function(effect) {
+          const source = effect.get(microphone.out.source);
+          return source && source.audio;
+        });
+        capture = new this.Publish.Audio.Capture({ source: audioSource });
+        broadcast = new this.Publish.Broadcast({
+          origin: this.connection.origin,
+          enabled: true,
+          announce: true,
+          name: this.Moq.Path.from(this.identity)
+        });
+        encoder = new this.Publish.Audio.Encoder('audio', {
+          broadcast: broadcast,
+          capture: capture,
+          enabled: true
+        });
+
+        this.microphone = microphone;
+        this.publishBroadcast = broadcast;
+        this.publishAudioSource = audioSource;
+        this.publishCapture = capture;
+        this.publishEncoder = encoder;
+        this.microphoneReady = false;
+        this.microphoneError = '';
+
+        const self = this;
+        this.microphoneSourceDispose = microphone.out.source.subscribe(function(source) {
+          self.microphoneReady = !!source;
+          if (source) self.microphoneError = '';
+          updateActiveRoomAudioUi();
+          if (activeRoom && activeRoom.a) publishCurrentRoomPresence().catch(function() {});
+        });
+        this.microphoneErrorDispose = microphone.out.error.subscribe(function(error) {
+          self.microphoneError = error ? (error.message || String(error)) : '';
+          if (error) self.microphoneReady = false;
+          updateActiveRoomAudioUi();
+          if (error) publishCurrentRoomPresence().catch(function() {});
+        });
+
+        const initialSource = microphone.out.source.peek();
+        const initialError = microphone.out.error.peek();
+        this.microphoneReady = !!initialSource;
+        this.microphoneError = initialError ? (initialError.message || String(initialError)) : '';
+
+        if (encoder.volume) {
+          try { encoder.volume.set(this.microphoneMuted ? 0 : 1); } catch (_) {}
+        }
+
+        this.isPublishing = true;
         updateActiveRoomAudioUi();
-        if (activeRoom && activeRoom.a) publishCurrentRoomPresence().catch(function() {});
-      });
-      this.microphoneErrorDispose = microphone.out.error.subscribe(function(error) {
-        self.microphoneError = error ? (error.message || String(error)) : '';
-        if (error) self.microphoneReady = false;
+      } catch (err) {
+        try { if (encoder) encoder.close(); } catch (_) {}
+        try { if (capture) capture.close(); } catch (_) {}
+        try { if (audioSource) audioSource.close(); } catch (_) {}
+        try { if (broadcast) broadcast.close(); } catch (_) {}
+        try { if (microphone) microphone.close(); } catch (_) {}
+        this.microphone = null;
+        this.publishBroadcast = null;
+        this.publishAudioSource = null;
+        this.publishCapture = null;
+        this.publishEncoder = null;
+        this.microphoneReady = false;
+        this.microphoneError = err && err.message ? err.message : String(err);
+        this.isPublishing = false;
         updateActiveRoomAudioUi();
-        if (error) publishCurrentRoomPresence().catch(function() {});
-      });
-
-      const initialSource = microphone.out.source.peek();
-      const initialError = microphone.out.error.peek();
-      this.microphoneReady = !!initialSource;
-      this.microphoneError = initialError ? (initialError.message || String(initialError)) : '';
-
-      if (encoder.volume) {
-        try { encoder.volume.set(this.microphoneMuted ? 0 : 1); } catch (_) {}
+        throw err;
       }
-
-      this.isPublishing = true;
-      updateActiveRoomAudioUi();
     }
 
     async leaveStage() {
@@ -1177,8 +1202,11 @@
     if (status && activeRoomAudio) {
       const state = activeRoomAudio.state || 'disconnected';
       const count = activeRoomAudio.entries ? activeRoomAudio.entries.size : 0;
+      const micError = String(activeRoomAudio.microphoneError || '').trim();
       const label = state === 'connected'
-        ? ('Connected • ' + count + ' speaker' + (count === 1 ? '' : 's'))
+        ? (micError && activeRoomAudio.publishRequested
+          ? 'Connected • Microphone unavailable'
+          : ('Connected • ' + count + ' speaker' + (count === 1 ? '' : 's')))
         : state === 'reconnecting'
           ? 'Reconnecting…'
           : state === 'connecting'
