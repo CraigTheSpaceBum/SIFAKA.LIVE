@@ -259,7 +259,7 @@
   async function loadNestAudioModules() {
     if (!activeRoomAudioModulesPromise) {
       activeRoomAudioModulesPromise = Promise.all([
-        import('https://esm.sh/@moq/lite@0.3.0'),
+        import('https://esm.sh/@moq/net@0.3.5'),
         import('https://esm.sh/@moq/watch@0.5.2'),
         import('https://esm.sh/@moq/publish@0.4.5')
       ]).then(function(modules) {
@@ -470,10 +470,46 @@
     }
 
     async rejoinStage() {
-      if (!this.publishRequested || !this.connection) return;
-      this.publishDeclined = false;
-      await this.startMicrophonePublish();
-      publishCurrentRoomPresence().catch(function() {});
+      if (!this.connection || !activeRoom || !activeRoomEvent || !activeRoomCanPublish()) {
+        throw new Error('You do not currently have permission to join the stage.');
+      }
+      if (this.isPublishing) return;
+
+      const ctx = getSifakaContext();
+      const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+      if (!user) throw new Error('Please sign in to join the stage.');
+
+      const d = String(tag(activeRoomEvent, 'd') || activeRoom.d || '');
+      const namespace = 'nests/30312:' + activeRoomEvent.pubkey + ':' + d;
+      const streamingUrl = normalizeNestStreamingUrl(tag(activeRoomEvent, 'streaming') || activeRoom.streaming || '');
+      const token = await authenticateNestAudio(activeRoomEvent, namespace, true);
+
+      const volume = this.volume;
+      const muted = this.muted;
+      await this.disconnect();
+
+      activeRoomAudio = new SifakaNestAudioTransport();
+      activeRoomAudio.volume = volume;
+      activeRoomAudio.muted = muted;
+      activeRoomAudio.publishRequested = true;
+      activeRoomAudio.onStateChange(function() { updateActiveRoomAudioUi(); });
+      await activeRoomAudio.connect({
+        serverUrl: streamingUrl,
+        namespace: namespace,
+        identity: String(user.pubkey),
+        token: token,
+        publish: true
+      });
+      if (activeRoom && Array.isArray(activeRoom.participants)) {
+        activeRoomAudio.setParticipants(activeRoom.participants
+          .filter(function(person) {
+            const role = String(person && person.role || '').toLowerCase();
+            return /host|speaker|moderator|admin|owner/.test(role);
+          })
+          .map(function(person) { return person && person.pubkey; })
+          .filter(Boolean));
+      }
+      startActiveRoomPresence();
       updateActiveRoomAudioUi();
     }
 
@@ -1222,7 +1258,7 @@
     if (btn && activeRoomAudio) btn.textContent = activeRoomAudio.muted ? 'Unmute Room' : 'Mute Room';
     if (slider && activeRoomAudio) slider.value = String(Math.round(activeRoomAudio.volume * 100));
     if (stageBtn) {
-      const canPublish = !!(activeRoomAudio && activeRoomAudio.publishRequested && activeRoomCanPublish());
+      const canPublish = !!(activeRoomAudio && activeRoomCanPublish());
       const publishing = !!(activeRoomAudio && activeRoomAudio.isPublishing);
       stageBtn.hidden = !canPublish;
       stageBtn.textContent = publishing ? 'Leave Stage' : 'Join Stage';
@@ -1272,6 +1308,7 @@
     }
 
 
+    const mic = $('#nestRoomMicBtn', root);
     if (mic) {
       mic.addEventListener('click', function() {
         if (!activeRoomAudio || !activeRoomAudio.isPublishing) return;
@@ -2074,7 +2111,7 @@
     $('#nestPreviewFootnote', modal).textContent = room.sourceCount > 1 ? 'Room details merged from ' + room.sourceCount + ' relays.' : 'Room details are read from Nostr NIP-53 events.';
   }
 
-  async function enterActiveRoom() {
+  async function enterActiveRoom(options = {}) {
     if (!activeRoomUrl) return;
     if (activeRoomAudio && activeRoomAudio.state !== 'disconnected') return;
     if (activeRoomAudio && activeRoomAudio.state === 'disconnected') {
@@ -2102,8 +2139,8 @@
     const streamingUrl = normalizeNestStreamingUrl(tag(activeRoomEvent, 'streaming') || activeRoom.streaming || '');
 
     let token = '';
-    const canPublish = activeRoomCanPublish();
-    let publish = canPublish;
+    const wantsPublish = options.publish === true;
+    let publish = wantsPublish && activeRoomCanPublish();
 
     try {
       // Match the reference Nostr Nests client: ordinary listeners authenticate
@@ -2591,7 +2628,7 @@
           ''
         ).toLowerCase();
         if (liveStatus === 'live' || liveStatus === 'open' || !liveStatus) {
-          await enterActiveRoom();
+          await enterActiveRoom({ publish: opts.joinAsListener === false });
         }
       }
       const pageUrlEl = document.getElementById('nestsRoomPageUrl');
@@ -2611,7 +2648,8 @@
     window.showPage('nestsRoom', {
       routeMode: opts.routeMode || 'push',
       roomNaddr: value,
-      autoJoin: opts.autoJoin !== false
+      autoJoin: opts.autoJoin !== false,
+      joinAsListener: opts.joinAsListener !== false
     });
     return true;
   };
@@ -2641,7 +2679,7 @@
       event.stopPropagation();
     }
     if (typeof window.openNestsRoomPage === 'function') {
-      window.openNestsRoomPage(naddr, { routeMode: 'push', autoJoin: true });
+      window.openNestsRoomPage(naddr, { routeMode: 'push', autoJoin: true, joinAsListener: true });
     }
   }
 
