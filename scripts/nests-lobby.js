@@ -2076,7 +2076,7 @@
 
   function roomJoinLabel(isLive) {
     if (!isLive) return 'Open Room';
-    return activeRoomCanPublish() ? 'Join As Speakerer' : 'Join As Listener';
+    return activeRoomCanPublish() ? 'Join As Speaker' : 'Join As Listener';
   }
 
   function renderRoom(room, profiles, fallback) {
