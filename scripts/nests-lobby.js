@@ -3007,22 +3007,109 @@
 
   function roomNaddrFromRef(roomRef, relays) {
     const ref = String(roomRef || '').trim();
-    const match = ref.match(new RegExp('^30312:([0-9a-f]{64}):(.+)
+    const match = ref.match(/^30312:([0-9a-f]{64}):(.+)$/i);
+    if (!match) return '';
+    const nt = window.NostrTools;
+    if (!nt || !nt.nip19 || typeof nt.nip19.naddrEncode !== 'function') return '';
+    try {
+      return String(nt.nip19.naddrEncode({
+        identifier: match[2],
+        pubkey: match[1],
+        kind: 30312,
+        relays: String(relays || '').split('|').map(function(x) {
+          return x.trim();
+        }).filter(function(x) {
+          return /^wss:\/\//i.test(x);
+        })
+      }) || '').toLowerCase();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  async function openRoomFromCard(card, event) {
+    if (!card) return false;
+    if (event && event.target && event.target.closest && event.target.closest('.nests-card-share')) return false;
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    let naddr = normalizeRoomNaddr(card.getAttribute('data-room-url') || '');
+
+    if (!naddr) {
+      const roomRef = card.getAttribute('data-room-ref') || '';
+      const roomRelays = card.getAttribute('data-room-relays') || '';
+
+      try {
+        await loadNestNostrToolsForCard();
+      } catch (err) {
+        console.warn('[sifaka-nests] shared Nostr tools loader failed; trying available API', err);
+      }
+
+      naddr = roomNaddrFromRef(roomRef, roomRelays);
+
+      if (!naddr && typeof window.getNestsRoomNaddr === 'function') {
+        try {
+          naddr = normalizeRoomNaddr(window.getNestsRoomNaddr({
+            roomRef: roomRef,
+            relays: String(roomRelays || '').split('|').filter(Boolean)
+          }) || '');
+        } catch (_) {}
+      }
+    }
+
+    if (!naddr) {
+      console.warn('[sifaka-nests] unable to derive room naddr from card', {
+        target: card.getAttribute('data-room-url') || '',
+        roomRef: card.getAttribute('data-room-ref') || ''
+      });
+      return false;
+    }
+
+    if (typeof window.openNestsRoomPage === 'function') {
+      return !!window.openNestsRoomPage(naddr, {
+        routeMode: 'push',
+        autoJoin: true,
+        joinAsListener: true
+      });
+    }
+
+    const target = '/room/' + naddr;
+    try {
+      window.history.pushState({ view: 'nestsRoom', naddr: naddr }, '', target);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      return true;
+    } catch (_) {
+      try { window.location.assign(target); } catch (_) {}
+      return true;
+    }
+  }
 
   function interceptJoinClicks(e) {
-    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
+    const target = e.target;
+    const card = target && target.closest
+      ? target.closest('#nestsRoomsGrid .nests-room-card')
+      : null;
     if (!card) return;
-    if (e.target.closest && e.target.closest('.nests-card-share')) return;
-    openRoomFromCard(card, e).catch(function(err) { console.warn('[sifaka-nests] could not open room card', err); });
+    if (target.closest && target.closest('.nests-card-share')) return;
+    openRoomFromCard(card, e).catch(function(err) {
+      console.warn('[sifaka-nests] could not open room card', err);
+    });
   }
 
   function interceptNestCardKeydown(e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
+    const target = e.target;
+    const card = target && target.closest
+      ? target.closest('#nestsRoomsGrid .nests-room-card')
+      : null;
     if (!card) return;
-    if (e.target.closest && e.target.closest('.nests-card-share')) return;
+    if (target.closest && target.closest('.nests-card-share')) return;
     e.preventDefault();
-    openRoomFromCard(card, e).catch(function(err) { console.warn('[sifaka-nests] could not open room card from keyboard', err); });
+    openRoomFromCard(card, e).catch(function(err) {
+      console.warn('[sifaka-nests] could not open room card from keyboard', err);
+    });
   }
 
   window.openNestsRoomCard = function(card, event) {
@@ -3043,9 +3130,7 @@
     };
     window.leaveNestsRoom = async function() {
       try { await leaveActiveRoom(); } catch (_) {}
-      if (typeof window.showPage === 'function') {
-        window.showPage('nests', { routeMode: 'push' });
-      }
+      if (typeof window.showPage === 'function') window.showPage('nests', { routeMode: 'push' });
     };
     window.openNestsRoomPreview = function(url, fallback = {}) {
       const target = String(url || '').trim();
@@ -3065,133 +3150,7 @@
         url: target
       }).catch(function() {});
     };
-    // Nests cards are rendered/re-rendered dynamically by nostrflux-app.js.
-    // Delegate from document so the handler survives every grid refresh.
-    if (!window.__sifakaNestsCardHandlersBound) {
-      document.addEventListener('click', interceptJoinClicks, true);
-      document.addEventListener('keydown', interceptNestCardKeydown, true);
-      window.__sifakaNestsCardHandlersBound = true;
-    }
-  }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
-  else boot();
-})();, 'i'));
-    if (!match) return '';
-    const nt = window.NostrTools;
-    if (!nt || !nt.nip19 || !nt.nip19.naddrEncode) return '';
-    try {
-      return String(nt.nip19.naddrEncode({
-        identifier: match[2],
-        pubkey: match[1],
-        kind: 30312,
-        relays: String(relays || '').split('|').map(function(x) {
-          return x.trim();
-        }).filter(function(x) {
-          return x.slice(0, 4).toLowerCase() === 'wss:';
-        })
-      }) || '').toLowerCase();
-    } catch (_) {
-      return '';
-    }
-  }
-
-  async function openRoomFromCard(card, event) {
-    if (!card) return false;
-    if (event && event.target && event.target.closest && event.target.closest('.nests-card-share')) {
-      return false;
-    }
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    let naddr = normalizeRoomNaddr(card.getAttribute('data-room-url') || '');
-    if (!naddr) {
-      await loadNestNostrToolsForCard();
-      naddr = roomNaddrFromRef(
-        card.getAttribute('data-room-ref') || '',
-        card.getAttribute('data-room-relays') || ''
-      );
-    }
-    if (!naddr) {
-      console.warn('[sifaka-nests] unable to derive room naddr from card', {
-        target: card.getAttribute('data-room-url') || '',
-        roomRef: card.getAttribute('data-room-ref') || ''
-      });
-      return false;
-    }
-    if (typeof window.openNestsRoomPage === 'function') {
-      return !!window.openNestsRoomPage(naddr, {
-        routeMode: 'push',
-        autoJoin: true,
-        joinAsListener: true
-      });
-    }
-    const target = '/room/' + naddr;
-    try {
-      window.history.pushState({ view: 'nestsRoom', naddr: naddr }, '', target);
-      window.dispatchEvent(new PopStateEvent('popstate'));
-      return true;
-    } catch (_) {
-      window.location.assign(target);
-      return true;
-    }
-  }
-
-  function interceptJoinClicks(e) {
-    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
-    if (!card) return;
-    if (e.target.closest && e.target.closest('.nests-card-share')) return;
-    openRoomFromCard(card, e);
-  }
-
-  function interceptNestCardKeydown(e) {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    const card = e.target.closest && e.target.closest('#nestsRoomsGrid .nests-room-card');
-    if (!card) return;
-    if (e.target.closest && e.target.closest('.nests-card-share')) return;
-    e.preventDefault();
-    openRoomFromCard(card, e);
-  }
-
-  function boot() {
-    if (!(window.location.pathname && /^\/room\/naddr1/i.test(window.location.pathname))) {
-      ensureModal();
-    }
-    window.enterNestsRoom = function(url) {
-      const target = String(url || '').trim();
-      if (!target) return;
-      activeRoomUrl = target;
-      enterActiveRoom().catch(function(err) {
-        console.warn('[sifaka-nests] native room join failed', err);
-      });
-    };
-    window.leaveNestsRoom = async function() {
-      try { await leaveActiveRoom(); } catch (_) {}
-      if (typeof window.showPage === 'function') {
-        window.showPage('nests', { routeMode: 'push' });
-      }
-    };
-    window.openNestsRoomPreview = function(url, fallback = {}) {
-      const target = String(url || '').trim();
-      if (!target) return;
-      if (typeof window.openNestsRoomPage === 'function') {
-        window.openNestsRoomPage(target, { routeMode: 'push' });
-        return;
-      }
-      openPreview(target, {
-        title: String(fallback.title || 'Nostr Nest'),
-        summary: String(fallback.summary || 'Live audio conversation on Nostr.'),
-        host: String(fallback.host || ''),
-        countText: String(fallback.countText || ''),
-        img: String(fallback.img || ''),
-        badge: String(fallback.badge || 'ROOM PREVIEW'),
-        topics: Array.isArray(fallback.topics) ? fallback.topics : [],
-        url: target
-      }).catch(function() {});
-    };
-    // Nests cards are rendered/re-rendered dynamically by nostrflux-app.js.
-    // Delegate from document so the handler survives every grid refresh.
     if (!window.__sifakaNestsCardHandlersBound) {
       document.addEventListener('click', interceptJoinClicks, true);
       document.addEventListener('keydown', interceptNestCardKeydown, true);
