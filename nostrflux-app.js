@@ -23468,7 +23468,41 @@ window.saveAppSettings = function () {
       renderSearch((inp.value || '').trim().toLowerCase());
     };
 
-    window.toggleLike = function () {
+    let theaterLikeHoldTimer = null;
+    let theaterLikeHoldTriggered = false;
+
+    function clearTheaterLikeHoldTimer() {
+      if (theaterLikeHoldTimer) {
+        clearTimeout(theaterLikeHoldTimer);
+        theaterLikeHoldTimer = null;
+      }
+    }
+
+    window.startTheaterLikeHold = function (ev) {
+      if (!ev || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      clearTheaterLikeHoldTimer();
+      theaterLikeHoldTriggered = false;
+
+      theaterLikeHoldTimer = setTimeout(() => {
+        theaterLikeHoldTimer = null;
+        theaterLikeHoldTriggered = true;
+        window.openReactionPickerForStream();
+      }, 550);
+    };
+
+    window.endTheaterLikeHold = function () {
+      clearTheaterLikeHoldTimer();
+    };
+
+    window.toggleLike = function (ev) {
+      if (theaterLikeHoldTriggered) {
+        theaterLikeHoldTriggered = false;
+        if (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+        return;
+      }
       sendReaction();
     };
 
