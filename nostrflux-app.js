@@ -24112,8 +24112,23 @@ window.saveAppSettings = function () {
       return state.streamsByAddress.get(state.selectedStreamAddress) || null;
     }
 
-    function getTheaterDonationProfile(stream) {
-      return stream ? profileFor(stream.hostPubkey || stream.pubkey || '') : profileFor('');
+    async function resolveTheaterDonationPubkey(stream) {
+      if (!stream) return '';
+      const candidates = [stream.hostPubkey, stream.pubkey];
+      for (const candidate of candidates) {
+        const raw = String(candidate || '').trim();
+        const hex = normalizePubkeyHex(raw);
+        if (hex) return hex;
+        if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(raw)) {
+          const decoded = await decodeNpubToPubkey(raw);
+          if (decoded) return decoded;
+        }
+      }
+      return '';
+    }
+
+    function getTheaterDonationProfile(stream, resolvedPubkey = '') {
+      return stream ? profileFor(resolvedPubkey || stream.hostPubkey || stream.pubkey || '') : profileFor('');
     }
 
     function getTheaterDonationHostLabel(stream, profile) {
@@ -24135,10 +24150,10 @@ window.saveAppSettings = function () {
       status.classList.toggle('is-disconnected', methods.length === 0);
     }
 
-    function populateTheaterDonationChooser(stream, profile) {
+    function populateTheaterDonationChooser(stream, profile, resolvedPubkey = '') {
       const hostLabel = getTheaterDonationHostLabel(stream, profile);
       theaterDonationContext.streamAddress = stream.address || '';
-      theaterDonationContext.hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+      theaterDonationContext.hostPubkey = resolvedPubkey || normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
       theaterDonationContext.hostName = hostLabel;
       theaterDonationContext.lud16 = String(profile.lud16 || '').trim();
 
@@ -24151,8 +24166,8 @@ window.saveAppSettings = function () {
       if (lightningOption) lightningOption.hidden = !theaterDonationContext.lud16;
       if (chooseNote) {
         chooseNote.textContent = theaterDonationContext.lud16
-          ? 'On-Chain is always available. Lightning is shown because this profile has a Lightning address.'
-          : 'On-Chain is always available. Lightning is unavailable because this profile has no Lightning address.';
+          ? 'On-Chain uses the Taproot Bitcoin wallet derived from this streamer\'s Nostr public key. Lightning is shown only because this profile has a Lightning address.'
+          : 'On-Chain uses the Taproot Bitcoin wallet derived from this streamer\'s Nostr public key. Lightning is hidden because this profile has no Lightning address.';
       }
     }
 
@@ -24165,17 +24180,18 @@ window.saveAppSettings = function () {
       if (!modal) return;
 
       const title = qs('#theaterDonationTitle');
-      if (title) title.textContent = 'Support ' + getTheaterDonationHostLabel(stream, getTheaterDonationProfile(stream));
+      const resolvedPubkey = await resolveTheaterDonationPubkey(stream);
+      const initialProfile = getTheaterDonationProfile(stream, resolvedPubkey);
+      if (title) title.textContent = 'Support ' + getTheaterDonationHostLabel(stream, initialProfile);
 
       try {
-        const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
-        if (hostPubkey && !state.profilesByPubkey.has(hostPubkey)) {
-          await fetchProfileIfNeeded(hostPubkey);
+        if (resolvedPubkey && !state.profilesByPubkey.has(resolvedPubkey)) {
+          await fetchProfileIfNeeded(resolvedPubkey);
         }
       } catch (_) {}
 
-      const profile = getTheaterDonationProfile(stream);
-      populateTheaterDonationChooser(stream, profile);
+      const profile = getTheaterDonationProfile(stream, resolvedPubkey);
+      populateTheaterDonationChooser(stream, profile, resolvedPubkey);
       showTheaterDonationChooser();
       modal.classList.add('open');
     };
@@ -24212,9 +24228,9 @@ window.saveAppSettings = function () {
       const stream = getTheaterDonationStream();
       if (!stream) return;
 
-      const profile = getTheaterDonationProfile(stream);
+      const hostPubkey = theaterDonationContext.hostPubkey || await resolveTheaterDonationPubkey(stream);
+      const profile = getTheaterDonationProfile(stream, hostPubkey);
       const hostLabel = getTheaterDonationHostLabel(stream, profile);
-      const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
 
       if (method === 'onchain') {
         try {
