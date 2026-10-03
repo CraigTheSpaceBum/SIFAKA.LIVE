@@ -17300,7 +17300,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (ev.kind === KIND_ZAP_RECEIPT) {
         const suppressChatEntry = historyZapIdsToSuppressChat.has(ev.id);
         if (suppressChatEntry) historyZapIdsToSuppressChat.delete(ev.id);
-        const allowZapChatRender = allowTheaterZapChatRender();
+        const allowZapChatRender = suppressChatEntry ? false : allowTheaterZapChatRender();
         if (addStreamZapReceipt(ev, stream, {
           deferUi: true,
           suppressChatEntry,
