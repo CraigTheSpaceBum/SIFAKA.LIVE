@@ -16301,7 +16301,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (inn) inn.classList.toggle('on', on);
   }
 
+  function updateTheaterChatComposerVisibility() {
+    const composer = qs('.chat-bottom');
+    if (!composer) return;
+    composer.style.display = state.user ? '' : 'none';
+    composer.setAttribute('aria-hidden', state.user ? 'false' : 'true');
+  }
+
   function setUserUi() {
+    updateTheaterChatComposerVisibility();
     if (!state.user) {
       setLoggedInUi(false);
       state.notificationsById = new Map();
@@ -16324,6 +16332,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (isMessagesPageVisible()) renderMessagesPage({ subscribe: false, forceLayout: true });
       return;
     }
+    updateTheaterChatComposerVisibility();
     setLoggedInUi(true);
     const p = state.user.profile || { name: shortHex(state.user.pubkey), nip05: '' };
     const claimedNip05 = normalizeNip05Value(p.nip05 || '');
@@ -22158,7 +22167,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
         let txResult = null;
         try {
-          txResult = await sendNwcRequest(session, 'list_transactions', { limit: 20 }, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
+          txResult = await sendNwcRequest(session, 'list_transactions', { limit: 6 }, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
         } catch (_) {}
 
         const balanceMsats = Number(balanceResult && (balanceResult.balance ?? balanceResult.amount) || 0);
@@ -22186,7 +22195,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const sortedTx = transactions
           .filter(Boolean)
           .sort((a,b) => Number(b.settled_at || b.created_at || 0) - Number(a.settled_at || a.created_at || 0))
-          .slice(0,20);
+          .slice(0,6);
 
         if (!sortedTx.length) {
           txEl.innerHTML = '<div class="wallet-empty-state">No recent wallet transactions were returned.</div>';
