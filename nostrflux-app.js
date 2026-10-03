@@ -22230,8 +22230,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const spendSecret = await deriveNipBcTaprootInternalSecret(secret);
       const spendPubkey = btc.utils.pubSchnorr(spendSecret);
       const spend = btc.p2tr(spendPubkey);
-      const ownAddress = String(state.walletPageOnchainAddress || '').trim();
-      if (!ownAddress || spend.address !== ownAddress) throw new Error('The local signing key does not match this wallet address.');
+      let ownAddress = String(state.walletPageOnchainAddress || '').trim();
+      if (!ownAddress) {
+        const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+        if (!ownPubkey) throw new Error('Your Nostr public key is not available yet.');
+        await ensureTaprootDerivationSelfTest();
+        ownAddress = await deriveNipBcTaprootAddress(ownPubkey);
+        state.walletPageOnchainAddress = ownAddress;
+      }
+      if (spend.address !== ownAddress) throw new Error('The local signing key does not match this wallet address.');
       const tx = new btc.Transaction();
       draft.utxos.forEach((utxo) => {
         tx.addInput({
@@ -22254,25 +22261,72 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       showWalletAddressQr('bitcoin');
     };
 
-    window.openWalletOnchainSend = function (destination = '', recipientMeta = {}) {
+    window.openWalletOnchainSend = async function (destination = '', recipientMeta = {}) {
       const modal = qs('#walletOnchainSendModal');
       if (!modal) return;
       modal.hidden = false;
       modal.setAttribute('aria-hidden', 'false');
       resetWalletOnchainSendDraft();
+
       const destinationEl = qs('#walletOnchainSendAddress');
-      if (destinationEl) {
-        destinationEl.value = String(destination || '').trim();
-      }
+      if (destinationEl) destinationEl.value = String(destination || '').trim();
+
+      const availableEl = qs('#walletOnchainSendAvailable');
+      const availableSubEl = qs('#walletOnchainSendAvailableSub');
+      const suggestedFeeEl = qs('#walletOnchainSendSuggestedFee');
+      const feeSubEl = qs('#walletOnchainSendFeeSub');
+      const feeRateEl = qs('#walletOnchainSendFeeRate');
+      if (availableEl) availableEl.textContent = 'Loading…';
+      if (availableSubEl) availableSubEl.textContent = 'Loading spendable UTXOs…';
+      if (suggestedFeeEl) suggestedFeeEl.textContent = 'Loading…';
+      if (feeSubEl) feeSubEl.textContent = 'Current mempool recommendation';
+
       const note = qs('#walletOnchainSendNote');
       const recipientName = String(recipientMeta.recipientName || '').trim();
       if (note) {
         note.textContent = state.authMode === 'local' && state.localSecretKey
           ? (recipientName
-            ? 'Sending on-chain Bitcoin to ' + recipientName + '. Review the address, amount, and fee before confirming.'
-            : 'Your transaction will be prepared locally and only broadcast after you confirm the destination, amount, and fee.')
+            ? 'Sending on-chain Bitcoin to ' + recipientName + '. The recipient address is shown above; review the amount and network fee before confirming.'
+            : 'Your transaction will be prepared locally and only broadcast after you confirm the destination, amount, and network fee.')
           : 'On-chain sending currently requires a local Nostr key login. The receive wallet remains available with remote signer or extension login.';
       }
+
+      if (state.authMode === 'local' && state.localSecretKey) {
+        try {
+          const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+          if (!ownPubkey) throw new Error('Your Nostr public key is not available yet.');
+          await ensureTaprootDerivationSelfTest();
+          const ownAddress = await deriveNipBcTaprootAddress(ownPubkey);
+          state.walletPageOnchainAddress = ownAddress;
+
+          const [utxos, feeRate] = await Promise.all([
+            fetchWalletOnchainUtxos(ownAddress),
+            fetchWalletOnchainFeeRate()
+          ]);
+          const availableSats = utxos.reduce((sum, u) => sum + Math.floor(Number(u.value || 0)), 0);
+
+          if (availableEl) availableEl.textContent = formatCount(availableSats) + ' sats';
+          if (availableSubEl) {
+            availableSubEl.textContent = availableSats
+              ? 'Spendable confirmed UTXOs. Network fee is deducted separately.'
+              : 'No spendable UTXOs found for this wallet.';
+          }
+          if (suggestedFeeEl) suggestedFeeEl.textContent = feeRate + ' sat/vB';
+          if (feeRateEl) feeRateEl.value = String(feeRate);
+          if (feeSubEl) feeSubEl.textContent = 'Recommended for confirmation in roughly the next block window.';
+        } catch (err) {
+          if (availableEl) availableEl.textContent = 'Unavailable';
+          if (availableSubEl) availableSubEl.textContent = err?.message || 'Could not load spendable balance.';
+          if (suggestedFeeEl) suggestedFeeEl.textContent = 'Unavailable';
+          if (feeSubEl) feeSubEl.textContent = 'Enter a fee rate manually if needed.';
+        }
+      } else {
+        if (availableEl) availableEl.textContent = 'Unavailable';
+        if (availableSubEl) availableSubEl.textContent = 'Local key login is required to spend on-chain Bitcoin.';
+        if (suggestedFeeEl) suggestedFeeEl.textContent = '—';
+        if (feeSubEl) feeSubEl.textContent = 'Receive remains available with other login methods.';
+      }
+
       setTimeout(() => {
         const input = qs('#walletOnchainSendAddress');
         if (destination && qs('#walletOnchainSendAmount')) qs('#walletOnchainSendAmount').focus();
@@ -22303,6 +22357,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
         if (status) status.textContent = 'Loading UTXOs and fee rate…';
         if (!Number.isFinite(feeRate) || feeRate <= 0) { feeRate = await fetchWalletOnchainFeeRate(); if (feeRateEl) feeRateEl.value = String(feeRate); }
+         const suggestedFeeEl = qs('#walletOnchainSendSuggestedFee');
+         if (suggestedFeeEl) suggestedFeeEl.textContent = feeRate + ' sat/vB';
         let ownAddress = String(state.walletPageOnchainAddress || '').trim();
         if (!ownAddress) {
           const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');

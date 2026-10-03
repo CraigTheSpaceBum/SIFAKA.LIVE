@@ -7025,6 +7025,37 @@ footer p{font-size:.72rem;color:var(--muted);}
   font-size:.72rem;
   line-height:1.5;
 }
+.wallet-onchain-send-balance-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.65rem;
+  margin-top:.9rem;
+}
+.wallet-onchain-send-balance-card{
+  display:grid;
+  gap:.28rem;
+  min-width:0;
+  padding:.75rem .8rem;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--surface2);
+}
+.wallet-onchain-send-balance-card span{
+  color:var(--muted);
+  font:600 .62rem/1.2 'DM Mono',monospace;
+  text-transform:uppercase;
+  letter-spacing:.07em;
+}
+.wallet-onchain-send-balance-card strong{
+  color:var(--text);
+  font:700 .92rem/1.2 'DM Mono',monospace;
+  overflow-wrap:anywhere;
+}
+.wallet-onchain-send-balance-card small{
+  color:var(--text2);
+  font-size:.63rem;
+  line-height:1.4;
+}
 .wallet-onchain-send-form{display:grid;gap:.75rem;margin-top:.9rem;}
 .wallet-onchain-send-form label{
   display:grid;
@@ -7056,6 +7087,7 @@ footer p{font-size:.72rem;color:var(--muted);}
 }
 
 @media (max-width:760px){
+  .wallet-onchain-send-balance-grid{grid-template-columns:1fr;}
   #walletPage .wallet-mainchain-receive{
     margin-top:.65rem;
     padding:.6rem .7rem;
