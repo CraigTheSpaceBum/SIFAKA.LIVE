@@ -22127,7 +22127,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const statusEl = qs('#walletPageStatus');
       const balanceEl = qs('#walletBalanceValue');
       const balanceSubEl = qs('#walletBalanceSub');
-      const infoEl = qs('#walletInfoList');
       const txEl = qs('#walletTransactionsList');
       const chipEl = qs('#walletStatusChip');
       const promptEl = qs('#walletConnectPrompt');
@@ -22146,7 +22145,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const addressHelpEl = qs('#walletAddressHelp');
       const copyBtn = qs('#walletAddressCopyBtn');
 
-      if (!statusEl || !balanceEl || !infoEl || !txEl) return;
+      if (!statusEl || !balanceEl || !txEl) return;
       if (state.walletPageSession) {
         teardownNwcSessionObject(state.walletPageSession, 'Wallet page refreshed.');
         state.walletPageSession = null;
@@ -22322,7 +22321,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (!config) {
         balanceEl.textContent = '—';
         balanceSubEl.textContent = 'No Nostr Wallet Connect wallet is configured.';
-        infoEl.innerHTML = '<div class="wallet-info-empty">No NIP-47 wallet connection is configured.</div>';
         txEl.innerHTML = '<div class="wallet-empty-state">Connect a wallet in Settings → Wallet to load your live Lightning balance and transactions.</div>';
         if (chipEl) { chipEl.textContent = 'Not connected'; chipEl.className = 'wallet-status-chip'; }
         setLightningConnectionLayout(false);
@@ -22345,9 +22343,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
         state.walletPageSession = session;
 
-        const infoResult = await sendNwcRequest(session, 'get_info', {}, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
-        if (token !== state.walletPageLoadToken) return;
-
         setLightningConnectionLayout(true);
 
         let balanceResult = null;
@@ -22362,24 +22357,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
         const balanceMsats = Number(balanceResult && (balanceResult.balance ?? balanceResult.amount) || 0);
         const balanceSats = Number.isFinite(balanceMsats) ? balanceMsats / 1000 : 0;
-        const network = String(infoResult && infoResult.network || '').trim();
-        const alias = String(infoResult && infoResult.alias || '').trim();
-        const methods = Array.isArray(infoResult && infoResult.methods) ? infoResult.methods.filter(Boolean) : [];
         const transactions = Array.isArray(txResult && txResult.transactions)
           ? txResult.transactions
           : (Array.isArray(txResult) ? txResult : []);
 
         balanceEl.textContent = `${Math.floor(balanceSats).toLocaleString('en-US')} sats`;
         balanceSubEl.textContent = '';
-        infoEl.innerHTML = [
-          ['Wallet Service', shortHex(config.walletPubkey)],
-          ['Alias', alias || 'Not provided'],
-          ['Network', network || 'Not reported'],
-          ['Relays', `${config.relays.length}`],
-          ['Encryption', session.encryption === 'nip04' ? 'NIP-04' : 'NIP-44'],
-          ['Capabilities', methods.length ? methods.join(', ') : 'Not reported']
-        ].map(([label,value]) => `<div class="wallet-info-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
-
         const sortedTx = transactions
           .filter(Boolean)
           .sort((a,b) => Number(b.settled_at || b.created_at || 0) - Number(a.settled_at || a.created_at || 0))

@@ -6361,7 +6361,7 @@ footer p{font-size:.72rem;color:var(--muted);}
   position:relative;
   z-index:1;
   margin:.65rem 0 .15rem;
-  font-size:clamp(2.05rem,4.2vw,3.2rem);
+  font-size:1.4rem;
   letter-spacing:-.045em;
 }
 #walletPage .wallet-balance-sub{
@@ -6563,7 +6563,7 @@ footer p{font-size:.72rem;color:var(--muted);}
   #walletPage .wallet-page-hero p{font-size:.66rem}
   #walletPage .wallet-dashboard-grid{grid-template-columns:1fr}
   #walletPage .wallet-balance-card{min-height:190px;padding:1.05rem}
-  #walletPage .wallet-balance-value{font-size:2.15rem}
+  #walletPage .wallet-balance-value{font-size:1.4rem}
   #walletPage .wallet-quick-actions{margin-top:.9rem}
   #walletPage .wallet-quick-btn{flex:1}
   #walletPage .wallet-action-grid{grid-template-columns:1fr 1fr}
