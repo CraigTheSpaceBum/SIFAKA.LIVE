@@ -6949,7 +6949,7 @@ footer p{font-size:.72rem;color:var(--muted);}
   }
 
   #walletPage .wallet-mainchain-top-grid{
-    grid-template-columns:minmax(0,1.65fr) minmax(150px,.65fr);
+    grid-template-columns:minmax(0,1.9fr) minmax(125px,.5fr);
   }
 
   #walletPage .wallet-mainchain-top-grid .wallet-mainchain-balance,
