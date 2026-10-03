@@ -743,6 +743,145 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return value.slice(0, 20) + '…';
   }
 
+  // Public Taproot derivation used by recipient flows (profile/theater).
+  // The wallet page has its own internal helpers, but theater/profile code lives
+  // outside that wallet-only scope. Keep one identical NIP-BC/BIP-341 algorithm
+  // available at the shared application scope so recipients work everywhere.
+  const PUBLIC_TAPROOT_TEST_VECTOR = {
+    pubkey: 'd6889cb081036e0faefa3a35157ad71086b123b2b144b649798b494c300a961d',
+    expectedAddress: 'bc1p2wsldez5mud2yam29q22wgfh9439spgduvct83k3pm50fcxa5dps59h4z5'
+  };
+  let publicTaprootSelfTested = false;
+
+  function publicBtcMod(a, m = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn) {
+    const result = a % m;
+    return result >= 0n ? result : result + m;
+  }
+
+  function publicBtcPowMod(base, exponent, modulus = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn) {
+    let result = 1n;
+    let value = publicBtcMod(base, modulus);
+    let exp = BigInt(exponent);
+    while (exp > 0n) {
+      if (exp & 1n) result = (result * value) % modulus;
+      value = (value * value) % modulus;
+      exp >>= 1n;
+    }
+    return result;
+  }
+
+  function publicBtcInvMod(value, modulus = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn) {
+    const normalized = publicBtcMod(value, modulus);
+    if (normalized === 0n) throw new Error('Invalid secp256k1 point.');
+    return publicBtcPowMod(normalized, modulus - 2n, modulus);
+  }
+
+  function publicBtcPointAdd(a, b) {
+    const p = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn;
+    if (!a) return b;
+    if (!b) return a;
+    if (a.x === b.x) {
+      if (a.y !== b.y || a.y === 0n) return null;
+      const lambda = publicBtcMod((3n * a.x * a.x) * publicBtcInvMod(2n * a.y, p), p);
+      return {
+        x: publicBtcMod(lambda * lambda - a.x - b.x, p),
+        y: publicBtcMod(lambda * (a.x - (publicBtcMod(lambda * lambda - a.x - b.x, p))) - a.y, p)
+      };
+    }
+    const lambda = publicBtcMod((b.y - a.y) * publicBtcInvMod(b.x - a.x, p), p);
+    const x = publicBtcMod(lambda * lambda - a.x - b.x, p);
+    const y = publicBtcMod(lambda * (a.x - x) - a.y, p);
+    return { x, y };
+  }
+
+  function publicBtcPointMultiply(scalar, point) {
+    const order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
+    let k = BigInt(scalar);
+    if (k === 0n) return null;
+    if (k < 0n) k = order + k;
+    let result = null;
+    let addend = point;
+    while (k > 0n) {
+      if (k & 1n) result = publicBtcPointAdd(result, addend);
+      addend = publicBtcPointAdd(addend, addend);
+      k >>= 1n;
+    }
+    return result;
+  }
+
+  function publicBtcLiftXEven(xOnly) {
+    const p = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn;
+    const x = BigInt('0x' + xOnly);
+    if (x < 0n || x >= p) throw new Error('Invalid Nostr public key.');
+    const ySquared = publicBtcMod(x * x * x + 7n, p);
+    let y = publicBtcPowMod(ySquared, (p + 1n) / 4n, p);
+    if (publicBtcMod(y * y - ySquared, p) !== 0n) throw new Error('Nostr public key is not on secp256k1.');
+    if (y & 1n) y = p - y;
+    return { x, y };
+  }
+
+  function publicBtcHexToBytes(hex) {
+    const clean = String(hex || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(clean)) throw new Error('Invalid hexadecimal key.');
+    const out = new Uint8Array(32);
+    for (let i = 0; i < 32; i += 1) out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+    return out;
+  }
+
+  function publicBtcBytesToBigInt(bytes) {
+    let result = 0n;
+    for (const byte of bytes) result = (result << 8n) | BigInt(byte);
+    return result;
+  }
+
+  function publicBtcBigIntTo32Bytes(value) {
+    const out = new Uint8Array(32);
+    let n = BigInt(value);
+    for (let i = 31; i >= 0; i -= 1) {
+      out[i] = Number(n & 0xffn);
+      n >>= 8n;
+    }
+    return out;
+  }
+
+  async function publicBtcSha256(bytes) {
+    if (!window.crypto || !window.crypto.subtle) throw new Error('Browser cryptography is unavailable.');
+    return new Uint8Array(await window.crypto.subtle.digest('SHA-256', bytes));
+  }
+
+  async function derivePublicTaprootAddressFromPubkey(pubkey) {
+    const p = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn;
+    const order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
+    const gx = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798n;
+    const gy = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8n;
+    const normalized = normalizePubkeyHex(pubkey || '');
+    if (!normalized) throw new Error('No usable Nostr public key is available.');
+    const internalKey = publicBtcLiftXEven(normalized);
+    const internalBytes = publicBtcHexToBytes(normalized);
+    const tag = new TextEncoder().encode('TapTweak');
+    const tagHash = await publicBtcSha256(tag);
+    const payload = new Uint8Array(96);
+    payload.set(tagHash, 0);
+    payload.set(tagHash, 32);
+    payload.set(internalBytes, 64);
+    const tweakBytes = await publicBtcSha256(payload);
+    const tweak = publicBtcBytesToBigInt(tweakBytes);
+    if (tweak >= order) throw new Error('Invalid Taproot tweak.');
+    const output = publicBtcPointAdd(internalKey, publicBtcPointMultiply(tweak, { x: gx, y: gy }));
+    if (!output) throw new Error('Invalid Taproot output key.');
+    const outputX = publicBtcBigIntTo32Bytes(output.x);
+    return btcBech32mEncode('bc', [1].concat(convertBits(outputX, 8, 5, true)));
+  }
+
+  async function ensurePublicTaprootDerivationSelfTest() {
+    if (publicTaprootSelfTested) return;
+    const derived = await derivePublicTaprootAddressFromPubkey(PUBLIC_TAPROOT_TEST_VECTOR.pubkey);
+    if (derived !== PUBLIC_TAPROOT_TEST_VECTOR.expectedAddress) {
+      throw new Error('Taproot derivation self-test failed; on-chain recipient disabled.');
+    }
+    publicTaprootSelfTested = true;
+  }
+
   // Resolve any Nostr identity form we may receive for a profile:
   // - 64-char x-only hex pubkey
   // - npub1... bech32 public identifier
@@ -787,11 +926,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const cached = state.profileBitcoinAddressesByPubkey.get(key);
     if (cached) return cached;
 
-    // Keep the same derivation path used by the user's Wallet page so a
-    // recipient address is guaranteed to be the exact same NIP-BC/BIP-341
-    // Taproot address Sifaka uses for that Nostr public key.
-    await ensureTaprootDerivationSelfTest();
-    const address = await deriveNipBcTaprootAddress(key);
+    // Use the same NIP-BC/BIP-341 derivation algorithm as the wallet,
+    // exposed at shared scope so recipient flows do not depend on wallet scope.
+    await ensurePublicTaprootDerivationSelfTest();
+    const address = await derivePublicTaprootAddressFromPubkey(key);
     state.profileBitcoinAddressesByPubkey.set(key, address);
     return address;
   }
