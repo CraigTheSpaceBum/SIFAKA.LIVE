@@ -7563,3 +7563,36 @@ body.nest-room-page-open{
     right:.6rem;bottom:7.2rem;max-width:220px;
   }
 }
+
+
+/* NOSTR NEST — audio auth recovery and room error state */
+#nestRoomPage .nest-room-error,
+.nest-preview-overlay .nest-room-error{
+  display:flex;align-items:center;justify-content:space-between;gap:.8rem;
+  margin:.75rem 0 0;padding:.7rem .8rem;
+  border:1px solid color-mix(in srgb,var(--live) 24%,var(--border));
+  border-radius:13px;
+  background:color-mix(in srgb,var(--live) 7%,var(--surface2));
+}
+#nestRoomPage .nest-room-error[hidden],
+.nest-preview-overlay .nest-room-error[hidden]{display:none}
+#nestRoomPage .nest-room-error-copy,
+.nest-preview-overlay .nest-room-error-copy{
+  display:flex;flex-direction:column;gap:.18rem;min-width:0
+}
+#nestRoomPage .nest-room-error-copy strong,
+.nest-preview-overlay .nest-room-error-copy strong{font-size:.66rem}
+#nestRoomPage .nest-room-error-copy span,
+.nest-preview-overlay .nest-room-error-copy span{
+  font-size:.59rem;line-height:1.45;color:var(--text2)
+}
+#nestRoomPage #nestRoomRetryBtn,
+.nest-preview-overlay #nestRoomRetryBtn{flex:0 0 auto;min-height:34px}
+@media(max-width:760px){
+  #nestRoomPage .nest-room-error,
+  .nest-preview-overlay .nest-room-error{
+    align-items:flex-start;flex-direction:column
+  }
+  #nestRoomPage #nestRoomRetryBtn,
+  .nest-preview-overlay #nestRoomRetryBtn{width:100%}
+}
