@@ -22246,7 +22246,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             ['Confirmed UTXOs', String(chain.utxo_count ?? Math.max(0, Number(chain.funded_txo_count || 0) - Number(chain.spent_txo_count || 0)))],
             ['Transactions', String(chain.tx_count || 0)]
           ].map(([label,value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
-          const list = Array.isArray(txs) ? txs.slice(0,20) : [];
+          const list = Array.isArray(txs) ? txs.slice(0,6) : [];
           if (mainchainTxEl) {
             if (!list.length) {
               mainchainTxEl.innerHTML = '<div class="wallet-empty-state">No mainchain transactions found.</div>';
