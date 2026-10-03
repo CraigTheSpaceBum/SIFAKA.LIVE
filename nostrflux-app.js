@@ -24570,7 +24570,7 @@ window.saveAppSettings = function () {
       try {
         if (state.user) {
           const restoredNwc = await restoreNwcSettingsFromNostr();
-          if (restoredNwc && typeof window.loadWalletPage === 'function' && String(state.currentPage || '').toLowerCase() === 'wallet') {
+          if (restoredNwc && typeof window.loadWalletPage === 'function' && /^\/wallet\/?$/i.test(String(window.location && window.location.pathname || ''))) {
             window.loadWalletPage(true).catch(() => {});
           }
         }
