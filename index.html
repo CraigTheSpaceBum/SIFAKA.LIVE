@@ -1755,7 +1755,7 @@ body.nest-preview-open{overflow:hidden}
           <div class="sib-actions-row">
             <button class="btn btn-follow" id="theaterFollowBtn" style="padding:.36rem .8rem;font-size:.79rem;" onclick="toggleTheaterFollow()">Follow</button>
             <button class="btn btn-zap" id="theaterZapBtn" style="padding:.36rem .8rem;font-size:.79rem;" onclick="theaterZap()">Zap</button>
-            <button class="action-btn like-btn" id="likeBtn" type="button" onclick="toggleLike()">&#10084; Like</button>
+            <button class="action-btn like-btn" id="likeBtn" type="button" onclick="toggleLike(event)" onpointerdown="startTheaterLikeHold(event)" onpointerup="endTheaterLikeHold(event)" onpointercancel="endTheaterLikeHold(event)" onpointerleave="endTheaterLikeHold(event)">&#10084; Like</button>
             <button class="action-btn share-btn" id="theaterShareBtn" onclick="shareStream()">Share</button>
             <button class="action-btn report-btn" title="Report stream">Report</button>
           </div>
@@ -1798,7 +1798,6 @@ body.nest-preview-open{overflow:hidden}
           <button class="block-pencil owner-only visible" title="Edit description"></button>
         </div>
         <div class="stream-reactions-row">
-          <button class="stream-emoji-add" id="streamEmojiAddBtn" onclick="openReactionPickerForStream()">+</button>
           <div class="stream-emoji-list" id="streamEmojiList"></div>
           <div class="stream-like-counter" id="streamLikeCounter">0 likes</div>
           <div class="stream-zap-list" id="streamZapList"></div>
