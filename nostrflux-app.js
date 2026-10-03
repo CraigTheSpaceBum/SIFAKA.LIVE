@@ -22407,20 +22407,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       };
 
       const savedUri = String(state.settings && state.settings.nwcConnectionUri || '').trim();
-      const setLightningConnectionLayout = (connected, hasLud16 = false) => {
-        // Profile receive information is controlled only by the profile lud16.
-        if (lightningReceiveEl) lightningReceiveEl.hidden = !hasLud16;
+      const setLightningConnectionLayout = (connected) => {
+        // The Lightning receive panel is always visible. Profile lud16 controls only
+        // whether its address, QR data, and address actions are populated/available.
+        if (lightningReceiveEl) lightningReceiveEl.hidden = false;
 
         // Live balance/activity/send controls are available only with NIP-47.
         if (lightningLiveEl) lightningLiveEl.hidden = !connected;
 
-        // No NIP-47 connection: show the connection prompt instead.
+        // Show the existing NIP-47 connection prompt only when not connected.
         if (promptEl) promptEl.hidden = !!connected;
 
         // Keep the Lightning column itself present.
         if (lightningColumnEl) lightningColumnEl.hidden = false;
       };
-      setLightningConnectionLayout(false, false);
+      setLightningConnectionLayout(false);
       const manualBitcoinAddress = String(state.settings && state.settings.bitcoinAddress || '').trim();
       const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
       let bitcoinAddress = '';
@@ -22557,7 +22558,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (qrBtn) qrBtn.hidden = !lud16;
           state.walletPageLightningAddress = lud16;
           renderWalletLightningAddressQr(lud16, lightningQrEl, lightningQrEmptyEl);
-          setLightningConnectionLayout(!!state.walletPageSession, !!lud16);
+          setLightningConnectionLayout(!!state.walletPageSession);
         }).catch(() => {});
       } else {
         const lud16 = String(state.settings && state.settings.lud16 || '').trim();
@@ -22570,7 +22571,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (qrBtn) qrBtn.hidden = !lud16;
         state.walletPageLightningAddress = lud16;
         renderWalletLightningAddressQr(lud16, lightningQrEl, lightningQrEmptyEl);
-        setLightningConnectionLayout(false, !!lud16);
+        setLightningConnectionLayout(false);
       }
 
       if (!config) {
@@ -22578,7 +22579,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         balanceSubEl.textContent = 'No Nostr Wallet Connect wallet is configured.';
         txEl.innerHTML = '<div class="wallet-empty-state">Connect a wallet in Settings → Wallet to load your live Lightning balance and transactions.</div>';
         if (chipEl) { chipEl.textContent = 'Not connected'; chipEl.className = 'wallet-status-chip'; }
-        setLightningConnectionLayout(false, !!state.walletPageLightningAddress);
+        setLightningConnectionLayout(false);
         setStatus('', 'info');
         return;
       }
@@ -22598,7 +22599,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
         state.walletPageSession = session;
 
-        setLightningConnectionLayout(true, !!state.walletPageLightningAddress);
+        setLightningConnectionLayout(true);
 
         let balanceResult = null;
         try {
@@ -22653,7 +22654,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         balanceSubEl.textContent = 'Could not load the live wallet balance.';
         if (chipEl) { chipEl.textContent = 'Connection error'; chipEl.className = 'wallet-status-chip is-error'; }
         txEl.innerHTML = '<div class="wallet-empty-state">The wallet connection could not be reached. Check Settings → Wallet and try again.</div>';
-        setLightningConnectionLayout(false, !!state.walletPageLightningAddress);
+        setLightningConnectionLayout(false);
         setStatus(err && err.message ? err.message : 'Could not load wallet information.', 'error');
       } finally {
         if (token === state.walletPageLoadToken) setLoading(false);
