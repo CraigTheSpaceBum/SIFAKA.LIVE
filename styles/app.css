@@ -3073,6 +3073,9 @@ nav .btn{
 .ss.zap .n{color:var(--zap);}
 .ss.lv .n{color:var(--live);}
 .ss.fol .n{color:var(--purple);}
+.sib-profile-links{margin-top:.62rem;padding-top:0;gap:.42rem;}
+.sib-profile-links .profile-bio-meta{flex:0 0 auto;}
+
 
 /* Summary with edit pencil */
 .editable-block{position:relative;}
