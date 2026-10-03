@@ -22311,25 +22311,40 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       } catch (_) {}
     };
 
-    window.showWalletAddressQr = function (kind) {
+    window.showWalletAddressQr = async function (kind) {
       const modal = qs('#walletAddressQrModal');
       const qr = qs('#walletAddressQr');
       const valueEl = qs('#walletAddressQrValue');
       if (!modal || !qr) return;
+
+      const addressText = String(qs('#walletMainchainAddress')?.textContent || '').trim();
+      const lightningText = String(qs('#walletAddressValue')?.textContent || '').trim();
       const value = kind === 'bitcoin'
-        ? String(state.walletPageOnchainAddress || state.settings && state.settings.bitcoinAddress || '').trim()
-        : String(state.walletPageLightningAddress || '').trim();
-      if (!value) return;
+        ? String(state.walletPageOnchainAddress || state.settings && state.settings.bitcoinAddress || addressText || '').trim()
+        : String(state.walletPageLightningAddress || lightningText || '').trim();
+      if (!value || value === 'No address available' || value === 'Not available') return;
+
       const payload = kind === 'bitcoin' ? ('bitcoin:' + value) : value;
-      qr.innerHTML = '';
-      if (window.QRCode) {
-        new window.QRCode(qr, { text: payload, width: 240, height: 240, correctLevel: window.QRCode.CorrectLevel.M });
-      }
       if (valueEl) valueEl.textContent = value;
       const title = qs('#walletAddressQrTitle');
       if (title) title.textContent = kind === 'bitcoin' ? 'Bitcoin address' : 'Lightning address';
+
       modal.hidden = false;
       modal.setAttribute('aria-hidden', 'false');
+      qr.innerHTML = '';
+
+      try {
+        if (!window.QRCode) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        if (window.QRCode) {
+          new window.QRCode(qr, { text: payload, width: 280, height: 280, correctLevel: window.QRCode.CorrectLevel.M });
+        } else {
+          qr.textContent = 'QR generator is unavailable. Copy the address below.';
+        }
+      } catch (_) {
+        qr.textContent = 'Could not render the QR code. Copy the address below.';
+      }
     };
 
     window.closeWalletAddressQr = function () {
