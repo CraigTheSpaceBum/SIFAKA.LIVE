@@ -14455,6 +14455,31 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (statsTargetPubkey && state.pool) subscribeProfileStats(statsTargetPubkey);
 
+    // Host profile links: mirror the Website + Lightning boxes used on profile pages.
+    const theaterProfileLinks = qs('#theaterProfileLinks');
+    const theaterWebsiteRow = qs('#theaterWebsiteRow');
+    const theaterWebsite = qs('#theaterWebsite');
+    const theaterLud16Row = qs('#theaterLud16Row');
+    const theaterLud16 = qs('#theaterLud16');
+
+    let theaterWebsiteUrl = String(p.website || '').trim();
+    if (theaterWebsiteUrl && !isLikelyUrl(theaterWebsiteUrl) && /^[a-z0-9.-]+\\.[a-z]{2,}/i.test(theaterWebsiteUrl)) {
+      theaterWebsiteUrl = `https://${theaterWebsiteUrl}`;
+    }
+    const hasTheaterWebsite = !!(theaterWebsiteUrl && isLikelyUrl(theaterWebsiteUrl));
+    const theaterLightningAddress = String(p.lud16 || '').trim();
+    const hasTheaterLinks = hasTheaterWebsite || !!theaterLightningAddress;
+
+    if (theaterWebsite) {
+      theaterWebsite.href = hasTheaterWebsite ? theaterWebsiteUrl : '#';
+      theaterWebsite.textContent = hasTheaterWebsite ? theaterWebsiteUrl : '';
+    }
+    if (theaterWebsiteRow) theaterWebsiteRow.style.display = hasTheaterWebsite ? 'flex' : 'none';
+
+    if (theaterLud16) theaterLud16.textContent = theaterLightningAddress;
+    if (theaterLud16Row) theaterLud16Row.style.display = theaterLightningAddress ? 'flex' : 'none';
+    if (theaterProfileLinks) theaterProfileLinks.style.display = hasTheaterLinks ? 'flex' : 'none';
+
     // Runtime counter ? ticks every second from stream.starts
     clearInterval(state._theaterRuntimeInterval);
     const runtimeEl = qs('#theaterRuntime');
