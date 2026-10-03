@@ -22369,10 +22369,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           ? txResult.transactions
           : (Array.isArray(txResult) ? txResult : []);
 
-        balanceEl.textContent = `${formatCount(Math.floor(balanceSats))} sats`;
-        balanceSubEl.textContent = network
-          ? `${network} Lightning wallet`
-          : 'Lightning wallet balance';
+        balanceEl.textContent = `${Math.floor(balanceSats).toLocaleString('en-US')} sats`;
+        balanceSubEl.textContent = '';
         infoEl.innerHTML = [
           ['Wallet Service', shortHex(config.walletPubkey)],
           ['Alias', alias || 'Not provided'],

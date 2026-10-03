@@ -1198,6 +1198,7 @@ body.nest-preview-open{overflow:hidden}
         <div class="wallet-mainchain-receive-actions">
           <button class="btn btn-ghost wallet-small-btn" id="walletAddressQrBtn" type="button" onclick="showWalletAddressQr('lightning')" hidden>Enlarge QR</button>
           <button class="btn btn-ghost wallet-small-btn" id="walletAddressCopyBtn" type="button" onclick="copyWalletLightningAddress()" hidden>Copy address</button>
+          <button class="btn btn-ghost wallet-small-btn" type="button" onclick="openSettings()">Wallet settings</button>
         </div>
       </div>
 
@@ -1206,9 +1207,6 @@ body.nest-preview-open{overflow:hidden}
           <div class="wallet-card-label">Available Balance</div>
           <div class="wallet-balance-value" id="walletBalanceValue">—</div>
           <div class="wallet-balance-sub" id="walletBalanceSub">Connect a Nostr wallet to load your balance.</div>
-          <div class="wallet-quick-actions">
-            <button class="wallet-quick-btn" type="button" onclick="openSettings();">Wallet settings</button>
-          </div>
         </article>
 
         <div class="wallet-onchain-action-grid wallet-lightning-send-grid">
