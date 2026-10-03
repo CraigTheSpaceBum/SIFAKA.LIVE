@@ -22406,7 +22406,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       const savedUri = String(state.settings && state.settings.nwcConnectionUri || '').trim();
       const setLightningConnectionLayout = (connected) => {
-        if (lightningColumnEl) lightningColumnEl.hidden = !connected;
+        // The Lightning receive identity (lud16 + QR) belongs to the Nostr
+        // profile and is independent of NIP-47 wallet connectivity.
+        // Keep the Lightning side visible whenever the wallet page is open;
+        // NIP-47 only controls balance/activity and Lightning sending.
+        if (lightningColumnEl) lightningColumnEl.hidden = false;
         if (promptEl) promptEl.hidden = !!connected;
       };
       setLightningConnectionLayout(false);
@@ -22557,6 +22561,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const qrBtn = qs('#walletAddressQrBtn');
         if (qrBtn) qrBtn.hidden = !lud16;
         state.walletPageLightningAddress = lud16;
+        renderWalletLightningAddressQr(lud16, lightningQrEl, lightningQrEmptyEl);
       }
 
       if (!config) {
