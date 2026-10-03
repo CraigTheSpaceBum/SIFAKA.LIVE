@@ -232,6 +232,13 @@
   const THEATER_CHAT_ZAP_MAX_AGE_SEC = 60 * 60 * 24;
   const THEATER_CHAT_QUEUE_SOFT_CAP = 120;
   const THEATER_REACTION_QUEUE_SOFT_CAP = 240;
+  // Keep theater dedup caches bounded during long/high-volume rooms.
+  const THEATER_CHAT_SEEN_ID_CAP = 6000;
+  const THEATER_REACTION_SEEN_ID_CAP = 12000;
+  const THEATER_ZAP_SEEN_ID_CAP = 12000;
+  // During zap storms, continue counting every donation but only render a
+  // limited number of zap rows per second so the main thread stays responsive.
+  const THEATER_ZAP_CHAT_RENDER_PER_SECOND = 12;
   const THEATER_CHAT_RENDER_BATCH_SIZE = 8;
   const THEATER_CHAT_REALTIME_FLUSH_MS_LIVE = 140;
   const THEATER_CHAT_REALTIME_FLUSH_MS_ARCHIVE = 80;
@@ -15428,6 +15435,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return !!(evTs && (isArchive || evTs >= lowerBound));
   }
 
+  function capTheaterEventSet(set, maxSize) {
+    if (!(set instanceof Set)) return;
+    const limit = Math.max(1, Number(maxSize || 0) || 1);
+    while (set.size > limit) {
+      const oldest = set.values().next().value;
+      if (oldest == null) break;
+      set.delete(oldest);
+    }
+  }
+
   function updateTheaterSatsDisplay(stream) {
     const current = stream || state.streamsByAddress.get(state.selectedStreamAddress);
     const satsEl = qs('#theaterSats');
@@ -15512,6 +15529,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const seen = state.streamZapEventIdsByAddress.get(current.address);
     if (seen.has(parsed.eventId)) return false;
     seen.add(parsed.eventId);
+    capTheaterEventSet(seen, THEATER_ZAP_SEEN_ID_CAP);
 
     const prevTotal = Number(state.streamZapTotals.get(current.address) || 0);
     state.streamZapTotals.set(current.address, prevTotal + Number(parsed.sats || 0));
@@ -15525,7 +15543,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       updateTheaterSatsDisplay(current);
       renderStreamZapList(current);
     }
-    if (!opts.suppressChatEntry && allowChatEntry) {
+    if (!opts.suppressChatEntry && allowChatEntry && opts.renderChatEntry !== false) {
       renderChatZapReceipt(parsed, {
         assumeChronological: !!opts.assumeChronological,
         autoScroll: opts.autoScroll !== false,
@@ -16967,6 +16985,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const seenIds = new Set();
     const seenReactionIds = new Set();
+    let zapChatRenderWindowStartedAt = Date.now();
+    let zapChatRenderCount = 0;
     const historyZapIdsToSuppressChat = new Set();
     const unknownPubkeys = new Set(); // pubkeys seen in chat but not yet in profile cache
     const chatLiveBootstrap = [];
@@ -16987,6 +17007,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     // Called after EOSE and also for each new real-time message
+    function allowTheaterZapChatRender() {
+      const now = Date.now();
+      if (now - zapChatRenderWindowStartedAt >= 1000) {
+        zapChatRenderWindowStartedAt = now;
+        zapChatRenderCount = 0;
+      }
+      if (zapChatRenderCount >= THEATER_ZAP_CHAT_RENDER_PER_SECOND) return false;
+      zapChatRenderCount += 1;
+      return true;
+    }
+
     function fetchMissingChatProfiles() {
       if (!unknownPubkeys.size) return;
       const queuedPubkeys = Array.from(new Set(
@@ -17084,6 +17115,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         .forEach((ev) => {
           if (!ev || !ev.id || seenIds.has(ev.id)) return;
           seenIds.add(ev.id);
+          capTheaterEventSet(seenIds, THEATER_CHAT_SEEN_ID_CAP);
           queueChatEvent(ev);
         });
       chatLiveBootstrap.length = 0;
@@ -17240,6 +17272,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (!ev || !ev.id) return outcome;
       if (seenReactionIds.has(ev.id)) return outcome;
       seenReactionIds.add(ev.id);
+      capTheaterEventSet(seenReactionIds, THEATER_REACTION_SEEN_ID_CAP);
 
       if (ev.kind === KIND_REACTION) {
         const targetId = firstTagValue(ev.tags, 'e');
@@ -17267,7 +17300,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (ev.kind === KIND_ZAP_RECEIPT) {
         const suppressChatEntry = historyZapIdsToSuppressChat.has(ev.id);
         if (suppressChatEntry) historyZapIdsToSuppressChat.delete(ev.id);
-        if (addStreamZapReceipt(ev, stream, { deferUi: true, suppressChatEntry, maxRows: visibleChatRows, autoScroll: false })) {
+        const allowZapChatRender = allowTheaterZapChatRender();
+        if (addStreamZapReceipt(ev, stream, {
+          deferUi: true,
+          suppressChatEntry,
+          renderChatEntry: allowZapChatRender,
+          maxRows: visibleChatRows,
+          autoScroll: false
+        })) {
           outcome.streamZapsDirty = true;
         }
         return outcome;
