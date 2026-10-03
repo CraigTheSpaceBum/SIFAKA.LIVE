@@ -24568,7 +24568,12 @@ window.saveAppSettings = function () {
         await restorePersistedAuth();
       } catch (_) {}
       try {
-        if (state.user) await restoreNwcSettingsFromNostr();
+        if (state.user) {
+          const restoredNwc = await restoreNwcSettingsFromNostr();
+          if (restoredNwc && typeof window.loadWalletPage === 'function' && String(state.currentPage || '').toLowerCase() === 'wallet') {
+            window.loadWalletPage(true).catch(() => {});
+          }
+        }
       } catch (_) {}
       try { setUserUi(); } catch (_) {}
     });
