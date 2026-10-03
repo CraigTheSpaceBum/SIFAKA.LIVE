@@ -15,6 +15,7 @@
   let activeRoomAudio = null, activeRoomAudioModulesPromise = null;
   let activeRoomPresenceTimer = null, activeRoomRefreshTimer = null, activeRoomChatTimer = null;
   let activeRoomRefreshInFlight = false, activeRoomChatRefreshInFlight = false;
+  let activeRoomJoinPromise = null;
   let activeRoomAdminTimer = null;
   let activeRoomHandRaised = false;
   let activeRoomReactions = [];
@@ -811,28 +812,104 @@
     if (!results.some(Boolean)) throw new Error('Could not publish the Nest event to any room relay.');
   }
 
+  async function sha256Hex(text) {
+    try {
+      if (!window.crypto || !window.crypto.subtle || !window.TextEncoder) return '';
+      const data = new TextEncoder().encode(String(text || ''));
+      const digest = await window.crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(digest)).map(function(byte) {
+        return byte.toString(16).padStart(2, '0');
+      }).join('');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function nestAuthError(status, detail) {
+    const message = 'Nest audio authentication failed (' + status + ')' + (detail ? ': ' + detail : '.');
+    const error = new Error(message);
+    error.status = Number(status || 0);
+    error.detail = String(detail || '');
+    if (error.detail) {
+      try {
+        const json = JSON.parse(error.detail);
+        error.code = String(json && json.code || '');
+      } catch (_) {}
+    }
+    return error;
+  }
+
+  async function republishRoomEventForAudioAuth(roomEvent) {
+    if (!roomEvent || Number(roomEvent.kind) !== 30312 || !roomEvent.id) return false;
+    const decoded = decodeRoom(activeRoomUrl);
+    const relayList = Array.from(new Set(
+      RELAYS
+        .concat(roomRelayUrls(activeRoom, decoded))
+        .concat(tags(roomEvent, 'relays'))
+        .concat(decoded && decoded.relays ? decoded.relays : [])
+        .map(function(url) { return String(url || '').trim(); })
+        .filter(function(url) { return /^wss:\/\//i.test(url); })
+    ));
+    if (!relayList.length) return false;
+    try {
+      await publishSignedRoomEvent(roomEvent, relayList);
+      return true;
+    } catch (err) {
+      console.warn('[sifaka-nests] could not republish room event for audio auth', err);
+      return false;
+    }
+  }
+
   async function authenticateNestAudio(roomEvent, namespace, publish) {
     const ctx = getSifakaContext();
     const user = ctx && typeof ctx.getUser === 'function' ? ctx.getUser() : null;
     if (!user || typeof ctx.signEvent !== 'function') throw new Error('Please sign in to join Nest audio.');
+
     const authUrl = tag(roomEvent, 'auth') || 'https://moq-auth.nostrnests.com';
     const endpoint = authUrl.replace(/\/$/, '') + '/auth';
-    const signed = await ctx.signEvent(27235, '', [['u', endpoint], ['method', 'POST']]);
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Nostr ' + btoa(JSON.stringify(signed))
-      },
-      body: JSON.stringify({ namespace: namespace, publish: !!publish })
-    });
-    if (!response.ok) {
-      const detail = (await response.text().catch(function() { return ''; })).trim();
-      throw new Error('Nest audio authentication failed (' + response.status + ')' + (detail ? ': ' + detail : '.'));
+    const body = JSON.stringify({ namespace: namespace, publish: !!publish });
+
+    async function requestToken() {
+      const authTags = [['u', endpoint], ['method', 'POST']];
+      const payloadHash = await sha256Hex(body);
+      if (payloadHash) authTags.push(['payload', payloadHash]);
+      const signed = await ctx.signEvent(27235, '', authTags);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Nostr ' + btoa(JSON.stringify(signed))
+        },
+        body: body
+      });
+      if (!response.ok) {
+        const detail = (await response.text().catch(function() { return ''; })).trim();
+        throw nestAuthError(response.status, detail);
+      }
+      const data = await response.json();
+      if (!data || !data.token) throw new Error('Nest audio authentication returned no token.');
+      return String(data.token);
     }
-    const data = await response.json();
-    if (!data || !data.token) throw new Error('Nest audio authentication returned no token.');
-    return String(data.token);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await requestToken();
+      } catch (err) {
+        const roomUnknown = Number(err && err.status) === 404 &&
+          /room_unknown|no event for this room/i.test(String(err && (err.detail || err.message) || ''));
+        if (!roomUnknown || attempt >= 2) throw err;
+
+        // The auth sidecar resolves the Nests namespace by reading the 30312
+        // room event from its relay set. Re-publish the already-signed event to
+        // standard relays so newly discovered rooms can converge before auth.
+        await republishRoomEventForAudioAuth(roomEvent);
+        await new Promise(function(resolve) {
+          setTimeout(resolve, 900 + (attempt * 900));
+        });
+      }
+    }
+
+    throw new Error('Nest audio authentication failed.');
   }
 
   function parseNestThemeTags(tagsList) {
@@ -1269,6 +1346,39 @@
     renderNestReactionOverlay();
   }
 
+  function clearNestRoomError(root) {
+    const target = root || modal;
+    if (!target) return;
+    const box = $('#nestRoomError', target);
+    if (box) box.hidden = true;
+  }
+
+  function showNestRoomError(err, root) {
+    const target = root || modal;
+    if (!target) return;
+    const message = String(err && err.message || err || 'Unable to join this Nest.').trim();
+    const status = $('#nestRoomAudioStatus', target);
+    const box = $('#nestRoomError', target);
+    const title = $('#nestRoomErrorTitle', target);
+    const text = $('#nestRoomErrorText', target);
+    const roomUnknown = Number(err && err.status) === 404 &&
+      /room_unknown|no event for this room/i.test(String(err && (err.detail || err.message) || ''));
+
+    if (roomUnknown) {
+      if (status) status.textContent = 'Audio server is catching up…';
+      if (title) title.textContent = 'Audio server is catching up';
+      if (text) text.textContent = 'The room announcement was not visible to the audio server yet. Sifaka refreshed it and retried automatically.';
+    } else {
+      if (status) status.textContent = 'Audio connection failed';
+      if (title) title.textContent = 'Unable to connect audio';
+      if (text) text.textContent = /sign in/i.test(message)
+        ? message
+        : 'The room is available, but its audio connection could not be established. You can retry without leaving the room.';
+    }
+    if (box) box.hidden = false;
+    console.warn('[sifaka-nests] Nest audio join error', err);
+  }
+
   function updateActiveRoomAudioUi() {
     if (!modal) return;
     const status = modal.querySelector('#nestRoomAudioStatus');
@@ -1284,7 +1394,7 @@
       const micError = String(activeRoomAudio.microphoneError || '').trim();
       const connectionError = String(activeRoomAudio.connectionError || '').trim();
       const label = state === 'error'
-        ? ('Audio error' + (connectionError ? ' • ' + connectionError : ''))
+        ? 'Audio connection error'
         : state === 'connected'
         ? (micError && activeRoomAudio.publishRequested
           ? 'Connected • Microphone unavailable'
@@ -1329,12 +1439,24 @@
     if (!root || root._nestsRoomControlsWired) return root;
     root._nestsRoomControlsWired = true;
 
+    const retry = $('#nestRoomRetryBtn', root);
+    if (retry) retry.addEventListener('click', function() {
+      retry.disabled = true;
+      clearNestRoomError(root);
+      enterActiveRoom({ force: true }).catch(function(err) {
+        showNestRoomError(err, root);
+      }).finally(function() {
+        retry.disabled = false;
+        updateActiveRoomAudioUi();
+      });
+    });
+
     const join = $('#nestPreviewJoinBtn', root);
     if (join) {
       join.addEventListener('click', function() {
+        clearNestRoomError(root);
         enterActiveRoom().catch(function(err) {
-          const status = $('#nestRoomAudioStatus', root);
-          if (status) status.textContent = err && err.message ? err.message : 'Unable to join this Nest.';
+          showNestRoomError(err, root);
         });
       });
     }
@@ -1507,6 +1629,8 @@
               '<button class="btn btn-ghost" id="nestEndBtn" type="button" hidden>End Room</button>' +
             '</div>' +
           '</div>' +
+          '<h1 id="nestPreviewTitle">Nostr Nest</h1>' +
+          '<p class="nest-preview-summary" id="nestPreviewSummary"></p>' +
           '<div class="nest-room-interaction-bar">' +
             '<button class="btn btn-ghost" id="nestHandBtn" type="button">Raise Hand</button>' +
             '<div class="nest-reaction-wrap">' +
@@ -1515,8 +1639,6 @@
             '</div>' +
           '</div>' +
           '<div class="nest-reaction-overlay" id="nestReactionOverlay" hidden></div>' +
-          '<h1 id="nestPreviewTitle">Nostr Nest</h1>' +
-          '<p class="nest-preview-summary" id="nestPreviewSummary"></p>' +
           '<div class="nests-room-page-overview-grid">' +
             '<div class="nest-preview-panel active" data-panel="overview">' +
               '<div class="nest-preview-stats" id="nestPreviewStats"></div>' +
@@ -1540,6 +1662,10 @@
               '</div>' +
             '</div>' +
           '</div>' +
+          '<div class="nest-room-error" id="nestRoomError" hidden role="alert" aria-live="polite">' +
+            '<div class="nest-room-error-copy"><strong id="nestRoomErrorTitle">Audio connection issue</strong><span id="nestRoomErrorText"></span></div>' +
+            '<button class="btn btn-ghost" id="nestRoomRetryBtn" type="button">Retry Audio</button>' +
+          '</div>' +
           '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
             '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
             '<strong id="nestRoomAudioStatus">Not connected</strong>' +
@@ -1548,7 +1674,7 @@
             '<button class="btn btn-ghost" id="nestRoomMuteBtn" type="button">Mute Room</button>' +
             '<label class="nest-room-volume"><span>Volume</span><input id="nestRoomVolume" type="range" min="0" max="100" value="100" aria-label="Nest volume"></label>' +
             '<div class="nest-room-audio-actions">' +
-              '<button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join As Speak</button>' +
+              '<button class="btn btn-primary" id="nestPreviewJoinBtn" type="button">Join Room</button>' +
               '<button class="btn btn-ghost nest-room-leave-btn" id="nestRoomLeaveBtn" type="button">Leave Nest</button>' +
             '</div>' +
           '</div>' +
@@ -1642,9 +1768,9 @@
     modal.addEventListener('click', function(e) { if (e.target === modal) closePreview(); });
     $('#nestPreviewJoinBtn', modal).addEventListener('click', function() {
       if (!activeRoomUrl) return;
+      clearNestRoomError(modal);
       enterActiveRoom().catch(function(err) {
-        const status = $('#nestRoomAudioStatus', modal);
-        if (status) status.textContent = err && err.message ? err.message : 'Unable to join this Nest.';
+        showNestRoomError(err, modal);
       });
     });
     $('#nestRoomStageBtn', modal).addEventListener('click', function() {
@@ -2181,6 +2307,8 @@
   }
 
   async function enterActiveRoom(options = {}) {
+    if (activeRoomJoinPromise) return activeRoomJoinPromise;
+    activeRoomJoinPromise = (async function() {
     if (!activeRoomUrl) return;
     if (activeRoomAudio && activeRoomAudio.state === 'connected') return;
     if (activeRoomAudio && (activeRoomAudio.state === 'disconnected' || activeRoomAudio.state === 'error')) {
@@ -2254,6 +2382,7 @@
         token: token,
         publish: publish
       });
+      clearNestRoomError(modal);
       if (join) {
         join.disabled = true;
         join.textContent = activeRoomAudio.state === 'connected'
@@ -2287,6 +2416,12 @@
       modal.classList.remove('is-live-room');
       throw err;
     }
+  }
+
+    })().finally(function() {
+      activeRoomJoinPromise = null;
+    });
+    return activeRoomJoinPromise;
   }
 
   async function leaveActiveRoom() {
@@ -2807,8 +2942,7 @@
       if (pageUrlEl) pageUrlEl.textContent = window.location.host + '/room/' + value;
       return true;
     } catch (err) {
-      const status = $('#nestRoomAudioStatus', root);
-      if (status) status.textContent = err && err.message ? err.message : 'Unable to load this Nest.';
+      showNestRoomError(err, root);
       return false;
     }
   };
