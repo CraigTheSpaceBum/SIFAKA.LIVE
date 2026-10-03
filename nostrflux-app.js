@@ -16301,7 +16301,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (inn) inn.classList.toggle('on', on);
   }
 
+  function updateTheaterChatComposerVisibility() {
+    const composer = qs('.chat-bottom');
+    if (!composer) return;
+    composer.style.display = state.user ? '' : 'none';
+    composer.setAttribute('aria-hidden', state.user ? 'false' : 'true');
+  }
+
   function setUserUi() {
+    updateTheaterChatComposerVisibility();
     if (!state.user) {
       setLoggedInUi(false);
       state.notificationsById = new Map();
@@ -16324,6 +16332,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (isMessagesPageVisible()) renderMessagesPage({ subscribe: false, forceLayout: true });
       return;
     }
+    updateTheaterChatComposerVisibility();
     setLoggedInUi(true);
     const p = state.user.profile || { name: shortHex(state.user.pubkey), nip05: '' };
     const claimedNip05 = normalizeNip05Value(p.nip05 || '');
