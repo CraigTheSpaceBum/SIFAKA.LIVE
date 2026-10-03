@@ -167,6 +167,10 @@
   const NWC_INFO_TIMEOUT_MS = 4500;
   const NWC_SCAN_INTERVAL_MS = 420;
   const SETTINGS_STORAGE_KEY = 'nostrflux_settings_v1';
+  const NWC_SYNC_KIND = 30078;
+  const NWC_SYNC_D_TAG = 'sifaka-wallet-nwc-v1';
+  const NWC_SYNC_LOOKBACK_SEC = 60 * 60 * 24 * 365 * 5;
+  const NWC_SYNC_RELAY_COUNT = 8;
   const NOTIFICATIONS_LAST_READ_STORAGE_KEY = 'nostrflux_notifications_last_read_v1';
   const FOLLOWING_STORAGE_KEY = 'nostrflux_following_pubkeys_v1';
   const DM_LAST_READ_STORAGE_KEY = 'nostrflux_dm_last_read_v1';
@@ -2666,6 +2670,183 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return safe.cacheLiveFeedTtlSec * 1000;
   }
 
+  function getNwcSyncRelayUrls() {
+    const configured = Array.isArray(state.relays) ? state.relays : [];
+    const fallback = DEFAULT_RELAYS;
+    return uniqueRelayUrls([...configured, ...fallback]).slice(0, NWC_SYNC_RELAY_COUNT);
+  }
+
+  async function encryptNwcSyncPayload(plaintext) {
+    const tools = await ensureNostrTools();
+    const owner = normalizePubkeyHex(state.user && state.user.pubkey || '');
+    if (!owner) throw new Error('Nostr identity is required for NWC sync.');
+
+    if (state.authMode === 'local' && state.localSecretKey) {
+      const secret = normalizeSecretKey(state.localSecretKey);
+      if (tools.nip44 && typeof tools.nip44.getConversationKey === 'function' && typeof tools.nip44.encrypt === 'function') {
+        const key = tools.nip44.getConversationKey(secret, owner);
+        return { encryption: 'nip44', ciphertext: await tools.nip44.encrypt(plaintext, key) };
+      }
+      if (tools.nip04 && typeof tools.nip04.encrypt === 'function') {
+        return { encryption: 'nip04', ciphertext: await tools.nip04.encrypt(secret, owner, plaintext) };
+      }
+    }
+
+    if (state.authMode === 'nip07' && window.nostr) {
+      if (window.nostr.nip44 && typeof window.nostr.nip44.encrypt === 'function') {
+        return { encryption: 'nip44', ciphertext: await window.nostr.nip44.encrypt(owner, plaintext) };
+      }
+      if (window.nostr.nip04 && typeof window.nostr.nip04.encrypt === 'function') {
+        return { encryption: 'nip04', ciphertext: await window.nostr.nip04.encrypt(owner, plaintext) };
+      }
+    }
+
+    throw new Error('The active signer does not expose NIP-44/NIP-04 encryption for secure NWC sync.');
+  }
+
+  async function decryptNwcSyncPayload(ciphertext, encryption) {
+    const tools = await ensureNostrTools();
+    const owner = normalizePubkeyHex(state.user && state.user.pubkey || '');
+    if (!owner || !ciphertext) throw new Error('NWC sync payload is incomplete.');
+
+    if (state.authMode === 'local' && state.localSecretKey) {
+      const secret = normalizeSecretKey(state.localSecretKey);
+      if (encryption === 'nip44' && tools.nip44 && typeof tools.nip44.getConversationKey === 'function' && typeof tools.nip44.decrypt === 'function') {
+        const key = tools.nip44.getConversationKey(secret, owner);
+        return await tools.nip44.decrypt(ciphertext, key);
+      }
+      if (encryption === 'nip04' && tools.nip04 && typeof tools.nip04.decrypt === 'function') {
+        return await tools.nip04.decrypt(secret, owner, ciphertext);
+      }
+    }
+
+    if (state.authMode === 'nip07' && window.nostr) {
+      if (encryption === 'nip44' && window.nostr.nip44 && typeof window.nostr.nip44.decrypt === 'function') {
+        return await window.nostr.nip44.decrypt(owner, ciphertext);
+      }
+      if (encryption === 'nip04' && window.nostr.nip04 && typeof window.nostr.nip04.decrypt === 'function') {
+        return await window.nostr.nip04.decrypt(owner, ciphertext);
+      }
+    }
+
+    throw new Error('The active signer cannot decrypt the saved NWC sync payload.');
+  }
+
+  async function syncNwcSettingsToNostr(nwcUri) {
+    const owner = normalizePubkeyHex(state.user && state.user.pubkey || '');
+    if (!owner || !state.pool) return false;
+
+    const relayUrls = getNwcSyncRelayUrls();
+    if (!relayUrls.length) return false;
+
+    const cleanUri = String(nwcUri || '').trim();
+    let encryptedContent = '';
+    let encryption = '';
+    if (cleanUri) {
+      const payload = JSON.stringify({
+        version: 1,
+        type: 'sifaka-nwc',
+        uri: cleanUri,
+        savedAt: Date.now()
+      });
+      const encrypted = await encryptNwcSyncPayload(payload);
+      encryptedContent = encrypted.ciphertext;
+      encryption = encrypted.encryption;
+    }
+
+    const tags = [
+      ['d', NWC_SYNC_D_TAG],
+      ['v', '1'],
+      ['encryption', encryption || 'none']
+    ];
+    const event = await signEvent(NWC_SYNC_KIND, encryptedContent, tags);
+    const publishes = state.pool.publish(event);
+    if (Array.isArray(publishes) && publishes.length) {
+      await Promise.allSettled(publishes);
+    }
+    state.nwcSyncLastPublishedAt = Date.now();
+    return true;
+  }
+
+  async function restoreNwcSettingsFromNostr() {
+    const owner = normalizePubkeyHex(state.user && state.user.pubkey || '');
+    if (!owner || !state.pool) return false;
+
+    const relayUrls = getNwcSyncRelayUrls();
+    if (!relayUrls.length) return false;
+
+    const filters = [{
+      kinds: [NWC_SYNC_KIND],
+      authors: [owner],
+      '#d': [NWC_SYNC_D_TAG],
+      since: Math.floor(Date.now() / 1000) - NWC_SYNC_LOOKBACK_SEC,
+      limit: 20
+    }];
+
+    const eventsById = new Map();
+    let sub = null;
+    await new Promise((resolve) => {
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        if (sub && typeof sub.close === 'function') {
+          try { sub.close('NWC sync restore complete'); } catch (_) {}
+        }
+        resolve();
+      };
+      const timer = setTimeout(finish, 5000);
+      sub = state.pool.subscribe(relayUrls, filters, {
+        onevent: (ev) => {
+          if (ev && ev.id) eventsById.set(ev.id, ev);
+        },
+        eose: () => {
+          clearTimeout(timer);
+          setTimeout(finish, 120);
+        }
+      });
+    });
+
+    const events = Array.from(eventsById.values())
+      .filter((ev) => normalizePubkeyHex(ev && ev.pubkey) === owner)
+      .sort((a,b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+
+    if (!events.length) return false;
+
+    for (const ev of events) {
+      const encryption = String(firstTagValue(ev.tags, 'encryption') || '').trim().toLowerCase();
+      if (encryption === 'none') {
+        if (!String(ev.content || '').trim()) {
+          if (state.settings.nwcConnectionUri) {
+            applySettings({ ...state.settings, nwcConnectionUri: '' }, { reconnect: false });
+          }
+          state.nwcSyncLastUri = '';
+          return true;
+        }
+        continue;
+      }
+      try {
+        const plaintext = await decryptNwcSyncPayload(String(ev.content || ''), encryption);
+        const payload = JSON.parse(plaintext);
+        if (!payload || payload.type !== 'sifaka-nwc' || Number(payload.version) !== 1) continue;
+        const uri = String(payload.uri || '').trim();
+        if (!uri) continue;
+        const config = parseNwcConnectionString(uri);
+        const localUri = String(state.settings && state.settings.nwcConnectionUri || '').trim();
+        if (localUri !== config.raw) {
+          applySettings({ ...state.settings, nwcConnectionUri: config.raw }, { reconnect: false });
+        }
+        state.nwcSyncLastUri = config.raw;
+        return true;
+      } catch (_) {
+        // A different signer/encryption implementation may not be able to decrypt
+        // an older sync event. Continue looking for the next usable event.
+      }
+    }
+
+    return false;
+  }
+
   function loadSettingsFromStorage() {
     let saved = {};
     try {
@@ -2705,6 +2886,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(state.settings));
     } catch (_) {
       // no-op
+    }
+
+    const nwcUri = String(state.settings && state.settings.nwcConnectionUri || '').trim();
+    if (nwcUri && nwcUri !== String(state.nwcSyncLastUri || '').trim()) {
+      state.nwcSyncLastUri = nwcUri;
+      syncNwcSettingsToNostr(nwcUri).catch(() => {});
+    } else if (!nwcUri && String(state.nwcSyncLastUri || '').trim()) {
+      state.nwcSyncLastUri = '';
+      syncNwcSettingsToNostr('').catch(() => {});
     }
   }
 
@@ -23008,6 +23198,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         nwcConnectionUri: config.raw
       };
       applySettings(next, { reconnect: false });
+      state.nwcSyncLastUri = '';
+      syncNwcSettingsToNostr(config.raw).catch(() => {});
 
       const methodSet = new Set();
       if (probe && probe.info && Array.isArray(probe.info.capabilities)) {
@@ -23042,6 +23234,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         ...state.settings,
         nwcConnectionUri: ''
       }, { reconnect: false });
+      state.nwcSyncLastUri = '__disconnected__';
+      syncNwcSettingsToNostr('').catch(() => {});
       renderWalletSettingsSummary();
       setWalletSettingsStatus('Wallet disconnected.', 'success');
     };
@@ -24372,6 +24566,9 @@ window.saveAppSettings = function () {
     Promise.resolve().then(async () => {
       try {
         await restorePersistedAuth();
+      } catch (_) {}
+      try {
+        if (state.user) await restoreNwcSettingsFromNostr();
       } catch (_) {}
       try { setUserUi(); } catch (_) {}
     });
