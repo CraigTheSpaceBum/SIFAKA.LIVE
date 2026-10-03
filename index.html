@@ -1161,19 +1161,8 @@ body.nest-preview-open{overflow:hidden}
         <div class="wallet-mainchain-receive-actions">
           <button class="btn btn-ghost wallet-small-btn" id="walletMainchainCopyBtn" type="button" onclick="copyWalletOnchainAddress()">Copy address</button>
           <button class="btn btn-ghost wallet-small-btn" type="button" onclick="showWalletAddressQr('bitcoin')">Enlarge QR</button>
-          <a id="walletMainchainExplorer" href="#" target="_blank" rel="noopener" hidden>Explorer</a>
+          <a id="walletMainchainExplorer" class="btn btn-ghost wallet-small-btn" href="#" target="_blank" rel="noopener" hidden>Explorer</a>
         </div>
-      </div>
-
-      <div class="wallet-onchain-action-grid">
-        <button class="wallet-onchain-action receive" type="button" onclick="openWalletOnchainReceive()">
-          <span class="wallet-action-icon">↓</span>
-          <span><strong>Receive</strong><small>Show your Bitcoin receive address and QR</small></span>
-        </button>
-        <button class="wallet-onchain-action send" type="button" onclick="openWalletOnchainSend()">
-          <span class="wallet-action-icon">↑</span>
-          <span><strong>Send</strong><small>Send BTC from your NIP-BC Taproot wallet</small></span>
-        </button>
       </div>
 
       <div class="wallet-mainchain-grid">
@@ -1183,6 +1172,13 @@ body.nest-preview-open{overflow:hidden}
           <small id="walletMainchainPending">Derived automatically from your Nostr public key using NIP-BC / BIP-341.</small>
         </div>
         <div class="wallet-mainchain-stats" id="walletMainchainStats"></div>
+      </div>
+
+      <div class="wallet-onchain-action-grid">
+        <button class="wallet-onchain-action send" type="button" onclick="openWalletOnchainSend()">
+          <span class="wallet-action-icon">↑</span>
+          <span><strong>Send</strong><small>Send BTC from your NIP-BC Taproot wallet</small></span>
+        </button>
       </div>
 
       <div id="walletMainchainTransactions" class="wallet-transactions-list wallet-mainchain-transactions">
