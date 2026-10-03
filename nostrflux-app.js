@@ -24229,7 +24229,7 @@ window.saveAppSettings = function () {
           });
         } catch (err) {
           const note = qs('#theaterDonationChooseNote');
-          if (note) note.textContent = err?.message || 'Could not load the streamer's on-chain Bitcoin address.';
+          if (note) note.textContent = err?.message || "Could not load the streamer's on-chain Bitcoin address.";
         }
         return;
       }
