@@ -1253,7 +1253,7 @@ body.nest-preview-open{overflow:hidden}
           <h3>Lightning Bitcoin Wallet</h3>
         </div>
       </div>
-      <div class="wallet-lightning-receive" id="walletLightningReceiveBox" hidden>
+      <div class="wallet-lightning-receive" id="walletLightningReceiveBox">
         <div class="wallet-lightning-qr-wrap" aria-label="Lightning address QR code">
           <div id="walletLightningQr" class="wallet-lightning-qr"></div>
           <div id="walletLightningQrEmpty" class="wallet-lightning-qr-empty">Add a Lightning address to your Nostr profile to show a receive QR here.</div>
@@ -1298,9 +1298,6 @@ body.nest-preview-open{overflow:hidden}
         </div>
       </section>
       </div>
-    </section>
-
-    <div id="walletPageStatus" class="wallet-page-status" aria-live="polite"></div>
 
     <section class="wallet-connect-prompt" id="walletConnectPrompt" hidden>
       <div>
@@ -1309,6 +1306,9 @@ body.nest-preview-open{overflow:hidden}
       </div>
       <button class="btn btn-primary" type="button" onclick="openSettings();">Open Wallet Settings</button>
     </section>
+    </section>
+
+    <div id="walletPageStatus" class="wallet-page-status" aria-live="polite"></div>
   </div>
 </div>
 
