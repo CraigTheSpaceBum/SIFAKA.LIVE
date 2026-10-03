@@ -1191,25 +1191,6 @@ body.nest-preview-open{overflow:hidden}
     </section>
 
     <section class="wallet-lightning-column" id="walletLightningColumn">
-      <div class="wallet-lightning-overview">
-        <article class="wallet-balance-card" id="walletBalanceCard">
-          <div class="wallet-card-label">Available Balance</div>
-          <div class="wallet-balance-value" id="walletBalanceValue">—</div>
-          <div class="wallet-balance-sub" id="walletBalanceSub">Connect a Nostr wallet to load your balance.</div>
-          <div class="wallet-quick-actions">
-            <button class="wallet-quick-btn primary" type="button" onclick="openWalletReceive()"><span>↓</span> Receive</button>
-            <button class="wallet-quick-btn" type="button" onclick="openSettings();">Wallet settings</button>
-          </div>
-        </article>
-
-        <article class="wallet-info-card">
-          <div class="wallet-card-label">Wallet</div>
-          <div class="wallet-info-list" id="walletInfoList">
-            <div class="wallet-info-empty">No wallet connected.</div>
-          </div>
-        </article>
-      </div>
-
       <div class="wallet-lightning-receive">
         <div class="wallet-lightning-qr-wrap" aria-label="Lightning address QR code">
           <div id="walletLightningQr" class="wallet-lightning-qr"></div>
@@ -1242,6 +1223,25 @@ body.nest-preview-open{overflow:hidden}
           </button>
         </div>
       </section>
+
+      <div class="wallet-lightning-overview">
+        <article class="wallet-balance-card" id="walletBalanceCard">
+          <div class="wallet-card-label">Available Balance</div>
+          <div class="wallet-balance-value" id="walletBalanceValue">—</div>
+          <div class="wallet-balance-sub" id="walletBalanceSub">Connect a Nostr wallet to load your balance.</div>
+          <div class="wallet-quick-actions">
+            <button class="wallet-quick-btn primary" type="button" onclick="openWalletReceive()"><span>↓</span> Receive</button>
+            <button class="wallet-quick-btn" type="button" onclick="openSettings();">Wallet settings</button>
+          </div>
+        </article>
+
+        <article class="wallet-info-card">
+          <div class="wallet-card-label">Wallet</div>
+          <div class="wallet-info-list" id="walletInfoList">
+            <div class="wallet-info-empty">No wallet connected.</div>
+          </div>
+        </article>
+      </div>
 
       <section class="wallet-transactions-card">
         <div class="wallet-section-head">
