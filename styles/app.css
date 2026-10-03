@@ -6937,6 +6937,90 @@ footer p{font-size:.72rem;color:var(--muted);}
 }
 
 
+/* ======== WALLET 0.2.1 MATCHED ROW LAYOUT ======== */
+@media (min-width:761px){
+  #walletPage .wallet-mainchain-top-grid,
+  #walletPage .wallet-lightning-top-grid{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:.75rem;
+    margin-top:.75rem;
+    align-items:stretch;
+  }
+
+  #walletPage .wallet-mainchain-top-grid .wallet-mainchain-balance,
+  #walletPage .wallet-lightning-top-grid .wallet-balance-card,
+  #walletPage .wallet-lightning-top-grid .wallet-actions-card{
+    min-width:0;
+  }
+
+  #walletPage .wallet-mainchain-top-grid .wallet-onchain-action-grid{
+    display:block;
+    margin:0;
+  }
+
+  #walletPage .wallet-mainchain-top-grid .wallet-onchain-action{
+    width:100%;
+    height:100%;
+    min-height:100%;
+    box-sizing:border-box;
+  }
+
+  #walletPage .wallet-mainchain-stats-row{
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:.75rem;
+    margin-top:.75rem;
+  }
+
+  #walletPage .wallet-mainchain-stats-row>div{
+    min-width:0;
+  }
+
+  #walletPage .wallet-lightning-top-grid .wallet-balance-card{
+    min-height:0;
+    height:100%;
+    box-sizing:border-box;
+  }
+
+  #walletPage .wallet-lightning-top-grid .wallet-actions-card{
+    margin:0;
+    height:100%;
+    box-sizing:border-box;
+  }
+
+  #walletPage .wallet-lightning-top-grid .wallet-action-grid{
+    grid-template-columns:1fr 1fr;
+  }
+
+  #walletPage .wallet-lightning-info-card{
+    margin-top:.75rem;
+  }
+}
+
+@media (max-width:760px){
+  #walletPage .wallet-mainchain-top-grid,
+  #walletPage .wallet-lightning-top-grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:.65rem;
+    margin-top:.65rem;
+  }
+
+  #walletPage .wallet-mainchain-stats-row{
+    grid-template-columns:1fr 1fr;
+    gap:.45rem;
+    margin-top:.65rem;
+  }
+
+  #walletPage .wallet-mainchain-top-grid .wallet-onchain-action-grid{
+    display:none;
+  }
+
+  #walletPage .wallet-lightning-info-card{
+    margin-top:.65rem;
+  }
+}
+
 /* ======== WALLET CONNECTED LIGHTNING COLUMN / PROFILE BITCOIN PASS ======== */
 #walletPage #walletLightningColumn[hidden],
 #walletPage #walletConnectPrompt[hidden]{
