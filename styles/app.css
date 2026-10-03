@@ -6948,6 +6948,10 @@ footer p{font-size:.72rem;color:var(--muted);}
     align-items:stretch;
   }
 
+  #walletPage .wallet-mainchain-top-grid{
+    grid-template-columns:minmax(0,1.65fr) minmax(150px,.65fr);
+  }
+
   #walletPage .wallet-mainchain-top-grid .wallet-mainchain-balance,
   #walletPage .wallet-lightning-top-grid .wallet-balance-card,
   #walletPage .wallet-lightning-top-grid .wallet-actions-card{
