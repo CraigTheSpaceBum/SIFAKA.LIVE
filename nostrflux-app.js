@@ -744,7 +744,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   async function getProfileBitcoinAddress(pubkey) {
-    const key = normalizePubkeyHex(pubkey || '');
+    let key = normalizePubkeyHex(pubkey || '');
+    if (!key) {
+      try {
+        key = await decodeNpubToPubkey(String(pubkey || ''));
+      } catch (_) {
+        key = '';
+      }
+    }
     if (!key) return '';
     const cached = state.profileBitcoinAddressesByPubkey.get(key);
     if (cached) return cached;
@@ -24114,16 +24121,66 @@ window.saveAppSettings = function () {
 
     async function resolveTheaterDonationPubkey(stream) {
       if (!stream) return '';
-      const candidates = [stream.hostPubkey, stream.pubkey];
-      for (const candidate of candidates) {
-        const raw = String(candidate || '').trim();
+
+      const candidates = [];
+      const addCandidate = (value) => {
+        const raw = String(value || '').trim().toLowerCase();
+        if (!raw) return;
         const hex = normalizePubkeyHex(raw);
-        if (hex) return hex;
+        if (hex) {
+          candidates.push(hex);
+          return;
+        }
         if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(raw)) {
-          const decoded = await decodeNpubToPubkey(raw);
+          candidates.push(raw);
+        }
+      };
+
+      // Prefer the parsed streamer/host key, then the publishing key.
+      addCandidate(stream.hostPubkey);
+      addCandidate(stream.pubkey);
+
+      // Platform-published NIP-53 events can carry the real streamer in a
+      // p tag even when the normalized stream object did not preserve it.
+      const tags = stream.raw && Array.isArray(stream.raw.tags) ? stream.raw.tags : [];
+      let fallbackPTag = '';
+      for (const tag of tags) {
+        if (!Array.isArray(tag) || tag[0] !== 'p' || !tag[1]) continue;
+        const value = String(tag[1] || '').trim();
+        const role = String(tag[3] || tag[2] || '').trim().toLowerCase();
+        if (role === 'host' || role === 'streamer') {
+          addCandidate(value);
+          if (candidates.length) {
+            const preferred = candidates[candidates.length - 1];
+            if (normalizePubkeyHex(preferred)) return normalizePubkeyHex(preferred);
+            if (/^npub1/i.test(preferred)) {
+              const decoded = await decodeNpubToPubkey(preferred);
+              if (decoded) return decoded;
+            }
+          }
+        }
+        if (!fallbackPTag) fallbackPTag = value;
+      }
+
+      // The canonical live-event address itself contains the event publisher
+      // pubkey. This is a safe final fallback for self-published streams.
+      const addressMatch = String(stream.address || '').trim().match(/^[0-9]+:([0-9a-f]{64}):/i);
+      if (addressMatch) addCandidate(addressMatch[1]);
+
+      // Keep one unqualified p-tag as the last candidate only when nothing
+      // else was available. This covers older NIP-53 publishers that omit
+      // an explicit "host" role on the p tag.
+      if (fallbackPTag) addCandidate(fallbackPTag);
+
+      for (const candidate of candidates) {
+        const hex = normalizePubkeyHex(candidate);
+        if (hex) return hex;
+        if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(candidate)) {
+          const decoded = await decodeNpubToPubkey(candidate);
           if (decoded) return decoded;
         }
       }
+
       return '';
     }
 
