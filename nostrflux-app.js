@@ -22128,7 +22128,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       const note = qs('#walletOnchainSendNote');
       const recipientName = String(recipientMeta.recipientName || '').trim();
-      const recipientNpub = String(recipientMeta.recipientNpub || '').trim();
       if (note) {
         note.textContent = state.authMode === 'local' && state.localSecretKey
           ? (recipientName
@@ -24331,7 +24330,7 @@ window.saveAppSettings = function () {
           // back to the x-only pubkey before deriving the Taproot address.
           const hostNpub = formatNpubForDisplay(hostPubkey);
           const address = await getProfileBitcoinAddress(hostNpub || hostPubkey);
-          if (!address) throw new Error('Could not derive the streamer's on-chain Bitcoin address.');
+          if (!address) throw new Error("Could not derive the streamer's on-chain Bitcoin address.");
 
           theaterDonationContext.onchainAddress = address;
           closeTheaterDonation();
