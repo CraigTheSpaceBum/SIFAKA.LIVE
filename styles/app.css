@@ -6336,19 +6336,35 @@ footer p{font-size:.72rem;color:var(--muted);}
 }
 #walletPage .wallet-balance-card{
   position:relative;
-  min-height:210px;
-  padding:1.25rem 1.35rem;
+  min-height:0;
+  padding:.8rem;
   background:
-    radial-gradient(circle at 90% 20%, rgba(247,147,26,.10), transparent 14rem),
+    radial-gradient(circle at 90% 20%, rgba(139,92,246,.10), transparent 14rem),
     linear-gradient(135deg,rgba(37,45,55,.96),rgba(29,35,43,.96));
   overflow:hidden;
 }
 #walletPage .wallet-balance-card::after{
+  content:"ϟ";
+  position:absolute;
+  right:1.15rem;
+  bottom:-1.45rem;
+  color:rgba(139,92,246,.055);
+  font:700 9rem/1 'DM Mono',monospace;
+  pointer-events:none;
+}
+#walletPage .wallet-mainchain-balance{
+  position:relative;
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 90% 20%, rgba(247,147,26,.12), transparent 14rem),
+    rgba(37,45,55,.62);
+}
+#walletPage .wallet-mainchain-balance::after{
   content:"₿";
   position:absolute;
   right:1.15rem;
   bottom:-1.45rem;
-  color:rgba(247,147,26,.045);
+  color:rgba(247,147,26,.055);
   font:700 9rem/1 'DM Mono',monospace;
   pointer-events:none;
 }
@@ -6562,7 +6578,7 @@ footer p{font-size:.72rem;color:var(--muted);}
   }
   #walletPage .wallet-page-hero p{font-size:.66rem}
   #walletPage .wallet-dashboard-grid{grid-template-columns:1fr}
-  #walletPage .wallet-balance-card{min-height:190px;padding:1.05rem}
+  #walletPage .wallet-balance-card{min-height:0;padding:.8rem}
   #walletPage .wallet-balance-value{font-size:1.4rem}
   #walletPage .wallet-quick-actions{margin-top:.9rem}
   #walletPage .wallet-quick-btn{flex:1}
@@ -6701,6 +6717,16 @@ footer p{font-size:.72rem;color:var(--muted);}
 }
 
 
+
+
+#walletPage .wallet-lightning-heading{
+  margin:0 0 .75rem;
+}
+#walletPage .wallet-lightning-heading h3{
+  font-size:.88rem;
+  letter-spacing:-.01em;
+  margin:.22rem 0 0;
+}
 
 /* ======== WALLET DESKTOP TWO-COLUMN LAYOUT ======== */
 @media (min-width:761px){
@@ -7091,8 +7117,10 @@ footer p{font-size:.72rem;color:var(--muted);}
   }
 
   #walletPage .wallet-lightning-column .wallet-balance-card{
-    min-height:190px;
-    padding:1rem;
+    min-height:0;
+    height:100%;
+    padding:.8rem;
+    box-sizing:border-box;
   }
 
   #walletPage .wallet-lightning-column .wallet-info-card{
