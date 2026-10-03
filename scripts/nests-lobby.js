@@ -2980,20 +2980,22 @@
   };
 
   async function loadNestNostrToolsForCard() {
-    if (window.NostrTools && window.NostrTools.nip19 && window.NostrTools.nip19.naddrEncode) return window.NostrTools;
+    if (window.NostrTools && window.NostrTools.nip19 && window.NostrTools.nip19.naddrEncode) {
+      return window.NostrTools;
+    }
+    if (typeof window.ensureSifakaNostrTools === 'function') {
+      return window.ensureSifakaNostrTools();
+    }
     if (window.__sifakaNestNostrToolsPromise) return window.__sifakaNestNostrToolsPromise;
     window.__sifakaNestNostrToolsPromise = new Promise(function(resolve, reject) {
-      const existing = document.querySelector('script[data-sifaka-nostr-tools="1"]');
-      if (existing) {
-        existing.addEventListener('load', function() { resolve(window.NostrTools); }, { once: true });
-        existing.addEventListener('error', function() { reject(new Error('Unable to load Nostr tools.')); }, { once: true });
-        return;
-      }
       const script = document.createElement('script');
       script.src = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
       script.async = true;
       script.dataset.sifakaNostrTools = '1';
-      script.onload = function() { resolve(window.NostrTools); };
+      script.onload = function() {
+        if (window.NostrTools) resolve(window.NostrTools);
+        else reject(new Error('Nostr tools loaded without a usable API.'));
+      };
       script.onerror = function() { reject(new Error('Unable to load Nostr tools.')); };
       document.head.appendChild(script);
     }).catch(function(err) {
@@ -3022,6 +3024,10 @@
     e.preventDefault();
     openRoomFromCard(card, e).catch(function(err) { console.warn('[sifaka-nests] could not open room card from keyboard', err); });
   }
+
+  window.openNestsRoomCard = function(card, event) {
+    return openRoomFromCard(card, event);
+  };
 
   function boot() {
     if (!(window.location.pathname && /^\/room\/naddr1/i.test(window.location.pathname))) {
@@ -3092,6 +3098,9 @@
 
   async function openRoomFromCard(card, event) {
     if (!card) return false;
+    if (event && event.target && event.target.closest && event.target.closest('.nests-card-share')) {
+      return false;
+    }
     if (event) {
       event.preventDefault();
       event.stopPropagation();
