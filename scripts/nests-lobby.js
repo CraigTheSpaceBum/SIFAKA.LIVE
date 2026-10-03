@@ -1717,6 +1717,10 @@
           '<div class="nest-preview-panel" data-panel="chat">' +
             '<div class="nest-preview-section nest-preview-chat-section"><div class="nest-preview-section-head"><span>Room chat</span><span id="nestPreviewChatCount">—</span></div><div class="nest-preview-chat" id="nestPreviewChat"></div></div>' +
           '</div>' +
+          '<div class="nest-room-error" id="nestRoomError" hidden role="alert" aria-live="polite">' +
+            '<div class="nest-room-error-copy"><strong id="nestRoomErrorTitle">Audio connection issue</strong><span id="nestRoomErrorText"></span></div>' +
+            '<button class="btn btn-ghost" id="nestRoomRetryBtn" type="button">Retry Audio</button>' +
+          '</div>' +
           '<div class="nest-room-audio-bar" id="nestRoomAudioBar" hidden>' +
             '<span class="nest-room-audio-dot" id="nestRoomAudioDot"></span>' +
             '<strong id="nestRoomAudioStatus">Not connected</strong>' +
@@ -1880,7 +1884,7 @@
     if (bar) bar.hidden = true;
     if (compose) compose.hidden = true;
     if (join) {
-      join.textContent = 'Join Nest';
+      join.textContent = 'Join Room';
       join.disabled = false;
       join.classList.remove('btn-danger');
     }
@@ -2072,7 +2076,7 @@
 
   function roomJoinLabel(isLive) {
     if (!isLive) return 'Open Room';
-    return activeRoomCanPublish() ? 'Join As Speaker' : 'Join As Listener';
+    return activeRoomCanPublish() ? 'Join As Speakerer' : 'Join As Listener';
   }
 
   function renderRoom(room, profiles, fallback) {
