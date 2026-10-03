@@ -24099,31 +24099,219 @@ window.saveAppSettings = function () {
       }
     };
 
-    // ---- Theater Zap ----
-    window.theaterZap = async function () {
-      const stream = state.streamsByAddress.get(state.selectedStreamAddress);
+    // ---- Theater Donation ----
+    let theaterDonationContext = {
+      streamAddress: '',
+      hostPubkey: '',
+      hostName: '',
+      lud16: '',
+      onchainAddress: ''
+    };
+
+    function getTheaterDonationStream() {
+      return state.streamsByAddress.get(state.selectedStreamAddress) || null;
+    }
+
+    function getTheaterDonationProfile(stream) {
+      return stream ? profileFor(stream.hostPubkey || stream.pubkey || '') : profileFor('');
+    }
+
+    function getTheaterDonationHostLabel(stream, profile) {
+      return String(profile.display_name || profile.name || stream?.hostName || 'this streamer').trim() || 'this streamer';
+    }
+
+    function refreshTheaterDonationWalletStatus() {
+      const status = qs('#theaterDonationWalletStatus');
+      if (!status) return;
+      const hasNwc = !!getSavedNwcConfig();
+      const hasWebln = !!window.webln;
+      const methods = [];
+      if (hasNwc) methods.push('Nostr Wallet Connect');
+      if (hasWebln) methods.push('Browser Lightning wallet');
+      status.textContent = methods.length
+        ? 'Connected Lightning wallet: ' + methods.join(' or ')
+        : 'No Lightning wallet is connected. Connect one in Settings → Connect Wallet.';
+      status.classList.toggle('is-connected', methods.length > 0);
+      status.classList.toggle('is-disconnected', methods.length === 0);
+    }
+
+    function populateTheaterDonationChooser(stream, profile) {
+      const hostLabel = getTheaterDonationHostLabel(stream, profile);
+      theaterDonationContext.streamAddress = stream.address || '';
+      theaterDonationContext.hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+      theaterDonationContext.hostName = hostLabel;
+      theaterDonationContext.lud16 = String(profile.lud16 || '').trim();
+
+      const recipient = qs('#theaterDonationRecipient');
+      const lightningRecipient = qs('#theaterDonationLightningRecipient');
+      const lightningOption = qs('#theaterDonationLightningOption');
+      const chooseNote = qs('#theaterDonationChooseNote');
+      if (recipient) recipient.textContent = 'Donating to ' + hostLabel + '.';
+      if (lightningRecipient) lightningRecipient.textContent = 'Donating to ' + hostLabel + '.';
+      if (lightningOption) lightningOption.hidden = !theaterDonationContext.lud16;
+      if (chooseNote) {
+        chooseNote.textContent = theaterDonationContext.lud16
+          ? 'On-Chain is always available. Lightning is shown because this profile has a Lightning address.'
+          : 'On-Chain is always available. Lightning is unavailable because this profile has no Lightning address.';
+      }
+    }
+
+    window.theaterDonation = async function () {
+      const stream = getTheaterDonationStream();
       if (!stream) return;
       if (!state.user) { window.openLogin(); return; }
-      const p = profileFor(stream.hostPubkey);
-      const lud16 = (p.lud16 || '').trim();
-      if (!lud16) { alert('This streamer has no Lightning address (lud16) set on their Nostr profile.'); return; }
+
+      const modal = qs('#theaterDonationModal');
+      if (!modal) return;
+
+      const title = qs('#theaterDonationTitle');
+      if (title) title.textContent = 'Support ' + getTheaterDonationHostLabel(stream, getTheaterDonationProfile(stream));
+
       try {
-        const zapAmountMsats = 21000;
-        const targetPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
-        const zapInfo = await fetchZapEndpointInfo(lud16, zapAmountMsats);
-        const zapTags = buildZapRequestTags(targetPubkey, zapAmountMsats, zapInfo, [
+        const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+        if (hostPubkey && !state.profilesByPubkey.has(hostPubkey)) {
+          await fetchProfileIfNeeded(hostPubkey);
+        }
+      } catch (_) {}
+
+      const profile = getTheaterDonationProfile(stream);
+      populateTheaterDonationChooser(stream, profile);
+      showTheaterDonationChooser();
+      modal.classList.add('open');
+    };
+
+    window.showTheaterDonationChooser = function () {
+      const choose = qs('#theaterDonationChooseView');
+      const lightning = qs('#theaterDonationLightningView');
+      if (choose) choose.hidden = false;
+      if (lightning) lightning.hidden = true;
+      refreshTheaterDonationWalletStatus();
+      const amount = qs('#theaterDonationAmount');
+      if (amount && (!amount.value || Number(amount.value) <= 0)) amount.value = '21';
+    };
+
+    window.closeTheaterDonation = function (event) {
+      const modal = qs('#theaterDonationModal');
+      if (!modal) return;
+      if (event && event.target !== modal) return;
+      modal.classList.remove('open');
+      theaterDonationContext = {
+        streamAddress: '',
+        hostPubkey: '',
+        hostName: '',
+        lud16: '',
+        onchainAddress: ''
+      };
+      const status = qs('#theaterDonationStatus');
+      if (status) status.textContent = '';
+      const amount = qs('#theaterDonationAmount');
+      if (amount) amount.value = '21';
+    };
+
+    window.selectTheaterDonationMethod = async function (method) {
+      const stream = getTheaterDonationStream();
+      if (!stream) return;
+
+      const profile = getTheaterDonationProfile(stream);
+      const hostLabel = getTheaterDonationHostLabel(stream, profile);
+      const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+
+      if (method === 'onchain') {
+        try {
+          if (!hostPubkey) throw new Error('The streamer public key is not available yet.');
+          const address = await getProfileBitcoinAddress(hostPubkey);
+          if (!address) throw new Error('The streamer does not have an available on-chain Bitcoin address.');
+          theaterDonationContext.onchainAddress = address;
+          closeTheaterDonation();
+          window.openWalletOnchainSend(address, {
+            recipientPubkey: hostPubkey,
+            recipientName: hostLabel
+          });
+        } catch (err) {
+          const note = qs('#theaterDonationChooseNote');
+          if (note) note.textContent = err?.message || 'Could not load the streamer's on-chain Bitcoin address.';
+        }
+        return;
+      }
+
+      if (method === 'lightning') {
+        if (!String(profile.lud16 || '').trim()) {
+          const note = qs('#theaterDonationChooseNote');
+          if (note) note.textContent = 'Lightning donation is unavailable for this profile.';
+          return;
+        }
+        theaterDonationContext.lud16 = String(profile.lud16 || '').trim();
+        const choose = qs('#theaterDonationChooseView');
+        const lightning = qs('#theaterDonationLightningView');
+        if (choose) choose.hidden = true;
+        if (lightning) lightning.hidden = false;
+        refreshTheaterDonationWalletStatus();
+        const status = qs('#theaterDonationStatus');
+        if (status) status.textContent = '';
+        setTimeout(() => qs('#theaterDonationAmount')?.focus(), 0);
+      }
+    };
+
+    window.setTheaterDonationAmount = function (amount) {
+      const input = qs('#theaterDonationAmount');
+      if (input) input.value = String(Math.max(1, Math.floor(Number(amount) || 1)));
+      qsa('[data-donation-amount]').forEach((button) => {
+        button.classList.toggle('active', Number(button.getAttribute('data-donation-amount')) === Number(amount));
+      });
+    };
+
+    window.sendTheaterLightningDonation = async function () {
+      const stream = getTheaterDonationStream();
+      if (!stream) return;
+
+      const profile = getTheaterDonationProfile(stream);
+      const lud16 = String(profile.lud16 || theaterDonationContext.lud16 || '').trim();
+      const amountSats = Math.floor(Number(qs('#theaterDonationAmount')?.value || 0));
+      const status = qs('#theaterDonationStatus');
+      const btn = qs('#theaterDonationSendBtn');
+
+      if (!lud16) {
+        if (status) status.textContent = 'This streamer does not have a Lightning address.';
+        return;
+      }
+      if (!Number.isFinite(amountSats) || amountSats < 1) {
+        if (status) status.textContent = 'Enter a valid donation amount in sats.';
+        return;
+      }
+      if (amountSats > 100000000) {
+        if (status) status.textContent = 'Enter an amount of 100,000,000 sats or less.';
+        return;
+      }
+
+      const targetPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+      if (!targetPubkey) {
+        if (status) status.textContent = 'The streamer public key is not available yet.';
+        return;
+      }
+
+      if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+      if (status) status.textContent = 'Creating the Lightning donation invoice…';
+
+      try {
+        const zapInfo = await fetchZapEndpointInfo(lud16, amountSats * 1000);
+        const zapTags = buildZapRequestTags(targetPubkey, amountSats * 1000, zapInfo, [
           ['e', stream.id],
           ['a', stream.address],
           ['k', String(KIND_LIVE_EVENT)]
         ]);
-        const zapRequest = await signEvent(9734, '\u26A1 zapping from Sifaka Live', zapTags);
-        await payZapInvoiceForLud16(lud16, zapAmountMsats, zapRequest, { zapInfo });
-        const zapBtn = qs('#theaterZapBtn');
-        if (zapBtn) { const o = zapBtn.innerHTML; zapBtn.textContent = '\u26A1 Zapped!'; setTimeout(() => { zapBtn.innerHTML = o; }, 2000); }
-        return;
-      } catch (err) { console.warn('Wallet zap failed:', err && err.message ? err.message : err); }
-      window.open(`lightning:${lud16}`, '_blank');
+        const zapRequest = await signEvent(9734, '\u26A1 donation from Sifaka Live', zapTags);
+        const paymentMethod = await payZapInvoiceForLud16(lud16, amountSats * 1000, zapRequest, { zapInfo });
+        if (status) status.textContent = 'Donation sent successfully via ' + (paymentMethod === 'nwc' ? 'Nostr Wallet Connect.' : 'your browser Lightning wallet.');
+        if (btn) btn.textContent = 'Donation sent';
+        setTimeout(() => closeTheaterDonation(), 1500);
+      } catch (err) {
+        console.warn('Lightning donation failed:', err && err.message ? err.message : err);
+        if (status) status.textContent = err?.message || 'Lightning donation failed. Connect a compatible wallet in Settings.';
+        if (btn) { btn.disabled = false; btn.textContent = 'Send donation'; }
+      }
     };
+
+    window.theaterZap = window.theaterDonation;
 
     // ---- Share stream ----
     window.closeShareModal = function (e) {
