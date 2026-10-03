@@ -743,26 +743,57 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return value.slice(0, 20) + '…';
   }
 
-  async function getProfileBitcoinAddress(pubkey) {
-    let key = normalizePubkeyHex(pubkey || '');
-    if (!key) {
+  // Resolve any Nostr identity form we may receive for a profile:
+  // - 64-char x-only hex pubkey
+  // - npub1... bech32 public identifier
+  // - nprofile1... bech32 public profile identifier
+  async function resolveOnchainRecipientPubkey(identity) {
+    let raw = String(identity || '').trim();
+    if (!raw) return '';
+
+    // Accept copied nostr: / nostr:// identifiers without making callers care
+    // about how the identity was copied from the UI.
+    raw = raw.replace(/^nostr:\/\//i, '').replace(/^nostr:/i, '').trim();
+
+    const direct = normalizePubkeyHex(raw);
+    if (direct) return direct;
+
+    const lower = raw.toLowerCase();
+    if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/.test(lower)) {
+      const decoded = await decodeNpubToPubkey(lower);
+      return normalizePubkeyHex(decoded);
+    }
+
+    if (/^nprofile1[023456789acdefghjklmnpqrstuvwxyz]+$/.test(lower)) {
       try {
-        key = await decodeNpubToPubkey(String(pubkey || ''));
+        const tools = await ensureNostrTools();
+        const decoded = tools?.nip19?.decode ? tools.nip19.decode(lower) : null;
+        const profilePubkey = decoded && decoded.type === 'nprofile' && decoded.data
+          ? decoded.data.pubkey
+          : '';
+        return normalizePubkeyHex(profilePubkey);
       } catch (_) {
-        key = '';
+        return '';
       }
     }
+
+    return '';
+  }
+
+  async function getProfileBitcoinAddress(identity) {
+    const key = await resolveOnchainRecipientPubkey(identity);
     if (!key) return '';
+
     const cached = state.profileBitcoinAddressesByPubkey.get(key);
     if (cached) return cached;
-    try {
-      await ensureTaprootDerivationSelfTest();
-      const address = await deriveNipBcTaprootAddress(key);
-      state.profileBitcoinAddressesByPubkey.set(key, address);
-      return address;
-    } catch (_) {
-      return '';
-    }
+
+    // Keep the same derivation path used by the user's Wallet page so a
+    // recipient address is guaranteed to be the exact same NIP-BC/BIP-341
+    // Taproot address Sifaka uses for that Nostr public key.
+    await ensureTaprootDerivationSelfTest();
+    const address = await deriveNipBcTaprootAddress(key);
+    state.profileBitcoinAddressesByPubkey.set(key, address);
+    return address;
   }
 
 
@@ -22097,6 +22128,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       const note = qs('#walletOnchainSendNote');
       const recipientName = String(recipientMeta.recipientName || '').trim();
+      const recipientNpub = String(recipientMeta.recipientNpub || '').trim();
       if (note) {
         note.textContent = state.authMode === 'local' && state.localSecretKey
           ? (recipientName
@@ -24292,12 +24324,20 @@ window.saveAppSettings = function () {
       if (method === 'onchain') {
         try {
           if (!hostPubkey) throw new Error('The streamer public key is not available yet.');
-          const address = await getProfileBitcoinAddress(hostPubkey);
-          if (!address) throw new Error('The streamer does not have an available on-chain Bitcoin address.');
+
+          // Intentionally round-trip the streamer's identity through npub so
+          // the theater donation path works from the same public identifier
+          // users see/copy on profile and chat. The helper decodes the npub
+          // back to the x-only pubkey before deriving the Taproot address.
+          const hostNpub = formatNpubForDisplay(hostPubkey);
+          const address = await getProfileBitcoinAddress(hostNpub || hostPubkey);
+          if (!address) throw new Error('Could not derive the streamer's on-chain Bitcoin address.');
+
           theaterDonationContext.onchainAddress = address;
           closeTheaterDonation();
           window.openWalletOnchainSend(address, {
             recipientPubkey: hostPubkey,
+            recipientNpub: hostNpub,
             recipientName: hostLabel
           });
         } catch (err) {
