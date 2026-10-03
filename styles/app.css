@@ -3028,6 +3028,7 @@ nav .btn{
 /* Action buttons row (Follow, Zap, Share, Report) - flush right of title */
 .sib-actions-row{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;flex-shrink:0;}
 .action-btn{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:.33rem .7rem;cursor:pointer;font-size:.77rem;color:var(--text2);font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:.27rem;transition:all .15s;font-weight:500;}
+.like-btn{user-select:none;-webkit-user-select:none;touch-action:manipulation;}
 .action-btn:hover{border-color:var(--border2);color:var(--text);}
 .action-btn.like-btn:hover,.action-btn.liked{border-color:var(--live);color:var(--live);background:rgba(255,59,92,.08);}
 .action-btn.share-btn:hover{border-color:var(--green);color:var(--green);}
@@ -3038,7 +3039,7 @@ nav .btn{
 .sib-stream-link-row .lbl{font-family:'DM Mono',monospace;font-size:.61rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;}
 .sib-stream-link{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--text2);text-decoration:none;word-break:break-all;}
 .sib-stream-link:hover{color:var(--accent);text-decoration:underline;}
-.stream-reactions-row{display:flex;align-items:center;gap:.42rem;margin-top:.7rem;padding-top:.58rem;border-top:1px solid var(--border);flex-wrap:wrap;}
+.stream-reactions-row{display:flex;align-items:center;gap:.42rem;margin-top:.7rem;padding-top:0;border-top:0;flex-wrap:wrap;}
 .stream-emoji-list{display:flex;align-items:center;gap:.34rem;flex-wrap:wrap;}
 .stream-emoji-add,.stream-emoji-chip{border:1px solid var(--border2);background:var(--surface2);color:var(--text2);border-radius:999px;font-family:'DM Mono',monospace;font-size:.68rem;display:inline-flex;align-items:center;gap:.24rem;cursor:pointer;transition:all .14s;}
 .stream-emoji-add{padding:.2rem .45rem;font-weight:700;}
