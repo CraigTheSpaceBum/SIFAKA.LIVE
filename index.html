@@ -1253,7 +1253,7 @@ body.nest-preview-open{overflow:hidden}
           <h3>Lightning Bitcoin Wallet</h3>
         </div>
       </div>
-      <div class="wallet-lightning-receive">
+      <div class="wallet-lightning-receive" id="walletLightningReceiveBox" hidden>
         <div class="wallet-lightning-qr-wrap" aria-label="Lightning address QR code">
           <div id="walletLightningQr" class="wallet-lightning-qr"></div>
           <div id="walletLightningQrEmpty" class="wallet-lightning-qr-empty">Add a Lightning address to your Nostr profile to show a receive QR here.</div>
@@ -1268,6 +1268,7 @@ body.nest-preview-open{overflow:hidden}
         </div>
       </div>
 
+      <div id="walletLightningLiveWallet" hidden>
       <div class="wallet-lightning-top-grid">
         <article class="wallet-balance-card" id="walletBalanceCard">
           <div class="wallet-card-label">Available Balance</div>
@@ -1296,6 +1297,7 @@ body.nest-preview-open{overflow:hidden}
           <div class="wallet-empty-state">Connect a Nostr Wallet Connect wallet in Settings → Wallet to load your wallet activity.</div>
         </div>
       </section>
+      </div>
     </section>
 
     <div id="walletPageStatus" class="wallet-page-status" aria-live="polite"></div>
@@ -2126,7 +2128,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.2.4-wallet-lud16-qr" defer></script>
+<script src="./nostrflux-app.js?v=0.2.4-wallet-lud16-visibility" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
