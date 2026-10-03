@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=nest-auth-recovery-20261002">
+<link rel="stylesheet" href="./styles/app.css?v=0.2.4-theater-donation">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -808,6 +808,66 @@ body.nest-preview-open{overflow:hidden}
           </div>
         </div>
       </aside>
+    </div>
+  </div>
+</div>
+
+<!-- ========= THEATER DONATION ========= -->
+<div class="modal-ov" id="theaterDonationModal">
+  <div class="settings-modal theater-donation-modal">
+    <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeTheaterDonation()">x</button>
+    <div class="sm-hd">
+      <div>
+        <div class="sm-title" id="theaterDonationTitle">Support this streamer</div>
+        <div class="sm-subtitle">Choose how you would like to donate.</div>
+      </div>
+    </div>
+
+    <div class="theater-donation-view" id="theaterDonationChooseView">
+      <div class="theater-donation-recipient" id="theaterDonationRecipient"></div>
+      <div class="theater-donation-options">
+        <button class="theater-donation-option" type="button" onclick="selectTheaterDonationMethod('onchain')">
+          <span class="theater-donation-option-icon">₿</span>
+          <span class="theater-donation-option-copy">
+            <strong>On-Chain</strong>
+            <small>Send Bitcoin directly to the streamer's on-chain wallet.</small>
+          </span>
+          <span class="theater-donation-option-arrow">→</span>
+        </button>
+        <button class="theater-donation-option lightning" id="theaterDonationLightningOption" type="button" onclick="selectTheaterDonationMethod('lightning')" hidden>
+          <span class="theater-donation-option-icon">⚡</span>
+          <span class="theater-donation-option-copy">
+            <strong>Lightning</strong>
+            <small>Fast Lightning donation using your connected wallet.</small>
+          </span>
+          <span class="theater-donation-option-arrow">→</span>
+        </button>
+      </div>
+      <div class="theater-donation-note" id="theaterDonationChooseNote"></div>
+    </div>
+
+    <div class="theater-donation-view" id="theaterDonationLightningView" hidden>
+      <div class="theater-donation-back-row">
+        <button class="btn btn-ghost" type="button" onclick="showTheaterDonationChooser()">← Back</button>
+      </div>
+      <div class="theater-donation-recipient" id="theaterDonationLightningRecipient"></div>
+      <div class="theater-donation-wallet-status" id="theaterDonationWalletStatus"></div>
+      <div class="theater-donation-amount-label">Donation amount</div>
+      <div class="theater-donation-presets">
+        <button type="button" data-donation-amount="21" onclick="setTheaterDonationAmount(21)">21 sats</button>
+        <button type="button" data-donation-amount="100" onclick="setTheaterDonationAmount(100)">100 sats</button>
+        <button type="button" data-donation-amount="500" onclick="setTheaterDonationAmount(500)">500 sats</button>
+        <button type="button" data-donation-amount="1000" onclick="setTheaterDonationAmount(1000)">1,000 sats</button>
+        <button type="button" data-donation-amount="5000" onclick="setTheaterDonationAmount(5000)">5,000 sats</button>
+      </div>
+      <label class="theater-donation-custom-amount">Custom amount (sats)
+        <input id="theaterDonationAmount" type="number" min="1" step="1" inputmode="numeric" value="21" placeholder="Amount in sats">
+      </label>
+      <div class="theater-donation-actions">
+        <button class="btn btn-primary" type="button" id="theaterDonationSendBtn" onclick="sendTheaterLightningDonation()">Send donation</button>
+        <button class="btn btn-ghost" type="button" onclick="closeTheaterDonation()">Cancel</button>
+      </div>
+      <div class="theater-donation-status" id="theaterDonationStatus" aria-live="polite"></div>
     </div>
   </div>
 </div>
@@ -1754,7 +1814,7 @@ body.nest-preview-open{overflow:hidden}
           </div>
           <div class="sib-actions-row">
             <button class="btn btn-follow" id="theaterFollowBtn" style="padding:.36rem .8rem;font-size:.79rem;" onclick="toggleTheaterFollow()">Follow</button>
-            <button class="btn btn-zap" id="theaterZapBtn" style="padding:.36rem .8rem;font-size:.79rem;" onclick="theaterZap()">Zap</button>
+            <button class="action-btn theater-donation-btn" id="theaterZapBtn" type="button" onclick="theaterDonation()">&#9889; Donation</button>
             <button class="action-btn like-btn" id="likeBtn" type="button" onclick="toggleLike(event)" onpointerdown="startTheaterLikeHold(event)" onpointerup="endTheaterLikeHold(event)" onpointercancel="endTheaterLikeHold(event)" onpointerleave="endTheaterLikeHold(event)">&#10084; Like</button>
             <button class="action-btn share-btn" id="theaterShareBtn" onclick="shareStream()">Share</button>
             <button class="action-btn report-btn" title="Report stream">Report</button>
@@ -2066,7 +2126,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=nest-card-click-fix-20261002" defer></script>
+<script src="./nostrflux-app.js?v=0.2.4-theater-donation" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
