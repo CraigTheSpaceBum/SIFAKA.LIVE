@@ -2984,7 +2984,14 @@
       return window.NostrTools;
     }
     if (typeof window.ensureSifakaNostrTools === 'function') {
-      return window.ensureSifakaNostrTools();
+      try {
+        const tools = await window.ensureSifakaNostrTools();
+        if (tools && tools.nip19 && typeof tools.nip19.naddrEncode === 'function') {
+          return tools;
+        }
+      } catch (err) {
+        console.warn('[sifaka-nests] shared Nostr tools loader failed', err);
+      }
     }
     if (window.__sifakaNestNostrToolsPromise) return window.__sifakaNestNostrToolsPromise;
     window.__sifakaNestNostrToolsPromise = new Promise(function(resolve, reject) {
