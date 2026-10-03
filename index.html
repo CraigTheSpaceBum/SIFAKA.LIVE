@@ -1165,24 +1165,22 @@ body.nest-preview-open{overflow:hidden}
         </div>
       </div>
 
-      <div class="wallet-mainchain-grid">
+      <div class="wallet-mainchain-top-grid">
         <div class="wallet-mainchain-balance">
           <span>Confirmed Balance</span>
           <strong id="walletMainchainBalance">—</strong>
           <small id="walletMainchainPending">Derived automatically from your Nostr public key using NIP-BC / BIP-341.</small>
         </div>
+
+        <div class="wallet-onchain-action-grid">
+          <button class="wallet-onchain-action send" type="button" onclick="openWalletOnchainSend()">
+            <span class="wallet-action-icon">↑</span>
+            <span><strong>Send</strong><small>Send BTC from your NIP-BC Taproot wallet</small></span>
+          </button>
+        </div>
       </div>
 
-      <div class="wallet-onchain-action-grid">
-        <button class="wallet-onchain-action send" type="button" onclick="openWalletOnchainSend()">
-          <span class="wallet-action-icon">↑</span>
-          <span><strong>Send</strong><small>Send BTC from your NIP-BC Taproot wallet</small></span>
-        </button>
-      </div>
-
-      <div class="wallet-mainchain-grid">
-        <div class="wallet-mainchain-stats" id="walletMainchainStats"></div>
-      </div>
+      <div class="wallet-mainchain-stats wallet-mainchain-stats-row" id="walletMainchainStats"></div>
 
       <div id="walletMainchainTransactions" class="wallet-transactions-list wallet-mainchain-transactions">
         <div class="wallet-empty-state">Your on-chain Bitcoin transactions will appear here.</div>
@@ -1204,26 +1202,7 @@ body.nest-preview-open{overflow:hidden}
         </div>
       </div>
 
-      <section class="wallet-actions-card" id="walletActionsCard">
-        <div class="wallet-section-head">
-          <div>
-            <div class="wallet-card-label">Lightning</div>
-            <h3>Send & Receive</h3>
-          </div>
-        </div>
-        <div class="wallet-action-grid">
-          <button class="wallet-action-tile receive" type="button" onclick="openWalletReceive()">
-            <span class="wallet-action-icon">↓</span>
-            <span><strong>Receive</strong><small>Create an invoice and show its QR code</small></span>
-          </button>
-          <button class="wallet-action-tile send" type="button" onclick="openWalletSend()">
-            <span class="wallet-action-icon">↑</span>
-            <span><strong>Send</strong><small>Pay a Lightning invoice</small></span>
-          </button>
-        </div>
-      </section>
-
-      <div class="wallet-lightning-overview">
+      <div class="wallet-lightning-top-grid">
         <article class="wallet-balance-card" id="walletBalanceCard">
           <div class="wallet-card-label">Available Balance</div>
           <div class="wallet-balance-value" id="walletBalanceValue">—</div>
@@ -1234,7 +1213,28 @@ body.nest-preview-open{overflow:hidden}
           </div>
         </article>
 
-        <article class="wallet-info-card">
+        <section class="wallet-actions-card" id="walletActionsCard">
+          <div class="wallet-section-head">
+            <div>
+              <div class="wallet-card-label">Lightning</div>
+              <h3>Send & Receive</h3>
+            </div>
+          </div>
+          <div class="wallet-action-grid">
+            <button class="wallet-action-tile receive" type="button" onclick="openWalletReceive()">
+              <span class="wallet-action-icon">↓</span>
+              <span><strong>Receive</strong><small>Create an invoice and show its QR code</small></span>
+            </button>
+            <button class="wallet-action-tile send" type="button" onclick="openWalletSend()">
+              <span class="wallet-action-icon">↑</span>
+              <span><strong>Send</strong><small>Pay a Lightning invoice</small></span>
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <div class="wallet-lightning-overview">
+        <article class="wallet-info-card wallet-lightning-info-card">
           <div class="wallet-card-label">Wallet</div>
           <div class="wallet-info-list" id="walletInfoList">
             <div class="wallet-info-empty">No wallet connected.</div>
