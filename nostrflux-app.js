@@ -24373,7 +24373,8 @@ window.saveAppSettings = function () {
       hostName: '',
       lud16: '',
       onchainAddress: '',
-      onchainLoadToken: 0
+      onchainLoadToken: 0,
+      onchainDraft: null
     };
 
     function getTheaterDonationStream() {
@@ -24475,18 +24476,32 @@ window.saveAppSettings = function () {
       }
     }
 
-    async function refreshTheaterOnchainRecipientAddress(stream, preferredPubkey = '') {
+    window.theaterOnchainAddressEdited = function () {
+      const input = qs('#theaterDonationOnchainAddress');
+      if (!input) return;
+      input.dataset.userEdited = '1';
+      theaterDonationContext.onchainAddress = String(input.value || '').trim();
+      const status = qs('#theaterDonationOnchainAddressStatus');
+      if (status) status.textContent = input.value.trim()
+        ? 'Using the address you entered.'
+        : 'Enter a Bitcoin mainnet address or wait for the streamer address to load.';
+    };
+
+    async function refreshTheaterOnchainRecipientAddress(stream, preferredPubkey = '', opts = {}) {
       const recipientInput = qs('#theaterDonationOnchainAddress');
       const recipientKeyEl = qs('#theaterDonationOnchainKey');
       const recipientStatusEl = qs('#theaterDonationOnchainAddressStatus');
       const retryBtn = qs('#theaterDonationOnchainRetryBtn');
+      const forceReplace = opts.forceReplace === true;
       const token = ++theaterDonationContext.onchainLoadToken;
+      const manualAddress = recipientInput && recipientInput.dataset.userEdited === '1' && !forceReplace;
 
-      if (recipientInput) recipientInput.value = '';
+      if (recipientInput && forceReplace) recipientInput.dataset.userEdited = '0';
+      if (recipientInput && !manualAddress) recipientInput.value = '';
       if (recipientKeyEl) recipientKeyEl.textContent = preferredPubkey
         ? shortNpubForDisplay(preferredPubkey)
         : 'Resolving streamer identity…';
-      if (recipientStatusEl) recipientStatusEl.textContent = 'Loading recipient Taproot address…';
+      if (recipientStatusEl && !manualAddress) recipientStatusEl.textContent = 'Deriving recipient Taproot address…';
       if (retryBtn) retryBtn.disabled = true;
 
       try {
@@ -24496,6 +24511,9 @@ window.saveAppSettings = function () {
 
         theaterDonationContext.hostPubkey = resolved;
         if (recipientKeyEl) recipientKeyEl.textContent = shortNpubForDisplay(resolved);
+
+        // Profile metadata is optional. The Bitcoin address is derived directly
+        // from the resolved x-only Nostr public key.
         fetchProfileIfNeeded(resolved).then(() => {
           if (token !== theaterDonationContext.onchainLoadToken) return;
           const profile = getTheaterDonationProfile(stream, resolved);
@@ -24505,20 +24523,30 @@ window.saveAppSettings = function () {
           if (recipientLabel) recipientLabel.textContent = 'Donating to ' + label + '.';
         }).catch(() => {});
 
-        const address = await getProfileBitcoinAddress(resolved);
+        await ensurePublicTaprootDerivationSelfTest();
+        const address = await derivePublicTaprootAddressFromPubkey(resolved);
         if (token !== theaterDonationContext.onchainLoadToken) return false;
         if (!address) throw new Error('Could not derive the streamer\'s Taproot Bitcoin address.');
 
-        theaterDonationContext.onchainAddress = address;
-        if (recipientInput) recipientInput.value = address;
-        if (recipientStatusEl) recipientStatusEl.textContent = 'Recipient Taproot address ready.';
+        const currentManual = recipientInput && recipientInput.dataset.userEdited === '1' && !forceReplace;
+        if (!currentManual && recipientInput) {
+          recipientInput.value = address;
+          recipientInput.dataset.userEdited = '0';
+          recipientStatusEl && (recipientStatusEl.textContent = 'Recipient Taproot address ready.');
+          theaterDonationContext.onchainAddress = address;
+        } else if (currentManual) {
+          theaterDonationContext.onchainAddress = String(recipientInput.value || '').trim();
+          if (recipientStatusEl) recipientStatusEl.textContent = 'Using the address you entered.';
+        }
         if (retryBtn) retryBtn.disabled = false;
-        return true;
+        return address;
       } catch (err) {
         if (token !== theaterDonationContext.onchainLoadToken) return false;
-        theaterDonationContext.onchainAddress = '';
-        if (recipientInput) recipientInput.value = '';
-        if (recipientStatusEl) recipientStatusEl.textContent = err?.message || 'Recipient Taproot address is not available yet. You can paste a Bitcoin address above or retry.';
+        if (!(recipientInput && recipientInput.dataset.userEdited === '1')) {
+          theaterDonationContext.onchainAddress = '';
+          if (recipientInput) recipientInput.value = '';
+        }
+        if (recipientStatusEl) recipientStatusEl.textContent = err?.message || 'Could not derive the streamer Taproot address.';
         if (retryBtn) retryBtn.disabled = false;
         return false;
       }
@@ -24601,12 +24629,28 @@ window.saveAppSettings = function () {
       const amount = qs('#theaterDonationOnchainAmount');
       const feeRate = qs('#theaterDonationOnchainFeeRate');
       const key = qs('#theaterDonationOnchainKey');
-      if (address) address.value = '';
-      if (amount) amount.value = '21';
-      if (feeRate) feeRate.value = '';
+      const reviewBtn = qs('#theaterDonationOnchainReviewBtn');
+      const editBtn = qs('#theaterDonationOnchainEditBtn');
+
+      if (address) {
+        address.value = '';
+        address.dataset.userEdited = '0';
+        address.disabled = false;
+      }
+      if (amount) { amount.value = '21'; amount.disabled = false; }
+      if (feeRate) { feeRate.value = ''; feeRate.disabled = false; }
       if (key) key.textContent = 'Resolving streamer identity…';
-      const btn = qs('#theaterDonationOnchainReviewBtn');
-      if (btn) { btn.disabled = false; btn.textContent = 'Continue to Review'; }
+      if (reviewBtn) {
+        reviewBtn.disabled = false;
+        reviewBtn.textContent = 'Review transaction';
+        reviewBtn.onclick = window.prepareTheaterOnchainDonation;
+      }
+      if (editBtn) {
+        editBtn.hidden = true;
+        editBtn.disabled = false;
+      }
+      theaterDonationContext.onchainAddress = '';
+      theaterDonationContext.onchainDraft = null;
     }
 
     window.theaterDonation = async function () {
@@ -24657,7 +24701,8 @@ window.saveAppSettings = function () {
         hostName: '',
         lud16: '',
         onchainAddress: '',
-        onchainLoadToken: 0
+        onchainLoadToken: 0,
+        onchainDraft: null
       };
       resetTheaterOnchainView();
       const status = qs('#theaterDonationStatus');
@@ -24672,7 +24717,6 @@ window.saveAppSettings = function () {
 
       const hostPubkey = theaterDonationContext.hostPubkey || normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
       const profile = getTheaterDonationProfile(stream, hostPubkey);
-      const hostLabel = getTheaterDonationHostLabel(stream, profile);
 
       if (method === 'onchain') {
         const choose = qs('#theaterDonationChooseView');
@@ -24683,7 +24727,7 @@ window.saveAppSettings = function () {
         if (onchain) onchain.hidden = false;
 
         const recipientLabel = qs('#theaterDonationOnchainRecipient');
-        if (recipientLabel) recipientLabel.textContent = 'Donating to ' + hostLabel + '.';
+        if (recipientLabel) recipientLabel.textContent = 'Donating to ' + getTheaterDonationHostLabel(stream, profile) + '.';
         resetTheaterOnchainView();
 
         refreshTheaterOnchainRecipientAddress(stream, hostPubkey).catch(() => {});
@@ -24715,7 +24759,28 @@ window.saveAppSettings = function () {
       const stream = getTheaterDonationStream();
       if (!stream) return;
       const pubkey = theaterDonationContext.hostPubkey || await resolveTheaterDonationPubkey(stream);
-      refreshTheaterOnchainRecipientAddress(stream, pubkey).catch(() => {});
+      refreshTheaterOnchainRecipientAddress(stream, pubkey, { forceReplace: true }).catch(() => {});
+    };
+
+    window.editTheaterOnchainDonation = function () {
+      const address = qs('#theaterDonationOnchainAddress');
+      const amount = qs('#theaterDonationOnchainAmount');
+      const feeRate = qs('#theaterDonationOnchainFeeRate');
+      const reviewBtn = qs('#theaterDonationOnchainReviewBtn');
+      const editBtn = qs('#theaterDonationOnchainEditBtn');
+      const status = qs('#theaterDonationOnchainStatus');
+
+      if (address) address.disabled = false;
+      if (amount) amount.disabled = false;
+      if (feeRate) feeRate.disabled = false;
+      theaterDonationContext.onchainDraft = null;
+      if (reviewBtn) {
+        reviewBtn.disabled = false;
+        reviewBtn.textContent = 'Review transaction';
+        reviewBtn.onclick = window.prepareTheaterOnchainDonation;
+      }
+      if (editBtn) editBtn.hidden = true;
+      if (status) status.textContent = 'Editing transaction details.';
     };
 
     window.setTheaterDonationAmount = function (amount) {
@@ -24738,41 +24803,141 @@ window.saveAppSettings = function () {
       const addressInput = qs('#theaterDonationOnchainAddress');
       const amountInput = qs('#theaterDonationOnchainAmount');
       const feeInput = qs('#theaterDonationOnchainFeeRate');
+      const summary = qs('#theaterDonationOnchainSummary');
       const status = qs('#theaterDonationOnchainStatus');
       const button = qs('#theaterDonationOnchainReviewBtn');
+      const editBtn = qs('#theaterDonationOnchainEditBtn');
       const destination = String(addressInput?.value || '').trim();
       const amountSats = Math.floor(Number(amountInput?.value || 0));
-      const feeRate = Number(feeInput?.value || 0);
+      let feeRate = Number(feeInput?.value || 0);
 
       if (!/^(bc1[ac-hj-np-z02-9]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,62})$/i.test(destination)) {
-        if (status) status.textContent = 'Enter or wait for a valid Bitcoin mainnet recipient address.';
+        if (status) status.textContent = 'Enter a valid Bitcoin mainnet recipient address.';
         return;
       }
       if (!Number.isFinite(amountSats) || amountSats < 1) {
         if (status) status.textContent = 'Enter a valid donation amount in sats.';
         return;
       }
-      if (!Number.isFinite(feeRate) || feeRate <= 0) {
-        if (status) status.textContent = 'Enter a valid fee rate in sat/vB.';
-        return;
-      }
 
       try {
         requireLocalOnchainSigner();
-        if (button) { button.disabled = true; button.textContent = 'Opening Review…'; }
-        const stream = getTheaterDonationStream();
-        const profile = getTheaterDonationProfile(stream, theaterDonationContext.hostPubkey);
-        const opened = await window.openWalletOnchainSend(destination, {
-          recipientPubkey: theaterDonationContext.hostPubkey,
-          recipientName: getTheaterDonationHostLabel(stream, profile),
+        if (button) { button.disabled = true; button.textContent = 'Preparing review…'; }
+        if (status) status.textContent = 'Loading your Taproot wallet UTXOs and fee rate…';
+
+        if (!Number.isFinite(feeRate) || feeRate <= 0) {
+          feeRate = await fetchWalletOnchainFeeRate();
+          if (feeInput) feeInput.value = String(feeRate);
+        }
+
+        const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+        const ownAddress = await getSifakaOnchainWalletAddress(ownPubkey);
+        const utxos = (await fetchWalletOnchainUtxos(ownAddress)).sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
+        if (!utxos.length) throw new Error('No spendable on-chain UTXOs were found for this wallet.');
+
+        const selected = [];
+        let totalInputSats = 0;
+        for (const utxo of utxos) {
+          selected.push(utxo);
+          totalInputSats += Math.floor(Number(utxo.value || 0));
+          const feeWithChange = estimateWalletOnchainFee(selected.length, 2, feeRate);
+          const feeWithoutChange = estimateWalletOnchainFee(selected.length, 1, feeRate);
+          if (totalInputSats >= amountSats + feeWithChange + 330 || totalInputSats >= amountSats + feeWithoutChange) break;
+        }
+
+        const minimumFee = estimateWalletOnchainFee(selected.length, 1, feeRate);
+        if (totalInputSats < amountSats + minimumFee) {
+          throw new Error('Insufficient balance for this donation and network fee.');
+        }
+
+        const feeWithChange = estimateWalletOnchainFee(selected.length, 2, feeRate);
+        const candidateChange = totalInputSats - amountSats - feeWithChange;
+        const changeSats = candidateChange >= 330 ? candidateChange : 0;
+        const actualFee = totalInputSats - amountSats - changeSats;
+
+        theaterDonationContext.onchainAddress = destination;
+        theaterDonationContext.onchainDraft = {
+          destination,
           amountSats,
-          feeRate
-        });
-        if (opened === false) throw new Error('The on-chain review dialog could not be opened.');
-        closeTheaterDonation();
+          feeRate,
+          utxos: selected,
+          totalInputSats,
+          changeSats,
+          senderAddress: ownAddress
+        };
+
+        if (addressInput) addressInput.disabled = true;
+        if (amountInput) amountInput.disabled = true;
+        if (feeInput) feeInput.disabled = true;
+
+        if (summary) {
+          summary.textContent =
+            'Review: send ' + formatCount(amountSats) + ' sats to ' + destination +
+            ' from ' + shortBitcoinAddress(ownAddress) +
+            '. Estimated fee: ' + formatCount(actualFee) + ' sats. Total debit: ' +
+            formatCount(amountSats + actualFee) + ' sats.';
+        }
+        if (status) status.textContent = 'Review the details above, then confirm the Bitcoin donation.';
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Confirm & broadcast';
+          button.onclick = window.confirmTheaterOnchainDonation;
+        }
+        if (editBtn) editBtn.hidden = false;
       } catch (err) {
-        if (button) { button.disabled = false; button.textContent = 'Continue to Review'; }
-        if (status) status.textContent = err?.message || 'On-chain sending requires a local Nostr key login.';
+        if (status) status.textContent = err?.message || 'Could not prepare the on-chain donation.';
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Review transaction';
+          button.onclick = window.prepareTheaterOnchainDonation;
+        }
+      }
+    };
+
+    window.confirmTheaterOnchainDonation = async function () {
+      const draft = theaterDonationContext.onchainDraft;
+      const status = qs('#theaterDonationOnchainStatus');
+      const button = qs('#theaterDonationOnchainReviewBtn');
+      if (!draft) return;
+
+      const fee = draft.totalInputSats - draft.amountSats - draft.changeSats;
+      if (!window.confirm(
+        'Send ' + formatCount(draft.amountSats) + ' sats to ' + draft.destination +
+        '?\\n\\nEstimated network fee: ' + formatCount(fee) + ' sats.'
+      )) return;
+
+      try {
+        if (button) { button.disabled = true; button.textContent = 'Signing…'; }
+        if (status) status.textContent = 'Signing the Taproot transaction locally…';
+        const built = await buildWalletOnchainTransaction(draft);
+
+        if (button) button.textContent = 'Broadcasting…';
+        if (status) status.textContent = 'Broadcasting transaction to Bitcoin mainnet…';
+
+        const response = await fetch('https://mempool.space/api/tx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: built.hex
+        });
+        const body = await response.text();
+        if (!response.ok) throw new Error(body || ('Broadcast failed (' + response.status + ').'));
+
+        theaterDonationContext.onchainDraft = null;
+        if (status) status.textContent = 'Donation sent successfully. Transaction: ' + String(body || built.txid).trim();
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Done';
+          button.onclick = window.closeTheaterDonation;
+        }
+        const editBtn = qs('#theaterDonationOnchainEditBtn');
+        if (editBtn) editBtn.hidden = true;
+      } catch (err) {
+        if (status) status.textContent = err?.message || 'Bitcoin transaction failed.';
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Confirm & broadcast';
+          button.onclick = window.confirmTheaterOnchainDonation;
+        }
       }
     };
 
