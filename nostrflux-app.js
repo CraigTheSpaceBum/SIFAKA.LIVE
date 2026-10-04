@@ -16973,7 +16973,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       const name = qs('.sib-name');
       if (name) {
-        const displayName = hostProfile.display_name || hostProfile.name || shortHex(hostPubkey);
+        const displayName = hostProfile.display_name || hostProfile.name || shortNpubForDisplay(hostPubkey);
         const previousText = String(name.dataset.profileDisplay || '').trim();
         name.innerHTML = '';
         name.textContent = displayName;
@@ -16995,7 +16995,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       const ident = qs('.sib-identity');
       if (ident) {
-        ident.textContent = verifiedNip05 || shortHex(hostPubkey);
+        ident.textContent = verifiedNip05 || shortNpubForDisplay(hostPubkey);
         ident.classList.remove('sib-profile-loading');
         ident.dataset.profileReady = '1';
       }
@@ -22516,7 +22516,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           setStatus(err && err.message ? err.message : 'Could not derive your Taproot address.', 'error');
         }
       }
-      if (!bitcoinAddress && manualBitcoinAddress && isBitcoinAddress(manualBitcoinAddress)) {
+      if (!bitcoinAddress && !ownPubkey && manualBitcoinAddress && isBitcoinAddress(manualBitcoinAddress)) {
         bitcoinAddress = manualBitcoinAddress;
         bitcoinAddressSource = 'legacy';
         state.walletPageOnchainAddress = bitcoinAddress;
