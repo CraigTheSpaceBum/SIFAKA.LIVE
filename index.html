@@ -861,7 +861,7 @@ body.nest-preview-open{overflow:hidden}
       </div>
 
       <label class="theater-donation-custom-amount theater-donation-onchain-address-field">Recipient Bitcoin address
-        <input id="theaterDonationOnchainAddress" type="text" autocomplete="off" spellcheck="false" placeholder="bc1p..." inputmode="text">
+        <input id="theaterDonationOnchainAddress" type="text" autocomplete="off" spellcheck="false" placeholder="bc1p..." inputmode="text" oninput="theaterOnchainAddressEdited()">
       </label>
       <div class="theater-donation-onchain-address-status" id="theaterDonationOnchainAddressStatus" aria-live="polite">Loading recipient Taproot address…</div>
 
@@ -904,7 +904,8 @@ body.nest-preview-open{overflow:hidden}
         Your donation will be sent from your Sifaka Taproot wallet after you review the transaction.
       </div>
       <div class="theater-donation-actions">
-        <button class="btn btn-primary" type="button" id="theaterDonationOnchainReviewBtn" onclick="prepareTheaterOnchainDonation()">Continue to Review</button>
+        <button class="btn btn-primary" type="button" id="theaterDonationOnchainReviewBtn" onclick="prepareTheaterOnchainDonation()">Review transaction</button>
+        <button class="btn btn-ghost" type="button" id="theaterDonationOnchainEditBtn" onclick="editTheaterOnchainDonation()" hidden>Edit</button>
         <button class="btn btn-ghost" type="button" onclick="closeTheaterDonation()">Cancel</button>
       </div>
       <div class="theater-donation-status" id="theaterDonationOnchainStatus" aria-live="polite"></div>
