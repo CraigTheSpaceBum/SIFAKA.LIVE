@@ -22299,7 +22299,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const availableSubEl = qs('#walletOnchainSendAvailableSub');
       const suggestedFeeEl = qs('#walletOnchainSendSuggestedFee');
       const feeSubEl = qs('#walletOnchainSendFeeSub');
-      const feeRateEl = qs('#walletOnchainSendFeeRate');
       if (availableEl) availableEl.textContent = 'Loading…';
       if (availableSubEl) availableSubEl.textContent = 'Loading spendable UTXOs…';
       if (suggestedFeeEl) suggestedFeeEl.textContent = 'Loading…';
