@@ -21986,7 +21986,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       );
     };
 
-    // ===== NIP-BC / BIP-341 on-chain wallet derivation =====
+    // ===== Native Taproot / BIP-341 on-chain wallet derivation =====
     // Derives the native Taproot receive address from the logged-in Nostr x-only public key.
     const BTC_FIELD_PRIME = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn;
     const BTC_CURVE_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
@@ -22509,10 +22509,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const isBitcoinAddress = (value) => /^(bc1[ac-hj-np-z02-9]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,62})$/.test(value);
       if (ownPubkey) {
         try {
-          await ensureTaprootDerivationSelfTest();
-          bitcoinAddress = await deriveNipBcTaprootAddress(ownPubkey);
+          bitcoinAddress = await getSifakaOnchainWalletAddress(ownPubkey);
           bitcoinAddressSource = 'nostr';
-          state.walletPageOnchainAddress = bitcoinAddress;
         } catch (err) {
           state.walletPageOnchainAddress = '';
           setStatus(err && err.message ? err.message : 'Could not derive your Taproot address.', 'error');
@@ -22530,7 +22528,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           mainchainBalanceEl.textContent = '—';
           if (mainchainPendingEl) mainchainPendingEl.textContent = ownPubkey
             ? 'Your Taproot address is derived automatically from your Nostr public key.'
-            : 'Sign in to derive your NIP-BC Taproot address automatically.';
+            : 'Sign in to derive your Taproot address automatically.';
           if (mainchainAddressEl) mainchainAddressEl.textContent = 'No address available';
           if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Not configured'; mainchainStatusEl.className = 'wallet-status-chip'; }
           if (mainchainExplorerEl) mainchainExplorerEl.hidden = true;
