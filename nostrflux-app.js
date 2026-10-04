@@ -745,7 +745,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   // Public Taproot derivation used by recipient flows (profile/theater).
   // The wallet page has its own internal helpers, but theater/profile code lives
-  // outside that wallet-only scope. Keep one identical NIP-BC/BIP-341 algorithm
+  // outside that wallet-only scope. Keep one identical Taproot/BIP-341 algorithm
   // available at the shared application scope so recipients work everywhere.
   const PUBLIC_TAPROOT_TEST_VECTOR = {
     pubkey: 'd6889cb081036e0faefa3a35157ad71086b123b2b144b649798b494c300a961d',
@@ -926,7 +926,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const cached = state.profileBitcoinAddressesByPubkey.get(key);
     if (cached) return cached;
 
-    // Use the same NIP-BC/BIP-341 derivation algorithm as the wallet,
+    // Use the same Taproot/BIP-341 derivation algorithm as the wallet,
     // exposed at shared scope so recipient flows do not depend on wallet scope.
     await ensurePublicTaprootDerivationSelfTest();
     const address = await derivePublicTaprootAddressFromPubkey(key);
@@ -3977,18 +3977,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function formatNpubForDisplay(pubkeyOrNpub) {
-    const raw = (pubkeyOrNpub || '').trim();
+    const raw = (pubkeyOrNpub || '').trim().toLowerCase();
     if (!raw) return '';
     if (raw.startsWith('npub1')) return raw;
-    if (!/^[0-9a-f]{64}$/i.test(raw)) return raw;
-    if (!window.NostrTools || !window.NostrTools.nip19 || typeof window.NostrTools.nip19.npubEncode !== 'function') {
-      return shortHex(raw);
+    if (!/^[0-9a-f]{64}$/.test(raw)) return raw;
+    if (window.NostrTools && window.NostrTools.nip19 && typeof window.NostrTools.nip19.npubEncode === 'function') {
+      try { return window.NostrTools.nip19.npubEncode(raw); } catch (_) {}
     }
+    // NIP-19 npub is Bech32 over the 32-byte x-only public key.
     try {
-      return window.NostrTools.nip19.npubEncode(raw);
+      const bytes = [];
+      for (let i = 0; i < 32; i += 1) bytes.push(Number.parseInt(raw.slice(i * 2, i * 2 + 2), 16));
+      return bech32Encode('npub', convertBits(bytes, 8, 5, true));
     } catch (_) {
       return shortHex(raw);
     }
+  }
+
+  function shortNpubForDisplay(pubkeyOrNpub) {
+    const npub = formatNpubForDisplay(pubkeyOrNpub);
+    if (/^npub1/i.test(npub) && npub.length > 28) return npub.slice(0, 12) + '...' + npub.slice(-8);
+    return npub || shortHex(String(pubkeyOrNpub || ''));
   }
 
   function parseTags(tags) {
@@ -11533,7 +11542,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (profile) return profile;
     return {
       pubkey: normalizedPubkey || pubkey,
-      name: shortHex(normalizedPubkey || pubkey),
+      name: shortNpubForDisplay(normalizedPubkey || pubkey),
       about: '',
       picture: '',
       banner: '',
@@ -16902,15 +16911,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         cacheKey: `profile-by-pubkey:${normalizedPubkey}`,
         force: forceRefresh,
         ttlMs: forceRefresh ? 0 : undefined,
-        timeoutMs: 950,
-        maxEvents: 10,
+        timeoutMs: 1800,
+        maxEvents: 20,
         relayUrls: (() => {
           const urls = Array.isArray(state.pool && state.pool.urls) ? [...state.pool.urls] : [];
           const latency = state.relayPingMsByUrl instanceof Map ? state.relayPingMsByUrl : new Map();
           return urls
             .map((url, index) => ({ url, index, ms: Number(latency.get(url) || Number.POSITIVE_INFINITY) }))
             .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
-            .slice(0, 3)
+            .slice(0, 5)
             .map((item) => item.url);
         })()
       }
@@ -22176,6 +22185,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       return mod;
     }
 
+    async function getSifakaOnchainWalletAddress(pubkey = '') {
+      const ownPubkey = normalizePubkeyHex(pubkey || (state.user && state.user.pubkey) || '');
+      if (!ownPubkey) throw new Error('Your Nostr public key is not available yet.');
+      await ensureTaprootDerivationSelfTest();
+      const address = await deriveNipBcTaprootAddress(ownPubkey);
+      if (!/^bc1p[0-9a-z]{58}$/i.test(address)) throw new Error('Derived Taproot wallet address is invalid.');
+      state.walletPageOnchainAddress = address;
+      return address;
+    }
+
     async function deriveNipBcTaprootInternalSecret(internalSecretKey) {
       const secretBytes = normalizeSecretKey(internalSecretKey);
       if (!secretBytes || secretBytes.length !== 32) throw new Error('A locally controlled Nostr private key is required to send on-chain Bitcoin.');
@@ -22230,14 +22249,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const spendSecret = await deriveNipBcTaprootInternalSecret(secret);
       const spendPubkey = btc.utils.pubSchnorr(spendSecret);
       const spend = btc.p2tr(spendPubkey);
-      let ownAddress = String(state.walletPageOnchainAddress || '').trim();
-      if (!ownAddress) {
-        const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
-        if (!ownPubkey) throw new Error('Your Nostr public key is not available yet.');
-        await ensureTaprootDerivationSelfTest();
-        ownAddress = await deriveNipBcTaprootAddress(ownPubkey);
-        state.walletPageOnchainAddress = ownAddress;
-      }
+      const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+      if (!ownPubkey) throw new Error('Your Nostr public key is not available yet.');
+      const spendPubkeyHex = bytesToHex(spendPubkey);
+      if (spendPubkeyHex !== ownPubkey) throw new Error('The local signing key does not match the signed-in Nostr identity.');
+      const ownAddress = await getSifakaOnchainWalletAddress(ownPubkey);
       if (spend.address !== ownAddress) throw new Error('The local signing key does not match this wallet address.');
       const tx = new btc.Transaction();
       draft.utxos.forEach((utxo) => {
@@ -22269,7 +22285,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       resetWalletOnchainSendDraft();
 
       const destinationEl = qs('#walletOnchainSendAddress');
+      const amountEl = qs('#walletOnchainSendAmount');
+      const feeRateEl = qs('#walletOnchainSendFeeRate');
       if (destinationEl) destinationEl.value = String(destination || '').trim();
+      if (recipientMeta && Number(recipientMeta.amountSats) > 0 && amountEl) {
+        amountEl.value = String(Math.floor(Number(recipientMeta.amountSats)));
+      }
+      if (recipientMeta && Number(recipientMeta.feeRate) > 0 && feeRateEl) {
+        feeRateEl.value = String(Number(recipientMeta.feeRate));
+      }
 
       const availableEl = qs('#walletOnchainSendAvailable');
       const availableSubEl = qs('#walletOnchainSendAvailableSub');
@@ -22294,10 +22318,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (state.authMode === 'local' && state.localSecretKey) {
         try {
           const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
-          if (!ownPubkey) throw new Error('Your Nostr public key is not available yet.');
-          await ensureTaprootDerivationSelfTest();
-          const ownAddress = await deriveNipBcTaprootAddress(ownPubkey);
-          state.walletPageOnchainAddress = ownAddress;
+          const ownAddress = await getSifakaOnchainWalletAddress(ownPubkey);
 
           const [utxos, feeRate] = await Promise.all([
             fetchWalletOnchainUtxos(ownAddress),
@@ -22509,7 +22530,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (!bitcoinAddress) {
           mainchainBalanceEl.textContent = '—';
           if (mainchainPendingEl) mainchainPendingEl.textContent = ownPubkey
-            ? 'Your NIP-BC Taproot address is derived automatically from your Nostr public key.'
+            ? 'Your Taproot address is derived automatically from your Nostr public key.'
             : 'Sign in to derive your NIP-BC Taproot address automatically.';
           if (mainchainAddressEl) mainchainAddressEl.textContent = 'No address available';
           if (mainchainStatusEl) { mainchainStatusEl.textContent = 'Not configured'; mainchainStatusEl.className = 'wallet-status-chip'; }
@@ -24354,7 +24375,8 @@ window.saveAppSettings = function () {
       hostPubkey: '',
       hostName: '',
       lud16: '',
-      onchainAddress: ''
+      onchainAddress: '',
+      onchainLoadToken: 0
     };
 
     function getTheaterDonationStream() {
@@ -24363,30 +24385,19 @@ window.saveAppSettings = function () {
 
     async function resolveTheaterDonationPubkey(stream) {
       if (!stream) return '';
-
       const candidates = [];
       const addCandidate = (value) => {
         const raw = String(value || '').trim().toLowerCase();
         if (!raw) return;
         const hex = normalizePubkeyHex(raw);
-        if (hex) {
-          candidates.push(hex);
-          return;
-        }
-        if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(raw)) {
-          candidates.push(raw);
-        }
+        if (hex) candidates.push(hex);
+        else if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(raw)) candidates.push(raw);
       };
 
-      // Prefer the parsed streamer/host key, then the publishing key.
-      // Also inspect the raw event publisher because cached/older stream objects
-      // can omit the normalized host fields.
       addCandidate(stream.hostPubkey);
       addCandidate(stream.pubkey);
       addCandidate(stream.raw && stream.raw.pubkey);
 
-      // Platform-published NIP-53 events can carry the real streamer in a
-      // p tag even when the normalized stream object did not preserve it.
       const tags = stream.raw && Array.isArray(stream.raw.tags) ? stream.raw.tags : [];
       let fallbackPTag = '';
       for (const tag of tags) {
@@ -24395,26 +24406,19 @@ window.saveAppSettings = function () {
         const role = String(tag[3] || tag[2] || '').trim().toLowerCase();
         if (role === 'host' || role === 'streamer') {
           addCandidate(value);
-          if (candidates.length) {
-            const preferred = candidates[candidates.length - 1];
-            if (normalizePubkeyHex(preferred)) return normalizePubkeyHex(preferred);
-            if (/^npub1/i.test(preferred)) {
-              const decoded = await decodeNpubToPubkey(preferred);
-              if (decoded) return decoded;
-            }
+          const preferred = candidates[candidates.length - 1];
+          const preferredHex = normalizePubkeyHex(preferred);
+          if (preferredHex) return preferredHex;
+          if (/^npub1/i.test(preferred)) {
+            const decoded = await decodeNpubToPubkey(preferred);
+            if (decoded) return decoded;
           }
         }
         if (!fallbackPTag) fallbackPTag = value;
       }
 
-      // The canonical live-event address itself contains the event publisher
-      // pubkey. This is a safe final fallback for self-published streams.
       const addressMatch = String(stream.address || '').trim().match(/^[0-9]+:([0-9a-f]{64}):/i);
       if (addressMatch) addCandidate(addressMatch[1]);
-
-      // Keep one unqualified p-tag as the last candidate only when nothing
-      // else was available. This covers older NIP-53 publishers that omit
-      // an explicit "host" role on the p tag.
       if (fallbackPTag) addCandidate(fallbackPTag);
 
       for (const candidate of candidates) {
@@ -24425,7 +24429,6 @@ window.saveAppSettings = function () {
           if (decoded) return decoded;
         }
       }
-
       return '';
     }
 
@@ -24461,16 +24464,152 @@ window.saveAppSettings = function () {
 
       const recipient = qs('#theaterDonationRecipient');
       const lightningRecipient = qs('#theaterDonationLightningRecipient');
+      const onchainRecipient = qs('#theaterDonationOnchainRecipient');
       const lightningOption = qs('#theaterDonationLightningOption');
       const chooseNote = qs('#theaterDonationChooseNote');
       if (recipient) recipient.textContent = 'Donating to ' + hostLabel + '.';
       if (lightningRecipient) lightningRecipient.textContent = 'Donating to ' + hostLabel + '.';
+      if (onchainRecipient) onchainRecipient.textContent = 'Donating to ' + hostLabel + '.';
       if (lightningOption) lightningOption.hidden = !theaterDonationContext.lud16;
       if (chooseNote) {
         chooseNote.textContent = theaterDonationContext.lud16
-          ? 'On-Chain uses the Taproot Bitcoin wallet derived from this streamer\'s Nostr public key. Lightning is shown only because this profile has a Lightning address.'
-          : 'On-Chain uses the Taproot Bitcoin wallet derived from this streamer\'s Nostr public key. Lightning is hidden because this profile has no Lightning address.';
+          ? 'On-Chain uses the streamer\'s Nostr public key to derive the native Taproot address. Lightning is shown because this profile has a Lightning address.'
+          : 'On-Chain uses the streamer\'s Nostr public key to derive the native Taproot address. Lightning is hidden because this profile has no Lightning address.';
       }
+    }
+
+    async function refreshTheaterOnchainRecipientAddress(stream, preferredPubkey = '') {
+      const recipientInput = qs('#theaterDonationOnchainAddress');
+      const recipientKeyEl = qs('#theaterDonationOnchainKey');
+      const recipientStatusEl = qs('#theaterDonationOnchainAddressStatus');
+      const retryBtn = qs('#theaterDonationOnchainRetryBtn');
+      const token = ++theaterDonationContext.onchainLoadToken;
+
+      if (recipientInput) recipientInput.value = '';
+      if (recipientKeyEl) recipientKeyEl.textContent = preferredPubkey
+        ? shortNpubForDisplay(preferredPubkey)
+        : 'Resolving streamer identity…';
+      if (recipientStatusEl) recipientStatusEl.textContent = 'Loading recipient Taproot address…';
+      if (retryBtn) retryBtn.disabled = true;
+
+      try {
+        const resolved = preferredPubkey || await resolveTheaterDonationPubkey(stream);
+        if (token !== theaterDonationContext.onchainLoadToken) return false;
+        if (!resolved) throw new Error('The streamer public key is not available yet.');
+
+        theaterDonationContext.hostPubkey = resolved;
+        if (recipientKeyEl) recipientKeyEl.textContent = shortNpubForDisplay(resolved);
+        fetchProfileIfNeeded(resolved).then(() => {
+          if (token !== theaterDonationContext.onchainLoadToken) return;
+          const profile = getTheaterDonationProfile(stream, resolved);
+          const label = getTheaterDonationHostLabel(stream, profile);
+          theaterDonationContext.hostName = label;
+          const recipientLabel = qs('#theaterDonationOnchainRecipient');
+          if (recipientLabel) recipientLabel.textContent = 'Donating to ' + label + '.';
+        }).catch(() => {});
+
+        const address = await getProfileBitcoinAddress(resolved);
+        if (token !== theaterDonationContext.onchainLoadToken) return false;
+        if (!address) throw new Error('Could not derive the streamer\'s Taproot Bitcoin address.');
+
+        theaterDonationContext.onchainAddress = address;
+        if (recipientInput) recipientInput.value = address;
+        if (recipientStatusEl) recipientStatusEl.textContent = 'Recipient Taproot address ready.';
+        if (retryBtn) retryBtn.disabled = false;
+        return true;
+      } catch (err) {
+        if (token !== theaterDonationContext.onchainLoadToken) return false;
+        theaterDonationContext.onchainAddress = '';
+        if (recipientInput) recipientInput.value = '';
+        if (recipientStatusEl) recipientStatusEl.textContent = err?.message || 'Recipient Taproot address is not available yet. You can paste a Bitcoin address above or retry.';
+        if (retryBtn) retryBtn.disabled = false;
+        return false;
+      }
+    }
+
+    async function loadTheaterOnchainWalletSummary() {
+      const senderEl = qs('#theaterDonationOnchainSender');
+      const availableEl = qs('#theaterDonationOnchainAvailable');
+      const availableSubEl = qs('#theaterDonationOnchainAvailableSub');
+      const feeEl = qs('#theaterDonationOnchainFee');
+      const feeSubEl = qs('#theaterDonationOnchainFeeSub');
+
+      if (senderEl) senderEl.textContent = 'Loading…';
+      if (availableEl) availableEl.textContent = 'Loading…';
+      if (availableSubEl) availableSubEl.textContent = 'Loading wallet UTXOs…';
+      if (feeEl) feeEl.textContent = 'Loading…';
+      if (feeSubEl) feeSubEl.textContent = 'Current mempool recommendation';
+
+      try {
+        const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+        const ownAddress = await getSifakaOnchainWalletAddress(ownPubkey);
+        if (senderEl) senderEl.textContent = shortBitcoinAddress(ownAddress) + ' (same Wallet page address)';
+
+        const [utxoResult, feeResult] = await Promise.allSettled([
+          fetchWalletOnchainUtxos(ownAddress),
+          fetchWalletOnchainFeeRate()
+        ]);
+
+        if (utxoResult.status === 'fulfilled') {
+          const utxos = Array.isArray(utxoResult.value) ? utxoResult.value : [];
+          const availableSats = utxos.reduce((sum, u) => sum + Math.floor(Number(u.value || 0)), 0);
+          if (availableEl) availableEl.textContent = formatCount(availableSats) + ' sats';
+          if (availableSubEl) availableSubEl.textContent = availableSats
+            ? 'Wallet UTXOs available to the local signer. Network fee is separate.'
+            : 'No spendable UTXOs found for this wallet.';
+        } else {
+          if (availableEl) availableEl.textContent = 'Unavailable';
+          if (availableSubEl) availableSubEl.textContent = utxoResult.reason?.message || 'Could not load wallet UTXOs.';
+        }
+
+        if (feeResult.status === 'fulfilled') {
+          const feeRate = Number(feeResult.value || 0);
+          if (feeEl) feeEl.textContent = feeRate + ' sat/vB';
+          if (feeSubEl) feeSubEl.textContent = 'Suggested network fee rate.';
+          const feeRateInput = qs('#theaterDonationOnchainFeeRate');
+          if (feeRateInput) feeRateInput.value = String(feeRate);
+        } else {
+          if (feeEl) feeEl.textContent = 'Unavailable';
+          if (feeSubEl) feeSubEl.textContent = feeResult.reason?.message || 'Enter a fee rate manually.';
+        }
+
+        if (state.authMode !== 'local' || !state.localSecretKey) {
+          if (availableSubEl) availableSubEl.textContent = 'Your Taproot receive wallet is available, but spending requires a local Nostr key login.';
+        }
+      } catch (err) {
+        if (senderEl) senderEl.textContent = 'Unavailable';
+        if (availableEl) availableEl.textContent = 'Unavailable';
+        if (availableSubEl) availableSubEl.textContent = err?.message || 'Could not load your Taproot wallet.';
+        if (feeEl) feeEl.textContent = 'Unavailable';
+        if (feeSubEl) feeSubEl.textContent = 'Enter a fee rate manually.';
+      }
+    }
+
+    function resetTheaterOnchainView() {
+      const ids = [
+        'theaterDonationOnchainAddressStatus',
+        'theaterDonationOnchainSender',
+        'theaterDonationOnchainAvailable',
+        'theaterDonationOnchainAvailableSub',
+        'theaterDonationOnchainFee',
+        'theaterDonationOnchainFeeSub',
+        'theaterDonationOnchainStatus',
+        'theaterDonationOnchainSummary'
+      ];
+      ids.forEach((id) => {
+        const el = qs('#' + id);
+        if (el) el.textContent = '';
+      });
+      const address = qs('#theaterDonationOnchainAddress');
+      const amount = qs('#theaterDonationOnchainAmount');
+      const feeRate = qs('#theaterDonationOnchainFeeRate');
+      const key = qs('#theaterDonationOnchainKey');
+      if (address) address.value = '';
+      if (amount) amount.value = '21';
+      if (feeRate) feeRate.value = '';
+      if (key) key.textContent = 'Resolving streamer identity…';
+      const btn = qs('#theaterDonationOnchainReviewBtn');
+      if (btn) { btn.disabled = false; btn.textContent = 'Continue to Review'; }
     }
 
     window.theaterDonation = async function () {
@@ -24481,28 +24620,30 @@ window.saveAppSettings = function () {
       const modal = qs('#theaterDonationModal');
       if (!modal) return;
 
-      const title = qs('#theaterDonationTitle');
-      const resolvedPubkey = await resolveTheaterDonationPubkey(stream);
-      const initialProfile = getTheaterDonationProfile(stream, resolvedPubkey);
-      if (title) title.textContent = 'Support ' + getTheaterDonationHostLabel(stream, initialProfile);
-
-      try {
-        if (resolvedPubkey && !state.profilesByPubkey.has(resolvedPubkey)) {
-          await fetchProfileIfNeeded(resolvedPubkey);
-        }
-      } catch (_) {}
-
-      const profile = getTheaterDonationProfile(stream, resolvedPubkey);
-      populateTheaterDonationChooser(stream, profile, resolvedPubkey);
+      const initialPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+      const initialProfile = getTheaterDonationProfile(stream, initialPubkey);
+      if (qs('#theaterDonationTitle')) qs('#theaterDonationTitle').textContent = 'Support ' + getTheaterDonationHostLabel(stream, initialProfile);
+      populateTheaterDonationChooser(stream, initialProfile, initialPubkey);
       showTheaterDonationChooser();
       modal.classList.add('open');
+
+      resolveTheaterDonationPubkey(stream).then(async (resolvedPubkey) => {
+        if (!resolvedPubkey || theaterDonationContext.streamAddress !== stream.address) return;
+        theaterDonationContext.hostPubkey = resolvedPubkey;
+        try { await fetchProfileIfNeeded(resolvedPubkey); } catch (_) {}
+        const profile = getTheaterDonationProfile(stream, resolvedPubkey);
+        populateTheaterDonationChooser(stream, profile, resolvedPubkey);
+        if (qs('#theaterDonationTitle')) qs('#theaterDonationTitle').textContent = 'Support ' + getTheaterDonationHostLabel(stream, profile);
+      }).catch(() => {});
     };
 
     window.showTheaterDonationChooser = function () {
       const choose = qs('#theaterDonationChooseView');
       const lightning = qs('#theaterDonationLightningView');
+      const onchain = qs('#theaterDonationOnchainView');
       if (choose) choose.hidden = false;
       if (lightning) lightning.hidden = true;
+      if (onchain) onchain.hidden = true;
       refreshTheaterDonationWalletStatus();
       const amount = qs('#theaterDonationAmount');
       if (amount && (!amount.value || Number(amount.value) <= 0)) amount.value = '21';
@@ -24518,8 +24659,10 @@ window.saveAppSettings = function () {
         hostPubkey: '',
         hostName: '',
         lud16: '',
-        onchainAddress: ''
+        onchainAddress: '',
+        onchainLoadToken: 0
       };
+      resetTheaterOnchainView();
       const status = qs('#theaterDonationStatus');
       if (status) status.textContent = '';
       const amount = qs('#theaterDonationAmount');
@@ -24530,47 +24673,24 @@ window.saveAppSettings = function () {
       const stream = getTheaterDonationStream();
       if (!stream) return;
 
-      const hostPubkey = theaterDonationContext.hostPubkey || await resolveTheaterDonationPubkey(stream);
+      const hostPubkey = theaterDonationContext.hostPubkey || normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
       const profile = getTheaterDonationProfile(stream, hostPubkey);
       const hostLabel = getTheaterDonationHostLabel(stream, profile);
 
       if (method === 'onchain') {
-        try {
-          if (!hostPubkey) throw new Error('The streamer public key is not available yet.');
+        const choose = qs('#theaterDonationChooseView');
+        const lightning = qs('#theaterDonationLightningView');
+        const onchain = qs('#theaterDonationOnchainView');
+        if (choose) choose.hidden = true;
+        if (lightning) lightning.hidden = true;
+        if (onchain) onchain.hidden = false;
 
-          // Use the resolved x-only Nostr pubkey directly. There is no need to
-          // round-trip through npub, which can make this click path depend on
-          // an optional Nostr-tools decoder being ready at exactly this moment.
-          // BIP-341 then derives the recipient's native P2TR address from that
-          // x-only internal key.
-          const address = await getProfileBitcoinAddress(hostPubkey);
-          if (!address) throw new Error("Could not derive the streamer's on-chain Bitcoin address.");
+        const recipientLabel = qs('#theaterDonationOnchainRecipient');
+        if (recipientLabel) recipientLabel.textContent = 'Donating to ' + hostLabel + '.';
+        resetTheaterOnchainView();
 
-          theaterDonationContext.onchainAddress = address;
-
-          // Open the wallet send dialog only after a verified recipient address
-          // exists. This keeps Theater Mode from appearing to do nothing when
-          // recipient resolution is still pending, and lets the existing send
-          // dialog show the address, sender balance, and fee information.
-          if (typeof window.openWalletOnchainSend !== 'function') {
-            throw new Error('The on-chain send dialog is unavailable. Please refresh Sifaka and try again.');
-          }
-
-          // Only pass data the send dialog actually needs. In particular, do
-          // not format/decode an npub here; the verified x-only key and derived
-          // bc1p address are already sufficient for the donation flow.
-          const opened = await window.openWalletOnchainSend(address, {
-            recipientPubkey: hostPubkey,
-            recipientName: hostLabel
-          });
-          if (opened === false) {
-            throw new Error('The on-chain send dialog could not be opened.');
-          }
-          closeTheaterDonation();
-        } catch (err) {
-          const note = qs('#theaterDonationChooseNote');
-          if (note) note.textContent = err?.message || "Could not load the streamer's on-chain Bitcoin address.";
-        }
+        refreshTheaterOnchainRecipientAddress(stream, hostPubkey).catch(() => {});
+        loadTheaterOnchainWalletSummary().catch(() => {});
         return;
       }
 
@@ -24583,13 +24703,22 @@ window.saveAppSettings = function () {
         theaterDonationContext.lud16 = String(profile.lud16 || '').trim();
         const choose = qs('#theaterDonationChooseView');
         const lightning = qs('#theaterDonationLightningView');
+        const onchain = qs('#theaterDonationOnchainView');
         if (choose) choose.hidden = true;
         if (lightning) lightning.hidden = false;
+        if (onchain) onchain.hidden = true;
         refreshTheaterDonationWalletStatus();
         const status = qs('#theaterDonationStatus');
         if (status) status.textContent = '';
         setTimeout(() => qs('#theaterDonationAmount')?.focus(), 0);
       }
+    };
+
+    window.retryTheaterOnchainAddress = async function () {
+      const stream = getTheaterDonationStream();
+      if (!stream) return;
+      const pubkey = theaterDonationContext.hostPubkey || await resolveTheaterDonationPubkey(stream);
+      refreshTheaterOnchainRecipientAddress(stream, pubkey).catch(() => {});
     };
 
     window.setTheaterDonationAmount = function (amount) {
@@ -24598,6 +24727,56 @@ window.saveAppSettings = function () {
       qsa('[data-donation-amount]').forEach((button) => {
         button.classList.toggle('active', Number(button.getAttribute('data-donation-amount')) === Number(amount));
       });
+    };
+
+    window.setTheaterOnchainDonationAmount = function (amount) {
+      const input = qs('#theaterDonationOnchainAmount');
+      if (input) input.value = String(Math.max(1, Math.floor(Number(amount) || 1)));
+      qsa('[data-onchain-donation-amount]').forEach((button) => {
+        button.classList.toggle('active', Number(button.getAttribute('data-onchain-donation-amount')) === Number(amount));
+      });
+    };
+
+    window.prepareTheaterOnchainDonation = async function () {
+      const addressInput = qs('#theaterDonationOnchainAddress');
+      const amountInput = qs('#theaterDonationOnchainAmount');
+      const feeInput = qs('#theaterDonationOnchainFeeRate');
+      const status = qs('#theaterDonationOnchainStatus');
+      const button = qs('#theaterDonationOnchainReviewBtn');
+      const destination = String(addressInput?.value || '').trim();
+      const amountSats = Math.floor(Number(amountInput?.value || 0));
+      const feeRate = Number(feeInput?.value || 0);
+
+      if (!/^(bc1[ac-hj-np-z02-9]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,62})$/i.test(destination)) {
+        if (status) status.textContent = 'Enter or wait for a valid Bitcoin mainnet recipient address.';
+        return;
+      }
+      if (!Number.isFinite(amountSats) || amountSats < 1) {
+        if (status) status.textContent = 'Enter a valid donation amount in sats.';
+        return;
+      }
+      if (!Number.isFinite(feeRate) || feeRate <= 0) {
+        if (status) status.textContent = 'Enter a valid fee rate in sat/vB.';
+        return;
+      }
+
+      try {
+        requireLocalOnchainSigner();
+        if (button) { button.disabled = true; button.textContent = 'Opening Review…'; }
+        const stream = getTheaterDonationStream();
+        const profile = getTheaterDonationProfile(stream, theaterDonationContext.hostPubkey);
+        const opened = await window.openWalletOnchainSend(destination, {
+          recipientPubkey: theaterDonationContext.hostPubkey,
+          recipientName: getTheaterDonationHostLabel(stream, profile),
+          amountSats,
+          feeRate
+        });
+        if (opened === false) throw new Error('The on-chain review dialog could not be opened.');
+        closeTheaterDonation();
+      } catch (err) {
+        if (button) { button.disabled = false; button.textContent = 'Continue to Review'; }
+        if (status) status.textContent = err?.message || 'On-chain sending requires a local Nostr key login.';
+      }
     };
 
     window.sendTheaterLightningDonation = async function () {
@@ -24623,7 +24802,7 @@ window.saveAppSettings = function () {
         return;
       }
 
-      const targetPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+      const targetPubkey = normalizePubkeyHex(theaterDonationContext.hostPubkey || stream.hostPubkey || stream.pubkey || '');
       if (!targetPubkey) {
         if (status) status.textContent = 'The streamer public key is not available yet.';
         return;
@@ -24639,7 +24818,7 @@ window.saveAppSettings = function () {
           ['a', stream.address],
           ['k', String(KIND_LIVE_EVENT)]
         ]);
-        const zapRequest = await signEvent(9734, '\u26A1 donation from Sifaka Live', zapTags);
+        const zapRequest = await signEvent(9734, '⚡ donation from Sifaka Live', zapTags);
         const paymentMethod = await payZapInvoiceForLud16(lud16, amountSats * 1000, zapRequest, { zapInfo });
         if (status) status.textContent = 'Donation sent successfully via ' + (paymentMethod === 'nwc' ? 'Nostr Wallet Connect.' : 'your browser Lightning wallet.');
         if (btn) btn.textContent = 'Donation sent';
