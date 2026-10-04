@@ -22332,6 +22332,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (destination && qs('#walletOnchainSendAmount')) qs('#walletOnchainSendAmount').focus();
         else if (input) input.focus();
       }, 0);
+
+      return true;
     };
 
     window.closeWalletOnchainSend = function () {
@@ -24377,8 +24379,11 @@ window.saveAppSettings = function () {
       };
 
       // Prefer the parsed streamer/host key, then the publishing key.
+      // Also inspect the raw event publisher because cached/older stream objects
+      // can omit the normalized host fields.
       addCandidate(stream.hostPubkey);
       addCandidate(stream.pubkey);
+      addCandidate(stream.raw && stream.raw.pubkey);
 
       // Platform-published NIP-53 events can carry the real streamer in a
       // p tag even when the normalized stream object did not preserve it.
@@ -24547,11 +24552,20 @@ window.saveAppSettings = function () {
           // exists. This keeps Theater Mode from appearing to do nothing when
           // recipient resolution is still pending, and lets the existing send
           // dialog show the address, sender balance, and fee information.
-          window.openWalletOnchainSend(address, {
+          if (typeof window.openWalletOnchainSend !== 'function') {
+            throw new Error('The on-chain send dialog is unavailable. Please refresh Sifaka and try again.');
+          }
+
+          // Only pass data the send dialog actually needs. In particular, do
+          // not format/decode an npub here; the verified x-only key and derived
+          // bc1p address are already sufficient for the donation flow.
+          const opened = await window.openWalletOnchainSend(address, {
             recipientPubkey: hostPubkey,
-            recipientNpub: formatNpubForDisplay(hostPubkey),
             recipientName: hostLabel
           });
+          if (opened === false) {
+            throw new Error('The on-chain send dialog could not be opened.');
+          }
           closeTheaterDonation();
         } catch (err) {
           const note = qs('#theaterDonationChooseNote');
