@@ -846,6 +846,70 @@ body.nest-preview-open{overflow:hidden}
       <div class="theater-donation-note" id="theaterDonationChooseNote"></div>
     </div>
 
+    <div class="theater-donation-view" id="theaterDonationOnchainView" hidden>
+      <div class="theater-donation-back-row">
+        <button class="btn btn-ghost" type="button" onclick="showTheaterDonationChooser()">← Back</button>
+      </div>
+      <div class="theater-donation-recipient" id="theaterDonationOnchainRecipient"></div>
+
+      <div class="theater-donation-onchain-recipient-card">
+        <div>
+          <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
+          <strong id="theaterDonationOnchainKey">Resolving streamer identity…</strong>
+        </div>
+        <button class="btn btn-ghost theater-donation-retry-btn" id="theaterDonationOnchainRetryBtn" type="button" onclick="retryTheaterOnchainAddress()">Retry address</button>
+      </div>
+
+      <label class="theater-donation-custom-amount theater-donation-onchain-address-field">Recipient Bitcoin address
+        <input id="theaterDonationOnchainAddress" type="text" autocomplete="off" spellcheck="false" placeholder="bc1p..." inputmode="text">
+      </label>
+      <div class="theater-donation-onchain-address-status" id="theaterDonationOnchainAddressStatus" aria-live="polite">Loading recipient Taproot address…</div>
+
+      <div class="theater-donation-onchain-wallet-grid">
+        <div class="theater-donation-onchain-wallet-card">
+          <span>Sending from</span>
+          <strong id="theaterDonationOnchainSender">Loading…</strong>
+          <small>Same Taproot wallet and address used on the Wallet page.</small>
+        </div>
+        <div class="theater-donation-onchain-wallet-card">
+          <span>Available to send</span>
+          <strong id="theaterDonationOnchainAvailable">Loading…</strong>
+          <small id="theaterDonationOnchainAvailableSub">Loading wallet UTXOs…</small>
+        </div>
+        <div class="theater-donation-onchain-wallet-card">
+          <span>Suggested network fee</span>
+          <strong id="theaterDonationOnchainFee">Loading…</strong>
+          <small id="theaterDonationOnchainFeeSub">Current mempool recommendation</small>
+        </div>
+      </div>
+
+      <div class="theater-donation-amount-label">Donation amount</div>
+      <div class="theater-donation-presets">
+        <button type="button" data-onchain-donation-amount="21" onclick="setTheaterOnchainDonationAmount(21)">21 sats</button>
+        <button type="button" data-onchain-donation-amount="100" onclick="setTheaterOnchainDonationAmount(100)">100 sats</button>
+        <button type="button" data-onchain-donation-amount="500" onclick="setTheaterOnchainDonationAmount(500)">500 sats</button>
+        <button type="button" data-onchain-donation-amount="1000" onclick="setTheaterOnchainDonationAmount(1000)">1,000 sats</button>
+        <button type="button" data-onchain-donation-amount="5000" onclick="setTheaterOnchainDonationAmount(5000)">5,000 sats</button>
+      </div>
+      <div class="theater-donation-onchain-form-grid">
+        <label class="theater-donation-custom-amount">Custom amount (sats)
+          <input id="theaterDonationOnchainAmount" type="number" min="1" step="1" inputmode="numeric" value="21" placeholder="Amount in sats">
+        </label>
+        <label class="theater-donation-custom-amount">Fee rate (sat/vB)
+          <input id="theaterDonationOnchainFeeRate" type="number" min="1" step="0.1" inputmode="decimal" placeholder="1">
+        </label>
+      </div>
+
+      <div class="theater-donation-onchain-summary" id="theaterDonationOnchainSummary">
+        Your donation will be sent from your Sifaka Taproot wallet after you review the transaction.
+      </div>
+      <div class="theater-donation-actions">
+        <button class="btn btn-primary" type="button" id="theaterDonationOnchainReviewBtn" onclick="prepareTheaterOnchainDonation()">Continue to Review</button>
+        <button class="btn btn-ghost" type="button" onclick="closeTheaterDonation()">Cancel</button>
+      </div>
+      <div class="theater-donation-status" id="theaterDonationOnchainStatus" aria-live="polite"></div>
+    </div>
+
     <div class="theater-donation-view" id="theaterDonationLightningView" hidden>
       <div class="theater-donation-back-row">
         <button class="btn btn-ghost" type="button" onclick="showTheaterDonationChooser()">← Back</button>
@@ -1217,7 +1281,7 @@ body.nest-preview-open{overflow:hidden}
         </div>
         <div class="wallet-mainchain-receive-label">Receive Bitcoin</div>
         <div class="wallet-mainchain-receive-address" id="walletMainchainAddress">No address available</div>
-        <div class="wallet-mainchain-receive-help">This is your NIP-BC Taproot receive address, derived directly from your Nostr public key.</div>
+        <div class="wallet-mainchain-receive-help">This is your native Taproot (BIP-341) receive address, derived directly from your Nostr public key.</div>
         <div class="wallet-mainchain-receive-actions">
           <button class="btn btn-ghost wallet-small-btn" id="walletMainchainCopyBtn" type="button" onclick="copyWalletOnchainAddress()">Copy address</button>
           <button class="btn btn-ghost wallet-small-btn" type="button" onclick="showWalletAddressQr('bitcoin')">Enlarge QR</button>
