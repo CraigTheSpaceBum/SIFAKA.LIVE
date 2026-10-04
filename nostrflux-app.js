@@ -15655,6 +15655,75 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function updateTheaterSatsDisplay(stream) {
+    const current = stream || state.streamsByAddress.get(state.selectedStreamAddress);
+    const satsEl = qs('#theaterSats');
+    if (!satsEl) return;
+    if (!current) {
+      satsEl.textContent = '-';
+      return;
+    }
+
+    const total = Number(state.streamZapTotals.get(current.address) || 0);
+    satsEl.textContent = formatCount(total);
+  }
+
+  function renderStreamZapList(stream) {
+    const wrap = qs('#streamZapList');
+    const current = stream || state.streamsByAddress.get(state.selectedStreamAddress);
+    if (!wrap) return;
+    if (!current) {
+      wrap.innerHTML = '';
+      return;
+    }
+
+    const entries = (state.streamRecentZapsByAddress.get(current.address) || []).slice(0, 3);
+    wrap.innerHTML = '';
+    if (!entries.length) return;
+
+    entries.forEach((entry) => {
+      const sender = normalizePubkeyHex(entry.senderPubkey || '');
+      const profile = sender ? profileFor(sender) : null;
+      const senderName = (profile && (profile.display_name || profile.name)) || entry.displayName || (sender ? shortHex(sender) : 'Anon');
+      const senderPicture = (profile && profile.picture) || entry.picture || '';
+
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'stream-zap-pill';
+      chip.title = entry.note || `${formatCount(entry.sats)} sats`;
+      if (sender) {
+        chip.addEventListener('click', () => showProfileByPubkey(sender));
+      }
+
+      const av = document.createElement('div');
+      av.className = 'hosted-by-av';
+      setAvatarEl(av, senderPicture, pickAvatar(sender || senderName));
+
+      const inner = document.createElement('div');
+      inner.className = 'hosted-by-inner';
+
+      const amount = document.createElement('span');
+      amount.className = 'hosted-by-label';
+      amount.textContent = `${formatCount(entry.sats)} sats`;
+
+      const name = document.createElement('span');
+      name.className = 'hosted-by-name';
+      name.textContent = senderName;
+
+      inner.appendChild(amount);
+      inner.appendChild(name);
+      chip.appendChild(av);
+      chip.appendChild(inner);
+      wrap.appendChild(chip);
+
+      if (sender && !state.profilesByPubkey.has(sender)) {
+        fetchProfileIfNeeded(sender).then(() => {
+          if (state.selectedStreamAddress === current.address) renderStreamZapList(current);
+        }).catch(() => {});
+      }
+    });
+  }
+
   function addStreamZapReceipt(ev, stream, opts = {}) {
     const current = stream || state.streamsByAddress.get(state.selectedStreamAddress);
     if (!current || !ev || !ev.id) return false;
@@ -15672,9 +15741,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     seen.add(parsed.eventId);
     capTheaterEventSet(seen, THEATER_ZAP_SEEN_ID_CAP);
 
-    // Zap receipts are rendered only in live chat. Do not maintain a second
-    // zap-pill list or aggregate sats counter in Theater.
+    const prevTotal = Number(state.streamZapTotals.get(current.address) || 0);
+    state.streamZapTotals.set(current.address, prevTotal + Number(parsed.sats || 0));
 
+    const list = state.streamRecentZapsByAddress.get(current.address) || [];
+    list.unshift(parsed);
+    list.sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+    state.streamRecentZapsByAddress.set(current.address, list.slice(0, 20));
+
+    if (!opts.deferUi) {
+      updateTheaterSatsDisplay(current);
+      renderStreamZapList(current);
+    }
     if (!opts.suppressChatEntry && allowChatEntry && opts.renderChatEntry !== false) {
       renderChatZapReceipt(parsed, {
         assumeChronological: !!opts.assumeChronological,
@@ -17112,6 +17190,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.streamRecentZapsByAddress.set(stream.address, []);
     state.streamZapEventIdsByAddress.set(stream.address, new Set());
     renderStreamReactionsUi(stream);
+    updateTheaterSatsDisplay(stream);
+    renderStreamZapList(stream);
 
     const seenIds = new Set();
     const seenReactionIds = new Set();
