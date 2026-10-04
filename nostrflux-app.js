@@ -24533,21 +24533,26 @@ window.saveAppSettings = function () {
         try {
           if (!hostPubkey) throw new Error('The streamer public key is not available yet.');
 
-          // Intentionally round-trip the streamer's identity through npub so
-          // the theater donation path works from the same public identifier
-          // users see/copy on profile and chat. The helper decodes the npub
-          // back to the x-only pubkey before deriving the Taproot address.
-          const hostNpub = formatNpubForDisplay(hostPubkey);
-          const address = await getProfileBitcoinAddress(hostNpub || hostPubkey);
+          // Use the resolved x-only Nostr pubkey directly. There is no need to
+          // round-trip through npub, which can make this click path depend on
+          // an optional Nostr-tools decoder being ready at exactly this moment.
+          // BIP-341 then derives the recipient's native P2TR address from that
+          // x-only internal key.
+          const address = await getProfileBitcoinAddress(hostPubkey);
           if (!address) throw new Error("Could not derive the streamer's on-chain Bitcoin address.");
 
           theaterDonationContext.onchainAddress = address;
-          closeTheaterDonation();
+
+          // Open the wallet send dialog only after a verified recipient address
+          // exists. This keeps Theater Mode from appearing to do nothing when
+          // recipient resolution is still pending, and lets the existing send
+          // dialog show the address, sender balance, and fee information.
           window.openWalletOnchainSend(address, {
             recipientPubkey: hostPubkey,
-            recipientNpub: hostNpub,
+            recipientNpub: formatNpubForDisplay(hostPubkey),
             recipientName: hostLabel
           });
+          closeTheaterDonation();
         } catch (err) {
           const note = qs('#theaterDonationChooseNote');
           if (note) note.textContent = err?.message || "Could not load the streamer's on-chain Bitcoin address.";
