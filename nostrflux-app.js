@@ -16605,9 +16605,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     avEl.classList.toggle('nip05-square', !!chatNip05);
     avEl.onclick = () => showProfileByPubkey(messagePubkey);
     const nameEl = qs('.c-name', row);
-    nameEl.textContent = state.profilesByPubkey.has(messagePubkey)
-      ? (p.display_name || p.name || shortHex(messagePubkey))
-      : shortHex(messagePubkey);
+    nameEl.textContent = p.display_name || p.name || 'Anonymous';
     nameEl.onclick = () => showProfileByPubkey(messagePubkey);
     const timeEl = qs('.c-time', row);
     if (timeEl) {
@@ -16646,6 +16644,94 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     pruneTheaterChatRows(sc, maxRows);
     if (autoScroll && wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
+  function renderChatStreamReaction(ev, reactionMeta, opts = {}) {
+    const sc = qs('#chatScroll');
+    if (!sc || !ev || !ev.id || !reactionMeta) return;
+    const eventId = String(ev.id || '').trim();
+    if (!eventId) return;
+
+    const safeReactionKey = normalizeReactionContentKey(reactionMeta.key || reactionMeta.label || '');
+    if (!safeReactionKey || safeReactionKey === '-') return;
+
+    const existing = sc.querySelector(`.cmsg[data-reaction-id="${CSS.escape(eventId)}"]`);
+    if (existing) return;
+
+    const maxRows = Math.max(1, Number(opts.maxRows || theaterChatVisibleRowLimit()) || theaterChatVisibleRowLimit());
+    const autoScroll = opts.autoScroll !== false;
+    const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
+    const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
+    const profile = senderPubkey ? profileFor(senderPubkey) : null;
+    const displayName = (profile && (profile.display_name || profile.name)) || 'Anonymous';
+
+    const row = document.createElement('div');
+    row.className = `cmsg reaction-ev${safeReactionKey === '+' ? ' reaction-like-ev' : ''}`;
+    row.dataset.reactionId = eventId;
+    row.dataset.pubkey = senderPubkey;
+    row.innerHTML = '<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="chat-reaction-badge"></span><span class="c-time"></span></div><div class="c-text"></div></div>';
+
+    const avEl = qs('.c-av', row);
+    setAvatarEl(avEl, profile && profile.picture ? profile.picture : '', pickAvatar(senderPubkey || displayName));
+    const chatNip05 = senderPubkey ? getVerifiedNip05ForPubkey(senderPubkey, profile && profile.nip05 ? profile.nip05 : '') : '';
+    avEl.classList.toggle('nip05-square', !!chatNip05);
+    if (senderPubkey) avEl.onclick = () => showProfileByPubkey(senderPubkey);
+
+    const nameEl = qs('.c-name', row);
+    nameEl.textContent = displayName;
+    if (senderPubkey) nameEl.onclick = () => showProfileByPubkey(senderPubkey);
+
+    const badgeEl = qs('.chat-reaction-badge', row);
+    if (reactionMeta.imageUrl && isLikelyUrl(reactionMeta.imageUrl)) {
+      const img = document.createElement('img');
+      img.src = sanitizeMediaUrl(reactionMeta.imageUrl);
+      img.alt = reactionMeta.label || safeReactionKey;
+      img.loading = 'lazy';
+      img.className = 'chat-reaction-emoji-image';
+      badgeEl.appendChild(img);
+    } else {
+      badgeEl.textContent = reactionMeta.label || safeReactionKey;
+    }
+
+    const timeEl = qs('.c-time', row);
+    if (timeEl) {
+      timeEl.textContent = formatChatTimestamp(ev.created_at);
+      try { timeEl.title = new Date(Number(ev.created_at || 0) * 1000).toLocaleString(); } catch (_) {}
+    }
+
+    const textEl = qs('.c-text', row);
+    textEl.textContent = safeReactionKey === '+' ? 'liked the stream' : 'reacted to the stream';
+
+    insertChatRowChronological(sc, row, eventId, ev.created_at);
+    pruneTheaterChatRows(sc, maxRows);
+    if (autoScroll && wasNearBottom) sc.scrollTop = sc.scrollHeight;
+
+    if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) {
+      fetchProfileIfNeeded(senderPubkey, { skipNip05: true }).then(() => {
+        const updated = profileFor(senderPubkey);
+        const target = sc.querySelector(`.cmsg[data-reaction-id="${CSS.escape(eventId)}"]`);
+        if (!target || !updated) return;
+        const targetName = qs('.c-name', target);
+        if (targetName) targetName.textContent = updated.display_name || updated.name || 'Anonymous';
+        const targetAv = qs('.c-av', target);
+        if (targetAv) {
+          setAvatarEl(targetAv, updated.picture || '', pickAvatar(senderPubkey));
+          targetAv.classList.toggle('nip05-square', !!getVerifiedNip05ForPubkey(senderPubkey, updated.nip05 || ''));
+        }
+      }).catch(() => {});
+    }
+  }
+
+  function removeChatStreamReactionRow(reactionEventId) {
+    const safeId = String(reactionEventId || '').trim();
+    if (!safeId) return;
+    const sc = qs('#chatScroll');
+    if (!sc) return;
+    const escaped = (window.CSS && typeof window.CSS.escape === 'function')
+      ? window.CSS.escape(safeId)
+      : safeId.replace(/["\\]/g, '');
+    const row = sc.querySelector(`.cmsg[data-reaction-id="${escaped}"]`);
+    if (row && row.parentNode === sc) row.remove();
+  }
+
   function renderChatZapReceipt(entry, opts = {}) {
     const sc = qs('#chatScroll');
     if (!sc || !entry || !entry.eventId) return;
@@ -16659,8 +16745,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     const senderPubkey = normalizePubkeyHex(entry.senderPubkey || '');
     const profile = senderPubkey ? profileFor(senderPubkey) : null;
-    const fallbackName = senderPubkey ? shortHex(senderPubkey) : 'Anon';
-    const displayName = (profile && (profile.display_name || profile.name)) || entry.displayName || fallbackName;
+    const displayName = (profile && (profile.display_name || profile.name)) || entry.displayName || 'Anonymous';
     const picture = (profile && profile.picture) || entry.picture || '';
     const note = String(entry.note || '').trim();
 
@@ -17277,7 +17362,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
                 const verified = !!getVerifiedNip05ForPubkey(normalizedProfilePubkey, p.nip05 || '');
                 avEl.classList.toggle('nip05-square', verified);
               }
-              if (nameEl) nameEl.textContent = p.display_name || p.name || shortHex(normalizedProfilePubkey);
+              if (nameEl) nameEl.textContent = p.display_name || p.name || 'Anonymous';
             });
           },
           eose: () => {
@@ -17493,7 +17578,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (targetsStream) {
           const reactionMeta = parseReactionMeta(ev.content, ev.tags);
           if (!reactionMeta) return outcome;
-          applyStreamReaction(reactionMeta, normalizePubkeyHex(ev.pubkey), ev.id);
+
+          const reactionPubkey = normalizePubkeyHex(ev.pubkey);
+          const previousReactionId = reactionPubkey
+            ? state.streamReactionIdByKeyAndPubkey.get(streamReactionUserKey(reactionMeta.key, reactionPubkey))
+            : '';
+
+          applyStreamReaction(reactionMeta, reactionPubkey, ev.id);
+
+          if (previousReactionId && previousReactionId !== ev.id) {
+            removeChatStreamReactionRow(previousReactionId);
+          }
+
+          renderChatStreamReaction(ev, reactionMeta, {
+            maxRows: visibleChatRows,
+            autoScroll: false
+          });
           outcome.streamReactionsDirty = true;
           return outcome;
         }
@@ -17526,6 +17626,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (ev.kind === KIND_DELETION) {
         const deletedIds = allTagValues(ev.tags, 'e').filter((id) => /^[0-9a-f]{64}$/i.test(id));
         deletedIds.forEach((rid) => {
+          removeChatStreamReactionRow(rid);
           const streamReactionMeta = state.streamReactionEventById.get(rid);
           if (streamReactionMeta) {
             removeStreamReactionById(rid);
