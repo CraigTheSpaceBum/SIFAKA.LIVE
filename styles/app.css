@@ -7869,3 +7869,98 @@ body.nest-room-page-open{
   #nestRoomPage #nestRoomRetryBtn,
   .nest-preview-overlay #nestRoomRetryBtn{width:100%}
 }
+
+/* ======== THEATER ON-CHAIN DONATION STEP (0.2.6) ======== */
+.theater-donation-onchain-recipient-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+  margin:.65rem 0 .8rem;
+  padding:.75rem .8rem;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--surface2);
+}
+.theater-donation-onchain-recipient-card > div{min-width:0;display:flex;flex-direction:column;gap:.22rem;}
+.theater-donation-micro-label{
+  color:var(--muted);
+  font:600 .56rem/1.2 'DM Mono',monospace;
+  letter-spacing:.1em;
+}
+.theater-donation-onchain-recipient-card strong{
+  color:var(--text);
+  font:600 .68rem/1.35 'DM Mono',monospace;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.theater-donation-retry-btn{flex:0 0 auto;min-height:32px;padding:.35rem .6rem;font-size:.62rem;}
+.theater-donation-onchain-address-field{margin-top:.7rem;}
+.theater-donation-onchain-address-field input{
+  width:100%;
+  box-sizing:border-box;
+  margin-top:.32rem;
+}
+.theater-donation-onchain-address-status{
+  min-height:1.2rem;
+  margin-top:.4rem;
+  color:var(--muted);
+  font-size:.63rem;
+  line-height:1.4;
+}
+.theater-donation-onchain-wallet-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:.65rem;
+  margin:.8rem 0 1rem;
+}
+.theater-donation-onchain-wallet-card{
+  display:flex;
+  flex-direction:column;
+  gap:.28rem;
+  min-width:0;
+  padding:.72rem .75rem;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:linear-gradient(145deg,var(--surface2),var(--surface));
+}
+.theater-donation-onchain-wallet-card > span{
+  color:var(--muted);
+  font:600 .57rem/1.2 'DM Mono',monospace;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+.theater-donation-onchain-wallet-card strong{
+  color:var(--text);
+  font-size:.78rem;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.theater-donation-onchain-wallet-card small{
+  color:var(--text2);
+  font-size:.6rem;
+  line-height:1.35;
+}
+.theater-donation-onchain-form-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:.7rem;
+  margin-top:.7rem;
+}
+.theater-donation-onchain-summary{
+  margin-top:.7rem;
+  padding:.72rem .78rem;
+  border:1px solid var(--border);
+  border-radius:11px;
+  background:var(--surface2);
+  color:var(--text2);
+  font-size:.63rem;
+  line-height:1.45;
+}
+@media(max-width:760px){
+  .theater-donation-onchain-wallet-grid{grid-template-columns:1fr;}
+  .theater-donation-onchain-form-grid{grid-template-columns:1fr;}
+  .theater-donation-onchain-recipient-card{align-items:flex-start;flex-direction:column;}
+  .theater-donation-retry-btn{width:100%;}
+}
