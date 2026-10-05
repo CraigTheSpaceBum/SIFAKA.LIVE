@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.2.6-theater-onchain">
+<link rel="stylesheet" href="./styles/app.css?v=0.3.0-theater-donation-fix">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -853,17 +853,20 @@ body.nest-preview-open{overflow:hidden}
       <div class="theater-donation-recipient" id="theaterDonationOnchainRecipient"></div>
 
       <div class="theater-donation-onchain-recipient-card">
-        <div>
-          <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
-          <strong id="theaterDonationOnchainKey">Resolving streamer identity…</strong>
+        <div class="theater-donation-onchain-recipient-profile">
+          <div class="theater-donation-onchain-recipient-avatar" id="theaterDonationOnchainAvatar" aria-hidden="true"></div>
+          <div class="theater-donation-onchain-recipient-copy">
+            <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
+            <strong id="theaterDonationOnchainName">Resolving streamer identity…</strong>
+            <span id="theaterDonationOnchainNpub" class="theater-donation-onchain-npub">Resolving…</span>
+            <span id="theaterDonationOnchainNip05" class="theater-donation-onchain-nip05" hidden></span>
+          </div>
         </div>
         <button class="btn btn-ghost theater-donation-retry-btn" id="theaterDonationOnchainRetryBtn" type="button" onclick="retryTheaterOnchainAddress()">Retry address</button>
       </div>
 
-      <label class="theater-donation-custom-amount theater-donation-onchain-address-field">Recipient Bitcoin address
-        <input id="theaterDonationOnchainAddress" type="text" autocomplete="off" spellcheck="false" placeholder="bc1p..." inputmode="text" oninput="theaterOnchainAddressEdited()">
-      </label>
-      <div class="theater-donation-onchain-address-status" id="theaterDonationOnchainAddressStatus" aria-live="polite">Loading recipient Taproot address…</div>
+      <input id="theaterDonationOnchainAddress" type="hidden" autocomplete="off" spellcheck="false">
+      <div class="theater-donation-onchain-address-status" id="theaterDonationOnchainAddressStatus" aria-live="polite" hidden></div>
 
       <div class="theater-donation-onchain-wallet-grid">
         <div class="theater-donation-onchain-wallet-card">
@@ -1893,7 +1896,7 @@ body.nest-preview-open{overflow:hidden}
           </div>
           <div class="sib-actions-row">
             <button class="btn btn-follow" id="theaterFollowBtn" style="padding:.36rem .8rem;font-size:.79rem;" onclick="toggleTheaterFollow()">Follow</button>
-            <button class="action-btn theater-donation-btn" id="theaterZapBtn" type="button" onclick="theaterDonation()">&#9889; Donation</button>
+            <button class="action-btn theater-donation-btn" id="theaterZapBtn" type="button" onclick="theaterDonation()" disabled aria-disabled="true" title="Log in with Nostr to donate">&#9889; Donation</button>
             <button class="action-btn like-btn" id="likeBtn" type="button" onclick="toggleLike(event)" onpointerdown="startTheaterLikeHold(event)" onpointerup="endTheaterLikeHold(event)" onpointercancel="endTheaterLikeHold(event)" onpointerleave="endTheaterLikeHold(event)">&#10084; Like</button>
             <button class="action-btn share-btn" id="theaterShareBtn" onclick="shareStream()">Share</button>
             <button class="action-btn report-btn" title="Report stream">Report</button>
@@ -2203,7 +2206,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.3.0-payment-fixes" defer></script>
+<script src="./nostrflux-app.js?v=0.3.0-payment-fixes-2" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
