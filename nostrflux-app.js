@@ -16675,7 +16675,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     avEl.classList.toggle('nip05-square', !!chatNip05);
     avEl.onclick = () => showProfileByPubkey(messagePubkey);
     const nameEl = qs('.c-name', row);
-    nameEl.textContent = p.display_name || p.name || 'anonymous';
+    nameEl.textContent = p.display_name || p.name || 'Anonymous';
     nameEl.onclick = () => showProfileByPubkey(messagePubkey);
     const timeEl = qs('.c-time', row);
     if (timeEl) {
@@ -16731,7 +16731,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
     const profile = senderPubkey ? profileFor(senderPubkey) : null;
-    const displayName = (profile && (profile.display_name || profile.name)) || 'anonymous';
+    const displayName = (profile && (profile.display_name || profile.name)) || 'Anonymous';
 
     const row = document.createElement('div');
     row.className = `cmsg reaction-ev${safeReactionKey === '+' ? ' reaction-like-ev' : ''}`;
@@ -16780,7 +16780,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const target = sc.querySelector(`.cmsg[data-reaction-id="${CSS.escape(eventId)}"]`);
         if (!target || !updated) return;
         const targetName = qs('.c-name', target);
-        if (targetName) targetName.textContent = updated.display_name || updated.name || 'anonymous';
+        if (targetName) targetName.textContent = updated.display_name || updated.name || 'Anonymous';
         const targetAv = qs('.c-av', target);
         if (targetAv) {
           setAvatarEl(targetAv, updated.picture || '', pickAvatar(senderPubkey));
@@ -16815,7 +16815,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     const senderPubkey = normalizePubkeyHex(entry.senderPubkey || '');
     const profile = senderPubkey ? profileFor(senderPubkey) : null;
-    const displayName = (profile && (profile.display_name || profile.name)) || entry.displayName || 'anonymous';
+    const displayName = (profile && (profile.display_name || profile.name)) || entry.displayName || 'Anonymous';
     const picture = (profile && profile.picture) || entry.picture || '';
     const note = String(entry.note || '').trim();
 
@@ -17436,7 +17436,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
                 const verified = !!getVerifiedNip05ForPubkey(normalizedProfilePubkey, p.nip05 || '');
                 avEl.classList.toggle('nip05-square', verified);
               }
-              if (nameEl) nameEl.textContent = p.display_name || p.name || 'anonymous';
+              if (nameEl) nameEl.textContent = p.display_name || p.name || 'Anonymous';
             });
           },
           eose: () => {
