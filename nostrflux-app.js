@@ -24613,19 +24613,94 @@ window.saveAppSettings = function () {
       return String(profile.display_name || profile.name || stream?.hostName || 'this streamer').trim() || 'this streamer';
     }
 
-    function refreshTheaterDonationWalletStatus() {
+    async function refreshTheaterDonationWalletStatus() {
       const status = qs('#theaterDonationWalletStatus');
       if (!status) return;
-      const hasNwc = !!getSavedNwcConfig();
-      const hasWebln = !!window.webln;
-      const methods = [];
-      if (hasNwc) methods.push('Nostr Wallet Connect');
-      if (hasWebln) methods.push('Browser Lightning wallet');
-      status.textContent = methods.length
-        ? 'Connected Lightning wallet: ' + methods.join(' or ')
-        : 'No Lightning wallet is connected. Connect one in Settings → Connect Wallet.';
-      status.classList.toggle('is-connected', methods.length > 0);
-      status.classList.toggle('is-disconnected', methods.length === 0);
+
+      status.classList.remove('is-connected', 'is-disconnected');
+      status.textContent = 'Loading live Lightning balance…';
+
+      const config = getSavedNwcConfig();
+      if (config) {
+        let session = state.walletPageSession || null;
+        let temporary = false;
+        try {
+          if (!session) {
+            session = await createNwcSession(config);
+            temporary = true;
+          }
+          const balanceResult = await sendNwcRequest(
+            session,
+            'get_balance',
+            {},
+            { timeoutMs: NWC_REQUEST_TIMEOUT_MS }
+          );
+          const balanceMsats = Number(balanceResult && (balanceResult.balance ?? balanceResult.amount) || 0);
+          if (!Number.isFinite(balanceMsats)) throw new Error('Lightning wallet returned an invalid balance.');
+          const balanceSats = Math.max(0, Math.floor(balanceMsats / 1000));
+          status.textContent = 'Available balance: ' + formatCount(balanceSats) + ' sats';
+          status.classList.add('is-connected');
+          return;
+        } catch (err) {
+          if (status) status.textContent = 'Could not load the live Lightning balance.';
+          status.classList.add('is-disconnected');
+        } finally {
+          if (temporary && session) teardownNwcSessionObject(session, 'Theater Lightning balance probe finished.');
+        }
+        return;
+      }
+
+      if (window.webln) {
+        try {
+          if (typeof window.webln.enable === 'function') await window.webln.enable();
+          if (typeof window.webln.getBalance === 'function') {
+            const result = await window.webln.getBalance();
+            const rawBalance = result && (result.balance ?? result.balance_msat ?? result.amount);
+            const numeric = Number(rawBalance);
+            if (Number.isFinite(numeric)) {
+              const sats = numeric > 100000000 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+              status.textContent = 'Available balance: ' + formatCount(Math.max(0, sats)) + ' sats';
+              status.classList.add('is-connected');
+              return;
+            }
+          }
+          status.textContent = 'Lightning wallet connected. Balance is not available from this browser wallet.';
+          status.classList.add('is-connected');
+          return;
+        } catch (err) {
+          status.textContent = 'Lightning wallet connected, but its balance could not be loaded.';
+          status.classList.add('is-disconnected');
+          return;
+        }
+      }
+
+      status.textContent = 'Connect a wallet in Settings → Wallet to load your live Lightning balance and transactions.';
+      status.classList.add('is-disconnected');
+    }
+
+    function renderTheaterLightningRecipientIdentity(stream, resolvedPubkey = '') {
+      const avatarEl = qs('#theaterDonationLightningAvatar');
+      const nameEl = qs('#theaterDonationLightningName');
+      const npubEl = qs('#theaterDonationLightningNpub');
+      const nip05El = qs('#theaterDonationLightningNip05');
+      const lightningEl = qs('#theaterDonationLightningAddress');
+      const profile = getTheaterDonationProfile(stream, resolvedPubkey);
+      const name = getTheaterDonationHostLabel(stream, profile);
+      const picture = String(profile.picture || '').trim();
+      const fallbackAvatar = resolvedPubkey ? pickAvatar(resolvedPubkey) : '';
+      if (avatarEl) setAvatarEl(avatarEl, picture, fallbackAvatar);
+      if (nameEl) nameEl.textContent = name;
+      if (npubEl) npubEl.textContent = resolvedPubkey ? shortNpubForDisplay(resolvedPubkey) : 'Resolving…';
+      const nip05 = normalizeNip05Value(profile.nip05 || '');
+      if (nip05El) {
+        nip05El.textContent = nip05;
+        nip05El.hidden = !nip05;
+      }
+      const lud16 = String(profile.lud16 || theaterDonationContext.lud16 || '').trim();
+      if (lightningEl) {
+        lightningEl.textContent = lud16 ? 'Lightning: ' + lud16 : 'Lightning address unavailable';
+        lightningEl.classList.toggle('is-unavailable', !lud16);
+      }
     }
 
     function renderTheaterOnchainRecipientIdentity(stream, resolvedPubkey = '') {
@@ -24654,6 +24729,7 @@ window.saveAppSettings = function () {
       theaterDonationContext.hostName = hostLabel;
       theaterDonationContext.lud16 = String(profile.lud16 || '').trim();
       renderTheaterOnchainRecipientIdentity(stream, theaterDonationContext.hostPubkey);
+      renderTheaterLightningRecipientIdentity(stream, theaterDonationContext.hostPubkey);
 
       const recipient = qs('#theaterDonationRecipient');
       const lightningRecipient = qs('#theaterDonationLightningRecipient');
@@ -24859,6 +24935,22 @@ window.saveAppSettings = function () {
         recipientNip05.hidden = true;
       }
       if (recipientAvatar) recipientAvatar.innerHTML = '';
+      const lightningName = qs('#theaterDonationLightningName');
+      const lightningNpub = qs('#theaterDonationLightningNpub');
+      const lightningNip05 = qs('#theaterDonationLightningNip05');
+      const lightningAddress = qs('#theaterDonationLightningAddress');
+      const lightningAvatar = qs('#theaterDonationLightningAvatar');
+      if (lightningName) lightningName.textContent = 'Resolving streamer identity…';
+      if (lightningNpub) lightningNpub.textContent = 'Resolving…';
+      if (lightningNip05) {
+        lightningNip05.textContent = '';
+        lightningNip05.hidden = true;
+      }
+      if (lightningAddress) {
+        lightningAddress.textContent = 'Resolving Lightning address…';
+        lightningAddress.classList.remove('is-unavailable');
+      }
+      if (lightningAvatar) lightningAvatar.innerHTML = '';
       if (reviewBtn) {
         reviewBtn.disabled = false;
         reviewBtn.textContent = 'Review transaction';
@@ -24907,7 +24999,7 @@ window.saveAppSettings = function () {
       if (choose) choose.hidden = false;
       if (lightning) lightning.hidden = true;
       if (onchain) onchain.hidden = true;
-      refreshTheaterDonationWalletStatus();
+      refreshTheaterDonationWalletStatus().catch(() => {});
       const amount = qs('#theaterDonationAmount');
       if (amount && (!amount.value || Number(amount.value) <= 0)) amount.value = '330';
     };
@@ -24968,13 +25060,14 @@ window.saveAppSettings = function () {
           return;
         }
         theaterDonationContext.lud16 = String(profile.lud16 || '').trim();
+        renderTheaterLightningRecipientIdentity(stream, hostPubkey);
         const choose = qs('#theaterDonationChooseView');
         const lightning = qs('#theaterDonationLightningView');
         const onchain = qs('#theaterDonationOnchainView');
         if (choose) choose.hidden = true;
         if (lightning) lightning.hidden = false;
         if (onchain) onchain.hidden = true;
-        refreshTheaterDonationWalletStatus();
+        refreshTheaterDonationWalletStatus().catch(() => {});
         const status = qs('#theaterDonationStatus');
         if (status) status.textContent = '';
         setTimeout(() => qs('#theaterDonationAmount')?.focus(), 0);
