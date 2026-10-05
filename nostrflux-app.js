@@ -2149,9 +2149,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       capabilities,
       notifications,
       encryptionModes,
+      // NIP-47: if the info event has no encryption tag, assume legacy NIP-04.
       preferredEncryption: encryptionModes.includes('nip44_v2')
         ? 'nip44'
-        : (encryptionModes.includes('nip04') ? 'nip04' : 'nip44')
+        : (encryptionModes.includes('nip04') ? 'nip04' : 'nip04')
     };
   }
 
@@ -2508,49 +2509,59 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return parsed;
   }
 
-  async function fetchZapEndpointInfo(lud16, zapAmountMsats = 0) {
+  async function fetchLightningAddressInfo(lud16, amountMsats = 0) {
     const clean = String(lud16 || '').trim();
     if (!clean || !clean.includes('@')) {
-      throw new Error('This profile has no valid Lightning address (lud16) for zaps.');
+      throw new Error('This profile has no valid Lightning address.');
     }
     const [userRaw, domainRaw] = clean.split('@');
     const user = String(userRaw || '').trim();
     const domain = String(domainRaw || '').trim().toLowerCase();
     if (!user || !domain) {
-      throw new Error('This profile has no valid Lightning address (lud16) for zaps.');
+      throw new Error('This profile has no valid Lightning address.');
     }
 
     const payUrl = `https://${domain}/.well-known/lnurlp/${encodeURIComponent(user)}`;
-    const meta = await fetchJsonOrThrow(payUrl, 'Could not load this Lightning address for zaps.');
+    const meta = await fetchJsonOrThrow(payUrl, 'Could not load this Lightning address.');
     const callback = String(meta.callback || '').trim();
     if (!/^https?:\/\//i.test(callback)) throw new Error('Invalid Lightning callback URL.');
-    if (meta.allowsNostr !== true) {
-      throw new Error('This Lightning address can receive payments, but it does not support public Nostr zaps.');
-    }
-    const receiptPubkey = normalizePubkeyHex(meta.nostrPubkey || '');
-    if (!receiptPubkey) {
-      throw new Error('This Lightning address does not advertise a valid Nostr zap receipt pubkey.');
-    }
 
     const minSendable = Number(meta.minSendable || 0);
     const maxSendable = Number(meta.maxSendable || 0);
-    const amount = Number(zapAmountMsats || 0);
+    const amount = Number(amountMsats || 0);
     if (amount > 0 && Number.isFinite(minSendable) && minSendable > 0 && amount < minSendable) {
-      throw new Error(`Zap amount is below the recipient's minimum (${formatCount(Math.ceil(minSendable / 1000))} sats).`);
+      throw new Error(`Lightning amount is below the recipient's minimum (${formatCount(Math.ceil(minSendable / 1000))} sats).`);
     }
     if (amount > 0 && Number.isFinite(maxSendable) && maxSendable > 0 && amount > maxSendable) {
-      throw new Error(`Zap amount is above the recipient's maximum (${formatCount(Math.floor(maxSendable / 1000))} sats).`);
+      throw new Error(`Lightning amount is above the recipient's maximum (${formatCount(Math.floor(maxSendable / 1000))} sats).`);
     }
+
+    const allowsNostr = meta.allowsNostr === true;
+    const receiptPubkey = normalizePubkeyHex(meta.nostrPubkey || '');
 
     return {
       lud16: clean,
       payUrl,
       callback,
       lnurl: encodeLnurlPayUrl(payUrl),
+      allowsNostr,
       receiptPubkey,
       minSendable: Number.isFinite(minSendable) ? minSendable : 0,
-      maxSendable: Number.isFinite(maxSendable) ? maxSendable : 0
+      maxSendable: Number.isFinite(maxSendable) ? maxSendable : 0,
+      commentAllowed: Math.max(0, Math.floor(Number(meta.commentAllowed || 0) || 0)),
+      metadata: String(meta.metadata || '')
     };
+  }
+
+  async function fetchZapEndpointInfo(lud16, zapAmountMsats = 0) {
+    const info = await fetchLightningAddressInfo(lud16, zapAmountMsats);
+    if (!info.allowsNostr) {
+      throw new Error('This Lightning address does not advertise NIP-57 zap support.');
+    }
+    if (!info.receiptPubkey) {
+      throw new Error('This Lightning address does not advertise a valid Nostr zap receipt pubkey.');
+    }
+    return info;
   }
 
   function buildZapRequestTags(recipientPubkey, zapAmountMsats, zapInfo, extraTags = []) {
@@ -2588,6 +2599,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     callbackUrl.searchParams.set('nostr', JSON.stringify(zapRequestEvent));
     if (zapInfo.lnurl) callbackUrl.searchParams.set('lnurl', zapInfo.lnurl);
     const invoiceData = await fetchJsonOrThrow(callbackUrl.toString(), 'Could not create a zap invoice.');
+    if (!invoiceData.pr) throw new Error('No payment request returned.');
+    return invoiceData.pr;
+  }
+
+  async function buildLightningInvoiceForLud16(lud16, amountMsats, opts = {}) {
+    const lightningInfo = opts && opts.lightningInfo
+      ? opts.lightningInfo
+      : await fetchLightningAddressInfo(lud16, amountMsats);
+    const callbackUrl = new URL(lightningInfo.callback);
+    callbackUrl.searchParams.set('amount', String(amountMsats));
+    if (opts && opts.comment) {
+      const comment = String(opts.comment || '').trim();
+      if (comment && lightningInfo.commentAllowed > 0) {
+        callbackUrl.searchParams.set('comment', comment.slice(0, lightningInfo.commentAllowed));
+      }
+    }
+    if (lightningInfo.lnurl) callbackUrl.searchParams.set('lnurl', lightningInfo.lnurl);
+    const invoiceData = await fetchJsonOrThrow(callbackUrl.toString(), 'Could not create a Lightning invoice.');
     if (!invoiceData.pr) throw new Error('No payment request returned.');
     return invoiceData.pr;
   }
@@ -2651,6 +2680,26 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   async function payZapInvoiceForLud16(lud16, zapAmountMsats, zapRequestEvent, opts = {}) {
     const invoice = await buildZapInvoiceForLud16(lud16, zapAmountMsats, zapRequestEvent, opts);
     return await payInvoiceWithPreferredWallet(invoice);
+  }
+
+  async function payLightningDonationForLud16(lud16, amountMsats, recipientPubkey, extraTags = []) {
+    const info = await fetchLightningAddressInfo(lud16, amountMsats);
+    const canCreateZap = !!(state.user && info.allowsNostr && info.receiptPubkey);
+
+    if (canCreateZap) {
+      try {
+        const zapTags = buildZapRequestTags(recipientPubkey, amountMsats, info, extraTags);
+        const zapRequest = await signEvent(9734, '⚡ donation from Sifaka Live', zapTags);
+        const paymentMethod = await payZapInvoiceForLud16(lud16, amountMsats, zapRequest, { zapInfo: info });
+        return { paymentMethod, usedZap: true };
+      } catch (err) {
+        console.warn('NIP-57 donation path failed; falling back to ordinary Lightning payment:', err && err.message ? err.message : err);
+      }
+    }
+
+    const invoice = await buildLightningInvoiceForLud16(lud16, amountMsats, { lightningInfo: info });
+    const paymentMethod = await payInvoiceWithPreferredWallet(invoice);
+    return { paymentMethod, usedZap: false };
   }
 
   function sanitizeMediaUrl(v) {
