@@ -16885,8 +16885,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     updateTheaterChatComposerVisibility();
     const theaterDonationBtn = qs('#theaterZapBtn');
     if (theaterDonationBtn) {
-      theaterDonationBtn.disabled = !state.user;
-      theaterDonationBtn.setAttribute('aria-disabled', state.user ? 'false' : 'true');
       theaterDonationBtn.title = state.user ? 'Donate to the streamer' : 'Log in with Nostr to donate';
     }
     if (!state.user) {
@@ -24784,7 +24782,7 @@ window.saveAppSettings = function () {
       try {
         const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
         const ownAddress = await getSifakaOnchainWalletAddress(ownPubkey);
-        if (senderEl) senderEl.textContent = shortBitcoinAddress(ownAddress) + ' (same Wallet page address)';
+        if (senderEl) senderEl.textContent = shortBitcoinAddress(ownAddress);
 
         const [utxoResult, feeResult] = await Promise.allSettled([
           fetchWalletOnchainUtxos(ownAddress),
