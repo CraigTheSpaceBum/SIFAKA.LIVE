@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.3.2-theater-lightning-ui">
+<link rel="stylesheet" href="./styles/app.css?v=0.3.2-profile-banner">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -850,7 +850,8 @@ body.nest-preview-open{overflow:hidden}
       <div class="theater-donation-back-row">
         <button class="btn btn-ghost" type="button" onclick="showTheaterDonationChooser()">← Back</button>
       </div>
-      <div class="theater-donation-onchain-recipient-card">
+      <div class="theater-donation-onchain-recipient-card" id="theaterDonationOnchainRecipientCard">
+        <div class="theater-donation-recipient-banner" id="theaterDonationOnchainBanner" aria-hidden="true"></div>
         <div class="theater-donation-onchain-recipient-profile">
           <div class="theater-donation-onchain-recipient-avatar" id="theaterDonationOnchainAvatar" aria-hidden="true"></div>
           <div class="theater-donation-onchain-recipient-copy">
@@ -913,7 +914,8 @@ body.nest-preview-open{overflow:hidden}
       <div class="theater-donation-back-row">
         <button class="btn btn-ghost" type="button" onclick="showTheaterDonationChooser()">← Back</button>
       </div>
-      <div class="theater-donation-onchain-recipient-card theater-donation-lightning-recipient-card">
+      <div class="theater-donation-onchain-recipient-card theater-donation-lightning-recipient-card" id="theaterDonationLightningRecipientCard">
+        <div class="theater-donation-recipient-banner" id="theaterDonationLightningBanner" aria-hidden="true"></div>
         <div class="theater-donation-onchain-recipient-profile">
           <div class="theater-donation-onchain-recipient-avatar" id="theaterDonationLightningAvatar" aria-hidden="true"></div>
           <div class="theater-donation-onchain-recipient-copy">
@@ -2212,7 +2214,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.3.2-payment-fixes" defer></script>
+<script src="./nostrflux-app.js?v=0.3.2-profile-banner-chat" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
