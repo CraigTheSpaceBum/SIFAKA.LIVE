@@ -2827,6 +2827,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (nip05Check) nip05Check.classList.toggle('nip05-invalid', resolved === 'invalid');
   }
 
+  function setLiveChatAvatar(el, pictureValue) {
+    if (!el) return;
+    const raw = sanitizeMediaUrl(pictureValue);
+    el.classList.toggle('no-avatar', !raw);
+    if (!raw) {
+      el.innerHTML = '';
+      return;
+    }
+    setAvatarEl(el, raw, '');
+  }
+
   function setAvatarEl(el, pictureValue, fallbackText) {
     if (!el) return;
     const raw = sanitizeMediaUrl(pictureValue);
@@ -11263,7 +11274,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       const avatarEl = qs('.c-av', row);
       if (avatarEl) {
-        setAvatarEl(avatarEl, profile.picture || '', pickAvatar(messagePubkey));
+        setLiveChatAvatar(avatarEl, profile.picture || '');
         avatarEl.classList.toggle('nip05-square', !!verifiedNip05);
         avatarEl.onclick = () => showProfileByPubkey(messagePubkey);
       }
@@ -16691,7 +16702,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     row.dataset.pubkey = messagePubkey;
     row.innerHTML = `<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="c-time"></span></div><div class="c-text"></div></div><div class="chat-msg-actions"><button class="cma-btn like-cma chat-like-btn" title="Like">&#10084; <span class="chat-like-count">0</span></button></div>`;
     const avEl = qs('.c-av', row);
-    setAvatarEl(avEl, p.picture || '', pickAvatar(messagePubkey));
+    setLiveChatAvatar(avEl, p.picture || '');
     const chatNip05 = getVerifiedNip05ForPubkey(messagePubkey, p.nip05 || '');
     avEl.classList.toggle('nip05-square', !!chatNip05);
     avEl.onclick = () => showProfileByPubkey(messagePubkey);
@@ -16761,7 +16772,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     row.innerHTML = '<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="chat-reaction-badge"></span><span class="c-time"></span></div><div class="c-text"></div></div>';
 
     const avEl = qs('.c-av', row);
-    setAvatarEl(avEl, profile && profile.picture ? profile.picture : '', pickAvatar(senderPubkey || displayName));
+    setLiveChatAvatar(avEl, profile && profile.picture ? profile.picture : '');
     const chatNip05 = senderPubkey ? getVerifiedNip05ForPubkey(senderPubkey, profile && profile.nip05 ? profile.nip05 : '') : '';
     avEl.classList.toggle('nip05-square', !!chatNip05);
     if (senderPubkey) avEl.onclick = () => showProfileByPubkey(senderPubkey);
@@ -16804,7 +16815,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (targetName) targetName.textContent = theaterChatDisplayName(updated, senderPubkey);
         const targetAv = qs('.c-av', target);
         if (targetAv) {
-          setAvatarEl(targetAv, updated.picture || '', pickAvatar(senderPubkey));
+          setLiveChatAvatar(targetAv, updated.picture || '');
           targetAv.classList.toggle('nip05-square', !!getVerifiedNip05ForPubkey(senderPubkey, updated.nip05 || ''));
         }
       }).catch(() => {});
@@ -16846,7 +16857,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     row.innerHTML = '<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="chat-zap-amount"></span><span class="c-time"></span></div><div class="c-text"></div></div>';
 
     const avEl = qs('.c-av', row);
-    setAvatarEl(avEl, picture, pickAvatar(senderPubkey || displayName));
+    setLiveChatAvatar(avEl, picture);
     const chatNip05 = senderPubkey ? getVerifiedNip05ForPubkey(senderPubkey, profile && profile.nip05 ? profile.nip05 : '') : '';
     avEl.classList.toggle('nip05-square', !!chatNip05);
     if (senderPubkey) avEl.onclick = () => showProfileByPubkey(senderPubkey);
@@ -16876,7 +16887,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (!targetRow || !updated) return;
         const targetAv = qs('.c-av', targetRow);
         if (targetAv) {
-          setAvatarEl(targetAv, updated.picture || '', pickAvatar(senderPubkey));
+          setLiveChatAvatar(targetAv, updated.picture || '');
           const verified = !!getVerifiedNip05ForPubkey(senderPubkey, updated.nip05 || '');
           targetAv.classList.toggle('nip05-square', verified);
         }
@@ -17453,7 +17464,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               const avEl = row.querySelector('.c-av');
               const nameEl = row.querySelector('.c-name');
               if (avEl) {
-                setAvatarEl(avEl, p.picture || '', pickAvatar(normalizedProfilePubkey));
+                setLiveChatAvatar(avEl, p.picture || '');
                 const verified = !!getVerifiedNip05ForPubkey(normalizedProfilePubkey, p.nip05 || '');
                 avEl.classList.toggle('nip05-square', verified);
               }
