@@ -7890,7 +7890,20 @@ body.nest-room-page-open{
   border-radius:12px;
   background:var(--surface2);
 }
-.theater-donation-onchain-recipient-profile{display:flex;align-items:center;gap:.7rem;min-width:0;}
+.theater-donation-onchain-recipient-card{position:relative;overflow:hidden;}
+.theater-donation-recipient-banner{
+  position:absolute;
+  inset:0;
+  z-index:0;
+  background-position:center;
+  background-size:cover;
+  background-repeat:no-repeat;
+  opacity:.3;
+  filter:saturate(.9);
+  pointer-events:none;
+}
+.theater-donation-recipient-banner[hidden]{display:none;}
+.theater-donation-onchain-recipient-profile{display:flex;align-items:center;gap:.7rem;min-width:0;position:relative;z-index:1;}
 .theater-donation-onchain-recipient-avatar{width:64px;height:64px;flex:0 0 64px;border-radius:50%;overflow:hidden;background:var(--surface3);display:grid;place-items:center;font-weight:800;color:var(--text2);}
 .theater-donation-onchain-recipient-avatar img{width:100%;height:100%;display:block;object-fit:cover;}
 .theater-donation-onchain-recipient-copy{min-width:0;display:flex;flex-direction:column;gap:.2rem;}
@@ -7911,7 +7924,7 @@ body.nest-room-page-open{
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.theater-donation-retry-btn{flex:0 0 auto;min-height:32px;padding:.35rem .6rem;font-size:.62rem;}
+.theater-donation-retry-btn{flex:0 0 auto;min-height:32px;padding:.35rem .6rem;font-size:.62rem;position:relative;z-index:1;}
 .theater-donation-onchain-address-field{display:none;}
 .theater-donation-onchain-address-status{display:none;}
 .theater-donation-onchain-wallet-grid{
