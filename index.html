@@ -838,7 +838,7 @@ body.nest-preview-open{overflow:hidden}
           <span class="theater-donation-option-icon">⚡</span>
           <span class="theater-donation-option-copy">
             <strong>Lightning</strong>
-            <small>Fast Lightning donation using your connected wallet.</small>
+            <small>Lightning donation using your connected wallet, with ordinary Lightning Address fallback when NIP-57 zaps are unavailable.</small>
           </span>
           <span class="theater-donation-option-arrow">→</span>
         </button>
@@ -869,7 +869,7 @@ body.nest-preview-open{overflow:hidden}
         <div class="theater-donation-onchain-wallet-card">
           <span>Sending from</span>
           <strong id="theaterDonationOnchainSender">Loading…</strong>
-          <small>Same Taproot wallet and address used on the Wallet page.</small>
+          <small>Your Sifaka Taproot wallet is used when locally signable; otherwise your external Bitcoin wallet completes the donation.</small>
         </div>
         <div class="theater-donation-onchain-wallet-card">
           <span>Available to send</span>
@@ -885,15 +885,15 @@ body.nest-preview-open{overflow:hidden}
 
       <div class="theater-donation-amount-label">Donation amount</div>
       <div class="theater-donation-presets">
-        <button type="button" data-onchain-donation-amount="21" onclick="setTheaterOnchainDonationAmount(21)">21 sats</button>
-        <button type="button" data-onchain-donation-amount="100" onclick="setTheaterOnchainDonationAmount(100)">100 sats</button>
+        <button type="button" data-onchain-donation-amount="330" onclick="setTheaterOnchainDonationAmount(330)">330 sats</button>
         <button type="button" data-onchain-donation-amount="500" onclick="setTheaterOnchainDonationAmount(500)">500 sats</button>
         <button type="button" data-onchain-donation-amount="1000" onclick="setTheaterOnchainDonationAmount(1000)">1,000 sats</button>
         <button type="button" data-onchain-donation-amount="5000" onclick="setTheaterOnchainDonationAmount(5000)">5,000 sats</button>
+        <button type="button" data-onchain-donation-amount="10000" onclick="setTheaterOnchainDonationAmount(10000)">10,000 sats</button>
       </div>
       <div class="theater-donation-onchain-form-grid">
         <label class="theater-donation-custom-amount">Custom amount (sats)
-          <input id="theaterDonationOnchainAmount" type="number" min="1" step="1" inputmode="numeric" value="21" placeholder="Amount in sats">
+          <input id="theaterDonationOnchainAmount" type="number" min="330" step="1" inputmode="numeric" value="330" placeholder="Amount in sats">
         </label>
         <label class="theater-donation-custom-amount">Fee rate (sat/vB)
           <input id="theaterDonationOnchainFeeRate" type="number" min="1" step="0.1" inputmode="decimal" placeholder="1">
@@ -901,7 +901,7 @@ body.nest-preview-open{overflow:hidden}
       </div>
 
       <div class="theater-donation-onchain-summary" id="theaterDonationOnchainSummary">
-        Your donation will be sent from your Sifaka Taproot wallet after you review the transaction.
+        On-chain Taproot donations are 330 sats or more. Sifaka signs and broadcasts directly when a local key is available; otherwise your Bitcoin wallet handles the payment.
       </div>
       <div class="theater-donation-actions">
         <button class="btn btn-primary" type="button" id="theaterDonationOnchainReviewBtn" onclick="prepareTheaterOnchainDonation()">Review transaction</button>
@@ -2203,7 +2203,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.2.7-theater-onchain" defer></script>
+<script src="./nostrflux-app.js?v=0.3.0-payment-fixes" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
