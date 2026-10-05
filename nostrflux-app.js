@@ -24709,11 +24709,28 @@ window.saveAppSettings = function () {
       const feeEl = qs('#theaterDonationOnchainFee');
       const feeSubEl = qs('#theaterDonationOnchainFeeSub');
 
-      if (senderEl) senderEl.textContent = 'Loading…';
-      if (availableEl) availableEl.textContent = 'Loading…';
-      if (availableSubEl) availableSubEl.textContent = 'Loading wallet UTXOs…';
+      if (senderEl) senderEl.textContent = 'Preparing…';
+      if (availableEl) availableEl.textContent = '—';
+      if (availableSubEl) availableSubEl.textContent = 'Choose your Bitcoin wallet at confirmation time.';
       if (feeEl) feeEl.textContent = 'Loading…';
       if (feeSubEl) feeSubEl.textContent = 'Current mempool recommendation';
+
+      const canSpendWithSifaka = state.authMode === 'local' && !!state.localSecretKey;
+      if (!canSpendWithSifaka) {
+        if (senderEl) senderEl.textContent = 'External Bitcoin wallet';
+        if (availableSubEl) availableSubEl.textContent = 'Use any Bitcoin wallet to complete the donation. Local Sifaka wallet spending is available with nsec login.';
+        try {
+          const feeRate = await fetchWalletOnchainFeeRate();
+          if (feeEl) feeEl.textContent = feeRate + ' sat/vB';
+          if (feeSubEl) feeSubEl.textContent = 'Your Bitcoin wallet will choose the final network fee.';
+          const feeRateInput = qs('#theaterDonationOnchainFeeRate');
+          if (feeRateInput) feeRateInput.value = String(feeRate);
+        } catch (err) {
+          if (feeEl) feeEl.textContent = 'Wallet-selected';
+          if (feeSubEl) feeSubEl.textContent = 'Your Bitcoin wallet will choose the final network fee.';
+        }
+        return;
+      }
 
       try {
         const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
@@ -24746,10 +24763,6 @@ window.saveAppSettings = function () {
         } else {
           if (feeEl) feeEl.textContent = 'Unavailable';
           if (feeSubEl) feeSubEl.textContent = feeResult.reason?.message || 'Enter a fee rate manually.';
-        }
-
-        if (state.authMode !== 'local' || !state.localSecretKey) {
-          if (availableSubEl) availableSubEl.textContent = 'Your Taproot receive wallet is available, but spending requires a local Nostr key login.';
         }
       } catch (err) {
         if (senderEl) senderEl.textContent = 'Unavailable';
@@ -24787,7 +24800,7 @@ window.saveAppSettings = function () {
         address.dataset.userEdited = '0';
         address.disabled = false;
       }
-      if (amount) { amount.value = '21'; amount.disabled = false; }
+      if (amount) { amount.value = '330'; amount.disabled = false; }
       if (feeRate) { feeRate.value = ''; feeRate.disabled = false; }
       if (key) key.textContent = 'Resolving streamer identity…';
       if (reviewBtn) {
@@ -24806,7 +24819,6 @@ window.saveAppSettings = function () {
     window.theaterDonation = async function () {
       const stream = getTheaterDonationStream();
       if (!stream) return;
-      if (!state.user) { window.openLogin(); return; }
 
       const modal = qs('#theaterDonationModal');
       if (!modal) return;
@@ -24837,7 +24849,7 @@ window.saveAppSettings = function () {
       if (onchain) onchain.hidden = true;
       refreshTheaterDonationWalletStatus();
       const amount = qs('#theaterDonationAmount');
-      if (amount && (!amount.value || Number(amount.value) <= 0)) amount.value = '21';
+      if (amount && (!amount.value || Number(amount.value) <= 0)) amount.value = '330';
     };
 
     window.closeTheaterDonation = function (event) {
@@ -24858,7 +24870,7 @@ window.saveAppSettings = function () {
       const status = qs('#theaterDonationStatus');
       if (status) status.textContent = '';
       const amount = qs('#theaterDonationAmount');
-      if (amount) amount.value = '21';
+      if (amount) amount.value = '330';
     };
 
     window.selectTheaterDonationMethod = async function (method) {
@@ -24965,8 +24977,37 @@ window.saveAppSettings = function () {
         if (status) status.textContent = 'Enter a valid Bitcoin mainnet recipient address.';
         return;
       }
-      if (!Number.isFinite(amountSats) || amountSats < 1) {
-        if (status) status.textContent = 'Enter a valid donation amount in sats.';
+      if (!Number.isFinite(amountSats) || amountSats < 330) {
+        if (status) status.textContent = 'On-chain Taproot donations must be at least 330 sats.';
+        return;
+      }
+
+      const canSpendWithSifaka = state.authMode === 'local' && !!state.localSecretKey;
+      if (!canSpendWithSifaka) {
+        const btcAmount = (amountSats / 100000000).toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+        const bitcoinUri = 'bitcoin:' + destination + '?amount=' + btcAmount;
+        theaterDonationContext.onchainAddress = destination;
+        theaterDonationContext.onchainDraft = {
+          external: true,
+          destination,
+          amountSats,
+          bitcoinUri
+        };
+        if (addressInput) addressInput.disabled = true;
+        if (amountInput) amountInput.disabled = true;
+        if (feeInput) feeInput.disabled = true;
+        if (summary) {
+          summary.textContent =
+            'Ready to send ' + formatCount(amountSats) + ' sats to ' + destination +
+            ' with your external Bitcoin wallet. Your wallet will calculate the final network fee.';
+        }
+        if (status) status.textContent = 'Your Bitcoin wallet will handle signing, fee selection, and broadcast.';
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Open Bitcoin Wallet';
+          button.onclick = window.openTheaterExternalOnchainWallet;
+        }
+        if (editBtn) editBtn.hidden = false;
         return;
       }
 
@@ -25044,11 +25085,23 @@ window.saveAppSettings = function () {
       }
     };
 
+    window.openTheaterExternalOnchainWallet = function () {
+      const draft = theaterDonationContext.onchainDraft;
+      const status = qs('#theaterDonationOnchainStatus');
+      if (!draft || !draft.external || !draft.bitcoinUri) return;
+      if (status) status.textContent = 'Opening your Bitcoin wallet…';
+      window.location.href = draft.bitcoinUri;
+    };
+
     window.confirmTheaterOnchainDonation = async function () {
       const draft = theaterDonationContext.onchainDraft;
       const status = qs('#theaterDonationOnchainStatus');
       const button = qs('#theaterDonationOnchainReviewBtn');
       if (!draft) return;
+      if (draft.external) {
+        window.openTheaterExternalOnchainWallet();
+        return;
+      }
 
       const fee = draft.totalInputSats - draft.amountSats - draft.changeSats;
       if (!window.confirm(
@@ -25124,20 +25177,26 @@ window.saveAppSettings = function () {
       if (status) status.textContent = 'Creating the Lightning donation invoice…';
 
       try {
-        const zapInfo = await fetchZapEndpointInfo(lud16, amountSats * 1000);
-        const zapTags = buildZapRequestTags(targetPubkey, amountSats * 1000, zapInfo, [
-          ['e', stream.id],
-          ['a', stream.address],
-          ['k', String(KIND_LIVE_EVENT)]
-        ]);
-        const zapRequest = await signEvent(9734, '⚡ donation from Sifaka Live', zapTags);
-        const paymentMethod = await payZapInvoiceForLud16(lud16, amountSats * 1000, zapRequest, { zapInfo });
-        if (status) status.textContent = 'Donation sent successfully via ' + (paymentMethod === 'nwc' ? 'Nostr Wallet Connect.' : 'your browser Lightning wallet.');
+        const payment = await payLightningDonationForLud16(
+          lud16,
+          amountSats * 1000,
+          targetPubkey,
+          [
+            ['e', stream.id],
+            ['a', stream.address],
+            ['k', String(KIND_LIVE_EVENT)]
+          ]
+        );
+        const walletLabel = payment.paymentMethod === 'nwc'
+          ? 'Nostr Wallet Connect'
+          : 'your browser Lightning wallet';
+        const zapLabel = payment.usedZap ? ' NIP-57 zap.' : '';
+        if (status) status.textContent = 'Donation sent successfully via ' + walletLabel + '.' + zapLabel;
         if (btn) btn.textContent = 'Donation sent';
         setTimeout(() => closeTheaterDonation(), 1500);
       } catch (err) {
         console.warn('Lightning donation failed:', err && err.message ? err.message : err);
-        if (status) status.textContent = err?.message || 'Lightning donation failed. Connect a compatible wallet in Settings.';
+        if (status) status.textContent = err?.message || 'Lightning donation failed. Connect a compatible wallet in Settings → Connect Wallet.';
         if (btn) { btn.disabled = false; btn.textContent = 'Send donation'; }
       }
     };
