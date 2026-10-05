@@ -151,9 +151,9 @@
   const AUTH_SESSION_STORAGE_KEY = 'nostrflux_auth_session_v1';
   const NOSTR_TOOLS_SRC = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
   const HLS_JS_SOURCES = [
-    'https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.min.js',
-    'https://unpkg.com/hls.js@1.7.3/dist/hls.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.7.3/hls.min.js'
+    'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
+    'https://unpkg.com/hls.js@1.5.17/dist/hls.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js'
   ];
   const NOSTR_CONNECT_KIND = 24133;
   const NWC_INFO_KIND = 13194;
@@ -11605,6 +11605,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     ov.classList.add('open');
   }
 
+  function theaterChatDisplayName(profile, pubkey, fallback = 'anonymous') {
+    const p = profile && typeof profile === 'object' ? profile : {};
+    const normalizedPubkey = normalizePubkeyHex(pubkey || p.pubkey || '') || String(pubkey || p.pubkey || '').trim().toLowerCase();
+    const displayName = String(p.display_name || '').trim();
+    if (displayName) return displayName;
+
+    const name = String(p.name || '').trim();
+    if (name) {
+      const generatedNpub = normalizedPubkey ? String(shortNpubForDisplay(normalizedPubkey) || '').trim() : '';
+      if (!generatedNpub || name !== generatedNpub) return name;
+      return 'anonymous';
+    }
+
+    const candidate = String(fallback || '').trim();
+    if (candidate) {
+      const generatedNpub = normalizedPubkey ? String(shortNpubForDisplay(normalizedPubkey) || '').trim() : '';
+      if (candidate !== generatedNpub && !/^npub1[0-9a-z]+$/i.test(candidate)) return candidate;
+    }
+    return 'anonymous';
+  }
+
   function profileFor(pubkey) {
     const normalizedPubkey = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
     const profile = (normalizedPubkey && state.profilesByPubkey.get(normalizedPubkey))
@@ -16675,7 +16696,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     avEl.classList.toggle('nip05-square', !!chatNip05);
     avEl.onclick = () => showProfileByPubkey(messagePubkey);
     const nameEl = qs('.c-name', row);
-    nameEl.textContent = p.display_name || p.name || 'Anonymous';
+    nameEl.textContent = theaterChatDisplayName(p, messagePubkey);
     nameEl.onclick = () => showProfileByPubkey(messagePubkey);
     const timeEl = qs('.c-time', row);
     if (timeEl) {
@@ -16731,7 +16752,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
     const profile = senderPubkey ? profileFor(senderPubkey) : null;
-    const displayName = (profile && (profile.display_name || profile.name)) || 'Anonymous';
+    const displayName = theaterChatDisplayName(profile, senderPubkey);
 
     const row = document.createElement('div');
     row.className = `cmsg reaction-ev${safeReactionKey === '+' ? ' reaction-like-ev' : ''}`;
@@ -16780,7 +16801,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const target = sc.querySelector(`.cmsg[data-reaction-id="${CSS.escape(eventId)}"]`);
         if (!target || !updated) return;
         const targetName = qs('.c-name', target);
-        if (targetName) targetName.textContent = updated.display_name || updated.name || 'Anonymous';
+        if (targetName) targetName.textContent = theaterChatDisplayName(updated, senderPubkey);
         const targetAv = qs('.c-av', target);
         if (targetAv) {
           setAvatarEl(targetAv, updated.picture || '', pickAvatar(senderPubkey));
@@ -16815,7 +16836,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     const senderPubkey = normalizePubkeyHex(entry.senderPubkey || '');
     const profile = senderPubkey ? profileFor(senderPubkey) : null;
-    const displayName = (profile && (profile.display_name || profile.name)) || entry.displayName || 'Anonymous';
+    const displayName = theaterChatDisplayName(profile, senderPubkey, entry.displayName);
     const picture = (profile && profile.picture) || entry.picture || '';
     const note = String(entry.note || '').trim();
 
@@ -16860,7 +16881,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           targetAv.classList.toggle('nip05-square', verified);
         }
         const targetName = qs('.c-name', targetRow);
-        if (targetName) targetName.textContent = updated.display_name || updated.name || displayName;
+        if (targetName) targetName.textContent = theaterChatDisplayName(updated, senderPubkey, displayName);
       }).catch(() => {});
     }
 
@@ -17436,7 +17457,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
                 const verified = !!getVerifiedNip05ForPubkey(normalizedProfilePubkey, p.nip05 || '');
                 avEl.classList.toggle('nip05-square', verified);
               }
-              if (nameEl) nameEl.textContent = p.display_name || p.name || 'Anonymous';
+              if (nameEl) nameEl.textContent = theaterChatDisplayName(p, normalizedProfilePubkey);
             });
           },
           eose: () => {
