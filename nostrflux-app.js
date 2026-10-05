@@ -151,8 +151,8 @@
   const AUTH_SESSION_STORAGE_KEY = 'nostrflux_auth_session_v1';
   const NOSTR_TOOLS_SRC = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
   const HLS_JS_SOURCES = [
-    'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
-    'https://unpkg.com/hls.js@1.5.17/dist/hls.min.js',
+    'https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.min.js',
+    'https://unpkg.com/hls.js@1.7.3/dist/hls.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js'
   ];
   const NOSTR_CONNECT_KIND = 24133;
