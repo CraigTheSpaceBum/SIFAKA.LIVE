@@ -16675,7 +16675,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     avEl.classList.toggle('nip05-square', !!chatNip05);
     avEl.onclick = () => showProfileByPubkey(messagePubkey);
     const nameEl = qs('.c-name', row);
-    nameEl.textContent = p.display_name || p.name || 'Anonymous';
+    nameEl.textContent = p.display_name || p.name || 'anonymous';
     nameEl.onclick = () => showProfileByPubkey(messagePubkey);
     const timeEl = qs('.c-time', row);
     if (timeEl) {
@@ -16731,7 +16731,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
     const profile = senderPubkey ? profileFor(senderPubkey) : null;
-    const displayName = (profile && (profile.display_name || profile.name)) || 'Anonymous';
+    const displayName = (profile && (profile.display_name || profile.name)) || 'anonymous';
 
     const row = document.createElement('div');
     row.className = `cmsg reaction-ev${safeReactionKey === '+' ? ' reaction-like-ev' : ''}`;
@@ -16780,7 +16780,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const target = sc.querySelector(`.cmsg[data-reaction-id="${CSS.escape(eventId)}"]`);
         if (!target || !updated) return;
         const targetName = qs('.c-name', target);
-        if (targetName) targetName.textContent = updated.display_name || updated.name || 'Anonymous';
+        if (targetName) targetName.textContent = updated.display_name || updated.name || 'anonymous';
         const targetAv = qs('.c-av', target);
         if (targetAv) {
           setAvatarEl(targetAv, updated.picture || '', pickAvatar(senderPubkey));
@@ -16815,7 +16815,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     const senderPubkey = normalizePubkeyHex(entry.senderPubkey || '');
     const profile = senderPubkey ? profileFor(senderPubkey) : null;
-    const displayName = (profile && (profile.display_name || profile.name)) || entry.displayName || 'Anonymous';
+    const displayName = (profile && (profile.display_name || profile.name)) || entry.displayName || 'anonymous';
     const picture = (profile && profile.picture) || entry.picture || '';
     const note = String(entry.note || '').trim();
 
@@ -17436,7 +17436,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
                 const verified = !!getVerifiedNip05ForPubkey(normalizedProfilePubkey, p.nip05 || '');
                 avEl.classList.toggle('nip05-square', verified);
               }
-              if (nameEl) nameEl.textContent = p.display_name || p.name || 'Anonymous';
+              if (nameEl) nameEl.textContent = p.display_name || p.name || 'anonymous';
             });
           },
           eose: () => {
@@ -24324,7 +24324,7 @@ window.saveAppSettings = function () {
           }
         }
         qs('.ci-title', item).textContent = s.title || 'Untitled stream';
-        qs('.ci-host', item).textContent = `${p.display_name || p.name || shortHex(s.hostPubkey)} • ${viewerCount > 0 ? `${viewerCount.toLocaleString()} live` : 'Live now'}`;
+        qs('.ci-host', item).textContent = p.display_name || p.name || shortHex(s.hostPubkey);
         item.addEventListener('click', () => openStream(s.address));
         list.appendChild(item);
       });
@@ -24678,6 +24678,20 @@ window.saveAppSettings = function () {
       status.classList.add('is-disconnected');
     }
 
+    function renderTheaterDonationProfileBanner(profile, bannerId) {
+      const bannerEl = qs('#' + bannerId);
+      if (!bannerEl) return;
+      const rawBanner = String(profile && profile.banner || '').trim();
+      const bannerUrl = rawBanner ? sanitizeMediaUrl(rawBanner) : '';
+      if (bannerUrl) {
+        bannerEl.style.backgroundImage = 'url("' + bannerUrl.replace(/"/g, '\\"') + '")';
+        bannerEl.hidden = false;
+      } else {
+        bannerEl.style.backgroundImage = 'none';
+        bannerEl.hidden = true;
+      }
+    }
+
     function renderTheaterLightningRecipientIdentity(stream, resolvedPubkey = '') {
       const avatarEl = qs('#theaterDonationLightningAvatar');
       const nameEl = qs('#theaterDonationLightningName');
@@ -24687,6 +24701,7 @@ window.saveAppSettings = function () {
       const profile = getTheaterDonationProfile(stream, resolvedPubkey);
       const name = getTheaterDonationHostLabel(stream, profile);
       const picture = String(profile.picture || '').trim();
+      renderTheaterDonationProfileBanner(profile, 'theaterDonationLightningBanner');
       const fallbackAvatar = resolvedPubkey ? pickAvatar(resolvedPubkey) : '';
       if (avatarEl) setAvatarEl(avatarEl, picture, fallbackAvatar);
       if (nameEl) nameEl.textContent = name;
@@ -24711,6 +24726,7 @@ window.saveAppSettings = function () {
       const profile = getTheaterDonationProfile(stream, resolvedPubkey);
       const name = getTheaterDonationHostLabel(stream, profile);
       const picture = String(profile.picture || '').trim();
+      renderTheaterDonationProfileBanner(profile, 'theaterDonationOnchainBanner');
       const fallbackAvatar = resolvedPubkey ? pickAvatar(resolvedPubkey) : '';
       if (avatarEl) setAvatarEl(avatarEl, picture, fallbackAvatar);
       if (nameEl) nameEl.textContent = name;
