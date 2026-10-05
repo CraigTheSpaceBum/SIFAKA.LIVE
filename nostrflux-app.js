@@ -2615,7 +2615,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         callbackUrl.searchParams.set('comment', comment.slice(0, lightningInfo.commentAllowed));
       }
     }
-    if (lightningInfo.lnurl) callbackUrl.searchParams.set('lnurl', lightningInfo.lnurl);
     const invoiceData = await fetchJsonOrThrow(callbackUrl.toString(), 'Could not create a Lightning invoice.');
     if (!invoiceData.pr) throw new Error('No payment request returned.');
     return invoiceData.pr;
@@ -2687,13 +2686,21 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const canCreateZap = !!(state.user && info.allowsNostr && info.receiptPubkey);
 
     if (canCreateZap) {
+      let zapRequest = null;
+      let zapInvoice = '';
       try {
         const zapTags = buildZapRequestTags(recipientPubkey, amountMsats, info, extraTags);
-        const zapRequest = await signEvent(9734, '⚡ donation from Sifaka Live', zapTags);
-        const paymentMethod = await payZapInvoiceForLud16(lud16, amountMsats, zapRequest, { zapInfo: info });
-        return { paymentMethod, usedZap: true };
+        zapRequest = await signEvent(9734, '⚡ donation from Sifaka Live', zapTags);
+        zapInvoice = await buildZapInvoiceForLud16(lud16, amountMsats, zapRequest, { zapInfo: info });
       } catch (err) {
-        console.warn('NIP-57 donation path failed; falling back to ordinary Lightning payment:', err && err.message ? err.message : err);
+        console.warn('NIP-57 donation setup unavailable; using ordinary Lightning payment:', err && err.message ? err.message : err);
+      }
+
+      // Never fall back after an invoice has been handed to a wallet.
+      // A wallet timeout can be ambiguous about whether payment actually succeeded.
+      if (zapInvoice) {
+        const paymentMethod = await payInvoiceWithPreferredWallet(zapInvoice);
+        return { paymentMethod, usedZap: true };
       }
     }
 
@@ -24955,7 +24962,7 @@ window.saveAppSettings = function () {
 
     window.setTheaterOnchainDonationAmount = function (amount) {
       const input = qs('#theaterDonationOnchainAmount');
-      if (input) input.value = String(Math.max(1, Math.floor(Number(amount) || 1)));
+      if (input) input.value = String(Math.max(330, Math.floor(Number(amount) || 330)));
       qsa('[data-onchain-donation-amount]').forEach((button) => {
         button.classList.toggle('active', Number(button.getAttribute('data-onchain-donation-amount')) === Number(amount));
       });
