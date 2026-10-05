@@ -870,7 +870,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const output = publicBtcPointAdd(internalKey, publicBtcPointMultiply(tweak, { x: gx, y: gy }));
     if (!output) throw new Error('Invalid Taproot output key.');
     const outputX = publicBtcBigIntTo32Bytes(output.x);
-    return btcBech32mEncode('bc', [1].concat(convertBits(outputX, 8, 5, true)));
+    return bech32mEncode('bc', [1].concat(convertBits(outputX, 8, 5, true)));
   }
 
   async function ensurePublicTaprootDerivationSelfTest() {
@@ -2465,6 +2465,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     for (let i = 0; i < combined.length; i += 1) {
       out += BECH32_CHARSET.charAt(combined[i]);
     }
+    return out;
+  }
+
+  function bech32mEncode(hrp, data) {
+    const normalizedHrp = String(hrp || '').trim().toLowerCase();
+    if (!normalizedHrp) throw new Error('Missing bech32m prefix.');
+    const words = Array.isArray(data) ? data : [];
+    const values = bech32HrpExpand(normalizedHrp).concat(words, [0, 0, 0, 0, 0, 0]);
+    const mod = (bech32Polymod(values) ^ 0x2bc830a3) >>> 0;
+    const checksum = [];
+    for (let i = 0; i < 6; i += 1) checksum.push((mod >>> (5 * (5 - i))) & 31);
+    const combined = words.concat(checksum);
+    let out = `${normalizedHrp}1`;
+    for (let i = 0; i < combined.length; i += 1) out += BECH32_CHARSET.charAt(combined[i]);
     return out;
   }
 
@@ -16869,6 +16883,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function setUserUi() {
     updateTheaterChatComposerVisibility();
+    const theaterDonationBtn = qs('#theaterZapBtn');
+    if (theaterDonationBtn) {
+      theaterDonationBtn.disabled = !state.user;
+      theaterDonationBtn.setAttribute('aria-disabled', state.user ? 'false' : 'true');
+      theaterDonationBtn.title = state.user ? 'Donate to the streamer' : 'Log in with Nostr to donate';
+    }
     if (!state.user) {
       setLoggedInUi(false);
       state.notificationsById = new Map();
@@ -24610,12 +24630,32 @@ window.saveAppSettings = function () {
       status.classList.toggle('is-disconnected', methods.length === 0);
     }
 
+    function renderTheaterOnchainRecipientIdentity(stream, resolvedPubkey = '') {
+      const avatarEl = qs('#theaterDonationOnchainAvatar');
+      const nameEl = qs('#theaterDonationOnchainName');
+      const npubEl = qs('#theaterDonationOnchainNpub');
+      const nip05El = qs('#theaterDonationOnchainNip05');
+      const profile = getTheaterDonationProfile(stream, resolvedPubkey);
+      const name = getTheaterDonationHostLabel(stream, profile);
+      const picture = String(profile.picture || '').trim();
+      const fallbackAvatar = resolvedPubkey ? pickAvatar(resolvedPubkey) : '';
+      if (avatarEl) setAvatarEl(avatarEl, picture, fallbackAvatar);
+      if (nameEl) nameEl.textContent = name;
+      if (npubEl) npubEl.textContent = resolvedPubkey ? shortNpubForDisplay(resolvedPubkey) : 'Resolving…';
+      const nip05 = normalizeNip05Value(profile.nip05 || '');
+      if (nip05El) {
+        nip05El.textContent = nip05;
+        nip05El.hidden = !nip05;
+      }
+    }
+
     function populateTheaterDonationChooser(stream, profile, resolvedPubkey = '') {
       const hostLabel = getTheaterDonationHostLabel(stream, profile);
       theaterDonationContext.streamAddress = stream.address || '';
       theaterDonationContext.hostPubkey = resolvedPubkey || normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
       theaterDonationContext.hostName = hostLabel;
       theaterDonationContext.lud16 = String(profile.lud16 || '').trim();
+      renderTheaterOnchainRecipientIdentity(stream, theaterDonationContext.hostPubkey);
 
       const recipient = qs('#theaterDonationRecipient');
       const lightningRecipient = qs('#theaterDonationLightningRecipient');
@@ -24646,7 +24686,7 @@ window.saveAppSettings = function () {
 
     async function refreshTheaterOnchainRecipientAddress(stream, preferredPubkey = '', opts = {}) {
       const recipientInput = qs('#theaterDonationOnchainAddress');
-      const recipientKeyEl = qs('#theaterDonationOnchainKey');
+      const recipientKeyEl = qs('#theaterDonationOnchainNpub');
       const recipientStatusEl = qs('#theaterDonationOnchainAddressStatus');
       const retryBtn = qs('#theaterDonationOnchainRetryBtn');
       const forceReplace = opts.forceReplace === true;
@@ -24667,6 +24707,7 @@ window.saveAppSettings = function () {
         if (!resolved) throw new Error('The streamer public key is not available yet.');
 
         theaterDonationContext.hostPubkey = resolved;
+        renderTheaterOnchainRecipientIdentity(stream, resolved);
         if (recipientKeyEl) recipientKeyEl.textContent = shortNpubForDisplay(resolved);
 
         // Profile metadata is optional. The Bitcoin address is derived directly
@@ -24676,6 +24717,7 @@ window.saveAppSettings = function () {
           const profile = getTheaterDonationProfile(stream, resolved);
           const label = getTheaterDonationHostLabel(stream, profile);
           theaterDonationContext.hostName = label;
+          renderTheaterOnchainRecipientIdentity(stream, resolved);
           const recipientLabel = qs('#theaterDonationOnchainRecipient');
           if (recipientLabel) recipientLabel.textContent = 'Donating to ' + label + '.';
         }).catch(() => {});
@@ -24798,7 +24840,7 @@ window.saveAppSettings = function () {
       const address = qs('#theaterDonationOnchainAddress');
       const amount = qs('#theaterDonationOnchainAmount');
       const feeRate = qs('#theaterDonationOnchainFeeRate');
-      const key = qs('#theaterDonationOnchainKey');
+      const key = qs('#theaterDonationOnchainNpub');
       const reviewBtn = qs('#theaterDonationOnchainReviewBtn');
       const editBtn = qs('#theaterDonationOnchainEditBtn');
 
@@ -24809,7 +24851,16 @@ window.saveAppSettings = function () {
       }
       if (amount) { amount.value = '330'; amount.disabled = false; }
       if (feeRate) { feeRate.value = ''; feeRate.disabled = false; }
-      if (key) key.textContent = 'Resolving streamer identity…';
+      if (key) key.textContent = 'Resolving…';
+      const recipientName = qs('#theaterDonationOnchainName');
+      const recipientNip05 = qs('#theaterDonationOnchainNip05');
+      const recipientAvatar = qs('#theaterDonationOnchainAvatar');
+      if (recipientName) recipientName.textContent = 'Resolving streamer identity…';
+      if (recipientNip05) {
+        recipientNip05.textContent = '';
+        recipientNip05.hidden = true;
+      }
+      if (recipientAvatar) recipientAvatar.innerHTML = '';
       if (reviewBtn) {
         reviewBtn.disabled = false;
         reviewBtn.textContent = 'Review transaction';
@@ -24824,6 +24875,10 @@ window.saveAppSettings = function () {
     }
 
     window.theaterDonation = async function () {
+      if (!state.user) {
+        window.openLogin();
+        return;
+      }
       const stream = getTheaterDonationStream();
       if (!stream) return;
 
@@ -24881,6 +24936,10 @@ window.saveAppSettings = function () {
     };
 
     window.selectTheaterDonationMethod = async function (method) {
+      if (!state.user) {
+        window.openLogin();
+        return;
+      }
       const stream = getTheaterDonationStream();
       if (!stream) return;
 
