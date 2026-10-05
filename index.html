@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.3.1-theater-donation-ui">
+<link rel="stylesheet" href="./styles/app.css?v=0.3.2-theater-lightning-ui">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -913,7 +913,18 @@ body.nest-preview-open{overflow:hidden}
       <div class="theater-donation-back-row">
         <button class="btn btn-ghost" type="button" onclick="showTheaterDonationChooser()">← Back</button>
       </div>
-      <div class="theater-donation-recipient" id="theaterDonationLightningRecipient"></div>
+      <div class="theater-donation-onchain-recipient-card theater-donation-lightning-recipient-card">
+        <div class="theater-donation-onchain-recipient-profile">
+          <div class="theater-donation-onchain-recipient-avatar" id="theaterDonationLightningAvatar" aria-hidden="true"></div>
+          <div class="theater-donation-onchain-recipient-copy">
+            <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
+            <strong id="theaterDonationLightningName">Resolving streamer identity…</strong>
+            <span id="theaterDonationLightningNpub" class="theater-donation-onchain-npub">Resolving…</span>
+            <span id="theaterDonationLightningNip05" class="theater-donation-onchain-nip05" hidden></span>
+            <span id="theaterDonationLightningAddress" class="theater-donation-lightning-address">Resolving Lightning address…</span>
+          </div>
+        </div>
+      </div>
       <div class="theater-donation-wallet-status" id="theaterDonationWalletStatus"></div>
       <div class="theater-donation-amount-label">Donation amount</div>
       <div class="theater-donation-presets">
@@ -2201,7 +2212,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.3.1-payment-fixes" defer></script>
+<script src="./nostrflux-app.js?v=0.3.2-payment-fixes" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
