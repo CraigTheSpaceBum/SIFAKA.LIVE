@@ -22711,7 +22711,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       try {
         const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
         const ownAddress = await getSifakaOnchainWalletAddress(ownPubkey);
-        if (senderEl) senderEl.textContent = shortBitcoinAddress(ownAddress);
+        if (senderEl) senderEl.textContent = ownAddress || 'Address unavailable';
 
         const [utxos, feeRate] = await Promise.all([
           fetchWalletOnchainUtxos(ownAddress),
