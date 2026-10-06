@@ -8442,8 +8442,8 @@ body.nest-room-page-open{
   #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
     width:60vw!important;
     max-width:60vw!important;
-    height:60vh!important;
-    max-height:60vh!important;
+    height:90vh!important;
+    max-height:90vh!important;
     min-width:0!important;
     min-height:0!important;
   }
@@ -8642,5 +8642,24 @@ body.nest-room-page-open{
     border:1px solid var(--border);
     border-radius:14px;
     background:var(--surface2);
+  }
+}
+
+
+/* ======== PROFILE DONATION AUTH VISIBILITY SAFETY ======== */
+@media (min-width:761px){
+  /* When the existing send controls are hidden by the auth state, hide the entire right panel. */
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-card.wallet-onchain-send-panel:has(#walletOnchainSendControls[hidden]){
+    display:none!important;
+  }
+
+  /* Let the recipient panel use the available width while the gated right panel is hidden. */
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-body.is-profile-donation:has(#walletOnchainSendControls[hidden]){
+    grid-template-columns:minmax(0,1fr);
+  }
+}
+@media (max-width:760px){
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-card.wallet-onchain-send-panel:has(#walletOnchainSendControls[hidden]){
+    display:none!important;
   }
 }
