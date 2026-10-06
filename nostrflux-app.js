@@ -7761,8 +7761,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         return;
       }
 
+      let decryptTimer = null;
       const decryptTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('DM decrypt timed out.')), DM_DECRYPT_TIMEOUT_MS);
+        decryptTimer = setTimeout(() => reject(new Error('DM decrypt timed out.')), DM_DECRYPT_TIMEOUT_MS);
       });
 
       Promise.race([
@@ -7780,6 +7781,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           message.decryptError = true;
         })
         .finally(() => {
+          if (decryptTimer) clearTimeout(decryptTimer);
           state.dmDecryptWorkers = Math.max(0, Number(state.dmDecryptWorkers || 0) - 1);
           state.dmDecryptPendingIds.delete(message.id);
           if (isMessagesPageVisible()) {
