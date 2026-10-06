@@ -191,6 +191,8 @@
   const DM_OLDER_BACKFILL_CHUNK_SECONDS = 60 * 60 * 24 * 365;
   const DM_BACKFILL_LIMIT_PER_DIRECTION = 240;
   const DM_DECRYPT_QUEUE_SOFT_CAP = 1800;
+  const DM_DECRYPT_TIMEOUT_MS = 5000;
+  const DM_NIP04_MAX_CIPHERTEXT_LENGTH = 128 * 1024;
   const DM_PER_PEER_MEMORY_CAP = 1200;
   const DM_LOCAL_ACTIVITY_MAX_ITEMS = 200;
   const DM_LOCAL_ACTIVITY_MAX_AGE_SEC = 60 * 60 * 24 * 30;
@@ -6222,9 +6224,45 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return '';
   }
 
+  function isSafeNip04Ciphertext(ciphertext) {
+    const value = String(ciphertext || '').trim();
+    if (!value || value.length > DM_NIP04_MAX_CIPHERTEXT_LENGTH) return false;
+
+    const marker = value.indexOf('?iv=');
+    if (marker <= 0 || marker !== value.lastIndexOf('?iv=')) return false;
+
+    const encryptedPart = value.slice(0, marker);
+    const ivPart = value.slice(marker + 4);
+    if (!encryptedPart || !ivPart) return false;
+
+    const base64Pattern = /^[A-Za-z0-9+/]+={0,2}$/;
+    if (!base64Pattern.test(encryptedPart) || !base64Pattern.test(ivPart)) return false;
+
+    try {
+      if (typeof atob === 'function') {
+        const encryptedBytes = atob(encryptedPart);
+        const ivBytes = atob(ivPart);
+        if (!encryptedBytes.length || encryptedBytes.length % 16 !== 0) return false;
+        if (ivBytes.length !== 16) return false;
+      }
+    } catch (_) {
+      return false;
+    }
+
+    return true;
+  }
+
   function upsertDmMessageFromEvent(ev, ownerPubkey) {
     if (!ev || !ev.id || Number(ev.kind || 0) !== KIND_DIRECT_MESSAGE) return null;
     if (state.dmEventIds.has(ev.id)) return null;
+
+    const ciphertext = String(ev.content || '').trim();
+    // Ignore malformed/unsupported encrypted events before they ever enter
+    // the DM state or reach a crypto/signing provider.
+    if (!isSafeNip04Ciphertext(ciphertext)) {
+      state.dmEventIds.add(ev.id);
+      return null;
+    }
 
     const owner = normalizePubkeyHex(ownerPubkey);
     const peer = getDmPeerFromEvent(ev, owner);
@@ -6239,7 +6277,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       mine,
       pubkey: normalizePubkeyHex(ev.pubkey) || '',
       created_at: Number(ev.created_at || Math.floor(Date.now() / 1000)),
-      ciphertext: String(ev.content || ''),
+      ciphertext,
       content: '',
       decrypted: false,
       decryptError: false
@@ -6383,8 +6421,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function dmMessagePreview(message) {
     if (!message) return 'No messages yet';
-    if (message.decryptError) return 'Encrypted message (cannot decrypt with current signer)';
-    if (!message.decrypted) return 'Decrypting encrypted message...';
+    if (message.decryptError || !message.decrypted) return '';
     const val = String(message.content || '').trim();
     return val || '[empty message]';
   }
@@ -7415,8 +7452,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const fragment = document.createDocumentFragment();
     const visibleMessages = messages.slice(Math.max(0, messages.length - visibleLimit));
     visibleMessages.forEach((message) => {
-      if (!message.decrypted && !message.decryptError && !state.dmDecryptPendingIds.has(message.id)) {
-        queueDmDecrypt(message);
+      if (message.activity) {
+        // Activity entries are local/non-encrypted DM UI items.
+      } else if (!message.decrypted) {
+        if (!message.decryptError && !state.dmDecryptPendingIds.has(message.id)) {
+          queueDmDecrypt(message);
+        }
+        // Never render encrypted ciphertext, decrypting placeholders, or
+        // failed decryptions. A failed/unsupported encrypted event simply
+        // remains invisible to keep Messages responsive.
+        return;
       }
 
       const isZapActivity = !!(message.activity && (message.activityType === 'zap' || message.activityType === 'zap-open'));
@@ -7478,10 +7523,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           console.warn('Failed to render DM zap activity card:', err && err.message ? err.message : err);
           body.textContent = String(message.content || '').trim() || 'Zap activity';
         }
-      } else if (message.decryptError) {
-        body.textContent = 'Unable to decrypt this DM with the current signer.';
-      } else if (!message.decrypted) {
-        body.textContent = 'Decrypting encrypted message...';
       } else {
         const rawText = String(message.content || '');
         if (rawText.length > 2500) {
@@ -7615,8 +7656,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   async function decryptDmContent(peerPubkey, ciphertext) {
     const peer = normalizePubkeyHex(peerPubkey);
     if (!peer) throw new Error('Missing DM peer pubkey.');
-    const payload = String(ciphertext || '');
-    if (!payload) return '';
+    const payload = String(ciphertext || '').trim();
+    if (!isSafeNip04Ciphertext(payload)) {
+      throw new Error('Unsupported or malformed encrypted DM.');
+    }
 
     if (state.authMode === 'nip07') {
       if (!window.nostr || !window.nostr.nip04 || typeof window.nostr.nip04.decrypt !== 'function') {
@@ -7718,7 +7761,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         return;
       }
 
-      decryptDmContent(message.peerPubkey, message.ciphertext)
+      const decryptTimeout = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('DM decrypt timed out.')), DM_DECRYPT_TIMEOUT_MS);
+      });
+
+      Promise.race([
+        decryptDmContent(message.peerPubkey, message.ciphertext),
+        decryptTimeout
+      ])
         .then((plaintext) => {
           message.content = String(plaintext || '');
           message.decrypted = true;
