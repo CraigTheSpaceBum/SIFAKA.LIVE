@@ -12,14 +12,20 @@
     'wss://nostr.fmt.wiz.biz',
     'wss://offchain.pub',
     'wss://nostr.mom',
-    'wss://nostr21.com'
+    'wss://nostr21.com',
+    'wss://purplepag.es',
+    'wss://profiles.nostr1.com',
+    'wss://relay.nostr.com',
+    'wss://nostr.bitcoiner.social'
   ];
 
-  // Keep relay-hinted profile discovery relays in the lookup set even when
-  // latency ranking would otherwise exclude them.
+  // Keep relay-hinted and profile-focused discovery relays in the lookup set
+  // even when latency ranking would otherwise exclude them.
   const PROFILE_DISCOVERY_RELAYS = [
-    'wss://nos.lol',
-    'wss://nostr21.com'
+    'wss://nostr21.com',
+    'wss://purplepag.es',
+    'wss://profiles.nostr1.com',
+    'wss://nos.lol'
   ];
   const RELAY_BUCKET_DEFS = [
     {
@@ -136,7 +142,11 @@
     { match: /nostr\.fmt\.wiz\.biz$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] },
     { match: /offchain\.pub$/i, ids: ['public_outbox', 'public_inbox', 'broadcast'] },
     { match: /nostr\.mom$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] },
-    { match: /nostr21\.com$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] }
+    { match: /nostr21\.com$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] },
+    { match: /purplepag\.es$/i, ids: ['public_inbox', 'indexer', 'search', 'trusted'] },
+    { match: /profiles\.nostr1\.com$/i, ids: ['public_inbox', 'indexer', 'search', 'trusted'] },
+    { match: /relay\.nostr\.com$/i, ids: ['public_outbox', 'public_inbox', 'broadcast', 'trusted'] },
+    { match: /nostr\.bitcoiner\.social$/i, ids: ['public_outbox', 'public_inbox', 'broadcast'] }
   ];
 
   const KIND_PROFILE = 0;
@@ -176,7 +186,7 @@
   const NWC_INFO_TIMEOUT_MS = 4500;
   const NWC_SCAN_INTERVAL_MS = 420;
   const SETTINGS_STORAGE_KEY = 'nostrflux_settings_v1';
-  const DEFAULT_RELAY_EXPANSION_V1_KEY = 'nostrflux_default_relay_expansion_v1';
+  const DEFAULT_RELAY_EXPANSION_V2_KEY = 'nostrflux_default_relay_expansion_v2';
   const NWC_SYNC_KIND = 30078;
   const NWC_SYNC_D_TAG = 'sifaka-wallet-nwc-v1';
   const NWC_SYNC_LOOKBACK_SEC = 60 * 60 * 24 * 365 * 5;
@@ -3145,7 +3155,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const blocked = new Set(relayBuckets.blocked || []);
       const expansionApplied = (() => {
         try {
-          return localStorage.getItem(DEFAULT_RELAY_EXPANSION_V1_KEY) === '1';
+          return localStorage.getItem(DEFAULT_RELAY_EXPANSION_V2_KEY) === '1';
         } catch (_) {
           return false;
         }
@@ -3163,7 +3173,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           });
         });
         try {
-          localStorage.setItem(DEFAULT_RELAY_EXPANSION_V1_KEY, '1');
+          localStorage.setItem(DEFAULT_RELAY_EXPANSION_V2_KEY, '1');
         } catch (_) {}
       }
       merged.relayBuckets = relayBuckets;
@@ -6292,43 +6302,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function upsertDmMessageFromEvent(ev, ownerPubkey) {
+    // Encrypted kind:4 DMs are disabled in Sifaka's Messages view.
+    // Drop them before they can enter DM state, queues, crypto, or rendering.
     if (!ev || !ev.id || Number(ev.kind || 0) !== KIND_DIRECT_MESSAGE) return null;
     if (state.dmEventIds.has(ev.id)) return null;
-
-    const ciphertext = String(ev.content || '').trim();
-    // Ignore malformed/unsupported encrypted events before they ever enter
-    // the DM state or reach a crypto/signing provider.
-    if (!isSafeNip04Ciphertext(ciphertext)) {
-      state.dmEventIds.add(ev.id);
-      return null;
-    }
-
-    const owner = normalizePubkeyHex(ownerPubkey);
-    const peer = getDmPeerFromEvent(ev, owner);
-    if (!owner || !peer) return null;
-
     state.dmEventIds.add(ev.id);
-
-    const mine = normalizePubkeyHex(ev.pubkey) === owner;
-    const message = {
-      id: ev.id,
-      peerPubkey: peer,
-      mine,
-      pubkey: normalizePubkeyHex(ev.pubkey) || '',
-      created_at: Number(ev.created_at || Math.floor(Date.now() / 1000)),
-      ciphertext,
-      content: '',
-      decrypted: false,
-      decryptError: false
-    };
-
-    const messages = state.dmMessagesByPeer.get(peer) || [];
-    insertDmMessageSorted(messages, message);
-    capDmMessagesForPeer(peer, messages);
-    state.dmMessagesByPeer.set(peer, messages);
-    return message;
+    return null;
   }
-
   function scheduleDmEventDrain(delayMs = 0) {
     if (state.dmEventDrainTimer) return;
     state.dmEventDrainTimer = setTimeout(() => {
@@ -7494,12 +7474,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (message.activity) {
         // Activity entries are local/non-encrypted DM UI items.
       } else if (!message.decrypted) {
-        if (!message.decryptError && !state.dmDecryptPendingIds.has(message.id)) {
-          queueDmDecrypt(message);
-        }
-        // Never render encrypted ciphertext, decrypting placeholders, or
-        // failed decryptions. A failed/unsupported encrypted event simply
-        // remains invisible to keep Messages responsive.
+        // Encrypted DM content is disabled in Sifaka. Never queue or render it.
         return;
       }
 
@@ -7854,66 +7829,19 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function subscribeDirectMessages() {
     const owner = normalizePubkeyHex(state.dmOwnerPubkey || (state.user && state.user.pubkey) || '');
-    if (!owner || !state.pool) return;
+    if (!owner) return;
 
+    // Encrypted kind:4 DMs are intentionally disabled for stability.
+    // Do not subscribe, backfill, queue, decrypt, or render encrypted messages.
     teardownDmSubscription();
-    state.dmSyncing = true;
-    const nowSec = Math.floor(Date.now() / 1000);
-    const oldestSince = Math.max(0, nowSec - DM_SYNC_LOOKBACK_SECONDS);
-    const recentSince = Math.max(oldestSince, nowSec - DM_SYNC_RECENT_SECONDS);
-    const eoseSeen = new Set();
-    let syncFinished = false;
-
-    const finishSync = () => {
-      if (syncFinished) return;
-      syncFinished = true;
-      state.dmSyncing = false;
-      if (state.dmSyncEoseTimer) {
-        clearTimeout(state.dmSyncEoseTimer);
-        state.dmSyncEoseTimer = null;
-      }
-      setDmStatus('DM sync complete.', 'success');
-      if (isMessagesPageVisible()) {
-        scheduleDmRender({ conversations: true, thread: true });
-      }
-      if (!hasRelayBackedDmMessages() && oldestSince < recentSince) {
-        startDmBackfillSubscription(owner, oldestSince, Math.max(oldestSince, recentSince - 1));
-      }
-    };
-
-    state.dmSyncEoseTimer = setTimeout(finishSync, DM_SYNC_STATUS_TIMEOUT_MS);
-    setDmStatus('Syncing encrypted DMs...', 'info');
-
-    const dmRelayUrls = [...(state.pool.urls || [])]
-      .map((url, index) => ({
-        url,
-        index,
-        ms: Number(state.relayPingMsByUrl && state.relayPingMsByUrl.get(url) || Number.POSITIVE_INFINITY)
-      }))
-      .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
-      .slice(0, Math.max(1, Math.min(DM_SYNC_RELAY_COUNT, state.pool.urls.length || 1)))
-      .map((item) => item.url);
-    const expectedEose = Math.max(1, dmRelayUrls.length);
-
-    state.dmSubId = state.pool.subscribe(
-      [
-        { kinds: [KIND_DIRECT_MESSAGE], authors: [owner], since: recentSince, limit: DM_SYNC_LIMIT_PER_DIRECTION },
-        { kinds: [KIND_DIRECT_MESSAGE], '#p': [owner], since: recentSince, limit: DM_SYNC_LIMIT_PER_DIRECTION }
-      ],
-      {
-        event: (ev) => {
-          queueDmRelayEvent(ev, owner);
-        },
-        eose: (relayUrl) => {
-          const relayKey = relayUrl || `relay_${eoseSeen.size + 1}`;
-          eoseSeen.add(String(relayKey));
-          if (eoseSeen.size >= expectedEose) finishSync();
-        }
-      },
-      { relayUrls: dmRelayUrls }
-    );
+    state.dmSyncing = false;
+    state.dmBackfilling = false;
+    state.dmStatus = 'Encrypted DMs are disabled in Sifaka for stability.';
+    state.dmStatusMode = 'info';
+    if (isMessagesPageVisible()) {
+      scheduleDmRender({ conversations: true, thread: true });
+    }
   }
-
   function startDmBackfillSubscription(ownerPubkey, since, until, opts = {}) {
     const owner = normalizePubkeyHex(ownerPubkey);
     if (!owner || !state.pool) return;
@@ -17204,8 +17132,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             .filter((url) => !preferred.includes(url))
             .map((url, index) => ({ url, index, ms: Number(latency.get(url) || Number.POSITIVE_INFINITY) }))
             .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
-            .slice(0, 7)
+            .slice(0, 12)
             .map((item) => item.url);
+          // Targeted profile lookups can safely fan out farther than general traffic.
           return [...new Set([...preferred, ...ranked])];
         })()
       }
