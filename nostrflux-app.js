@@ -16548,11 +16548,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     });
 
-    state.streamReactionPubkeysByKey = new Map();
-    state.streamReactionMetaByKey = new Map();
-    state.streamReactionIdByKeyAndPubkey = new Map();
-    state.streamReactionEventById = new Map();
-    state.streamOwnReactionIdByKey = new Map();
+    // Rebuild only our own reaction state. Keep other viewers' live counts intact
+    // while the fresh author-targeted lookup completes.
+    state.streamReactionIdByKeyAndPubkey.forEach((reactionId, userKey) => {
+      if (!String(userKey || '').endsWith(':' + own)) return;
+      const reactionKey = String(userKey || '').slice(0, -own.length - 1);
+      if (reactionId) state.streamReactionEventById.delete(reactionId);
+      state.streamReactionIdByKeyAndPubkey.delete(userKey);
+      state.streamOwnReactionIdByKey.delete(reactionKey);
+      const set = state.streamReactionPubkeysByKey.get(reactionKey);
+      if (set) {
+        set.delete(own);
+        if (!set.size) {
+          state.streamReactionPubkeysByKey.delete(reactionKey);
+          if (reactionKey !== '+') state.streamReactionMetaByKey.delete(reactionKey);
+        }
+      }
+    });
     state.likedStreamAddresses.delete(stream.address);
     state.streamLikeEventIdByAddress.delete(stream.address);
 
