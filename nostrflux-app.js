@@ -22476,31 +22476,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const context = state.walletOnchainDonationContext;
       if (!context || !context.active) return;
 
-      const loginEl = qs('#walletProfileOnchainDonationLogin');
-      const loginTitleEl = qs('#walletProfileOnchainDonationLoginTitle');
-      const loginTextEl = qs('#walletProfileOnchainDonationLoginText');
-      const loginButtonEl = qs('#walletProfileOnchainDonationLoginButton');
       const controlsEl = qs('#walletOnchainSendControls');
       const senderCardEl = qs('#walletProfileOnchainDonationSenderCard');
-
       const signedIn = !!state.user;
       const canSpendWithSifaka = signedIn && state.authMode === 'local' && !!state.localSecretKey;
 
-      if (loginEl) loginEl.hidden = canSpendWithSifaka;
       if (controlsEl) controlsEl.hidden = !canSpendWithSifaka;
       if (senderCardEl) senderCardEl.hidden = !canSpendWithSifaka;
-
-      if (!signedIn) {
-        if (loginTitleEl) loginTitleEl.textContent = 'Sign in to send';
-        if (loginTextEl) loginTextEl.textContent = 'Sign in to send from your built-in on-chain Nostr Bitcoin wallet.';
-        if (loginButtonEl) loginButtonEl.textContent = 'Sign in';
-      } else if (!canSpendWithSifaka) {
-        if (loginTitleEl) loginTitleEl.textContent = 'Switch to key login';
-        if (loginTextEl) loginTextEl.textContent = 'You are signed in, but this login method cannot sign transactions from your built-in on-chain Nostr Bitcoin wallet. Switch to a local Nostr private-key login to send.';
-        if (loginButtonEl) loginButtonEl.textContent = 'Switch login';
-      }
     }
-
     async function getWalletOnchainSignerModule() {
       if (state.walletOnchainSignerModule) return state.walletOnchainSignerModule;
       const mod = await import('https://cdn.jsdelivr.net/npm/@scure/btc-signer@2.4.1/+esm');
@@ -22638,7 +22621,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const noteEl = qs('#walletOnchainSendNote');
       const titleEl = qs('#walletOnchainSendTitle');
       const amountEl = qs('#walletOnchainSendAmount');
-      const loginEl = qs('#walletProfileOnchainDonationLogin');
 
       const canSpendWithSifaka = !!state.user && state.authMode === 'local' && !!state.localSecretKey;
 
@@ -22686,8 +22668,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           }).catch(() => {});
         }
       } else {
-        if (loginEl) loginEl.hidden = true;
-        if (controlsEl) controlsEl.hidden = false;
+          if (controlsEl) controlsEl.hidden = false;
         if (senderPanelEl) senderPanelEl.hidden = true;
         if (recipientPanel) recipientPanel.hidden = true;
         if (recipientFieldEl) recipientFieldEl.hidden = false;
@@ -22784,7 +22765,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const recipientQrEmpty = qs('#walletProfileOnchainDonationQrEmpty');
       const senderPanelEl = qs('#walletProfileOnchainDonationSenderPanel');
       const senderCardEl = qs('#walletProfileOnchainDonationSenderCard');
-      const loginEl = qs('#walletProfileOnchainDonationLogin');
       const controlsEl = qs('#walletOnchainSendControls');
       const donationAmountEl = qs('#walletProfileOnchainDonationAmount');
       const recipientFieldEl = qs('#walletOnchainSendRecipientField');
@@ -22803,7 +22783,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       if (senderPanelEl) senderPanelEl.hidden = true;
       if (senderCardEl) senderCardEl.hidden = true;
-      if (loginEl) loginEl.hidden = true;
       if (controlsEl) controlsEl.hidden = false;
       if (donationAmountEl) donationAmountEl.hidden = true;
       if (recipientFieldEl) recipientFieldEl.hidden = false;
