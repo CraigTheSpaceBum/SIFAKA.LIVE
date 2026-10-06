@@ -22479,12 +22479,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const loginTextEl = qs('#walletProfileOnchainDonationLoginText');
       const loginButtonEl = qs('#walletProfileOnchainDonationLoginButton');
       const controlsEl = qs('#walletOnchainSendControls');
+      const senderCardEl = qs('#walletProfileOnchainDonationSenderCard');
 
       const signedIn = !!state.user;
       const canSpendWithSifaka = signedIn && state.authMode === 'local' && !!state.localSecretKey;
 
       if (loginEl) loginEl.hidden = canSpendWithSifaka;
       if (controlsEl) controlsEl.hidden = !canSpendWithSifaka;
+      if (senderCardEl) senderCardEl.hidden = !canSpendWithSifaka;
 
       if (!signedIn) {
         if (loginTitleEl) loginTitleEl.textContent = 'Sign in to send';
@@ -22625,6 +22627,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const recipientPanel = qs('#walletProfileOnchainDonationRecipient');
       const recipientAddressEl = qs('#walletProfileOnchainDonationAddress');
       const senderPanelEl = qs('#walletProfileOnchainDonationSenderPanel');
+      const senderCardEl = qs('#walletProfileOnchainDonationSenderCard');
       const recipientQrEmpty = qs('#walletProfileOnchainDonationQrEmpty');
       const controlsEl = qs('#walletOnchainSendControls');
       const senderEl = qs('#walletProfileOnchainDonationSender');
@@ -22640,6 +22643,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       bodyEl?.classList.toggle('is-profile-donation', profileDonation);
       if (recipientPanel) recipientPanel.hidden = !profileDonation;
       if (senderPanelEl) senderPanelEl.hidden = !profileDonation;
+      if (senderCardEl) senderCardEl.hidden = !(profileDonation && canSpendWithSifaka);
       if (donationAmountEl) donationAmountEl.hidden = !profileDonation;
       if (recipientFieldEl) recipientFieldEl.hidden = profileDonation;
       if (noteEl) noteEl.hidden = profileDonation;
@@ -22777,6 +22781,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const recipientQr = qs('#walletProfileOnchainDonationQr');
       const recipientQrEmpty = qs('#walletProfileOnchainDonationQrEmpty');
       const senderPanelEl = qs('#walletProfileOnchainDonationSenderPanel');
+      const senderCardEl = qs('#walletProfileOnchainDonationSenderCard');
       const loginEl = qs('#walletProfileOnchainDonationLogin');
       const controlsEl = qs('#walletOnchainSendControls');
       const donationAmountEl = qs('#walletProfileOnchainDonationAmount');
@@ -22795,6 +22800,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         recipientQrEmpty.textContent = 'Loading recipient address…';
       }
       if (senderPanelEl) senderPanelEl.hidden = true;
+      if (senderCardEl) senderCardEl.hidden = true;
       if (loginEl) loginEl.hidden = true;
       if (controlsEl) controlsEl.hidden = false;
       if (donationAmountEl) donationAmountEl.hidden = true;
