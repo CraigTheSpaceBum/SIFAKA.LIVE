@@ -12,16 +12,14 @@
     'wss://nostr.fmt.wiz.biz',
     'wss://offchain.pub',
     'wss://nostr.mom',
-    'wss://nostr21.com',
-    'wss://relay.nostr.com'
+    'wss://nostr21.com'
   ];
 
   // Keep relay-hinted profile discovery relays in the lookup set even when
   // latency ranking would otherwise exclude them.
   const PROFILE_DISCOVERY_RELAYS = [
     'wss://nos.lol',
-    'wss://nostr21.com',
-    'wss://relay.nostr.com'
+    'wss://nostr21.com'
   ];
   const RELAY_BUCKET_DEFS = [
     {
@@ -137,7 +135,8 @@
     { match: /nostr\.wine$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] },
     { match: /nostr\.fmt\.wiz\.biz$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] },
     { match: /offchain\.pub$/i, ids: ['public_outbox', 'public_inbox', 'broadcast'] },
-    { match: /nostr\.mom$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] }
+    { match: /nostr\.mom$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] },
+    { match: /nostr21\.com$/i, ids: ['public_outbox', 'public_inbox', 'trusted'] }
   ];
 
   const KIND_PROFILE = 0;
@@ -177,6 +176,7 @@
   const NWC_INFO_TIMEOUT_MS = 4500;
   const NWC_SCAN_INTERVAL_MS = 420;
   const SETTINGS_STORAGE_KEY = 'nostrflux_settings_v1';
+  const DEFAULT_RELAY_EXPANSION_V1_KEY = 'nostrflux_default_relay_expansion_v1';
   const NWC_SYNC_KIND = 30078;
   const NWC_SYNC_D_TAG = 'sifaka-wallet-nwc-v1';
   const NWC_SYNC_LOOKBACK_SEC = 60 * 60 * 24 * 365 * 5;
@@ -3139,8 +3139,37 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       hasSavedRelayBuckets ? saved.relayBuckets : merged.relayBuckets,
       Array.isArray(saved && saved.relays) ? saved.relays : merged.relays
     );
-    const derivedRelays = buildActiveRelayListFromBuckets(relayBuckets);
-    merged.relayBuckets = relayBuckets;
+    if (!hasSavedRelayBuckets) {
+      merged.relayBuckets = relayBuckets;
+    } else {
+      const blocked = new Set(relayBuckets.blocked || []);
+      const expansionApplied = (() => {
+        try {
+          return localStorage.getItem(DEFAULT_RELAY_EXPANSION_V1_KEY) === '1';
+        } catch (_) {
+          return false;
+        }
+      })();
+
+      if (!expansionApplied) {
+        DEFAULT_RELAYS.forEach((url) => {
+          if (blocked.has(url)) return;
+          const assigned = relayAssignedBucketIds(url, relayBuckets);
+          if (assigned.length) return;
+          relayLegacyBucketIds(url).forEach((bucketId) => {
+            if (relayBuckets[bucketId] && !relayBuckets[bucketId].includes(url)) {
+              relayBuckets[bucketId].push(url);
+            }
+          });
+        });
+        try {
+          localStorage.setItem(DEFAULT_RELAY_EXPANSION_V1_KEY, '1');
+        } catch (_) {}
+      }
+      merged.relayBuckets = relayBuckets;
+    }
+
+    const derivedRelays = buildActiveRelayListFromBuckets(merged.relayBuckets);
     merged.relays = derivedRelays.length ? derivedRelays : (hasSavedRelayBuckets ? [] : [...DEFAULT_RELAYS]);
     merged.blossomUploadEndpoints = normalizeBlossomUploadEndpointList(merged.blossomUploadEndpoints);
     merged.theme = normalizeThemeSetting(merged.theme);
