@@ -7023,6 +7023,146 @@ footer p{font-size:.72rem;color:var(--muted);}
 .wallet-desktop-column-label{display:none;}
 
 .wallet-onchain-send-card{width:min(560px,100%);}
+.wallet-onchain-send-card.profile-donation{width:min(820px,100%);}
+.wallet-onchain-send-body{min-width:0;}
+.wallet-onchain-send-panel{min-width:0;}
+.wallet-onchain-send-body.is-profile-donation{
+  display:grid;
+  grid-template-columns:minmax(220px,.88fr) minmax(0,1.12fr);
+  gap:1rem;
+  align-items:start;
+}
+.wallet-profile-donation-recipient{
+  min-width:0;
+  padding:.85rem;
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:var(--surface2);
+}
+.wallet-profile-donation-kicker{
+  margin-bottom:.65rem;
+  color:var(--muted);
+  font:700 .64rem/1.2 'DM Mono',monospace;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.wallet-profile-donation-qr-wrap{
+  min-height:240px;
+  display:grid;
+  place-items:center;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:#fff;
+}
+.wallet-profile-donation-qr-wrap img,
+.wallet-profile-donation-qr-wrap canvas{
+  width:220px!important;
+  height:220px!important;
+  image-rendering:auto;
+}
+#walletProfileOnchainDonationQrEmpty{
+  max-width:220px;
+  color:#64748b;
+  text-align:center;
+  font-size:.72rem;
+  line-height:1.45;
+}
+.wallet-profile-donation-address{
+  margin-top:.8rem;
+  color:var(--text);
+  font:600 .68rem/1.55 'DM Mono',monospace;
+  overflow-wrap:anywhere;
+  word-break:break-all;
+}
+.wallet-profile-donation-copy{
+  width:100%;
+  margin-top:.7rem;
+}
+.wallet-profile-donation-support{
+  display:grid;
+  gap:.2rem;
+  margin-bottom:.8rem;
+  padding:.75rem .85rem;
+  border:1px solid rgba(139,92,246,.25);
+  border-radius:13px;
+  background:rgba(139,92,246,.07);
+}
+.wallet-profile-donation-support strong{
+  color:var(--text);
+  font:700 .88rem/1.3 var(--font-display);
+}
+.wallet-profile-donation-support span{
+  color:var(--text2);
+  font:600 .64rem/1.4 'DM Mono',monospace;
+  overflow-wrap:anywhere;
+}
+.wallet-profile-donation-login{
+  display:grid;
+  gap:.55rem;
+  padding:1rem;
+  border:1px solid rgba(247,147,26,.22);
+  border-radius:14px;
+  background:rgba(247,147,26,.07);
+}
+.wallet-profile-donation-login strong{
+  color:var(--text);
+  font:700 .92rem/1.3 var(--font-display);
+}
+.wallet-profile-donation-login p{
+  margin:0;
+  color:var(--text2);
+  font-size:.72rem;
+  line-height:1.55;
+}
+.wallet-profile-donation-login .btn{
+  width:100%;
+  margin-top:.1rem;
+}
+.wallet-onchain-send-body.is-profile-donation .wallet-onchain-send-balance-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.wallet-onchain-send-body.is-profile-donation .wallet-onchain-send-balance-card:nth-child(3){
+  grid-column:1/-1;
+}
+.wallet-onchain-send-body.is-profile-donation .wallet-onchain-send-form{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.wallet-profile-donation-amount{
+  margin-top:.9rem;
+}
+.wallet-profile-donation-amount-label{
+  margin-bottom:.45rem;
+  color:var(--muted);
+  font:700 .62rem/1.2 'DM Mono',monospace;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+}
+.wallet-profile-donation-presets{
+  display:flex;
+  flex-wrap:wrap;
+  gap:.45rem;
+}
+.wallet-profile-donation-presets button{
+  appearance:none;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:.5rem .65rem;
+  background:var(--surface2);
+  color:var(--text2);
+  font:700 .66rem/1.2 'DM Mono',monospace;
+  cursor:pointer;
+}
+.wallet-profile-donation-presets button:hover{
+  border-color:var(--purple);
+  color:var(--text);
+}
+.wallet-profile-donation-presets button.active{
+  border-color:var(--purple);
+  background:rgba(139,92,246,.14);
+  color:var(--text);
+}
+
 .wallet-onchain-send-note{
   margin-top:.85rem;
   padding:.75rem .85rem;
@@ -7095,6 +7235,10 @@ footer p{font-size:.72rem;color:var(--muted);}
 }
 
 @media (max-width:760px){
+  .wallet-onchain-send-body.is-profile-donation{grid-template-columns:1fr;}
+  .wallet-onchain-send-body.is-profile-donation .wallet-onchain-send-balance-grid{grid-template-columns:1fr;}
+  .wallet-onchain-send-body.is-profile-donation .wallet-onchain-send-balance-card:nth-child(3){grid-column:auto;}
+  .wallet-onchain-send-body.is-profile-donation .wallet-onchain-send-form{grid-template-columns:1fr;}
   .wallet-onchain-send-balance-grid{grid-template-columns:1fr;}
   #walletPage .wallet-mainchain-receive{
     margin-top:.65rem;
