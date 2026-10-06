@@ -20088,7 +20088,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               window.openWalletOnchainSend(address, {
                 recipientPubkey: profileBitcoinPubkey,
                 recipientName: String(p.display_name || p.name || 'this profile').trim(),
-              profileDonation: true
+                profileDonation: true
               });
             }
           };
@@ -22524,7 +22524,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const profileDonation = recipientMeta && recipientMeta.profileDonation === true;
       const recipientAddress = String(destination || '').trim();
       const recipientPubkey = normalizePubkeyHex(recipientMeta.recipientPubkey || '');
-      const recipientName = String(recipientMeta.recipientName || 'this profile').trim() || 'this profile';
+      const recipientName = profileDonation
+        ? (String(recipientMeta.recipientName || 'this profile').trim() || 'this profile')
+        : String(recipientMeta.recipientName || '').trim();
 
       state.walletOnchainDonationContext = profileDonation
         ? {
@@ -22537,6 +22539,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       modal.hidden = false;
       modal.setAttribute('aria-hidden', 'false');
+      modal.classList.toggle('profile-donation', profileDonation);
       resetWalletOnchainSendDraft();
 
       const bodyEl = qs('#walletOnchainSendBody');
@@ -22732,6 +22735,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (titleEl) titleEl.textContent = 'Send Bitcoin';
       if (destinationEl) destinationEl.disabled = false;
       if (amountEl) amountEl.min = '1';
+      modal?.classList.remove('profile-donation');
     };
 
     window.setWalletOnchainDonationAmount = function (amount) {
