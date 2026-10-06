@@ -16563,8 +16563,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     // Rebuild only our own reaction state. Keep other viewers' live counts intact
     // while the fresh author-targeted lookup completes.
     state.streamReactionIdByKeyAndPubkey.forEach((reactionId, userKey) => {
-      if (!String(userKey || '').endsWith(':' + own)) return;
-      const reactionKey = String(userKey || '').slice(0, -own.length - 1);
+      const rawUserKey = String(userKey || '');
+      const separator = rawUserKey.lastIndexOf(':');
+      if (separator < 0 || normalizePubkeyHex(rawUserKey.slice(separator + 1)) !== own) return;
+      let reactionKey = rawUserKey.slice(0, separator);
+      try { reactionKey = decodeURIComponent(reactionKey); } catch (_) {}
       if (reactionId) state.streamReactionEventById.delete(reactionId);
       state.streamReactionIdByKeyAndPubkey.delete(userKey);
       state.streamOwnReactionIdByKey.delete(reactionKey);
