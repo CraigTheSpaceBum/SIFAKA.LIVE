@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.3.3">
+<link rel="stylesheet" href="./styles/app.css?v=0.3.4">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -1390,36 +1390,90 @@ body.nest-preview-open{overflow:hidden}
       </div>
       <button class="wallet-modal-close" type="button" onclick="closeWalletOnchainSend()" aria-label="Close">×</button>
     </div>
-    <div class="wallet-onchain-send-note" id="walletOnchainSendNote"></div>
-    <div class="wallet-onchain-send-balance-grid">
-      <div class="wallet-onchain-send-balance-card">
-        <span>Available to send</span>
-        <strong id="walletOnchainSendAvailable">Loading…</strong>
-        <small id="walletOnchainSendAvailableSub">Loading spendable UTXOs…</small>
-      </div>
-      <div class="wallet-onchain-send-balance-card">
-        <span>Suggested network fee</span>
-        <strong id="walletOnchainSendSuggestedFee">Loading…</strong>
-        <small id="walletOnchainSendFeeSub">Current mempool recommendation</small>
-      </div>
+    <div class="wallet-onchain-send-body" id="walletOnchainSendBody">
+      <section class="wallet-profile-donation-card wallet-profile-donation-recipient" id="walletProfileOnchainDonationRecipient" hidden>
+        <div class="wallet-profile-donation-kicker">Recipient Bitcoin address</div>
+        <div class="wallet-profile-donation-qr-wrap" aria-label="Recipient Bitcoin address QR code">
+          <div id="walletProfileOnchainDonationQr"></div>
+          <div id="walletProfileOnchainDonationQrEmpty">Loading recipient address…</div>
+        </div>
+        <div class="wallet-profile-donation-address-label">Recipient Bitcoin address</div>
+        <div class="wallet-profile-donation-address" id="walletProfileOnchainDonationAddress">Resolving…</div>
+        <button class="btn btn-ghost wallet-small-btn wallet-profile-donation-copy" type="button" id="walletProfileOnchainDonationCopyBtn" onclick="copyWalletProfileOnchainDonationAddress()">Copy address</button>
+      </section>
+
+      <section class="wallet-profile-donation-card wallet-onchain-send-panel" id="walletProfileOnchainDonationSenderPanel" hidden>
+        <div class="theater-donation-onchain-recipient-card wallet-profile-donation-identity-card" id="walletProfileOnchainDonationIdentityCard">
+          <div class="theater-donation-recipient-banner" id="walletProfileOnchainDonationBanner" aria-hidden="true"></div>
+          <div class="theater-donation-onchain-recipient-profile">
+            <div class="theater-donation-onchain-recipient-avatar" id="walletProfileOnchainDonationAvatar" aria-hidden="true"></div>
+            <div class="theater-donation-onchain-recipient-copy">
+              <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
+              <strong id="walletProfileOnchainDonationName">Resolving streamer identity…</strong>
+              <span id="walletProfileOnchainDonationNpub" class="theater-donation-onchain-npub">Resolving…</span>
+              <span id="walletProfileOnchainDonationNip05" class="theater-donation-onchain-nip05" hidden></span>
+              <span id="walletProfileOnchainDonationBitcoin" class="wallet-profile-donation-bitcoin-address" hidden></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="wallet-profile-donation-login" id="walletProfileOnchainDonationLogin" hidden>
+          <strong id="walletProfileOnchainDonationLoginTitle">Sign in to send</strong>
+          <p id="walletProfileOnchainDonationLoginText">Sign in to send from your built-in on-chain Nostr Bitcoin wallet.</p>
+          <button class="btn btn-primary" type="button" id="walletProfileOnchainDonationLoginButton" onclick="window.openLogin()">Sign in</button>
+        </div>
+
+        <div id="walletOnchainSendControls">
+          <div class="wallet-onchain-send-note" id="walletOnchainSendNote"></div>
+          <div class="wallet-onchain-send-balance-grid">
+            <div class="wallet-onchain-send-balance-card wallet-profile-donation-sender-card" id="walletProfileOnchainDonationSenderCard" hidden>
+              <span>Sending from</span>
+              <strong id="walletProfileOnchainDonationSender">Loading…</strong>
+              <small>Your built-in on-chain Nostr Bitcoin wallet.</small>
+            </div>
+            <div class="wallet-onchain-send-balance-card">
+              <span>Available to send</span>
+              <strong id="walletOnchainSendAvailable">Loading…</strong>
+              <small id="walletOnchainSendAvailableSub">Loading spendable UTXOs…</small>
+            </div>
+            <div class="wallet-onchain-send-balance-card">
+              <span>Suggested network fee</span>
+              <strong id="walletOnchainSendSuggestedFee">Loading…</strong>
+              <small id="walletOnchainSendFeeSub">Current mempool recommendation</small>
+            </div>
+          </div>
+
+          <div class="wallet-profile-donation-amount" id="walletProfileOnchainDonationAmount" hidden>
+            <div class="wallet-profile-donation-amount-label">Donation amount</div>
+            <div class="wallet-profile-donation-presets">
+              <button type="button" data-wallet-profile-donation-amount="330" onclick="setWalletOnchainDonationAmount(330)">330 sats</button>
+              <button type="button" data-wallet-profile-donation-amount="500" onclick="setWalletOnchainDonationAmount(500)">500 sats</button>
+              <button type="button" data-wallet-profile-donation-amount="1000" onclick="setWalletOnchainDonationAmount(1000)">1,000 sats</button>
+              <button type="button" data-wallet-profile-donation-amount="5000" onclick="setWalletOnchainDonationAmount(5000)">5,000 sats</button>
+              <button type="button" data-wallet-profile-donation-amount="10000" onclick="setWalletOnchainDonationAmount(10000)">10,000 sats</button>
+            </div>
+          </div>
+
+          <div class="wallet-onchain-send-form">
+            <label id="walletOnchainSendRecipientField">Recipient Bitcoin address
+              <input id="walletOnchainSendAddress" type="text" autocomplete="off" spellcheck="false" placeholder="bc1p...">
+            </label>
+            <label>Amount (sats)
+              <input id="walletOnchainSendAmount" type="number" min="1" step="1" inputmode="numeric" placeholder="10000">
+            </label>
+            <label>Fee rate (sat/vB)
+              <input id="walletOnchainSendFeeRate" type="number" min="1" step="0.1" inputmode="decimal" placeholder="1">
+            </label>
+          </div>
+          <div class="wallet-onchain-send-summary" id="walletOnchainSendSummary">Enter a recipient and amount to prepare the transaction.</div>
+          <div class="wallet-modal-actions">
+            <button class="btn btn-primary" type="button" id="walletOnchainReviewBtn" onclick="prepareWalletOnchainSend()">Review transaction</button>
+            <button class="btn btn-ghost" type="button" onclick="closeWalletOnchainSend()">Cancel</button>
+          </div>
+          <div class="wallet-modal-status" id="walletOnchainSendStatus" aria-live="polite"></div>
+        </div>
+      </section>
     </div>
-    <div class="wallet-onchain-send-form">
-      <label>Recipient Bitcoin address
-        <input id="walletOnchainSendAddress" type="text" autocomplete="off" spellcheck="false" placeholder="bc1p...">
-      </label>
-      <label>Amount (sats)
-        <input id="walletOnchainSendAmount" type="number" min="1" step="1" inputmode="numeric" placeholder="10000">
-      </label>
-      <label>Fee rate (sat/vB)
-        <input id="walletOnchainSendFeeRate" type="number" min="1" step="0.1" inputmode="decimal" placeholder="1">
-      </label>
-    </div>
-    <div class="wallet-onchain-send-summary" id="walletOnchainSendSummary">Enter a recipient and amount to prepare the transaction.</div>
-    <div class="wallet-modal-actions">
-      <button class="btn btn-primary" type="button" id="walletOnchainReviewBtn" onclick="prepareWalletOnchainSend()">Review transaction</button>
-      <button class="btn btn-ghost" type="button" onclick="closeWalletOnchainSend()">Cancel</button>
-    </div>
-    <div class="wallet-modal-status" id="walletOnchainSendStatus" aria-live="polite"></div>
   </div>
 </div>
 
@@ -2206,7 +2260,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.3.3" defer></script>
+<script src="./nostrflux-app.js?v=0.3.4" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
