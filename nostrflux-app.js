@@ -14801,7 +14801,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (theaterOnchainBtn && hostPubkey) {
       const onchainName = String(p.display_name || p.name || 'this profile').trim() || 'this profile';
       theaterOnchainBtn.disabled = false;
-      theaterOnchainBtn.textContent = 'On Chain';
+      theaterOnchainBtn.textContent = shortBitcoinAddress(address);
       theaterOnchainBtn.title = 'Send Bitcoin to ' + onchainName;
       theaterOnchainBtn.onclick = async function (event) {
         if (event) {
@@ -16486,6 +16486,103 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return out.slice(0, 30);
   }
 
+  async function hydrateOwnStreamReactionState(stream) {
+    if (!stream || !state.user || !state.pool) return;
+    const own = normalizePubkeyHex(state.user.pubkey);
+    if (!own) return;
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const streamStart = Number(stream.starts || stream.created_at || 0) || 0;
+    const since = streamStart
+      ? Math.max(0, Math.max(streamStart - 60 * 10, nowSec - 60 * 60 * 24 * 30))
+      : Math.max(0, nowSec - 60 * 60 * 24 * 30);
+
+    const filters = [
+      { kinds: [KIND_REACTION, KIND_DELETION], authors: [own], '#a': [stream.address], since, limit: 240 },
+      { kinds: [KIND_REACTION, KIND_DELETION], authors: [own], '#e': [stream.id], since, limit: 240 },
+      { kinds: [KIND_DELETION], authors: [own], since, limit: 240 }
+    ];
+    if (!stream.id) filters.splice(1, 1);
+
+    const events = await fetchEventsCached(filters, {
+      scope: 'own-theater-reaction-state',
+      cacheKey: 'own-theater-reaction-state:' + own + ':' + String(stream.address || '') + ':' + String(stream.id || ''),
+      timeoutMs: 2800,
+      maxEvents: 720,
+      allowStale: false,
+      force: true,
+      ttlMs: 0,
+      warmMs: 0
+    });
+    if (state.selectedStreamAddress !== stream.address) return;
+
+    const sorted = Array.from(
+      new Map((events || []).filter((ev) => ev && ev.id).map((ev) => [ev.id, ev])).values()
+    ).sort((a, b) => {
+      const byTime = Number(a.created_at || 0) - Number(b.created_at || 0);
+      return byTime || String(a.id || '').localeCompare(String(b.id || ''));
+    });
+
+    const deletedIds = new Set();
+    const minusMarkers = [];
+    sorted.forEach((ev) => {
+      if (Number(ev.kind || 0) !== KIND_DELETION) return;
+      allTagValues(ev.tags, 'e').forEach((id) => {
+        if (/^[0-9a-f]{64}$/i.test(id)) deletedIds.add(String(id).toLowerCase());
+      });
+    });
+
+    sorted.forEach((ev) => {
+      if (Number(ev.kind || 0) !== KIND_REACTION) return;
+      if (normalizeReactionContentKey(ev.content) !== '-') return;
+      const aTag = firstTagValue(ev.tags, 'a');
+      const eTag = firstTagValue(ev.tags, 'e');
+      const targetsStream =
+        (aTag && stream.address && aTag === stream.address) ||
+        (eTag && stream.id && eTag === stream.id);
+      if (targetsStream) {
+        minusMarkers.push({
+          createdAt: Number(ev.created_at || 0),
+          pubkey: normalizePubkeyHex(ev.pubkey || '')
+        });
+      }
+    });
+
+    state.streamReactionPubkeysByKey = new Map();
+    state.streamReactionMetaByKey = new Map();
+    state.streamReactionIdByKeyAndPubkey = new Map();
+    state.streamReactionEventById = new Map();
+    state.streamOwnReactionIdByKey = new Map();
+    state.likedStreamAddresses.delete(stream.address);
+    state.streamLikeEventIdByAddress.delete(stream.address);
+
+    sorted.forEach((ev) => {
+      if (Number(ev.kind || 0) !== KIND_REACTION) return;
+      const reactionMeta = parseReactionMeta(ev.content, ev.tags);
+      if (!reactionMeta) return;
+      if (deletedIds.has(String(ev.id || '').toLowerCase())) return;
+
+      const reactionPubkey = normalizePubkeyHex(ev.pubkey || '');
+      if (!reactionPubkey) return;
+
+      const aTag = firstTagValue(ev.tags, 'a');
+      const eTag = firstTagValue(ev.tags, 'e');
+      const targetsStream =
+        (aTag && stream.address && aTag === stream.address) ||
+        (eTag && stream.id && eTag === stream.id);
+      if (!targetsStream) return;
+
+      if (minusMarkers.some((marker) =>
+        marker.pubkey === reactionPubkey &&
+        marker.createdAt >= Number(ev.created_at || 0)
+      )) return;
+
+      applyStreamReaction(reactionMeta, reactionPubkey, ev.id);
+    });
+
+    renderStreamReactionsUi(stream);
+  }
+
   async function toggleStreamReactionByMeta(reactionMeta) {
     const stream = state.streamsByAddress.get(state.selectedStreamAddress);
     if (!stream || !reactionMeta || !reactionMeta.key) return;
@@ -17444,6 +17541,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.streamRecentZapsByAddress.set(stream.address, []);
     state.streamZapEventIdsByAddress.set(stream.address, new Set());
     renderStreamReactionsUi(stream);
+    hydrateOwnStreamReactionState(stream).catch(() => {});
     updateTheaterSatsDisplay(stream);
     renderStreamZapList(stream);
 
@@ -17639,7 +17737,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const reactionSince = streamStart
       ? Math.max(0, Math.max(streamStart - reactionPaddingSec, nowSec - reactionHistoryWindowSec))
       : Math.max(0, nowSec - reactionHistoryWindowSec);
-    const reactionHistoryLimit = isArchive ? THEATER_REACTION_HISTORY_LIMIT_ARCHIVE : THEATER_REACTION_HISTORY_LIMIT_LIVE;
+    const reactionHistoryLimit = isArchive ? Math.max(THEATER_REACTION_HISTORY_LIMIT_ARCHIVE, 320) : Math.max(THEATER_REACTION_HISTORY_LIMIT_LIVE, 240);
     const reactionLiveSince = Math.max(0, nowSec - THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC);
     const reactionHistoryFilters = [
       { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince },
@@ -17744,6 +17842,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const targetsStream =
           (targetId && stream.id && targetId === stream.id) ||
           (targetAddress && stream.address && targetAddress === stream.address);
+        if (targetsStream && normalizeReactionContentKey(ev.content) === '-') {
+          const reactionPubkey = normalizePubkeyHex(ev.pubkey || '');
+          const priorLikeId = reactionPubkey
+            ? state.streamReactionIdByKeyAndPubkey.get(streamReactionUserKey('+', reactionPubkey))
+            : '';
+          if (priorLikeId) {
+            removeStreamReactionById(priorLikeId);
+            removeChatStreamReactionRow(priorLikeId);
+          }
+          outcome.streamReactionsDirty = true;
+          return outcome;
+        }
         if (targetsStream) {
           const reactionMeta = parseReactionMeta(ev.content, ev.tags);
           if (!reactionMeta) return outcome;
@@ -25416,19 +25526,27 @@ window.saveAppSettings = function () {
       const profile = getTheaterDonationProfile(stream, hostPubkey);
 
       if (method === 'onchain') {
-        const choose = qs('#theaterDonationChooseView');
-        const lightning = qs('#theaterDonationLightningView');
-        const onchain = qs('#theaterDonationOnchainView');
-        if (choose) choose.hidden = true;
-        if (lightning) lightning.hidden = true;
-        if (onchain) onchain.hidden = false;
-
-        const recipientLabel = qs('#theaterDonationOnchainRecipient');
-        if (recipientLabel) recipientLabel.textContent = 'Donating to ' + getTheaterDonationHostLabel(stream, profile) + '.';
-        resetTheaterOnchainView();
-
-        refreshTheaterOnchainRecipientAddress(stream, hostPubkey).catch(() => {});
-        loadTheaterOnchainWalletSummary().catch(() => {});
+        const resolvedPubkey = theaterDonationContext.hostPubkey || normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+        if (!resolvedPubkey || typeof window.openWalletOnchainSend !== 'function') {
+          const note = qs('#theaterDonationChooseNote');
+          if (note) note.textContent = 'The streamer Bitcoin address is not available yet.';
+          return;
+        }
+        try {
+          const recipientName = getTheaterDonationHostLabel(stream, profile);
+          const address = await getProfileBitcoinAddress(resolvedPubkey);
+          if (!address) throw new Error('Could not derive the streamer Bitcoin address.');
+          const legacyModal = qs('#theaterDonationModal');
+          if (legacyModal) legacyModal.classList.remove('open');
+          window.openWalletOnchainSend(address, {
+            recipientPubkey: resolvedPubkey,
+            recipientName,
+            profileDonation: true
+          });
+        } catch (err) {
+          const note = qs('#theaterDonationChooseNote');
+          if (note) note.textContent = err?.message || 'Could not open the on-chain donation window.';
+        }
         return;
       }
 
