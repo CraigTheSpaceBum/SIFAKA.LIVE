@@ -22,9 +22,10 @@
   // Keep relay-hinted and profile-focused discovery relays in the lookup set
   // even when latency ranking would otherwise exclude them.
   const PROFILE_DISCOVERY_RELAYS = [
+    'wss://relay.damus.io',
+    'wss://relay.nostr.net',
+    'wss://nostr.wine',
     'wss://nostr21.com',
-    'wss://purplepag.es',
-    'wss://profiles.nostr1.com',
     'wss://nos.lol'
   ];
   const RELAY_BUCKET_DEFS = [
@@ -14674,7 +14675,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const hasHostProfile = !!(hostPubkey && state.profilesByPubkey.get(hostPubkey));
     const displayName = hasHostProfile ? (p.display_name || p.name || shortHex(hostPubkey)) : '';
     const name = qs('.sib-name');
-    if (name && hasHostProfile) {
+    if (name) {
       const previousText = String(name.dataset.profileDisplay || '').trim();
       const shouldAnimate = previousText && previousText !== displayName;
       name.innerHTML = '';
@@ -14694,12 +14695,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         name.appendChild(document.createTextNode(' '));
         name.appendChild(badge);
       }
+      name.onclick = () => showProfileByPubkey(hostPubkey);
+      name.title = 'Open profile';
+      name.style.cursor = 'pointer';
     }
     const ident = qs('.sib-identity');
-    if (ident && hasHostProfile) {
-      ident.textContent = verifiedNip05 || shortHex(hostPubkey);
+    if (ident) {
+      ident.textContent = verifiedNip05 || shortNpubForDisplay(hostPubkey);
       ident.classList.remove('sib-profile-loading');
       ident.dataset.profileReady = '1';
+      ident.onclick = () => showProfileByPubkey(hostPubkey);
+      ident.title = verifiedNip05 ? 'Open profile' : 'Open profile';
+      ident.style.cursor = 'pointer';
     }
 
     // Hosted-by box: inline in .sib-host-row to the right of .sib-host-info
@@ -14768,6 +14775,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const theaterWebsite = qs('#theaterWebsite');
     const theaterLud16Row = qs('#theaterLud16Row');
     const theaterLud16 = qs('#theaterLud16');
+    const theaterOnchainRow = qs('#theaterOnchainRow');
+    const theaterOnchainBtn = qs('#theaterOnchainBtn');
 
     let theaterWebsiteUrl = String(p.website || '').trim();
     if (theaterWebsiteUrl && !isLikelyUrl(theaterWebsiteUrl) && /^[a-z0-9.-]+\\.[a-z]{2,}/i.test(theaterWebsiteUrl)) {
@@ -14775,7 +14784,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     const hasTheaterWebsite = !!(theaterWebsiteUrl && isLikelyUrl(theaterWebsiteUrl));
     const theaterLightningAddress = String(p.lud16 || '').trim();
-    const hasTheaterLinks = hasTheaterWebsite || !!theaterLightningAddress;
+    const hasTheaterOnchain = !!hostPubkey;
+    const hasTheaterLinks = hasTheaterWebsite || !!theaterLightningAddress || hasTheaterOnchain;
 
     if (theaterWebsite) {
       theaterWebsite.href = hasTheaterWebsite ? theaterWebsiteUrl : '#';
@@ -14785,6 +14795,29 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     if (theaterLud16) theaterLud16.textContent = theaterLightningAddress;
     if (theaterLud16Row) theaterLud16Row.style.display = theaterLightningAddress ? 'flex' : 'none';
+
+    if (theaterOnchainBtn && hostPubkey) {
+      const onchainName = String(p.display_name || p.name || 'this profile').trim() || 'this profile';
+      theaterOnchainBtn.disabled = false;
+      theaterOnchainBtn.textContent = 'On Chain';
+      theaterOnchainBtn.title = 'Send Bitcoin to ' + onchainName;
+      theaterOnchainBtn.onclick = async function (event) {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        try {
+          const address = await getProfileBitcoinAddress(hostPubkey);
+          if (!address || typeof window.openWalletOnchainSend !== 'function') return;
+          window.openWalletOnchainSend(address, {
+            recipientPubkey: hostPubkey,
+            recipientName: onchainName,
+            profileDonation: true
+          });
+        } catch (_) {}
+      };
+    }
+    if (theaterOnchainRow) theaterOnchainRow.style.display = hasTheaterOnchain ? 'flex' : 'none';
     if (theaterProfileLinks) theaterProfileLinks.style.display = hasTheaterLinks ? 'flex' : 'none';
 
     // Runtime counter ? ticks every second from stream.starts
@@ -17132,9 +17165,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             .filter((url) => !preferred.includes(url))
             .map((url, index) => ({ url, index, ms: Number(latency.get(url) || Number.POSITIVE_INFINITY) }))
             .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
-            .slice(0, 12)
+            .slice(0, 2)
             .map((item) => item.url);
-          // Targeted profile lookups can safely fan out farther than general traffic.
+          // Keep the targeted lookup small so profiles render quickly while still
+          // retaining a couple of latency-ranked fallbacks for less common profiles.
           return [...new Set([...preferred, ...ranked])];
         })()
       }
@@ -17213,6 +17247,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         ident.textContent = verifiedNip05 || shortNpubForDisplay(hostPubkey);
         ident.classList.remove('sib-profile-loading');
         ident.dataset.profileReady = '1';
+        ident.onclick = () => showProfileByPubkey(hostPubkey);
+        ident.title = 'Open profile';
+        ident.style.cursor = 'pointer';
       }
     }
 
@@ -20256,8 +20293,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (loadToken === state.profileLoadToken && isProfilePageVisible()) setProfilePageLoading(false);
     }, 7000);
 
-    // Force a fresh kind:0 lookup so an older cached name/avatar cannot remain visible.
-    const profileRequest = fetchProfileIfNeeded(normalizedPubkey, { force: true });
+    // Reuse any already-hydrated profile immediately. Relay subscriptions and the
+    // bounded profile cache still refresh metadata without making clicks wait on a network round-trip.
+    const profileRequest = fetchProfileIfNeeded(normalizedPubkey, { force: false });
     const p = profileFor(normalizedPubkey);
     const verifiedNip05 = getVerifiedNip05ForPubkey(normalizedPubkey, p.nip05 || '');
     if (!verifiedNip05 && normalizeNip05Value(p.nip05 || '')) {
