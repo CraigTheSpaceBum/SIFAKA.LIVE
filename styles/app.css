@@ -8435,3 +8435,212 @@ body.nest-room-page-open{
     box-sizing:border-box;
   }
 }
+
+
+/* ======== 0.3.4 PROFILE DONATION 60% / CONTROL GRID AUDIT ======== */
+@media (min-width:761px){
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
+    width:60vw!important;
+    max-width:60vw!important;
+    height:60vh!important;
+    max-height:60vh!important;
+    min-width:0!important;
+    min-height:0!important;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-body.is-profile-donation{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:18px;
+  }
+
+  #walletOnchainSendModal.profile-donation #walletOnchainSendControls{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:14px;
+    align-content:start;
+  }
+
+  #walletOnchainSendModal.profile-donation #walletOnchainSendNote{
+    display:none;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-balance-grid{
+    display:contents;
+  }
+
+  /* Sending from and Available to send each get their own full-width row. */
+  #walletOnchainSendModal.profile-donation #walletProfileOnchainDonationSenderCard{
+    grid-column:1 / -1;
+    grid-row:1;
+    width:100%;
+    box-sizing:border-box;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-balance-grid > .wallet-onchain-send-balance-card:nth-child(2){
+    grid-column:1 / -1;
+    grid-row:2;
+    width:100%;
+    box-sizing:border-box;
+  }
+
+  /* The donation amount box and network-fee box sit side by side. */
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-amount{
+    grid-column:1;
+    grid-row:3;
+    min-width:0;
+    margin:0;
+    padding:14px;
+    border:1px solid var(--border);
+    border-bottom:0;
+    border-radius:14px 14px 0 0;
+    background:var(--surface2);
+    box-sizing:border-box;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-amount-label{
+    margin:0 0 10px;
+    font-size:.68rem;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-presets{
+    gap:8px;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-presets button{
+    min-height:38px;
+    padding:8px 10px;
+    font-size:.68rem;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form{
+    display:contents;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form #walletOnchainSendRecipientField{
+    display:none!important;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(2){
+    grid-column:1;
+    grid-row:4;
+    min-width:0;
+    margin:0;
+    padding:0 14px 14px;
+    border:1px solid var(--border);
+    border-top:0;
+    border-radius:0 0 14px 14px;
+    background:var(--surface2);
+    box-sizing:border-box;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(2) input{
+    min-height:42px;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-balance-grid > .wallet-onchain-send-balance-card:nth-child(3){
+    grid-column:2;
+    grid-row:3;
+    width:100%;
+    min-width:0;
+    box-sizing:border-box;
+    margin:0;
+    padding:14px;
+    border-bottom:0;
+    border-radius:14px 14px 0 0;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(3){
+    grid-column:2;
+    grid-row:4;
+    min-width:0;
+    margin:0;
+    padding:0 14px 14px;
+    border:1px solid var(--border);
+    border-top:0;
+    border-radius:0 0 14px 14px;
+    background:var(--surface2);
+    box-sizing:border-box;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(3) input{
+    min-height:42px;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-summary{
+    grid-column:1 / -1;
+    grid-row:5;
+    margin-top:0;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-modal-actions{
+    grid-column:1 / -1;
+    grid-row:6;
+    margin-top:0;
+  }
+
+  #walletOnchainSendModal.profile-donation #walletOnchainSendStatus{
+    grid-column:1 / -1;
+    grid-row:7;
+    margin-top:0;
+  }
+}
+
+@media (max-width:760px){
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
+    width:100%!important;
+    max-width:100%!important;
+    height:92vh!important;
+    max-height:92vh!important;
+  }
+
+  #walletOnchainSendModal.profile-donation #walletOnchainSendControls{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  #walletOnchainSendModal.profile-donation #walletOnchainSendNote{
+    display:none;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-balance-grid{
+    display:contents;
+  }
+
+  #walletOnchainSendModal.profile-donation #walletProfileOnchainDonationSenderCard,
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-balance-grid > .wallet-onchain-send-balance-card:nth-child(2),
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-amount,
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(2),
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-balance-grid > .wallet-onchain-send-balance-card:nth-child(3),
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(3),
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-summary,
+  #walletOnchainSendModal.profile-donation .wallet-modal-actions,
+  #walletOnchainSendModal.profile-donation #walletOnchainSendStatus{
+    grid-column:1;
+    grid-row:auto;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form{
+    display:contents;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form #walletOnchainSendRecipientField{
+    display:none!important;
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-amount{
+    padding:14px;
+    border:1px solid var(--border);
+    border-radius:14px;
+    background:var(--surface2);
+  }
+
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(2),
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-balance-grid > .wallet-onchain-send-balance-card:nth-child(3),
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(3){
+    padding:14px;
+    border:1px solid var(--border);
+    border-radius:14px;
+    background:var(--surface2);
+  }
+}
