@@ -7023,6 +7023,7 @@ footer p{font-size:.72rem;color:var(--muted);}
 .wallet-desktop-column-label{display:none;}
 
 .wallet-onchain-send-card{width:min(560px,100%);}
+.wallet-onchain-send-card.profile-donation{width:min(820px,100%);}
 .wallet-onchain-send-body{min-width:0;}
 .wallet-onchain-send-panel{min-width:0;}
 .wallet-onchain-send-body.is-profile-donation{
