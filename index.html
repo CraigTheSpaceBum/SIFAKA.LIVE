@@ -1391,26 +1391,35 @@ body.nest-preview-open{overflow:hidden}
       <button class="wallet-modal-close" type="button" onclick="closeWalletOnchainSend()" aria-label="Close">×</button>
     </div>
     <div class="wallet-onchain-send-body" id="walletOnchainSendBody">
-      <section class="wallet-profile-donation-recipient" id="walletProfileOnchainDonationRecipient" hidden>
+      <section class="wallet-profile-donation-card wallet-profile-donation-recipient" id="walletProfileOnchainDonationRecipient" hidden>
         <div class="wallet-profile-donation-kicker">Recipient Bitcoin address</div>
         <div class="wallet-profile-donation-qr-wrap" aria-label="Recipient Bitcoin address QR code">
           <div id="walletProfileOnchainDonationQr"></div>
           <div id="walletProfileOnchainDonationQrEmpty">Loading recipient address…</div>
         </div>
+        <div class="wallet-profile-donation-address-label">Recipient Bitcoin address</div>
         <div class="wallet-profile-donation-address" id="walletProfileOnchainDonationAddress">Resolving…</div>
         <button class="btn btn-ghost wallet-small-btn wallet-profile-donation-copy" type="button" id="walletProfileOnchainDonationCopyBtn" onclick="copyWalletProfileOnchainDonationAddress()">Copy address</button>
       </section>
 
-      <section class="wallet-onchain-send-panel">
-        <div class="wallet-profile-donation-support" id="walletProfileOnchainDonationSupport" hidden>
-          <strong id="walletProfileOnchainDonationSupportName">Support this profile</strong>
-          <span id="walletProfileOnchainDonationSupportNpub">npub…</span>
+      <section class="wallet-profile-donation-card wallet-onchain-send-panel" id="walletProfileOnchainDonationSenderPanel" hidden>
+        <div class="theater-donation-onchain-recipient-card wallet-profile-donation-identity-card" id="walletProfileOnchainDonationIdentityCard">
+          <div class="theater-donation-recipient-banner" id="walletProfileOnchainDonationBanner" aria-hidden="true"></div>
+          <div class="theater-donation-onchain-recipient-profile">
+            <div class="theater-donation-onchain-recipient-avatar" id="walletProfileOnchainDonationAvatar" aria-hidden="true"></div>
+            <div class="theater-donation-onchain-recipient-copy">
+              <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
+              <strong id="walletProfileOnchainDonationName">Resolving streamer identity…</strong>
+              <span id="walletProfileOnchainDonationNpub" class="theater-donation-onchain-npub">Resolving…</span>
+              <span id="walletProfileOnchainDonationNip05" class="theater-donation-onchain-nip05" hidden></span>
+            </div>
+          </div>
         </div>
 
         <div class="wallet-profile-donation-login" id="walletProfileOnchainDonationLogin" hidden>
-          <strong>Sign in to send</strong>
+          <strong id="walletProfileOnchainDonationLoginTitle">Sign in to send</strong>
           <p id="walletProfileOnchainDonationLoginText">Sign in to send from your built-in on-chain Nostr Bitcoin wallet.</p>
-          <button class="btn btn-primary" type="button" onclick="window.openLogin()">Sign in</button>
+          <button class="btn btn-primary" type="button" id="walletProfileOnchainDonationLoginButton" onclick="window.openLogin()">Sign in</button>
         </div>
 
         <div id="walletOnchainSendControls">
