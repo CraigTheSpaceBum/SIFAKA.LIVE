@@ -7024,6 +7024,49 @@ footer p{font-size:.72rem;color:var(--muted);}
 
 .wallet-onchain-send-card{width:min(560px,100%);}
 .wallet-onchain-send-card.profile-donation{width:min(820px,100%);}
+.wallet-profile-donation-card{
+  min-width:0;
+  height:100%;
+  box-sizing:border-box;
+  padding:.9rem;
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:var(--surface2);
+}
+.wallet-onchain-send-body.is-profile-donation{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:.75rem;
+  align-items:stretch;
+}
+.wallet-onchain-send-body.is-profile-donation #walletOnchainSendRecipientField{
+  display:none!important;
+}
+.wallet-profile-donation-identity-card{
+  margin:0 0 .8rem;
+  background:linear-gradient(145deg,var(--surface2),var(--surface));
+}
+.wallet-profile-donation-identity-card .theater-donation-onchain-recipient-profile{
+  width:100%;
+}
+.wallet-profile-donation-identity-card .theater-donation-onchain-recipient-copy{
+  min-width:0;
+}
+.wallet-profile-donation-card .wallet-onchain-send-balance-grid{
+  margin-top:.8rem;
+}
+.wallet-profile-donation-card .wallet-onchain-send-form{
+  margin-top:.8rem;
+}
+.wallet-profile-donation-card .wallet-onchain-send-summary{
+  margin-top:.75rem;
+}
+.wallet-profile-donation-card .wallet-modal-actions{
+  margin-top:.75rem;
+}
+.wallet-profile-donation-card .wallet-profile-donation-login{
+  margin-top:.1rem;
+}
+
 .wallet-onchain-send-body{min-width:0;}
 .wallet-onchain-send-panel{min-width:0;}
 .wallet-onchain-send-body.is-profile-donation{
@@ -7236,6 +7279,7 @@ footer p{font-size:.72rem;color:var(--muted);}
 
 @media (max-width:760px){
   .wallet-onchain-send-body.is-profile-donation{grid-template-columns:1fr;}
+  .wallet-profile-donation-card{height:auto;}
   .wallet-onchain-send-body.is-profile-donation .wallet-onchain-send-balance-grid{grid-template-columns:1fr;}
   .wallet-onchain-send-body.is-profile-donation .wallet-onchain-send-balance-card:nth-child(3){grid-column:auto;}
   .wallet-onchain-send-body.is-profile-donation .wallet-onchain-send-form{grid-template-columns:1fr;}
