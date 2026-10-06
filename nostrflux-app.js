@@ -16907,6 +16907,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (inn) inn.classList.toggle('on', on);
   }
 
+  function updateWalletDonationModalFromAuthChange() {
+    updateWalletProfileOnchainDonationAuth();
+  }
+
   function updateTheaterChatComposerVisibility() {
     const composer = qs('.chat-bottom');
     if (!composer) return;
@@ -16922,6 +16926,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (!state.user) {
       setLoggedInUi(false);
+      updateWalletDonationModalFromAuthChange();
       state.notificationsById = new Map();
       state.notificationsLoading = false;
       state.notificationsError = '';
@@ -16944,6 +16949,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     updateTheaterChatComposerVisibility();
     setLoggedInUi(true);
+    updateWalletDonationModalFromAuthChange();
     const p = state.user.profile || { name: shortHex(state.user.pubkey), nip05: '' };
     const claimedNip05 = normalizeNip05Value(p.nip05 || '');
     const verifiedNip05 = getVerifiedNip05ForPubkey(state.user.pubkey, claimedNip05);
@@ -22418,6 +22424,79 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     }
 
+    function renderWalletProfileOnchainDonationIdentity(pubkey, fallbackName = 'this profile') {
+      const normalized = normalizePubkeyHex(pubkey || '');
+      const profile = normalized ? profileFor(normalized) : {};
+      const bannerEl = qs('#walletProfileOnchainDonationBanner');
+      const avatarEl = qs('#walletProfileOnchainDonationAvatar');
+      const nameEl = qs('#walletProfileOnchainDonationName');
+      const npubEl = qs('#walletProfileOnchainDonationNpub');
+      const nip05El = qs('#walletProfileOnchainDonationNip05');
+
+      const name = String(profile.display_name || profile.name || fallbackName || 'this profile').trim() || 'this profile';
+      const picture = String(profile.picture || '').trim();
+      const bannerUrl = sanitizeMediaUrl(profile.banner || '');
+
+      if (bannerEl) {
+        bannerEl.style.backgroundImage = bannerUrl
+          ? 'url("' + bannerUrl.replace(/"/g, '\\"') + '")'
+          : 'none';
+        bannerEl.hidden = !bannerUrl;
+      }
+      if (avatarEl) setAvatarEl(avatarEl, picture, normalized ? pickAvatar(normalized) : 'U');
+      if (nameEl) nameEl.textContent = name;
+      if (npubEl) npubEl.textContent = normalized ? shortNpubForDisplay(normalized) : 'Resolving…';
+
+      const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
+      const verifiedNip05 = normalized
+        ? getVerifiedNip05ForPubkey(normalized, claimedNip05)
+        : '';
+      const displayedNip05 = verifiedNip05 || claimedNip05;
+      if (nip05El) {
+        nip05El.textContent = displayedNip05;
+        nip05El.hidden = !displayedNip05;
+      }
+      if (normalized && claimedNip05 && !verifiedNip05) {
+        ensureNip05Verification(normalized, claimedNip05).then(() => {
+          const latest = profileFor(normalized);
+          const latestClaimed = normalizeNip05Value(latest.nip05 || '');
+          const latestVerified = getVerifiedNip05ForPubkey(normalized, latestClaimed);
+          const latestNip05 = latestVerified || latestClaimed;
+          if (nip05El) {
+            nip05El.textContent = latestNip05;
+            nip05El.hidden = !latestNip05;
+          }
+        }).catch(() => {});
+      }
+    }
+
+    function updateWalletProfileOnchainDonationAuth() {
+      const context = state.walletOnchainDonationContext;
+      if (!context || !context.active) return;
+
+      const loginEl = qs('#walletProfileOnchainDonationLogin');
+      const loginTitleEl = qs('#walletProfileOnchainDonationLoginTitle');
+      const loginTextEl = qs('#walletProfileOnchainDonationLoginText');
+      const loginButtonEl = qs('#walletProfileOnchainDonationLoginButton');
+      const controlsEl = qs('#walletOnchainSendControls');
+
+      const signedIn = !!state.user;
+      const canSpendWithSifaka = signedIn && state.authMode === 'local' && !!state.localSecretKey;
+
+      if (loginEl) loginEl.hidden = canSpendWithSifaka;
+      if (controlsEl) controlsEl.hidden = !canSpendWithSifaka;
+
+      if (!signedIn) {
+        if (loginTitleEl) loginTitleEl.textContent = 'Sign in to send';
+        if (loginTextEl) loginTextEl.textContent = 'Sign in to send from your built-in on-chain Nostr Bitcoin wallet.';
+        if (loginButtonEl) loginButtonEl.textContent = 'Sign in';
+      } else if (!canSpendWithSifaka) {
+        if (loginTitleEl) loginTitleEl.textContent = 'Switch to key login';
+        if (loginTextEl) loginTextEl.textContent = 'You are signed in, but this login method cannot sign transactions from your built-in on-chain Nostr Bitcoin wallet. Switch to a local Nostr private-key login to send.';
+        if (loginButtonEl) loginButtonEl.textContent = 'Switch login';
+      }
+    }
+
     async function getWalletOnchainSignerModule() {
       if (state.walletOnchainSignerModule) return state.walletOnchainSignerModule;
       const mod = await import('https://cdn.jsdelivr.net/npm/@scure/btc-signer@2.4.1/+esm');
@@ -22545,26 +22624,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const bodyEl = qs('#walletOnchainSendBody');
       const recipientPanel = qs('#walletProfileOnchainDonationRecipient');
       const recipientAddressEl = qs('#walletProfileOnchainDonationAddress');
-      const supportEl = qs('#walletProfileOnchainDonationSupport');
-      const supportNameEl = qs('#walletProfileOnchainDonationSupportName');
-      const supportNpubEl = qs('#walletProfileOnchainDonationSupportNpub');
-      const loginEl = qs('#walletProfileOnchainDonationLogin');
-      const loginTextEl = qs('#walletProfileOnchainDonationLoginText');
+      const senderPanelEl = qs('#walletProfileOnchainDonationSenderPanel');
+      const recipientQrEmpty = qs('#walletProfileOnchainDonationQrEmpty');
       const controlsEl = qs('#walletOnchainSendControls');
-      const senderCardEl = qs('#walletProfileOnchainDonationSenderCard');
       const senderEl = qs('#walletProfileOnchainDonationSender');
       const donationAmountEl = qs('#walletProfileOnchainDonationAmount');
       const recipientFieldEl = qs('#walletOnchainSendRecipientField');
       const noteEl = qs('#walletOnchainSendNote');
       const titleEl = qs('#walletOnchainSendTitle');
       const amountEl = qs('#walletOnchainSendAmount');
+      const loginEl = qs('#walletProfileOnchainDonationLogin');
 
-      const canSpendWithSifaka = state.authMode === 'local' && !!state.localSecretKey;
+      const canSpendWithSifaka = !!state.user && state.authMode === 'local' && !!state.localSecretKey;
 
       bodyEl?.classList.toggle('is-profile-donation', profileDonation);
       if (recipientPanel) recipientPanel.hidden = !profileDonation;
-      if (supportEl) supportEl.hidden = !profileDonation;
-      if (senderCardEl) senderCardEl.hidden = !profileDonation;
+      if (senderPanelEl) senderPanelEl.hidden = !profileDonation;
       if (donationAmountEl) donationAmountEl.hidden = !profileDonation;
       if (recipientFieldEl) recipientFieldEl.hidden = profileDonation;
       if (noteEl) noteEl.hidden = profileDonation;
@@ -22587,35 +22662,30 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       if (recipientMeta && Number(recipientMeta.feeRate) > 0 && feeRateEl) {
         feeRateEl.value = String(Number(recipientMeta.feeRate));
-      } else if (!profileDonation && feeRateEl) {
-        feeRateEl.value = '';
-      } else if (profileDonation && feeRateEl) {
+      } else if (feeRateEl) {
         feeRateEl.value = '';
       }
 
       if (profileDonation) {
         if (recipientAddressEl) recipientAddressEl.textContent = recipientAddress || 'Address unavailable';
-        if (supportNameEl) supportNameEl.textContent = 'Support ' + recipientName;
-        if (supportNpubEl) supportNpubEl.textContent = recipientPubkey
-          ? shortNpubForDisplay(recipientPubkey)
-          : 'Nostr identity unavailable';
         renderWalletProfileOnchainDonationQr(recipientAddress);
+        renderWalletProfileOnchainDonationIdentity(recipientPubkey, recipientName);
+        updateWalletProfileOnchainDonationAuth();
 
-        if (loginEl) loginEl.hidden = canSpendWithSifaka;
-        if (loginTextEl) {
-          loginTextEl.textContent = state.user
-            ? 'Sign in with your Nostr private key to send from your built-in on-chain Nostr Bitcoin wallet.'
-            : 'Sign in to send from your built-in on-chain Nostr Bitcoin wallet.';
+        if (recipientPubkey) {
+          fetchProfileIfNeeded(recipientPubkey).then(() => {
+            if (!state.walletOnchainDonationContext || !state.walletOnchainDonationContext.active) return;
+            if (state.walletOnchainDonationContext.recipientPubkey !== recipientPubkey) return;
+            renderWalletProfileOnchainDonationIdentity(recipientPubkey, recipientName);
+          }).catch(() => {});
         }
-        if (controlsEl) controlsEl.hidden = !canSpendWithSifaka;
       } else {
         if (loginEl) loginEl.hidden = true;
         if (controlsEl) controlsEl.hidden = false;
-        if (supportEl) supportEl.hidden = true;
+        if (senderPanelEl) senderPanelEl.hidden = true;
         if (recipientPanel) recipientPanel.hidden = true;
         if (recipientFieldEl) recipientFieldEl.hidden = false;
         if (donationAmountEl) donationAmountEl.hidden = true;
-        if (senderCardEl) senderCardEl.hidden = true;
         if (noteEl) noteEl.hidden = false;
       }
 
@@ -22632,14 +22702,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       const note = qs('#walletOnchainSendNote');
       if (note) {
-        const recipientNote = profileDonation
-          ? ('Sending on-chain Bitcoin to ' + recipientName + '. The recipient address is shown beside the sending wallet; review the amount and network fee before confirming.')
-          : '';
-        note.textContent = state.authMode === 'local' && state.localSecretKey
-          ? (recipientNote || (recipientName
-            ? 'Sending on-chain Bitcoin to ' + recipientName + '. The recipient address is shown above; review the amount and network fee before confirming.'
-            : 'Your transaction will be prepared locally and only broadcast after you confirm the destination, amount, and network fee.'))
-          : 'On-chain sending currently requires a local Nostr key login. The receive wallet remains available with remote signer or extension login.';
+        note.textContent = state.authMode === 'local' && state.localSecretKey && state.user
+          ? (profileDonation
+            ? ('Sending on-chain Bitcoin to ' + recipientName + '. Review the amount and network fee before confirming.')
+            : (recipientName
+              ? 'Sending on-chain Bitcoin to ' + recipientName + '. The recipient address is shown above; review the amount and network fee before confirming.'
+              : 'Your transaction will be prepared locally and only broadcast after you confirm the destination, amount, and network fee.'))
+          : (profileDonation ? '' : 'On-chain sending currently requires a local Nostr key login. The receive wallet remains available with remote signer or extension login.');
       }
 
       if (!canSpendWithSifaka) {
@@ -22674,7 +22743,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (feeSubEl) feeSubEl.textContent = profileDonation
           ? 'Suggested network fee rate.'
           : 'Recommended for confirmation in roughly the next block window.';
-        if (profileDonation && senderCardEl) senderCardEl.hidden = false;
       } catch (err) {
         if (availableEl) availableEl.textContent = 'Unavailable';
         if (availableSubEl) availableSubEl.textContent = err?.message || 'Could not load spendable balance.';
@@ -22708,10 +22776,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const recipientAddressEl = qs('#walletProfileOnchainDonationAddress');
       const recipientQr = qs('#walletProfileOnchainDonationQr');
       const recipientQrEmpty = qs('#walletProfileOnchainDonationQrEmpty');
-      const supportEl = qs('#walletProfileOnchainDonationSupport');
+      const senderPanelEl = qs('#walletProfileOnchainDonationSenderPanel');
       const loginEl = qs('#walletProfileOnchainDonationLogin');
       const controlsEl = qs('#walletOnchainSendControls');
-      const senderCardEl = qs('#walletProfileOnchainDonationSenderCard');
       const donationAmountEl = qs('#walletProfileOnchainDonationAmount');
       const recipientFieldEl = qs('#walletOnchainSendRecipientField');
       const titleEl = qs('#walletOnchainSendTitle');
@@ -22719,6 +22786,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const amountEl = qs('#walletOnchainSendAmount');
 
       bodyEl?.classList.remove('is-profile-donation');
+      modal?.classList.remove('profile-donation');
       if (recipientPanel) recipientPanel.hidden = true;
       if (recipientAddressEl) recipientAddressEl.textContent = 'Resolving…';
       if (recipientQr) recipientQr.innerHTML = '';
@@ -22726,16 +22794,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         recipientQrEmpty.hidden = false;
         recipientQrEmpty.textContent = 'Loading recipient address…';
       }
-      if (supportEl) supportEl.hidden = true;
+      if (senderPanelEl) senderPanelEl.hidden = true;
       if (loginEl) loginEl.hidden = true;
       if (controlsEl) controlsEl.hidden = false;
-      if (senderCardEl) senderCardEl.hidden = true;
       if (donationAmountEl) donationAmountEl.hidden = true;
       if (recipientFieldEl) recipientFieldEl.hidden = false;
       if (titleEl) titleEl.textContent = 'Send Bitcoin';
       if (destinationEl) destinationEl.disabled = false;
       if (amountEl) amountEl.min = '1';
-      modal?.classList.remove('profile-donation');
     };
 
     window.setWalletOnchainDonationAmount = function (amount) {
