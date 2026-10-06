@@ -14676,24 +14676,26 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const displayName = hasHostProfile ? (p.display_name || p.name || shortHex(hostPubkey)) : '';
     const name = qs('.sib-name');
     if (name) {
-      const previousText = String(name.dataset.profileDisplay || '').trim();
-      const shouldAnimate = previousText && previousText !== displayName;
-      name.innerHTML = '';
-      name.textContent = displayName;
-      name.dataset.profileDisplay = displayName;
-      name.classList.remove('sib-profile-loading');
-      if (shouldAnimate) {
-        name.classList.remove('sib-profile-fade-in');
-        void name.offsetWidth;
-        name.classList.add('sib-profile-fade-in');
-      }
-      if (verifiedNip05) {
-        const badge = document.createElement('span');
-        badge.className = 'nip05-badge';
-        badge.title = `NIP-05: ${verifiedNip05}`;
-        badge.textContent = '\\u2713';
-        name.appendChild(document.createTextNode(' '));
-        name.appendChild(badge);
+      if (hasHostProfile) {
+        const previousText = String(name.dataset.profileDisplay || '').trim();
+        const shouldAnimate = previousText && previousText !== displayName;
+        name.innerHTML = '';
+        name.textContent = displayName;
+        name.dataset.profileDisplay = displayName;
+        name.classList.remove('sib-profile-loading');
+        if (shouldAnimate) {
+          name.classList.remove('sib-profile-fade-in');
+          void name.offsetWidth;
+          name.classList.add('sib-profile-fade-in');
+        }
+        if (verifiedNip05) {
+          const badge = document.createElement('span');
+          badge.className = 'nip05-badge';
+          badge.title = `NIP-05: ${verifiedNip05}`;
+          badge.textContent = '\\u2713';
+          name.appendChild(document.createTextNode(' '));
+          name.appendChild(badge);
+        }
       }
       name.onclick = () => showProfileByPubkey(hostPubkey);
       name.title = 'Open profile';
