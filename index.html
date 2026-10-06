@@ -1397,9 +1397,22 @@ body.nest-preview-open{overflow:hidden}
           <div id="walletProfileOnchainDonationQr"></div>
           <div id="walletProfileOnchainDonationQrEmpty">Loading recipient address…</div>
         </div>
-        <div class="wallet-profile-donation-address-label">Recipient Bitcoin address</div>
-        <div class="wallet-profile-donation-address" id="walletProfileOnchainDonationAddress">Resolving…</div>
-        <button class="btn btn-ghost wallet-small-btn wallet-profile-donation-copy" type="button" id="walletProfileOnchainDonationCopyBtn" onclick="copyWalletProfileOnchainDonationAddress()">Copy address</button>
+        <div class="wallet-profile-donation-address-row">
+          <button
+            type="button"
+            class="wallet-profile-donation-address wallet-profile-donation-address-box"
+            id="walletProfileOnchainDonationAddress"
+            onclick="copyWalletProfileOnchainDonationAddress()"
+            aria-label="Copy recipient Bitcoin address"
+            title="Click to copy the full Bitcoin address"
+          >Resolving…</button>
+          <button
+            class="btn btn-ghost wallet-small-btn wallet-profile-donation-copy"
+            type="button"
+            id="walletProfileOnchainDonationCopyBtn"
+            onclick="copyWalletProfileOnchainDonationAddress()"
+          >Copy address</button>
+        </div>
       </section>
 
       <section class="wallet-profile-donation-card wallet-onchain-send-panel" id="walletProfileOnchainDonationSenderPanel" hidden>
@@ -1408,7 +1421,6 @@ body.nest-preview-open{overflow:hidden}
           <div class="theater-donation-onchain-recipient-profile">
             <div class="theater-donation-onchain-recipient-avatar" id="walletProfileOnchainDonationAvatar" aria-hidden="true"></div>
             <div class="theater-donation-onchain-recipient-copy">
-              <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
               <strong id="walletProfileOnchainDonationName">Resolving streamer identity…</strong>
               <span id="walletProfileOnchainDonationNpub" class="theater-donation-onchain-npub">Resolving…</span>
               <span id="walletProfileOnchainDonationNip05" class="theater-donation-onchain-nip05" hidden></span>
@@ -1420,17 +1432,19 @@ body.nest-preview-open{overflow:hidden}
         <div id="walletOnchainSendControls">
           <div class="wallet-onchain-send-note" id="walletOnchainSendNote"></div>
           <div class="wallet-onchain-send-balance-grid">
-            <div class="wallet-onchain-send-balance-card wallet-profile-donation-sender-card" id="walletProfileOnchainDonationSenderCard" hidden>
-              <span>Sending from</span>
-              <strong id="walletProfileOnchainDonationSender">Loading…</strong>
-              <small>Your built-in on-chain Nostr Bitcoin wallet.</small>
+            <div class="wallet-profile-donation-balance-combined">
+              <div class="wallet-onchain-send-balance-card wallet-profile-donation-sender-card" id="walletProfileOnchainDonationSenderCard" hidden>
+                <span>Sending from</span>
+                <strong id="walletProfileOnchainDonationSender">Loading…</strong>
+                <small>Your built-in on-chain Nostr Bitcoin wallet.</small>
+              </div>
+              <div class="wallet-onchain-send-balance-card wallet-profile-donation-available-card">
+                <span>Available to send</span>
+                <strong id="walletOnchainSendAvailable">Loading…</strong>
+                <small id="walletOnchainSendAvailableSub">Loading spendable UTXOs…</small>
+              </div>
             </div>
-            <div class="wallet-onchain-send-balance-card">
-              <span>Available to send</span>
-              <strong id="walletOnchainSendAvailable">Loading…</strong>
-              <small id="walletOnchainSendAvailableSub">Loading spendable UTXOs…</small>
-            </div>
-            <div class="wallet-onchain-send-balance-card">
+            <div class="wallet-onchain-send-balance-card wallet-profile-donation-fee-card">
               <span>Suggested network fee</span>
               <strong id="walletOnchainSendSuggestedFee">Loading…</strong>
               <small id="walletOnchainSendFeeSub">Current mempool recommendation</small>
