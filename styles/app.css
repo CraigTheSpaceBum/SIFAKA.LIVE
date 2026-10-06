@@ -8192,15 +8192,65 @@ body.nest-room-page-open{
 /* ======== 0.3.4 PROFILE ON-CHAIN DONATION FINAL POLISH ======== */
 @media (min-width:761px){
   #walletOnchainSendModal .wallet-onchain-send-card.profile-donation{
-    width:min(1180px,calc(100vw - 36px));
-    max-width:1180px;
-    max-height:calc(100vh - 36px);
-    min-height:min(720px,calc(100vh - 52px));
-    padding:24px;
+    width:96vw;
+    max-width:1500px;
+    height:92vh;
+    max-height:92vh;
+    min-height:min(860px,calc(100vh - 24px));
+    padding:28px;
+    overflow:hidden;
   }
   #walletOnchainSendModal .wallet-onchain-send-body.is-profile-donation{
     min-height:0;
+    height:calc(92vh - 112px);
+    overflow:visible;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:1.25rem;
   }
+  #walletOnchainSendModal .wallet-onchain-send-body.is-profile-donation > .wallet-profile-donation-card{
+    height:100%;
+    overflow:visible;
+  }
+  #walletOnchainSendModal .wallet-profile-donation-recipient{padding:1.15rem;}
+  #walletOnchainSendModal .wallet-profile-donation-qr-wrap{min-height:320px;}
+  #walletOnchainSendModal .wallet-profile-donation-qr-wrap img,
+  #walletOnchainSendModal .wallet-profile-donation-qr-wrap canvas{
+    width:300px!important;
+    height:300px!important;
+  }
+  #walletOnchainSendModal .wallet-profile-donation-address{font-size:.76rem;line-height:1.6;}
+  #walletOnchainSendModal .wallet-profile-donation-copy{min-height:46px;font-size:.74rem;}
+  #walletOnchainSendModal .wallet-profile-donation-identity-card{padding:1.15rem;margin-bottom:1rem;}
+  #walletOnchainSendModal .wallet-profile-donation-identity-card .theater-donation-onchain-recipient-profile{gap:1rem;}
+  #walletOnchainSendModal .wallet-profile-donation-identity-card .theater-donation-onchain-recipient-avatar{
+    width:82px;height:82px;flex-basis:82px;
+  }
+  #walletOnchainSendModal .wallet-profile-donation-identity-card .theater-donation-onchain-recipient-copy{gap:.34rem;}
+  #walletOnchainSendModal .wallet-profile-donation-identity-card .theater-donation-micro-label{font-size:.62rem;}
+  #walletOnchainSendModal .wallet-profile-donation-identity-card .theater-donation-onchain-recipient-copy strong{font-size:1rem;}
+  #walletOnchainSendModal .wallet-profile-donation-identity-card .theater-donation-onchain-npub,
+  #walletOnchainSendModal .wallet-profile-donation-identity-card .theater-donation-onchain-nip05,
+  #walletOnchainSendModal .wallet-profile-donation-bitcoin-address{font-size:.72rem;line-height:1.45;}
+  #walletOnchainSendModal .wallet-profile-donation-card .wallet-onchain-send-balance-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:.8rem;
+    margin-top:1rem;
+  }
+  #walletOnchainSendModal .wallet-profile-donation-card .wallet-onchain-send-balance-card:nth-child(3){grid-column:auto;}
+  #walletOnchainSendModal .wallet-profile-donation-card .wallet-onchain-send-balance-card{padding:.95rem;}
+  #walletOnchainSendModal .wallet-profile-donation-card .wallet-onchain-send-balance-card strong{font-size:1rem;}
+  #walletOnchainSendModal .wallet-profile-donation-card .wallet-onchain-send-form{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:.8rem;
+    margin-top:1rem;
+  }
+  #walletOnchainSendModal .wallet-profile-donation-amount{margin-top:1rem;}
+  #walletOnchainSendModal .wallet-profile-donation-presets{gap:.55rem;}
+  #walletOnchainSendModal .wallet-profile-donation-presets button{padding:.7rem .85rem;font-size:.72rem;}
+  #walletOnchainSendModal .wallet-profile-donation-card .wallet-onchain-send-summary{
+    margin-top:.9rem;padding:.9rem 1rem;font-size:.72rem;
+  }
+  #walletOnchainSendModal .wallet-profile-donation-card .wallet-modal-actions{margin-top:.9rem;}
 }
 .wallet-profile-donation-identity-card{
   position:relative;
@@ -8208,29 +8258,18 @@ body.nest-room-page-open{
   border-color:rgba(139,92,246,.3);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.03),0 12px 35px rgba(0,0,0,.16);
 }
-.wallet-profile-donation-identity-card .theater-donation-recipient-banner{
-  opacity:.3;
-}
+.wallet-profile-donation-identity-card .theater-donation-recipient-banner{opacity:.3;}
 .wallet-profile-donation-bitcoin-address{
-  display:block;
-  max-width:100%;
-  color:var(--accent);
+  display:block;max-width:100%;color:var(--accent);
   font:600 .61rem/1.35 'DM Mono',monospace;
-  overflow-wrap:anywhere;
-  word-break:break-all;
+  overflow-wrap:anywhere;word-break:break-all;
 }
-.wallet-profile-donation-recipient{
-  box-shadow:0 16px 40px rgba(0,0,0,.16);
-}
-.wallet-profile-donation-copy{
-  min-height:40px;
-}
+.wallet-profile-donation-recipient{box-shadow:0 16px 40px rgba(0,0,0,.16);}
+.wallet-profile-donation-copy{min-height:40px;}
 @media (max-width:760px){
   #walletOnchainSendModal .wallet-onchain-send-card.profile-donation{
-    width:100%;
-    max-height:94vh;
+    width:100%;max-height:94vh;overflow:auto;
   }
-  .wallet-profile-donation-bitcoin-address{
-    font-size:.58rem;
-  }
+  #walletOnchainSendModal .wallet-onchain-send-body.is-profile-donation{min-height:0;}
+  .wallet-profile-donation-bitcoin-address{font-size:.58rem;}
 }
