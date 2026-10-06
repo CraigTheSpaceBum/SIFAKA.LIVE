@@ -8211,7 +8211,7 @@ body.nest-room-page-open{
 .wallet-profile-donation-copy{min-height:44px;}
 
 @media (min-width:761px){
-  #walletOnchainSendModal .wallet-onchain-send-card.profile-donation{
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
     box-sizing:border-box;
     width:90vw!important;
     max-width:90vw!important;
@@ -8353,7 +8353,7 @@ body.nest-room-page-open{
 }
 
 @media (max-width:760px){
-  #walletOnchainSendModal .wallet-onchain-send-card.profile-donation{
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
     box-sizing:border-box;
     width:100%!important;
     max-width:100%!important;
@@ -8400,5 +8400,38 @@ body.nest-room-page-open{
 
   #walletOnchainSendModal .wallet-profile-donation-card .wallet-onchain-send-form{
     grid-template-columns:1fr;
+  }
+}
+
+
+/* ======== PROFILE DONATION OUTER CARD AUDIT FIX ======== */
+@media (min-width:761px){
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
+    width:90vw!important;
+    max-width:90vw!important;
+    height:90vh!important;
+    max-height:90vh!important;
+    min-width:0!important;
+    min-height:0!important;
+    box-sizing:border-box;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-body.is-profile-donation{
+    width:100%;
+    box-sizing:border-box;
+  }
+}
+@media (max-width:760px){
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
+    width:100%!important;
+    max-width:100%!important;
+    height:92vh!important;
+    max-height:92vh!important;
+    min-width:0!important;
+    min-height:0!important;
+    box-sizing:border-box;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-body.is-profile-donation{
+    width:100%;
+    box-sizing:border-box;
   }
 }
