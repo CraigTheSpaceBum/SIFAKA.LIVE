@@ -2759,8 +2759,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       .replace(/&gt;/gi, '>')
       .trim();
 
-    // Nostr profile metadata occasionally contains malformed inline SVG/data payloads
-    // instead of a real image URL. Decode only for inspection; keep valid URLs intact.
     let inspected = clean;
     for (let i = 0; i < 2; i += 1) {
       try {
@@ -2778,8 +2776,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       return '';
     }
 
-    // Never pass scriptable/non-image schemes through a media sanitizer.
-    if (/^(?:javascript|vbscript|file|about):/i.test(clean)) return '';
+    if (/^(?:javascript|vbscript|file|about|data):/i.test(clean)) return '';
+
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(clean)
+      && /^(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?::\d{2,5})?(?:\/[^\s<>"'\x60)]*)?(?:[?#][^\s<>"'\x60)]*)?$/i.test(clean)) {
+      return 'https://' + clean;
+    }
 
     return clean;
   }
@@ -16737,16 +16739,59 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         video.defaultMuted = !!opts.videoMuted;
         video.playsInline = true;
         video.preload = 'metadata';
-        video.src = item.url;
-        video.addEventListener('error', () => {
-          box.remove();
-          if (!wrap.children.length) wrap.remove();
-        });
         box.appendChild(video);
         wrap.appendChild(box);
+
+        const isHls = /\.m3u8(?:$|[?#])/i.test(item.url);
+        if (isHls) {
+          (async () => {
+            try {
+              if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = item.url;
+                return;
+              }
+              const Hls = await ensureHlsJs();
+              if (Hls && Hls.isSupported()) {
+                const hls = new Hls({ enableWorker: true });
+                hls.loadSource(item.url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.ERROR, (_event, data) => {
+                  if (!data || !data.fatal) return;
+                  try { hls.destroy(); } catch (_) {}
+                  const link = document.createElement('a');
+                  link.href = item.url;
+                  link.target = '_blank';
+                  link.rel = 'noopener noreferrer';
+                  link.className = `${classPrefix}-media-fallback-link`;
+                  link.textContent = 'Open video';
+                  box.innerHTML = '';
+                  box.appendChild(link);
+                });
+              } else {
+                video.src = item.url;
+              }
+            } catch (_) {
+              video.src = item.url;
+            }
+          })();
+        } else {
+          video.src = item.url;
+        }
+
+        video.addEventListener('error', () => {
+          if (/\.m3u8(?:$|[?#])/i.test(item.url)) return;
+          if (!box.parentNode) return;
+          const link = document.createElement('a');
+          link.href = item.url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.className = `${classPrefix}-media-fallback-link`;
+          link.textContent = 'Open video';
+          box.innerHTML = '';
+          box.appendChild(link);
+        });
         return;
       }
-
       if (item.kind === 'audio') {
         const box = document.createElement('div');
         box.className = `${classPrefix}-media-item${normalized.length === 1 ? ' single' : ''} media-audio`;
@@ -16896,20 +16941,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const ctext = qs('.c-text', row);
     const rawText = String(ev.content || '');
     if (rawText) {
-      // Treat directly pasted image URLs as inline chat images instead of plain links.
-      const imageUrls = Array.from(new Set(
+      const mediaUrls = Array.from(new Set(
         extractHttpUrls(rawText)
           .map((url) => sanitizeMediaUrl(url))
-          .filter((url) => classifyMediaUrl(url) === 'photo')
+          .filter((url) => ['photo', 'video'].includes(classifyMediaUrl(url)))
       ));
-      const textWithoutImages = stripMediaUrlsFromText(rawText, imageUrls);
-      if (textWithoutImages) ctext.appendChild(renderNostrContent(textWithoutImages));
-      if (imageUrls.length) {
-        renderChatInlineMedia(ctext, imageUrls, {
-          allowVideo: false,
+      const textWithoutMedia = stripMediaUrlsFromText(rawText, mediaUrls);
+      if (textWithoutMedia) ctext.appendChild(renderNostrContent(textWithoutMedia));
+      if (mediaUrls.length) {
+        renderChatInlineMedia(ctext, mediaUrls, {
+          allowVideo: true,
           allowAudio: false,
           maxItems: 4,
-          classPrefix: 'chat'
+          classPrefix: 'chat',
+          videoAutoplay: false,
+          videoMuted: false,
+          videoLoop: false
         });
       }
     }
@@ -18551,7 +18598,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function stripMediaUrlsFromText(text, mediaUrls) {
     let out = String(text || '');
     mediaUrls.forEach((url) => {
-      out = out.split(url).join(' ');
+      const clean = String(url || '').trim();
+      if (!clean) return;
+      const variants = new Set([clean, clean.replace(/^https?:\/\//i, '')]);
+      variants.forEach((variant) => { out = out.split(variant).join(' '); });
     });
     return out
       .replace(/[ \t]{2,}/g, ' ')
@@ -19349,19 +19399,32 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function extractHttpUrls(text) {
-    const raw = (text || '').match(/https?:\/\/\S+/gi) || [];
-    return raw.map((url) =>
-      String(url || '')
-        .replace(/[)\],.;!?'"`>]+$/g, '')
-        .replace(/^[("'`<]+/g, '')
-    );
+    const source = String(text || '');
+    const explicit = source.match(/https?:\/\/\S+/gi) || [];
+    const bare = source.match(/(?:^|[\s(])((?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?::\d{2,5})?(?:\/[^\s<>"'\x60)]*)?)/gi) || [];
+    const raw = explicit.concat(bare.map((value) => {
+      const match = String(value || '').match(/((?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?::\d{2,5})?(?:\/[^\s<>"'\x60)]*)?)/i);
+      return match ? match[1] : '';
+    }));
+    return Array.from(new Set(raw))
+      .map((url) => String(url || '').replace(/[)\],.;!?'"\x60>]+$/g, '').replace(/^[("'\x60<]+/g, ''))
+      .filter(Boolean);
   }
 
   function classifyMediaUrl(url) {
-    const base = (url || '').split('#')[0].split('?')[0].toLowerCase();
-    if (/\.(mp4|webm|mov|m4v|mkv|m3u8)$/.test(base)) return 'video';
-    if (/\.(jpg|jpeg|png|gif|webp|avif)$/.test(base)) return 'photo';
-    if (/\.(mp3|m4a|wav|ogg|flac|aac|opus)$/.test(base)) return 'audio';
+    const raw = sanitizeMediaUrl(url);
+    const base = raw.split('#')[0].split('?')[0].toLowerCase();
+    const query = raw.split('#')[0].toLowerCase();
+
+    if (/\.(mp4|webm|mov|m4v|mkv|avi|ogv|ogg|3gp|3g2|mpeg|mpg|mpe|ts|mts|m2ts|m3u8|flv)$/.test(base)
+      || /(?:^|[?&])(type|mime|content-type|format)=(?:video\/|video%2f)/i.test(query)) return 'video';
+
+    if (/\.(jpg|jpeg|jpe|png|gif|webp|avif|apng|bmp|svg|svgz|tif|tiff|heic|heif|jxl|ico)$/.test(base)
+      || /(?:^|[?&])(type|mime|content-type|format)=(?:image\/|image%2f)/i.test(query)) return 'photo';
+
+    if (/\.(mp3|m4a|wav|ogg|oga|flac|aac|opus|weba)$/.test(base)
+      || /(?:^|[?&])(type|mime|content-type|format)=(?:audio\/|audio%2f)/i.test(query)) return 'audio';
+
     return '';
   }
 
