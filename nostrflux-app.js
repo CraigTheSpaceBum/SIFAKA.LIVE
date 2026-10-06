@@ -11,7 +11,17 @@
     'wss://relayable.org',
     'wss://nostr.fmt.wiz.biz',
     'wss://offchain.pub',
-    'wss://nostr.mom'
+    'wss://nostr.mom',
+    'wss://nostr21.com',
+    'wss://relay.nostr.com'
+  ];
+
+  // Keep relay-hinted profile discovery relays in the lookup set even when
+  // latency ranking would otherwise exclude them.
+  const PROFILE_DISCOVERY_RELAYS = [
+    'wss://nos.lol',
+    'wss://nostr21.com',
+    'wss://relay.nostr.com'
   ];
   const RELAY_BUCKET_DEFS = [
     {
@@ -17160,11 +17170,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         relayUrls: (() => {
           const urls = Array.isArray(state.pool && state.pool.urls) ? [...state.pool.urls] : [];
           const latency = state.relayPingMsByUrl instanceof Map ? state.relayPingMsByUrl : new Map();
-          return urls
+          const preferred = PROFILE_DISCOVERY_RELAYS.filter((url) => urls.includes(url));
+          const ranked = urls
+            .filter((url) => !preferred.includes(url))
             .map((url, index) => ({ url, index, ms: Number(latency.get(url) || Number.POSITIVE_INFINITY) }))
             .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
-            .slice(0, 5)
+            .slice(0, 7)
             .map((item) => item.url);
+          return [...new Set([...preferred, ...ranked])];
         })()
       }
     ).then((events) => {
