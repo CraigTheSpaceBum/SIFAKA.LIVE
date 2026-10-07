@@ -14845,12 +14845,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       getProfileBitcoinAddress(hostPubkey).then((address) => {
         if (theaterOnchainBtn && state.selectedStreamAddress === stream.address) {
-          theaterOnchainBtn.textContent = shortBitcoinAddress(address);
+          theaterOnchainBtn.textContent = '₿ On Chain ' + shortBitcoinAddress(address);
           theaterOnchainBtn.disabled = false;
         }
       }).catch(() => {
         if (theaterOnchainBtn && state.selectedStreamAddress === stream.address) {
-          theaterOnchainBtn.textContent = 'On Chain';
+          theaterOnchainBtn.textContent = '₿ On Chain';
           theaterOnchainBtn.disabled = false;
         }
       });
@@ -20427,7 +20427,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           return;
         }
         if (bitcoinBio) {
-          bitcoinBio.textContent = shortBitcoinAddress(address);
+          bitcoinBio.textContent = '₿ On Chain ' + shortBitcoinAddress(address);
           bitcoinBio.title = 'Send Bitcoin to ' + address;
           bitcoinBio.setAttribute('aria-label', 'Send Bitcoin to ' + String(p.display_name || p.name || 'this profile').trim());
           bitcoinBio.disabled = false;
