@@ -19781,6 +19781,7 @@ function renderProfileFeed(pubkey) {
     if (postCountEl) postCountEl.textContent = formatCount(postCount);
 
     const aggregates = buildProfilePostAggregates(pubkey, notes);
+    hydrateProfilePostComments(pubkey, notes.slice(0, 24));
     const profile = profileFor(pubkey);
     renderProfileFeedInto(leftList, notes, profile, pubkey, aggregates);
     renderProfileFeedInto(tabList, notes, profile, pubkey, aggregates);
@@ -21998,6 +21999,7 @@ function renderProfileFeed(pubkey) {
       const home = qs('#homePage');
       const video = qs('#videoPage');
       const profile = qs('#profilePage');
+      const profileThread = qs('#profileCommentThreadPage');
       const videos = qs('#videosPage');
       const feed = qs('#feedPage');
       const notifications = qs('#notificationsPage');
@@ -22046,6 +22048,7 @@ function renderProfileFeed(pubkey) {
       if (home) home.classList.toggle('active', p === 'home');
       if (video) video.style.display = 'none';
       if (profile) profile.style.display = 'none';
+      if (profileThread) profileThread.style.display = 'none';
       if (videos) videos.style.display = p === 'videos' ? 'block' : 'none';
       if (feed) feed.style.display = p === 'feed' ? 'block' : 'none';
       if (notifications) notifications.style.display = p === 'notifications' ? 'block' : 'none';
@@ -22180,6 +22183,7 @@ function renderProfileFeed(pubkey) {
       const home = qs('#homePage');
       const video = qs('#videoPage');
       const profile = qs('#profilePage');
+      const profileThread = qs('#profileCommentThreadPage');
       const videos = qs('#videosPage');
       const feed = qs('#feedPage');
       const notifications = qs('#notificationsPage');
@@ -22195,6 +22199,7 @@ function renderProfileFeed(pubkey) {
       if (home) home.classList.remove('active');
       if (video) video.style.display = 'none';
       if (profile) profile.style.display = 'block';
+      if (profileThread) profileThread.style.display = 'none';
       if (videos) videos.style.display = 'none';
       if (feed) feed.style.display = 'none';
       if (notifications) notifications.style.display = 'none';
