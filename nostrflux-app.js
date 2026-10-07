@@ -14825,7 +14825,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     if (theaterOnchainBtn && hostPubkey) {
       const onchainName = String(p.display_name || p.name || 'this profile').trim() || 'this profile';
-      theaterOnchainBtn.disabled = true;
+      theaterOnchainBtn.setAttribute('aria-busy', 'true');
       theaterOnchainBtn.textContent = 'Resolving…';
       theaterOnchainBtn.title = 'Send Bitcoin to ' + onchainName;
       theaterOnchainBtn.onclick = async function (event) {
@@ -14846,13 +14846,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       getProfileBitcoinAddress(hostPubkey).then((address) => {
         if (theaterOnchainBtn && state.selectedStreamAddress === stream.address) {
-          theaterOnchainBtn.textContent = '₿ On Chain ' + shortBitcoinAddress(address);
-          theaterOnchainBtn.disabled = false;
+          theaterOnchainBtn.textContent = shortBitcoinAddress(address);
+          theaterOnchainBtn.removeAttribute('aria-busy');
         }
       }).catch(() => {
         if (theaterOnchainBtn && state.selectedStreamAddress === stream.address) {
-          theaterOnchainBtn.textContent = '₿ On Chain';
-          theaterOnchainBtn.disabled = false;
+          theaterOnchainBtn.textContent = '';
+          theaterOnchainBtn.removeAttribute('aria-busy');
         }
       });
     }
@@ -20422,7 +20422,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (bitcoinBio) {
       bitcoinBio.textContent = '';
       bitcoinBio.title = '';
-      bitcoinBio.disabled = true;
+      bitcoinBio.setAttribute('aria-disabled', 'true');
       bitcoinBio.onclick = null;
     }
     if (profileBitcoinPubkey) {
@@ -20433,10 +20433,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           return;
         }
         if (bitcoinBio) {
-          bitcoinBio.textContent = '₿ On Chain ' + shortBitcoinAddress(address);
+          bitcoinBio.textContent = shortBitcoinAddress(address);
           bitcoinBio.title = 'Send Bitcoin to ' + address;
           bitcoinBio.setAttribute('aria-label', 'Send Bitcoin to ' + String(p.display_name || p.name || 'this profile').trim());
-          bitcoinBio.disabled = false;
+          bitcoinBio.removeAttribute('aria-disabled');
           bitcoinBio.onclick = function (event) {
             if (event) {
               event.preventDefault();
