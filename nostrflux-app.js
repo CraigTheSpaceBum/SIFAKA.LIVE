@@ -2696,6 +2696,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function autoSelectNwcRoutingFeeMsats(invoice) {
+    const clean = String(invoice || '').trim().toLowerCase();
+    // BOLT11 amount is encoded immediately after lnbc/lntb/lnbcrt.
+    // Give routes a small percentage budget, with a 2-sat minimum so
+    // wallets do not reject otherwise valid routes whose fee is non-zero.
+    const match = clean.match(/^ln(?:bc|tb|bcrt)(\\d+)([munp])/);
+    if (!match) return 2000;
+    const value = Number(match[1]);
+    if (!Number.isFinite(value) || value <= 0) return 2000;
+    const unit = match[2];
+    let amountMsats = 0;
+    if (unit === 'm') amountMsats = value * 100000000;
+    else if (unit === 'u') amountMsats = value * 100000;
+    else if (unit === 'n') amountMsats = value * 100;
+    else if (unit === 'p') amountMsats = value / 10;
+    const feeMsats = Math.ceil(amountMsats * 0.01);
+    return Math.max(2000, feeMsats);
+  }
+
   async function payInvoiceWithNwcConfig(config, invoice, opts = {}) {
     const session = await createNwcSession(config);
     try {
@@ -2705,7 +2724,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         session.encryption = info.preferredEncryption;
         session.nip44ConversationKey = null;
       }
-      return await sendNwcRequest(session, 'pay_invoice', { invoice }, {
+      const maxFeeMsats = autoSelectNwcRoutingFeeMsats(invoice);
+      return await sendNwcRequest(session, 'pay_invoice', {
+        invoice,
+        max_fee_msats: maxFeeMsats
+      }, {
         timeoutMs: Math.max(NWC_REQUEST_TIMEOUT_MS, Number(opts.timeoutMs || 0))
       });
     } finally {
