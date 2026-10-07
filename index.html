@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.4.2">
+<link rel="stylesheet" href="./styles/app.css?v=0.4.3">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -1411,10 +1411,25 @@ body.nest-preview-open{overflow:hidden}
     </div>
     <div class="wallet-onchain-send-body" id="walletOnchainSendBody">
       <section class="wallet-profile-donation-card wallet-profile-donation-recipient" id="walletProfileOnchainDonationRecipient" hidden>
+        <div class="theater-donation-onchain-recipient-card wallet-profile-donation-identity-card" id="walletProfileOnchainDonationIdentityCard">
+          <div class="theater-donation-recipient-banner" id="walletProfileOnchainDonationBanner" aria-hidden="true"></div>
+          <div class="theater-donation-onchain-recipient-profile">
+            <div class="theater-donation-onchain-recipient-avatar" id="walletProfileOnchainDonationAvatar" aria-hidden="true"></div>
+            <div class="theater-donation-onchain-recipient-copy">
+              <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
+              <strong id="walletProfileOnchainDonationName">Resolving streamer identity…</strong>
+              <span id="walletProfileOnchainDonationNpub" class="theater-donation-onchain-npub">Resolving…</span>
+              <span id="walletProfileOnchainDonationNip05" class="theater-donation-onchain-nip05" hidden></span>
+            </div>
+          </div>
+        </div>
         <div class="wallet-profile-donation-kicker">Recipient Bitcoin address</div>
-        <div class="wallet-profile-donation-qr-wrap" aria-label="Recipient Bitcoin address QR code">
-          <div id="walletProfileOnchainDonationQr"></div>
-          <div id="walletProfileOnchainDonationQrEmpty">Loading recipient address…</div>
+        <div class="wallet-profile-donation-qr-card" aria-label="Recipient Bitcoin address QR code">
+          <div class="wallet-profile-donation-qr-wrap">
+            <div id="walletProfileOnchainDonationQr"></div>
+            <div id="walletProfileOnchainDonationQrEmpty">Loading recipient address…</div>
+          </div>
+          <div class="wallet-profile-donation-qr-label">Bitcoin payment QR</div>
         </div>
         <div class="wallet-profile-donation-address-row">
           <button
@@ -1435,19 +1450,6 @@ body.nest-preview-open{overflow:hidden}
       </section>
 
       <section class="wallet-profile-donation-card wallet-onchain-send-panel" id="walletProfileOnchainDonationSenderPanel" hidden>
-        <div class="theater-donation-onchain-recipient-card wallet-profile-donation-identity-card" id="walletProfileOnchainDonationIdentityCard">
-          <div class="theater-donation-recipient-banner" id="walletProfileOnchainDonationBanner" aria-hidden="true"></div>
-          <div class="theater-donation-onchain-recipient-profile">
-            <div class="theater-donation-onchain-recipient-avatar" id="walletProfileOnchainDonationAvatar" aria-hidden="true"></div>
-            <div class="theater-donation-onchain-recipient-copy">
-              <strong id="walletProfileOnchainDonationName">Resolving streamer identity…</strong>
-              <span id="walletProfileOnchainDonationNpub" class="theater-donation-onchain-npub">Resolving…</span>
-              <span id="walletProfileOnchainDonationNip05" class="theater-donation-onchain-nip05" hidden></span>
-              <span id="walletProfileOnchainDonationBitcoin" class="wallet-profile-donation-bitcoin-address" hidden></span>
-            </div>
-          </div>
-        </div>
-
         <div id="walletOnchainSendControls">
           <div class="wallet-onchain-send-note" id="walletOnchainSendNote"></div>
           <div class="wallet-onchain-send-balance-grid">
@@ -2291,7 +2293,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.4.2" defer></script>
+<script src="./nostrflux-app.js?v=0.4.3" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>

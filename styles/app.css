@@ -8998,3 +8998,100 @@ body.nest-room-page-open{
     box-sizing:border-box;
   }
 }
+
+
+/* ======== 0.4.3 ON-CHAIN DONATION LEFT PROFILE + LIGHTNING-MATCHED QR ======== */
+.wallet-profile-donation-qr-card{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:.45rem;
+  margin-top:.7rem;
+  padding:.7rem;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:13px;
+  background:rgba(10,14,19,.5);
+}
+.wallet-profile-donation-qr-wrap{
+  width:220px;
+  height:220px;
+  max-width:100%;
+  min-height:0;
+  display:grid;
+  place-items:center;
+  padding:10px;
+  border:0;
+  border-radius:13px;
+  background:#fff;
+  box-sizing:border-box;
+}
+.wallet-profile-donation-qr-wrap img,
+.wallet-profile-donation-qr-wrap canvas{
+  display:block;
+  width:198px!important;
+  height:198px!important;
+  max-width:100%;
+  max-height:100%;
+}
+.wallet-profile-donation-qr-card .wallet-profile-donation-qr-label{
+  font:700 .58rem/1 'DM Mono',monospace;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.wallet-profile-donation-recipient > .wallet-profile-donation-kicker{
+  margin-top:.8rem;
+}
+.wallet-profile-donation-recipient .wallet-profile-donation-address-row{
+  margin-top:.7rem;
+}
+.wallet-profile-donation-recipient .wallet-profile-donation-identity-card{
+  margin-bottom:0;
+}
+.wallet-profile-donation-recipient .wallet-profile-donation-identity-card .theater-donation-micro-label{
+  font-size:.58rem;
+}
+.wallet-profile-donation-recipient .wallet-profile-donation-identity-card .theater-donation-onchain-recipient-copy strong{
+  font-size:.9rem;
+}
+.wallet-profile-donation-recipient .wallet-profile-donation-identity-card .theater-donation-onchain-npub,
+.wallet-profile-donation-recipient .wallet-profile-donation-identity-card .theater-donation-onchain-nip05{
+  font-size:.65rem;
+}
+.wallet-profile-donation-recipient .wallet-profile-donation-identity-card .theater-donation-onchain-recipient-avatar{
+  width:64px;
+  height:64px;
+  flex-basis:64px;
+}
+@media (min-width:761px){
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-recipient{
+    display:flex;
+    flex-direction:column;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-recipient > .wallet-profile-donation-identity-card{
+    flex:0 0 auto;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-card{
+    flex:0 0 auto;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap{
+    width:220px;
+    height:220px;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap img,
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap canvas{
+    width:198px!important;
+    height:198px!important;
+  }
+}
+@media (max-width:760px){
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap{
+    width:200px;
+    height:200px;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap img,
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap canvas{
+    width:178px!important;
+    height:178px!important;
+  }
+}
