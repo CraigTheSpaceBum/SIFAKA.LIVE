@@ -17797,6 +17797,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const visibleChatRows = theaterChatVisibleRowLimit(stream);
     const chatLiveBootstrapCap = Math.max(visibleChatRows * 4, 40);
     const reactionLiveBootstrapCap = Math.max(visibleChatRows * 8, 96);
+    // Stream like/emoji counters stay fully populated; only the notification rows shown inside live chat are capped so reactions cannot crowd out chat/donation rows.
+    const chatReactionNotificationCap = Math.max(4, Math.floor(visibleChatRows / 3));
     const sortEventsByCreatedAt = (a, b) => {
       const byTime = Number(a && a.created_at || 0) - Number(b && b.created_at || 0);
       return byTime || String(a && a.id || '').localeCompare(String(b && b.id || ''));
@@ -18013,10 +18015,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             removeChatStreamReactionRow(previousReactionId);
           }
 
-          renderChatStreamReaction(ev, reactionMeta, {
-            maxRows: visibleChatRows,
-            autoScroll: false
-          });
+          const reactionRows = qsa('#chatScroll .cmsg.reaction-ev');
+          if (reactionRows.length < chatReactionNotificationCap) {
+            renderChatStreamReaction(ev, reactionMeta, {
+              maxRows: visibleChatRows,
+              autoScroll: false
+            });
+          }
           outcome.streamReactionsDirty = true;
           return outcome;
         }
