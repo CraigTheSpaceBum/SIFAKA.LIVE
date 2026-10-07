@@ -22843,10 +22843,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const controlsEl = qs('#walletOnchainSendControls');
       const senderCardEl = qs('#walletProfileOnchainDonationSenderCard');
       const signedIn = !!state.user;
-      const canSpendWithSifaka = signedIn && state.authMode === 'local' && !!state.localSecretKey;
 
-      if (controlsEl) controlsEl.hidden = !canSpendWithSifaka;
-      if (senderCardEl) senderCardEl.hidden = !canSpendWithSifaka;
+      // Remote/extension sign-ins still have a deterministic Taproot wallet address
+      // and can safely view their address, balance and donation controls. The actual
+      // transaction signing remains protected by requireLocalOnchainSigner().
+      if (controlsEl) controlsEl.hidden = !signedIn;
+      if (senderCardEl) senderCardEl.hidden = !signedIn;
     }
     async function getWalletOnchainSignerModule() {
       if (state.walletOnchainSignerModule) return state.walletOnchainSignerModule;
@@ -22991,7 +22993,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       bodyEl?.classList.toggle('is-profile-donation', profileDonation);
       if (recipientPanel) recipientPanel.hidden = !profileDonation;
       if (senderPanelEl) senderPanelEl.hidden = !profileDonation;
-      if (senderCardEl) senderCardEl.hidden = !(profileDonation && canSpendWithSifaka);
+      if (senderCardEl) senderCardEl.hidden = !profileDonation || !state.user;
       if (donationAmountEl) donationAmountEl.hidden = !profileDonation;
       if (recipientFieldEl) recipientFieldEl.hidden = profileDonation;
       if (noteEl) noteEl.hidden = profileDonation;
@@ -23053,22 +23055,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
       const note = qs('#walletOnchainSendNote');
       if (note) {
-        note.textContent = state.authMode === 'local' && state.localSecretKey && state.user
-          ? (profileDonation
+        if (profileDonation) {
+          note.textContent = state.authMode === 'local' && state.localSecretKey && state.user
             ? ('Sending on-chain Bitcoin to ' + recipientName + '. Review the amount and network fee before confirming.')
-            : (recipientName
+            : (state.user
+              ? ('Your on-chain wallet address and balance are available in this panel. Transaction signing currently requires a local Nostr key login.')
+              : '');
+        } else {
+          note.textContent = state.authMode === 'local' && state.localSecretKey && state.user
+            ? (recipientName
               ? 'Sending on-chain Bitcoin to ' + recipientName + '. The recipient address is shown above; review the amount and network fee before confirming.'
-              : 'Your transaction will be prepared locally and only broadcast after you confirm the destination, amount, and network fee.'))
-          : (profileDonation ? '' : 'On-chain sending currently requires a local Nostr key login. The receive wallet remains available with remote signer or extension login.');
+              : 'Your transaction will be prepared locally and only broadcast after you confirm the destination, amount, and network fee.')
+            : 'On-chain sending currently requires a local Nostr key login. The receive wallet remains available with remote signer or extension login.';
+        }
       }
 
-      if (!canSpendWithSifaka) {
-        if (!profileDonation) {
-          if (availableEl) availableEl.textContent = 'Unavailable';
-          if (availableSubEl) availableSubEl.textContent = 'Local key login is required to spend on-chain Bitcoin.';
-          if (suggestedFeeEl) suggestedFeeEl.textContent = '—';
-          if (feeSubEl) feeSubEl.textContent = 'Receive remains available with other login methods.';
-        }
+      if (!state.user) {
+        if (availableEl) availableEl.textContent = 'Unavailable';
+        if (availableSubEl) availableSubEl.textContent = 'Sign in to load your on-chain wallet balance.';
+        if (suggestedFeeEl) suggestedFeeEl.textContent = '—';
+        if (feeSubEl) feeSubEl.textContent = 'Your wallet address will load after sign-in.';
+        if (senderEl) senderEl.textContent = 'Unavailable';
         return true;
       }
 
