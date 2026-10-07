@@ -14750,7 +14750,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const badge = document.createElement('span');
           badge.className = 'nip05-badge';
           badge.title = `NIP-05: ${verifiedNip05}`;
-          badge.textContent = '\\u2713';
+          badge.textContent = '✓';
           name.appendChild(document.createTextNode(' '));
           name.appendChild(badge);
         }
@@ -17521,7 +17521,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const badge = document.createElement('span');
           badge.className = 'nip05-badge';
           badge.title = `NIP-05: ${verifiedNip05}`;
-          badge.textContent = '\\u2713';
+          badge.textContent = '✓';
           name.appendChild(document.createTextNode(' '));
           name.appendChild(badge);
         }
