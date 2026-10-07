@@ -2752,8 +2752,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return await payInvoiceWithPreferredWallet(invoice);
   }
 
-  async function payLightningDonationForLud16(lud16, amountMsats, recipientPubkey, extraTags = []) {
+  async function payLightningDonationForLud16(lud16, amountMsats, recipientPubkey, extraTags = [], message = '') {
     const info = await fetchLightningAddressInfo(lud16, amountMsats);
+    const zapMessage = String(message || '').trim() || '⚡ donation from Sifaka Live';
     const canCreateZap = !!(state.user && info.allowsNostr && info.receiptPubkey);
 
     if (canCreateZap) {
@@ -2761,7 +2762,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       let zapInvoice = '';
       try {
         const zapTags = buildZapRequestTags(recipientPubkey, amountMsats, info, extraTags);
-        zapRequest = await signEvent(9734, '⚡ donation from Sifaka Live', zapTags);
+        zapRequest = await signEvent(9734, zapMessage, zapTags);
         zapInvoice = await buildZapInvoiceForLud16(lud16, amountMsats, zapRequest, { zapInfo: info });
       } catch (err) {
         console.warn('NIP-57 donation setup unavailable; using ordinary Lightning payment:', err && err.message ? err.message : err);
@@ -26179,6 +26180,8 @@ window.saveAppSettings = function () {
       if (status) status.textContent = '';
       const amount = qs('#theaterDonationAmount');
       if (amount) amount.value = '330';
+      const messageInput = qs('#theaterDonationZapMessage');
+      if (messageInput) messageInput.value = '';
     };
 
     window.selectTheaterDonationMethod = async function (method) {
@@ -26474,6 +26477,8 @@ window.saveAppSettings = function () {
       const amountSats = Math.floor(Number(qs('#theaterDonationAmount')?.value || 0));
       const status = qs('#theaterDonationStatus');
       const btn = qs('#theaterDonationSendBtn');
+      const messageInput = qs('#theaterDonationZapMessage');
+      const zapMessage = String(messageInput?.value || '').trim();
 
       if (!lud16) {
         if (status) status.textContent = 'This streamer does not have a Lightning address.';
@@ -26508,7 +26513,8 @@ window.saveAppSettings = function () {
                 ['e', stream.id],
                 ['a', stream.address],
                 ['k', String(KIND_LIVE_EVENT)]
-              ]
+              ],
+          zapMessage
         );
         const walletLabel = payment.paymentMethod === 'nwc'
           ? 'Nostr Wallet Connect'
@@ -26587,6 +26593,8 @@ window.saveAppSettings = function () {
       refreshTheaterDonationWalletStatus().catch(() => {});
       const amount = qs('#theaterDonationAmount');
       if (amount) amount.value = '21';
+      const messageInput = qs('#theaterDonationZapMessage');
+      if (messageInput) messageInput.value = '';
       const status = qs('#theaterDonationStatus');
       if (status) status.textContent = '';
     };
