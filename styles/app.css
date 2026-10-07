@@ -3009,8 +3009,8 @@ nav .btn{
 
 /* Host row */
 .sib-host-row{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;}
-.sib-av{width:52px;height:52px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:1.3rem;border:2px solid var(--border2);flex-shrink:0;cursor:pointer;transition:border-color .15s;}
-.sib-av:hover{border-color:var(--accent);}
+.sib-av{width:52px;height:52px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:1.3rem;border:2px solid var(--border2);flex-shrink:0;cursor:pointer;overflow:hidden;transition:border-color .15s,border-radius .15s;}
+.sib-av:hover{border-color:var(--accent);border-radius:9px;}
 .sib-host-info{flex:1;min-width:0;}
 .sib-name{font-weight:700;font-size:.92rem;font-family:var(--font-display);display:flex;align-items:center;gap:.3rem;min-height:1.15em;}
 .sib-identity{font-family:'DM Mono',monospace;font-size:.67rem;color:var(--muted);margin-top:.06rem;min-height:1em;}
@@ -3213,6 +3213,16 @@ nav .btn{
   outline:0;font:600 .86rem/1 'DM Mono',monospace;
 }
 .theater-donation-custom-amount input:focus{border-color:rgba(247,147,26,.6);box-shadow:0 0 0 3px rgba(247,147,26,.1);}
+.theater-donation-custom-message{display:flex;flex-direction:column;gap:.35rem;color:var(--text2);font-size:.68rem;margin-top:.75rem;}
+.theater-donation-custom-message textarea{
+  width:100%;box-sizing:border-box;
+  min-height:74px;padding:.65rem .75rem;resize:vertical;
+  border:1px solid var(--border2);border-radius:10px;
+  background:var(--surface2);color:var(--text);
+  outline:0;font:500 .78rem/1.4 'DM Sans',sans-serif;
+}
+.theater-donation-custom-message textarea:focus{border-color:rgba(247,147,26,.6);box-shadow:0 0 0 3px rgba(247,147,26,.1);}
+.theater-donation-custom-message small{color:var(--muted);font-size:.6rem;line-height:1.4;}
 .theater-donation-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;}
 .theater-donation-actions .btn{min-height:42px;}
 .theater-donation-status{min-height:1.25rem;margin-top:.7rem;color:var(--text2);font-size:.67rem;line-height:1.45;}
