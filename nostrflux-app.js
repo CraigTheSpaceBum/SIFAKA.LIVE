@@ -19260,10 +19260,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               <div class="profile-comment-text"></div>
               <div class="profile-comment-media"></div>
               <div class="profile-comment-actions">
-                <button type="button" class="profile-comment-reply-btn">? Reply</button>
-                <button type="button" class="profile-comment-like-btn">?? <span class="profile-comment-like-count">0</span></button>
-                <button type="button" class="profile-comment-zap-btn">? <span class="profile-comment-zap-count">0</span></button>
-                <button type="button" class="profile-comment-boost-btn">?? <span class="profile-comment-boost-count">0</span></button>
+                <button type="button" class="profile-comment-reply-btn">Reply</button>
+                <button type="button" class="profile-comment-like-btn">Like <span class="profile-comment-like-count">0</span></button>
+                <button type="button" class="profile-comment-zap-btn">Zap <span class="profile-comment-zap-count">0</span></button>
+                <button type="button" class="profile-comment-boost-btn">Boost <span class="profile-comment-boost-count">0</span></button>
               </div>
             </div>`;
           const cAvEl = qs('.profile-comment-av', row);
@@ -19337,11 +19337,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (commentReplyBtn) {
             commentReplyBtn.addEventListener('click', (evt) => {
               evt.stopPropagation();
-              setReplyTarget({
-                id: comment.id,
-                pubkey: comment.pubkey,
-                name: commentDisplayName
-              });
+              openProfileCommentThread(pubkey, targetPostId, comment);
             });
           }
           if (commentLikeCountEl) commentLikeCountEl.textContent = `${commentLikeSet.size}`;
@@ -19515,7 +19511,233 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       obs.observe(sentinel);
     }
   }
-  function renderProfileFeed(pubkey) {
+    function profileTargetPostIds(posts) {
+    const ids = new Set();
+    (Array.isArray(posts) ? posts : []).forEach((post) => {
+      if (!post || !post.id) return;
+      ids.add(String(post.id));
+      if (post.kind === 6) {
+        const parsed = parseJsonSafe(post.content || '');
+        if (parsed && /^[0-9a-f]{64}$/i.test(parsed.id || '')) ids.add(parsed.id);
+        const refs = getTagValues(post, 'e');
+        const ref = refs[refs.length - 1];
+        if (/^[0-9a-f]{64}$/i.test(ref || '')) ids.add(ref);
+      }
+    });
+    return Array.from(ids);
+  }
+
+  function hydrateProfilePostComments(pubkey, posts) {
+    if (!pubkey || !state.pool) return;
+    const ids = profileTargetPostIds(posts).slice(0, 80);
+    if (!ids.length) return;
+    const key = (normalizePubkeyHex(pubkey) || pubkey) + ':' + ids.slice().sort().join(',');
+    const now = Date.now();
+    const last = Number(state.profileCommentHydrationAtByKey.get(key) || 0);
+    if (now - last < 15000) return;
+    state.profileCommentHydrationAtByKey.set(key, now);
+    fetchEventsCached(
+      [{ kinds: [1, KIND_COMMENT], '#e': ids, limit: 1200 }],
+      { scope: 'profile-post-comments', cacheKey: 'profile-post-comments:' + key, ttlMs: 10000, warmMs: 30000, timeoutMs: 2200, maxEvents: 1500 }
+    ).then((events) => {
+      const map = state.profileNotesByPubkey.get(pubkey) || new Map();
+      let changed = false;
+      (events || []).forEach((ev) => {
+        if (!ev || !ev.id) return;
+        const existing = map.get(ev.id);
+        if (!existing || Number(existing.created_at || 0) <= Number(ev.created_at || 0)) {
+          map.set(ev.id, ev);
+          changed = true;
+        }
+      });
+      state.profileNotesByPubkey.set(pubkey, map);
+      if (changed && normalizePubkeyHex(state.selectedProfilePubkey) === (normalizePubkeyHex(pubkey) || pubkey) && isProfilePageVisible()) {
+        renderProfileFeed(pubkey);
+      }
+    }).catch(() => {});
+  }
+
+  function profileCommentParentId(ev) {
+    const markedReply = (ev.tags || []).find((tag) => Array.isArray(tag) && tag[0] === 'e' && String(tag[3] || '').toLowerCase() === 'reply');
+    if (markedReply && markedReply[1]) return markedReply[1];
+    const refs = getTagValues(ev, 'e');
+    return refs.length ? refs[refs.length - 1] : '';
+  }
+
+  function renderProfileCommentThreadItem(comment, profilePubkey, depth = 0, isRoot = false) {
+    const row = document.createElement('article');
+    row.className = 'profile-comment-thread-item' + (isRoot ? ' is-root' : '');
+    row.style.setProperty('--comment-depth', String(Math.min(6, Math.max(0, Number(depth || 0)))));
+    const cp = profileFor(comment.pubkey);
+    const name = cp.display_name || cp.name || shortHex(comment.pubkey);
+    const verified = getVerifiedNip05ForPubkey(comment.pubkey, cp.nip05 || '');
+    const avatar = document.createElement('div');
+    avatar.className = 'profile-comment-thread-av';
+    setAvatarEl(avatar, cp.picture || '', pickAvatar(comment.pubkey));
+    avatar.onclick = () => showProfileByPubkey(comment.pubkey);
+    const body = document.createElement('div');
+    body.className = 'profile-comment-thread-main';
+    const meta = document.createElement('div');
+    meta.className = 'profile-comment-thread-meta';
+    const nameEl = document.createElement('button');
+    nameEl.type = 'button';
+    nameEl.className = 'profile-comment-thread-name';
+    nameEl.textContent = name;
+    nameEl.onclick = () => showProfileByPubkey(comment.pubkey);
+    meta.appendChild(nameEl);
+    if (verified) {
+      const badge = document.createElement('span');
+      badge.className = 'nip05-badge';
+      badge.textContent = '\u2713';
+      badge.title = 'NIP-05 verified';
+      meta.appendChild(badge);
+    }
+    const timeEl = document.createElement('span');
+    timeEl.className = 'profile-comment-thread-time';
+    timeEl.textContent = formatTimeAgo(comment.created_at) + ' ago';
+    meta.appendChild(timeEl);
+    const textEl = document.createElement('div');
+    textEl.className = 'profile-comment-thread-text';
+    textEl.appendChild(renderNostrContent(String(comment.content || '').trim() || '[empty comment]'));
+    const actions = document.createElement('div');
+    actions.className = 'profile-comment-actions';
+
+    const replyBtn = document.createElement('button');
+    replyBtn.type = 'button';
+    replyBtn.className = 'profile-comment-reply-btn';
+    replyBtn.textContent = 'Reply';
+    replyBtn.onclick = (evt) => {
+      evt.stopPropagation();
+      openProfileCommentThread(profilePubkey, state.profileCommentThreadContext && state.profileCommentThreadContext.rootPostId || '', comment);
+    };
+
+    const likeBtn = document.createElement('button');
+    likeBtn.type = 'button';
+    likeBtn.className = 'profile-comment-like-btn';
+    likeBtn.textContent = 'Like ';
+    const likeCount = document.createElement('span');
+    likeCount.className = 'profile-comment-like-count';
+    likeCount.textContent = '0';
+    likeBtn.appendChild(likeCount);
+    likeBtn.onclick = (evt) => {
+      evt.stopPropagation();
+      window.toggleProfilePostLike(comment.id, comment.pubkey, profilePubkey);
+    };
+
+    const zapBtn = document.createElement('button');
+    zapBtn.type = 'button';
+    zapBtn.className = 'profile-comment-zap-btn';
+    zapBtn.textContent = 'Zap ';
+    const zapCount = document.createElement('span');
+    zapCount.className = 'profile-comment-zap-count';
+    zapCount.textContent = '0';
+    zapBtn.appendChild(zapCount);
+    zapBtn.onclick = (evt) => {
+      evt.stopPropagation();
+      window.zapProfileNote(comment.id, comment.pubkey, profilePubkey, zapBtn);
+    };
+
+    const boostBtn = document.createElement('button');
+    boostBtn.type = 'button';
+    boostBtn.className = 'profile-comment-boost-btn';
+    boostBtn.textContent = 'Boost ';
+    const boostCount = document.createElement('span');
+    boostCount.className = 'profile-comment-boost-count';
+    boostCount.textContent = '0';
+    boostBtn.appendChild(boostCount);
+    boostBtn.onclick = (evt) => {
+      evt.stopPropagation();
+      window.toggleProfilePostBoost(comment.id, comment.pubkey, profilePubkey);
+    };
+
+    actions.append(replyBtn, likeBtn, zapBtn, boostBtn);
+    body.append(meta, textEl, actions);
+    row.append(avatar, body);
+    if (!state.profilesByPubkey.has(comment.pubkey)) {
+      fetchProfileIfNeeded(comment.pubkey).then(() => {
+        const fresh = profileFor(comment.pubkey);
+        nameEl.textContent = fresh.display_name || fresh.name || shortHex(comment.pubkey);
+        setAvatarEl(avatar, fresh.picture || '', pickAvatar(comment.pubkey));
+      }).catch(() => {});
+    }
+    return { row, likeBtn, zapBtn, boostBtn, likeCount, zapCount, boostCount };
+  }
+
+  async function openProfileCommentThread(profilePubkey, rootPostId, comment) {
+    const targetProfile = normalizePubkeyHex(profilePubkey) || profilePubkey;
+    if (!targetProfile || !comment || !comment.id) return;
+    state.profileCommentThreadContext = {
+      profilePubkey: targetProfile,
+      rootPostId: rootPostId || '',
+      rootComment: comment,
+      returnScrollY: Number(window.scrollY || 0)
+    };
+    const threadPage = qs('#profileCommentThreadPage');
+    const profilePage = qs('#profilePage');
+    const rootEl = qs('#profileCommentThreadRoot');
+    const repliesEl = qs('#profileCommentThreadReplies');
+    const statusEl = qs('#profileCommentThreadStatus');
+    const subhead = qs('#profileCommentThreadSubhead');
+    if (!threadPage || !profilePage || !rootEl || !repliesEl) return;
+
+    profilePage.style.display = 'none';
+    threadPage.style.display = 'block';
+    window.scrollTo(0, 0);
+    rootEl.innerHTML = '';
+    repliesEl.innerHTML = '';
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Loading replies from relays...'; }
+    if (subhead) subhead.textContent = 'Loading replies...';
+
+    const eventsById = new Map([[comment.id, comment]]);
+    let frontier = [comment.id];
+    for (let round = 0; round < 6 && frontier.length; round += 1) {
+      let replies = [];
+      try {
+        const ids = frontier.slice(0, 120);
+        replies = await fetchEventsCached(
+          [{ kinds: [1, KIND_COMMENT], '#e': ids, limit: 1200 }],
+          { scope: 'profile-comment-thread', cacheKey: 'profile-comment-thread:' + ids.slice().sort().join(','), ttlMs: 10000, warmMs: 30000, timeoutMs: 2400, maxEvents: 1500 }
+        );
+      } catch (_) {}
+      const next = [];
+      (replies || []).forEach((ev) => {
+        if (!ev || !ev.id || eventsById.has(ev.id)) return;
+        eventsById.set(ev.id, ev);
+        next.push(ev.id);
+        const map = state.profileNotesByPubkey.get(targetProfile) || new Map();
+        map.set(ev.id, ev);
+        state.profileNotesByPubkey.set(targetProfile, map);
+      });
+      frontier = next;
+    }
+
+    const allReplies = Array.from(eventsById.values()).filter((ev) => ev && ev.id !== comment.id).sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0));
+    rootEl.appendChild(renderProfileCommentThreadItem(comment, targetProfile, 0, true).row);
+
+    const depthById = new Map([[comment.id, 0]]);
+    allReplies.forEach((ev) => {
+      const parent = profileCommentParentId(ev);
+      const parentDepth = depthById.has(parent) ? depthById.get(parent) : 0;
+      const depth = parent ? Math.min(6, parentDepth + 1) : 1;
+      depthById.set(ev.id, depth);
+      repliesEl.appendChild(renderProfileCommentThreadItem(ev, targetProfile, depth, false).row);
+    });
+
+    if (statusEl) { statusEl.style.display = allReplies.length ? 'none' : 'block'; statusEl.textContent = allReplies.length ? '' : 'No replies found yet.'; }
+    if (subhead) subhead.textContent = allReplies.length === 1 ? '1 reply' : allReplies.length + ' replies';
+  }
+
+  window.openProfileCommentThread = openProfileCommentThread;
+  window.closeProfileCommentThread = function () {
+    const ctx = state.profileCommentThreadContext;
+    state.profileCommentThreadContext = null;
+    const threadPage = qs('#profileCommentThreadPage');
+    if (threadPage) threadPage.style.display = 'none';
+    if (!ctx || !ctx.profilePubkey) return;
+    showProfileByPubkey(ctx.profilePubkey, { routeMode: 'skip' }).finally(() => window.scrollTo(0, Number(ctx.returnScrollY || 0)));
+  };
+
+function renderProfileFeed(pubkey) {
     if (isNostrFeedVirtualProfile(pubkey)) {
       const listEl = qs('#nostrFeedList');
       if (!listEl) return;
@@ -20421,6 +20643,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (profName) profName.textContent = p.name;
 
     setAvatarEl(qs('#profAv'), p.picture || '', pickAvatar(pubkey));
+    const profileAvatarImg = qs('#profAv img');
+    if (profileAvatarImg) {
+      profileAvatarImg.loading = 'eager';
+      profileAvatarImg.decoding = 'async';
+      profileAvatarImg.fetchPriority = 'high';
+    }
 
     const nip05Main = qs('#profNip05');
     const nip05Check = qs('#profNip05Check');
@@ -22152,6 +22380,32 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     window.toggleFollowProfile = function () {
       toggleFollowSelectedProfile();
+    };
+
+    window.openProfileDonation = async function () {
+      if (!state.user) { window.openLogin(); return; }
+      const pubkey = normalizePubkeyHex(state.selectedProfilePubkey);
+      const modal = qs('#theaterDonationModal');
+      if (!pubkey || !modal) return;
+      try { await fetchProfileIfNeeded(pubkey); } catch (_) {}
+      const profile = profileFor(pubkey);
+      const syntheticStream = {
+        address: 'profile:' + pubkey,
+        pubkey,
+        hostPubkey: pubkey,
+        hostName: profile.display_name || profile.name || 'this profile',
+        raw: { pubkey, tags: [['p', pubkey, '', 'host']] }
+      };
+      theaterDonationContext.targetStream = syntheticStream;
+      theaterDonationContext.streamAddress = syntheticStream.address;
+      theaterDonationContext.hostPubkey = pubkey;
+      theaterDonationContext.hostName = getTheaterDonationHostLabel(syntheticStream, profile);
+      theaterDonationContext.lud16 = String(profile.lud16 || '').trim();
+      theaterDonationContext.source = 'profile';
+      populateTheaterDonationChooser(syntheticStream, profile, pubkey);
+      if (qs('#theaterDonationTitle')) qs('#theaterDonationTitle').textContent = 'Support ' + getTheaterDonationHostLabel(syntheticStream, profile);
+      showTheaterDonationChooser();
+      modal.classList.add('open');
     };
 
     window.openProfileMessage = function () {
