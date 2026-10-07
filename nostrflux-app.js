@@ -23094,7 +23094,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (availableSubEl) {
           availableSubEl.textContent = availableSats
             ? 'Spendable confirmed UTXOs. Network fee is deducted separately.'
-            : 'No spendable UTXOs found for this wallet.';
+            : 'No confirmed balance is currently available to send.';
         }
         if (suggestedFeeEl) suggestedFeeEl.textContent = feeRate + ' sat/vB';
         if (feeRateEl) feeRateEl.value = String(feeRate);
@@ -25588,7 +25588,7 @@ window.saveAppSettings = function () {
           if (availableEl) availableEl.textContent = formatCount(availableSats) + ' sats';
           if (availableSubEl) availableSubEl.textContent = availableSats
             ? 'Wallet UTXOs available to the local signer. Network fee is separate.'
-            : 'No spendable UTXOs found for this wallet.';
+            : 'No confirmed balance is currently available to send.';
         } else {
           if (availableEl) availableEl.textContent = 'Unavailable';
           if (availableSubEl) availableSubEl.textContent = utxoResult.reason?.message || 'Could not load wallet UTXOs.';

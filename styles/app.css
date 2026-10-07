@@ -9095,3 +9095,119 @@ body.nest-room-page-open{
     height:178px!important;
   }
 }
+
+
+/* ======== 0.4.4 ON-CHAIN DONATION QR / ADDRESS + AMOUNT / FEE POLISH ======== */
+#walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-card{
+  box-sizing:border-box;
+  width:100%;
+  margin:.7rem 0 0;
+  padding:.7rem;
+  gap:.55rem;
+  align-items:center;
+  background:rgba(10,14,19,.5);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:13px;
+}
+#walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap.theater-lightning-qr{
+  width:220px;
+  height:220px;
+  min-height:0;
+  padding:10px;
+  margin:0;
+  border:0;
+  border-radius:13px;
+  background:#fff;
+  box-sizing:border-box;
+}
+#walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap.theater-lightning-qr img,
+#walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap.theater-lightning-qr canvas{
+  width:198px!important;
+  height:198px!important;
+  max-width:100%;
+  max-height:100%;
+}
+#walletOnchainSendModal.profile-donation .wallet-profile-donation-address.theater-lightning-address{
+  display:block;
+  width:100%;
+  box-sizing:border-box;
+  margin:0;
+  padding:0 .25rem;
+  border:0;
+  background:transparent;
+  color:var(--text);
+  font:700 .72rem/1.5 'DM Mono',monospace;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  text-align:center;
+  cursor:pointer;
+}
+#walletOnchainSendModal.profile-donation .wallet-profile-donation-address.theater-lightning-address:hover{
+  color:var(--accent);
+  text-decoration:underline;
+}
+#walletOnchainSendModal.profile-donation .wallet-profile-donation-copy.theater-lightning-copy-btn{
+  width:100%;
+  min-height:36px!important;
+  margin:0;
+  justify-content:center;
+  align-self:stretch;
+}
+@media (max-width:760px){
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap.theater-lightning-qr{
+    width:200px;
+    height:200px;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap.theater-lightning-qr img,
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-qr-wrap.theater-lightning-qr canvas{
+    width:178px!important;
+    height:178px!important;
+  }
+}
+@media (min-width:761px){
+  /* Make Donation Amount and Fee Rate read as two matching control cards. */
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-amount,
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-fee-card{
+    min-height:118px;
+    box-sizing:border-box;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-amount{
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    gap:8px;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-fee-card{
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    gap:5px;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-amount .wallet-profile-donation-presets{
+    margin:0;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(2),
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(3){
+    min-height:70px;
+    padding:0 14px 12px;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    gap:6px;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(2) input,
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(3) input{
+    min-height:42px;
+    box-sizing:border-box;
+  }
+}
+@media (max-width:760px){
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-amount,
+  #walletOnchainSendModal.profile-donation .wallet-profile-donation-fee-card{
+    min-height:0;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(2),
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-form label:nth-child(3){
+    min-height:0;
+  }
+}

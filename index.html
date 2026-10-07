@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.4.3">
+<link rel="stylesheet" href="./styles/app.css?v=0.4.4">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -1423,25 +1423,21 @@ body.nest-preview-open{overflow:hidden}
             </div>
           </div>
         </div>
-        <div class="wallet-profile-donation-kicker">Recipient Bitcoin address</div>
-        <div class="wallet-profile-donation-qr-card" aria-label="Recipient Bitcoin address QR code">
-          <div class="wallet-profile-donation-qr-wrap">
+        <div class="wallet-profile-donation-qr-card theater-lightning-qr-card" aria-label="Recipient Bitcoin address and QR code">
+          <div class="wallet-profile-donation-qr-wrap theater-lightning-qr">
             <div id="walletProfileOnchainDonationQr"></div>
             <div id="walletProfileOnchainDonationQrEmpty">Loading recipient address…</div>
           </div>
-          <div class="wallet-profile-donation-qr-label">Bitcoin payment QR</div>
-        </div>
-        <div class="wallet-profile-donation-address-row">
           <button
             type="button"
-            class="wallet-profile-donation-address wallet-profile-donation-address-box"
+            class="wallet-profile-donation-address theater-lightning-address"
             id="walletProfileOnchainDonationAddress"
             onclick="copyWalletProfileOnchainDonationAddress()"
             aria-label="Copy recipient Bitcoin address"
             title="Click to copy the full Bitcoin address"
           >Resolving…</button>
           <button
-            class="btn btn-ghost wallet-small-btn wallet-profile-donation-copy"
+            class="btn btn-ghost theater-lightning-copy-btn wallet-profile-donation-copy"
             type="button"
             id="walletProfileOnchainDonationCopyBtn"
             onclick="copyWalletProfileOnchainDonationAddress()"
@@ -1457,7 +1453,6 @@ body.nest-preview-open{overflow:hidden}
               <div class="wallet-onchain-send-balance-card wallet-profile-donation-sender-card" id="walletProfileOnchainDonationSenderCard" hidden>
                 <span>Sending from</span>
                 <strong id="walletProfileOnchainDonationSender">Loading…</strong>
-                <small>Your built-in on-chain Nostr Bitcoin wallet.</small>
               </div>
               <div class="wallet-onchain-send-balance-card wallet-profile-donation-available-card">
                 <span>Available to send</span>
@@ -2293,7 +2288,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.4.3" defer></script>
+<script src="./nostrflux-app.js?v=0.4.4" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
