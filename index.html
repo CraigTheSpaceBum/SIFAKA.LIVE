@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.3.8-reactions-profiles">
+<link rel="stylesheet" href="./styles/app.css?v=0.4.0">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -2009,8 +2009,8 @@ body.nest-preview-open{overflow:hidden}
             <span class="lbl">Website</span>
             <a id="theaterWebsite" href="#" target="_blank" rel="noopener noreferrer"></a>
           </div>
-          <div class="profile-bio-meta" id="theaterOnchainRow" style="display:none;">
-            <span class="lbl">On Chain</span>
+          <div class="profile-bio-meta onchain-profile-meta" id="theaterOnchainRow" style="display:none;">
+            <span class="lbl" aria-hidden="true">On Chain</span>
             <button class="val profile-bitcoin-send-btn" id="theaterOnchainBtn" type="button" disabled title="Send Bitcoin to this profile" aria-label="Send Bitcoin to this profile">₿ On Chain</button>
           </div>
           <div class="profile-bio-meta" id="theaterLud16Row" style="display:none;">
@@ -2124,7 +2124,7 @@ body.nest-preview-open{overflow:hidden}
                 </div>
                 <div class="profile-bio-links profile-bio-links-bottom" id="profBioLinksBottom">
                   <div class="profile-bio-meta" id="profWebsiteRow" style="display:none;"><span class="lbl">Website</span><a id="profWebsiteBio" href="#" target="_blank" rel="noopener noreferrer"></a></div>
-                  <div class="profile-bio-meta" id="profBitcoinRow" style="display:none;"><span class="lbl">On Chain</span><button class="val profile-bitcoin-send-btn" id="profBitcoinBio" type="button" disabled title="Send Bitcoin to this profile" aria-label="Send Bitcoin to this profile"></button></div>
+                  <div class="profile-bio-meta onchain-profile-meta" id="profBitcoinRow" style="display:none;"><span class="lbl" aria-hidden="true">On Chain</span><button class="val profile-bitcoin-send-btn" id="profBitcoinBio" type="button" disabled title="Send Bitcoin to this profile" aria-label="Send Bitcoin to this profile"></button></div>
                   <div class="profile-bio-meta" id="profLud16Row" style="display:none;"><span class="lbl">Lightning</span><button class="val profile-lightning-donation-btn" id="profLud16Bio" type="button" onclick="openProfileLightningDonation()" title="Donate Lightning to this profile" aria-label="Donate Lightning to this profile"></button></div>
                 </div>
                 <div class="profile-since" id="profNostrSince" style="display:none"></div>
@@ -2292,7 +2292,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.3.8-reactions-profiles" defer></script>
+<script src="./nostrflux-app.js?v=0.4.0" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>

@@ -8972,3 +8972,41 @@ body.nest-room-page-open{
     flex:0 0 auto;
   }
 }
+
+
+/* ======== ON-CHAIN / LIGHTNING DONATION UI SIZE MATCH ======== */
+@media (min-width:761px){
+  /* The profile On-Chain donation modal is intentionally 40vw wide. */
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
+    width:40vw!important;
+    max-width:40vw!important;
+  }
+
+  /* Keep the Lightning donation modal the same desktop width as On-Chain. */
+  #theaterDonationModal .theater-donation-modal{
+    width:40vw;
+    max-width:40vw;
+  }
+
+  /* The address is the complete visible On-Chain control; do not show a
+     second "On Chain" label immediately before it. */
+  .onchain-profile-meta > .lbl{
+    display:none;
+  }
+}
+
+@media (max-width:760px){
+  .onchain-profile-meta > .lbl{
+    display:none;
+  }
+}
+
+
+/* ======== LIVE CHAT BORDER ======== */
+@media (min-width:701px){
+  #videoPage .stream-sidebar{
+    border:1px solid var(--border);
+    border-radius:10px;
+    box-sizing:border-box;
+  }
+}
