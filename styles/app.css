@@ -8926,3 +8926,49 @@ body.nest-room-page-open{
     display:none!important;
   }
 }
+
+
+/* ======== THEATER DESKTOP LIVE CHAT AUDIT / 0.3.9 REGRESSION GUARD ======== */
+/*
+   Desktop chat must remain the full-height, full-width sidebar used by the
+   original Theater layout. Keep this isolated from all phone-only rules so
+   mobile Theater can continue to use its collapsible chat.
+*/
+@media (min-width:701px){
+  #videoPage .video-layout{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) var(--sidebar-w);
+    width:100%;
+    max-width:1920px;
+    min-height:calc(100vh - 68px);
+    margin:0 auto;
+    align-items:start;
+  }
+
+  #videoPage .stream-sidebar{
+    display:flex;
+    flex-direction:column;
+    width:auto;
+    min-width:var(--sidebar-w);
+    height:calc(100vh - 68px);
+    min-height:calc(100vh - 68px);
+    max-height:none;
+    position:sticky;
+    top:68px;
+    align-self:start;
+    overflow:hidden;
+    z-index:20;
+  }
+
+  #videoPage .chat-scroll{
+    flex:1 1 auto;
+    min-height:0;
+    height:auto;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+  }
+
+  #videoPage .chat-bottom{
+    flex:0 0 auto;
+  }
+}
