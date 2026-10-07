@@ -4825,12 +4825,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function parseLiveEvent(ev) {
     if (!ev || Number(ev.kind || 0) !== KIND_LIVE_EVENT) return null;
     const rawTags = Array.isArray(ev.tags) ? ev.tags : [];
-    const hasNip53Tag = rawTags.some((tag) => {
+    const hasCoreNip53Tag = rawTags.some((tag) => {
       if (!Array.isArray(tag)) return false;
       const key = String(tag[0] || '').toLowerCase();
-      return ['d','title','summary','status','starts','streaming','image','thumb','relay','p'].includes(key);
+      return ['title','summary','status','starts','streaming','image','thumb'].includes(key);
     });
-    if (!hasNip53Tag) {
+    if (!hasCoreNip53Tag) {
       try {
         const parsedContent = JSON.parse(String(ev.content || ''));
         if (parsedContent && typeof parsedContent === 'object' && !Array.isArray(parsedContent)) return null;
