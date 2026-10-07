@@ -3205,14 +3205,19 @@ nav .btn{
   background:rgba(247,147,26,.08);
 }
 .theater-donation-custom-amount{display:flex;flex-direction:column;gap:.35rem;color:var(--text2);font-size:.68rem;}
-.theater-donation-custom-amount input{
+.theater-donation-custom-amount input,
+.theater-donation-custom-amount textarea{
   width:100%;box-sizing:border-box;
   min-height:44px;padding:.65rem .75rem;
   border:1px solid var(--border2);border-radius:10px;
   background:var(--surface2);color:var(--text);
-  outline:0;font:600 .86rem/1 'DM Mono',monospace;
+  outline:0;font:600 .86rem/1.35 'DM Mono',monospace;
 }
-.theater-donation-custom-amount input:focus{border-color:rgba(247,147,26,.6);box-shadow:0 0 0 3px rgba(247,147,26,.1);}
+.theater-donation-custom-amount textarea{
+  min-height:72px;resize:vertical;
+}
+.theater-donation-custom-amount input:focus,
+.theater-donation-custom-amount textarea:focus{border-color:rgba(247,147,26,.6);box-shadow:0 0 0 3px rgba(247,147,26,.1);}
 .theater-donation-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;}
 .theater-donation-actions .btn{min-height:42px;}
 .theater-donation-status{min-height:1.25rem;margin-top:.7rem;color:var(--text2);font-size:.67rem;line-height:1.45;}
