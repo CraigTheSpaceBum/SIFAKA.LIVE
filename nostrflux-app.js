@@ -331,6 +331,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     localSecretKey: null,
     remoteSignerSession: null,
     nwcLastProbe: null,
+    nwcRestorePromise: null,
+    nwcRestorePubkey: '',
     walletPageSession: null,
     walletPageLoadToken: 0,
     walletOnchainSendDraft: null,
@@ -2696,25 +2698,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
-  function autoSelectNwcRoutingFeeMsats(invoice) {
-    const clean = String(invoice || '').trim().toLowerCase();
-    // BOLT11 amount is encoded immediately after lnbc/lntb/lnbcrt.
-    // Give the wallet a small automatic routing-fee budget, with a 2-sat
-    // minimum so normal non-zero routes are not rejected by a zero limit.
-    const match = clean.match(/^ln(?:bc|tb|bcrt)(\d+)([munp])/);
-    if (!match) return 2000;
-    const value = Number(match[1]);
-    if (!Number.isFinite(value) || value <= 0) return 2000;
-    const unit = match[2];
-    let amountMsats = 0;
-    if (unit === 'm') amountMsats = value * 100000000;
-    else if (unit === 'u') amountMsats = value * 100000;
-    else if (unit === 'n') amountMsats = value * 100;
-    else if (unit === 'p') amountMsats = value / 10;
-    const feeMsats = Math.ceil(amountMsats * 0.01);
-    return Math.max(2000, feeMsats);
-  }
-
   async function payInvoiceWithNwcConfig(config, invoice, opts = {}) {
     const session = await createNwcSession(config);
     try {
@@ -2724,11 +2707,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         session.encryption = info.preferredEncryption;
         session.nip44ConversationKey = null;
       }
-      const maxFeeMsats = autoSelectNwcRoutingFeeMsats(invoice);
-      return await sendNwcRequest(session, 'pay_invoice', {
-        invoice,
-        max_fee: maxFeeMsats
-      }, {
+      return await sendNwcRequest(session, 'pay_invoice', { invoice }, {
         timeoutMs: Math.max(NWC_REQUEST_TIMEOUT_MS, Number(opts.timeoutMs || 0))
       });
     } finally {
@@ -2741,7 +2720,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!cleanInvoice) throw new Error('Missing invoice.');
 
     let lastErr = null;
-    const savedConfig = getSavedNwcConfig();
+    let savedConfig = getSavedNwcConfig();
+
+    // Remote signer login restores the encrypted NWC URI asynchronously.
+    // Finish that restore before considering a browser extension wallet.
+    if (!savedConfig && state.authMode === 'remote') {
+      try {
+        await restoreNwcSettingsForActiveUser();
+        savedConfig = getSavedNwcConfig();
+      } catch (_) {}
+    }
+
     if (savedConfig) {
       try {
         await payInvoiceWithNwcConfig(savedConfig, cleanInvoice);
@@ -2749,9 +2738,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       } catch (err) {
         lastErr = err;
         console.warn('NWC payment failed:', err && err.message ? err.message : err);
-        // A delivered NWC pay_invoice request may have succeeded even if the
-        // response was lost. Do not hand the same invoice to another wallet.
+        // Never silently switch a configured NWC payment to a browser extension.
+        // A delivered NWC request may have succeeded even if its response was lost.
         if (err && err.nwcAmbiguous) throw err;
+        throw err;
       }
     }
 
@@ -2775,7 +2765,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return await payInvoiceWithPreferredWallet(invoice);
   }
 
-  async function payLightningDonationForLud16(lud16, amountMsats, recipientPubkey, extraTags = []) {
+  async function payLightningDonationForLud16(lud16, amountMsats, recipientPubkey, extraTags = [], message = '') {
+    const donationMessage = String(message || '').trim().slice(0, 280);
     const info = await fetchLightningAddressInfo(lud16, amountMsats);
     const canCreateZap = !!(state.user && info.allowsNostr && info.receiptPubkey);
 
@@ -2784,7 +2775,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       let zapInvoice = '';
       try {
         const zapTags = buildZapRequestTags(recipientPubkey, amountMsats, info, extraTags);
-        zapRequest = await signEvent(9734, '⚡ donation from Sifaka Live', zapTags);
+        zapRequest = await signEvent(9734, donationMessage, zapTags);
         zapInvoice = await buildZapInvoiceForLud16(lud16, amountMsats, zapRequest, { zapInfo: info });
       } catch (err) {
         console.warn('NIP-57 donation setup unavailable; using ordinary Lightning payment:', err && err.message ? err.message : err);
@@ -2798,7 +2789,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     }
 
-    const invoice = await buildLightningInvoiceForLud16(lud16, amountMsats, { lightningInfo: info });
+    const invoice = await buildLightningInvoiceForLud16(lud16, amountMsats, {
+      lightningInfo: info,
+      comment: donationMessage
+    });
     const paymentMethod = await payInvoiceWithPreferredWallet(invoice);
     return { paymentMethod, usedZap: false };
   }
@@ -3047,6 +3041,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     }
 
+    if (state.authMode === 'remote' && state.remoteSignerSession) {
+      const ciphertext = await requestRemoteSigner('nip04_encrypt', [owner, plaintext], {
+        preferredEncryption: 'nip04',
+        fallbackEncrypt: false
+      });
+      if (!String(ciphertext || '').trim()) {
+        throw new Error('Remote signer returned an empty NWC sync ciphertext.');
+      }
+      return { encryption: 'nip04', ciphertext: String(ciphertext) };
+    }
+
     throw new Error('The active signer does not expose NIP-44/NIP-04 encryption for secure NWC sync.');
   }
 
@@ -3073,6 +3078,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (encryption === 'nip04' && window.nostr.nip04 && typeof window.nostr.nip04.decrypt === 'function') {
         return await window.nostr.nip04.decrypt(owner, ciphertext);
       }
+    }
+
+    if (state.authMode === 'remote' && state.remoteSignerSession) {
+      if (encryption !== 'nip04') {
+        throw new Error('Remote NWC sync is stored with NIP-04 encryption.');
+      }
+      const plaintext = await requestRemoteSigner('nip04_decrypt', [owner, ciphertext], {
+        preferredEncryption: 'nip04',
+        fallbackEncrypt: false
+      });
+      if (!String(plaintext || '').trim()) {
+        throw new Error('Remote signer returned an empty NWC sync payload.');
+      }
+      return String(plaintext);
     }
 
     throw new Error('The active signer cannot decrypt the saved NWC sync payload.');
@@ -3191,6 +3210,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     return false;
+  }
+
+  function restoreNwcSettingsForActiveUser() {
+    const owner = normalizePubkeyHex(state.user && state.user.pubkey || '');
+    if (!owner || !state.pool) return Promise.resolve(false);
+
+    if (state.nwcRestorePromise && state.nwcRestorePubkey === owner) {
+      return state.nwcRestorePromise;
+    }
+
+    state.nwcRestorePubkey = owner;
+    const promise = Promise.resolve()
+      .then(() => restoreNwcSettingsFromNostr())
+      .catch(() => false);
+
+    state.nwcRestorePromise = promise.finally(() => {
+      if (state.nwcRestorePubkey === owner) {
+        state.nwcRestorePromise = null;
+      }
+    });
+    return state.nwcRestorePromise;
   }
 
   function loadSettingsFromStorage() {
@@ -25766,7 +25806,13 @@ window.saveAppSettings = function () {
       status.classList.remove('is-connected', 'is-disconnected');
       status.textContent = 'Loading live Lightning balance…';
 
-      const config = getSavedNwcConfig();
+      let config = getSavedNwcConfig();
+      if (!config && state.authMode === 'remote') {
+        try {
+          await restoreNwcSettingsForActiveUser();
+          config = getSavedNwcConfig();
+        } catch (_) {}
+      }
       if (config) {
         let session = state.walletPageSession || null;
         let temporary = false;
@@ -26514,6 +26560,8 @@ window.saveAppSettings = function () {
       const profile = getTheaterDonationProfile(stream, theaterDonationContext.hostPubkey || '');
       const lud16 = String(profile.lud16 || theaterDonationContext.lud16 || '').trim();
       const amountSats = Math.floor(Number(qs('#theaterDonationAmount')?.value || 0));
+      const messageEl = qs('#theaterDonationMessage');
+      const donationMessage = String(messageEl && messageEl.value || '').trim().slice(0, 280);
       const status = qs('#theaterDonationStatus');
       const btn = qs('#theaterDonationSendBtn');
 
@@ -26550,7 +26598,8 @@ window.saveAppSettings = function () {
                 ['e', stream.id],
                 ['a', stream.address],
                 ['k', String(KIND_LIVE_EVENT)]
-              ]
+              ],
+          donationMessage
         );
         const walletLabel = payment.paymentMethod === 'nwc'
           ? 'Nostr Wallet Connect'
