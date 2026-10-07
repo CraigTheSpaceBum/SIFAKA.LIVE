@@ -914,36 +914,56 @@ body.nest-preview-open{overflow:hidden}
       <div class="theater-donation-back-row">
         <button class="btn btn-ghost" type="button" onclick="showTheaterDonationChooser()">← Back</button>
       </div>
-      <div class="theater-donation-onchain-recipient-card theater-donation-lightning-recipient-card" id="theaterDonationLightningRecipientCard">
-        <div class="theater-donation-recipient-banner" id="theaterDonationLightningBanner" aria-hidden="true"></div>
-        <div class="theater-donation-onchain-recipient-profile">
-          <div class="theater-donation-onchain-recipient-avatar" id="theaterDonationLightningAvatar" aria-hidden="true"></div>
-          <div class="theater-donation-onchain-recipient-copy">
-            <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
-            <strong id="theaterDonationLightningName">Resolving streamer identity…</strong>
-            <span id="theaterDonationLightningNpub" class="theater-donation-onchain-npub">Resolving…</span>
-            <span id="theaterDonationLightningNip05" class="theater-donation-onchain-nip05" hidden></span>
-            <span id="theaterDonationLightningAddress" class="theater-donation-lightning-address">Resolving Lightning address…</span>
+      <div class="theater-lightning-donation-grid">
+        <section class="theater-lightning-address-panel">
+          <div class="theater-donation-onchain-recipient-card theater-donation-lightning-recipient-card" id="theaterDonationLightningRecipientCard">
+            <div class="theater-donation-recipient-banner" id="theaterDonationLightningBanner" aria-hidden="true"></div>
+            <div class="theater-donation-onchain-recipient-profile">
+              <div class="theater-donation-onchain-recipient-avatar" id="theaterDonationLightningAvatar" aria-hidden="true"></div>
+              <div class="theater-donation-onchain-recipient-copy">
+                <span class="theater-donation-micro-label">STREAMER NOSTR ID</span>
+                <strong id="theaterDonationLightningName">Resolving streamer identity…</strong>
+                <span id="theaterDonationLightningNpub" class="theater-donation-onchain-npub">Resolving…</span>
+                <span id="theaterDonationLightningNip05" class="theater-donation-onchain-nip05" hidden></span>
+              </div>
+            </div>
           </div>
-        </div>
+          <div class="theater-lightning-qr-card">
+            <div class="theater-lightning-qr" id="theaterDonationLightningQr"></div>
+            <div class="theater-lightning-qr-label">Lightning payment QR</div>
+            <div class="theater-lightning-address" id="theaterDonationLightningAddress">Resolving Lightning address…</div>
+            <button class="btn btn-ghost theater-lightning-copy-btn" type="button" onclick="copyTheaterLightningAddress()">Copy address</button>
+          </div>
+        </section>
+
+        <section class="theater-lightning-nwc-panel">
+          <div class="theater-lightning-nwc-head">
+            <div>
+              <div class="theater-donation-micro-label">NWC DONATION</div>
+              <strong>Nostr Wallet Connect</strong>
+              <small>Pay this Lightning donation from your connected NWC wallet.</small>
+            </div>
+            <span class="theater-lightning-nwc-icon">⚡</span>
+          </div>
+          <div class="theater-donation-wallet-status" id="theaterDonationWalletStatus"></div>
+          <div class="theater-donation-amount-label">Donation amount</div>
+          <div class="theater-donation-presets">
+            <button type="button" data-donation-amount="21" onclick="setTheaterDonationAmount(21)">21 sats</button>
+            <button type="button" data-donation-amount="100" onclick="setTheaterDonationAmount(100)">100 sats</button>
+            <button type="button" data-donation-amount="500" onclick="setTheaterDonationAmount(500)">500 sats</button>
+            <button type="button" data-donation-amount="1000" onclick="setTheaterDonationAmount(1000)">1,000 sats</button>
+            <button type="button" data-donation-amount="5000" onclick="setTheaterDonationAmount(5000)">5,000 sats</button>
+          </div>
+          <label class="theater-donation-custom-amount">Custom amount (sats)
+            <input id="theaterDonationAmount" type="number" min="1" step="1" inputmode="numeric" value="21" placeholder="Amount in sats">
+          </label>
+          <div class="theater-donation-actions">
+            <button class="btn btn-primary" type="button" id="theaterDonationSendBtn" onclick="sendTheaterLightningDonation()">Send donation</button>
+            <button class="btn btn-ghost" type="button" onclick="closeTheaterDonation()">Cancel</button>
+          </div>
+          <div class="theater-donation-status" id="theaterDonationStatus" aria-live="polite"></div>
+        </section>
       </div>
-      <div class="theater-donation-wallet-status" id="theaterDonationWalletStatus"></div>
-      <div class="theater-donation-amount-label">Donation amount</div>
-      <div class="theater-donation-presets">
-        <button type="button" data-donation-amount="21" onclick="setTheaterDonationAmount(21)">21 sats</button>
-        <button type="button" data-donation-amount="100" onclick="setTheaterDonationAmount(100)">100 sats</button>
-        <button type="button" data-donation-amount="500" onclick="setTheaterDonationAmount(500)">500 sats</button>
-        <button type="button" data-donation-amount="1000" onclick="setTheaterDonationAmount(1000)">1,000 sats</button>
-        <button type="button" data-donation-amount="5000" onclick="setTheaterDonationAmount(5000)">5,000 sats</button>
-      </div>
-      <label class="theater-donation-custom-amount">Custom amount (sats)
-        <input id="theaterDonationAmount" type="number" min="1" step="1" inputmode="numeric" value="21" placeholder="Amount in sats">
-      </label>
-      <div class="theater-donation-actions">
-        <button class="btn btn-primary" type="button" id="theaterDonationSendBtn" onclick="sendTheaterLightningDonation()">Send donation</button>
-        <button class="btn btn-ghost" type="button" onclick="closeTheaterDonation()">Cancel</button>
-      </div>
-      <div class="theater-donation-status" id="theaterDonationStatus" aria-live="polite"></div>
     </div>
   </div>
 </div>
@@ -1995,7 +2015,7 @@ body.nest-preview-open{overflow:hidden}
           </div>
           <div class="profile-bio-meta" id="theaterLud16Row" style="display:none;">
             <span class="lbl">Lightning</span>
-            <span class="val" id="theaterLud16"></span>
+            <button class="val profile-lightning-donation-btn" id="theaterLud16" type="button" onclick="theaterLightningDonation()" title="Donate Lightning to this streamer" aria-label="Donate Lightning to this streamer"></button>
           </div>
         </div>
 
@@ -2105,7 +2125,7 @@ body.nest-preview-open{overflow:hidden}
                 <div class="profile-bio-links profile-bio-links-bottom" id="profBioLinksBottom">
                   <div class="profile-bio-meta" id="profWebsiteRow" style="display:none;"><span class="lbl">Website</span><a id="profWebsiteBio" href="#" target="_blank" rel="noopener noreferrer"></a></div>
                   <div class="profile-bio-meta" id="profBitcoinRow" style="display:none;"><span class="lbl">On Chain</span><button class="val profile-bitcoin-send-btn" id="profBitcoinBio" type="button" disabled title="Send Bitcoin to this profile" aria-label="Send Bitcoin to this profile"></button></div>
-                  <div class="profile-bio-meta" id="profLud16Row" style="display:none;"><span class="lbl">Lightning</span><span class="val" id="profLud16Bio"></span></div>
+                  <div class="profile-bio-meta" id="profLud16Row" style="display:none;"><span class="lbl">Lightning</span><button class="val profile-lightning-donation-btn" id="profLud16Bio" type="button" onclick="openProfileLightningDonation()" title="Donate Lightning to this profile" aria-label="Donate Lightning to this profile"></button></div>
                 </div>
                 <div class="profile-since" id="profNostrSince" style="display:none"></div>
               </div>

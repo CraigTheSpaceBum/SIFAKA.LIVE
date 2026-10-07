@@ -3216,8 +3216,127 @@ nav .btn{
 .theater-donation-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;}
 .theater-donation-actions .btn{min-height:42px;}
 .theater-donation-status{min-height:1.25rem;margin-top:.7rem;color:var(--text2);font-size:.67rem;line-height:1.45;}
+.theater-lightning-donation-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
+  gap:.8rem;
+  align-items:stretch;
+}
+.theater-lightning-address-panel,
+.theater-lightning-nwc-panel{
+  min-width:0;
+  padding:.8rem;
+  border:1px solid var(--border);
+  border-radius:15px;
+  background:linear-gradient(145deg,var(--surface2),var(--surface));
+}
+.theater-lightning-address-panel{
+  display:flex;
+  flex-direction:column;
+  gap:.65rem;
+}
+.theater-lightning-qr-card{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:.45rem;
+  padding:.7rem;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:13px;
+  background:rgba(10,14,19,.5);
+}
+.theater-lightning-qr{
+  width:220px;
+  height:220px;
+  max-width:100%;
+  display:grid;
+  place-items:center;
+  padding:10px;
+  border-radius:13px;
+  background:#fff;
+  box-sizing:border-box;
+}
+.theater-lightning-qr img,
+.theater-lightning-qr canvas{
+  display:block;
+  width:198px!important;
+  height:198px!important;
+  max-width:100%;
+  max-height:100%;
+}
+.theater-lightning-qr-label{
+  font:700 .58rem/1 'DM Mono',monospace;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.theater-lightning-address{
+  color:var(--text);
+  font:700 .72rem/1.5 'DM Mono',monospace;
+  overflow-wrap:anywhere;
+  text-align:center;
+}
+.theater-lightning-copy-btn{
+  min-height:36px!important;
+  align-self:stretch;
+  justify-content:center;
+}
+.theater-lightning-nwc-panel{
+  display:flex;
+  flex-direction:column;
+}
+.theater-lightning-nwc-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:.7rem;
+  margin-bottom:.65rem;
+}
+.theater-lightning-nwc-head strong{
+  display:block;
+  font-size:.9rem;
+  line-height:1.2;
+}
+.theater-lightning-nwc-head small{
+  display:block;
+  margin-top:.3rem;
+  color:var(--text2);
+  font-size:.65rem;
+  line-height:1.45;
+}
+.theater-lightning-nwc-icon{
+  display:grid;
+  place-items:center;
+  width:38px;
+  height:38px;
+  flex:0 0 38px;
+  border-radius:11px;
+  border:1px solid rgba(247,147,26,.4);
+  color:var(--zap);
+  background:rgba(247,147,26,.08);
+  box-shadow:0 0 18px rgba(247,147,26,.15);
+}
+.profile-lightning-donation-btn{
+  border:0;
+  cursor:pointer;
+  font:inherit;
+  color:var(--text);
+  background:transparent;
+  text-align:left;
+  padding:0;
+  overflow-wrap:anywhere;
+}
+.profile-lightning-donation-btn:hover{
+  color:var(--zap);
+  text-decoration:underline;
+}
 @media(max-width:760px){
   .theater-donation-modal{width:calc(100vw - 1rem);padding:1rem;}
+  .theater-lightning-donation-grid{grid-template-columns:1fr;}
+  .theater-lightning-qr{width:200px;height:200px;}
+  .theater-lightning-qr img,
+  .theater-lightning-qr canvas{width:178px!important;height:178px!important;}
+}
   .theater-donation-options{grid-template-columns:1fr;}
   .theater-donation-option{min-height:104px;}
   .theater-donation-actions{display:grid;grid-template-columns:1fr 1fr;}
@@ -5336,6 +5455,36 @@ footer p{font-size:.72rem;color:var(--muted);}
   #videoPage .editable-block {
     display: none !important;
   }
+
+  /* Keep the mobile stream description visible and place donation links
+     immediately below it and above likes/reactions. */
+  #videoPage .sib {
+    display:flex;
+    flex-direction:column;
+  }
+  #videoPage .sib-profile-links{
+    order:5;
+    margin-top:.55rem;
+    margin-bottom:0;
+    padding:.55rem .65rem 0;
+    border-top:1px solid rgba(255,255,255,.055);
+    display:flex;
+    flex-wrap:wrap;
+  }
+  #videoPage .sib-profile-links .profile-bio-meta{
+    min-height:36px;
+  }
+  #videoPage .editable-block{
+    order:4;
+    display:block !important;
+    margin-top:.5rem !important;
+  }
+  #videoPage .stream-reactions-row{
+    order:6;
+  }
+  #videoPage .sib-top-row{order:1;}
+  #videoPage .sib-host-row{order:2;}
+  #videoPage .sib-stats-row{order:3;}
 
   #videoPage .sib-stats-row {
     display: grid;
