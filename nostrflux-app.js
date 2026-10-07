@@ -14826,7 +14826,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (theaterOnchainBtn && hostPubkey) {
       const onchainName = String(p.display_name || p.name || 'this profile').trim() || 'this profile';
       theaterOnchainBtn.setAttribute('aria-busy', 'true');
-      theaterOnchainBtn.textContent = 'Resolving…';
+      theaterOnchainBtn.textContent = '₿ On Chain';
       theaterOnchainBtn.title = 'Send Bitcoin to ' + onchainName;
       theaterOnchainBtn.onclick = async function (event) {
         if (event) {
