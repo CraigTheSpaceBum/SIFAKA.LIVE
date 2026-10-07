@@ -9901,18 +9901,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function startViewerPresence(address) {
     const key = String(address || '').trim();
     if (!key || !state.user) return;
-    if (state.viewerPresenceAddress === key && state.viewerPresenceTimer) return;
+    if (state.viewerPresenceAddress === key) return;
 
+    // Keep the local viewer state for UI/participant calculations, but do not
+    // publish a NIP-53 presence event from a viewer. Some relay/client stacks
+    // surface that presence event as a synthetic "joined" chat message.
     stopViewerPresence();
     state.viewerPresenceAddress = key;
-    publishViewerPresence(key).catch(() => {});
-    state.viewerPresenceTimer = setInterval(() => {
-      if (!state.user || state.viewerPresenceAddress !== key) {
-        stopViewerPresence();
-        return;
-      }
-      publishViewerPresence(key).catch(() => {});
-    }, LIVE_PRESENCE_INTERVAL_MS);
   }
 
   function stopLivePresenceTracker() {
