@@ -9000,3 +9000,13 @@ body.nest-room-page-open{
     display:none;
   }
 }
+
+
+/* ======== LIVE CHAT BORDER ======== */
+@media (min-width:701px){
+  #videoPage .stream-sidebar{
+    border:1px solid var(--border);
+    border-radius:10px;
+    box-sizing:border-box;
+  }
+}
