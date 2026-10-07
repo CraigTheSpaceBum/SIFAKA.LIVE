@@ -9260,3 +9260,7 @@ body.nest-room-page-open{
 .profile-badge-more:hover{border-color:var(--purple);color:var(--text);background:rgba(155,114,255,.08);}
 .profile-page-feed-sentinel{display:flex;align-items:center;justify-content:center;width:100%;min-height:54px;margin:.85rem 0 1.3rem;padding:.2rem 0;box-sizing:border-box;}
 .profile-page-feed-sentinel[hidden]{display:none;}
+
+/* 0.5.1 NADDR identity metadata */
+.naddr-stream-host-id{font-family:'DM Mono',monospace;font-size:.63rem;color:var(--muted);word-break:break-all;}
+.naddr-stream-host-nip05{font-family:'DM Mono',monospace;font-size:.62rem;color:var(--nip05);margin-top:.12rem;word-break:break-word;}
