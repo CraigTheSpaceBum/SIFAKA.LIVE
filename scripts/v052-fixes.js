@@ -13,9 +13,9 @@
         if (!raw) return;
         if (!(/[✓✔]/.test(raw) || /\*\*\s*[✓✔]\s*\*\*/.test(raw))) return;
         el.textContent = '✓';
-        el.classList.add('sifaka-v052-nip05-check');
-        el.setAttribute('aria-label', 'Verified NIP-05');
-        el.title = 'Verified NIP-05';
+        if (!el.classList.contains('sifaka-v052-nip05-check')) el.classList.add('sifaka-v052-nip05-check');
+        if (el.getAttribute('aria-label') !== 'Verified NIP-05') el.setAttribute('aria-label', 'Verified NIP-05');
+        if (el.title !== 'Verified NIP-05') el.title = 'Verified NIP-05';
       });
   }
 
@@ -91,7 +91,7 @@
     style.id = 'sifaka-v052-fixes-style';
     style.textContent = [
       '.sifaka-v052-nip05-check{color:var(--purple,#8f5bff)!important;font-weight:800!important;font-family:var(--font-display,"DM Sans",sans-serif)!important;font-size:1.05em!important;line-height:1!important;text-shadow:0 0 8px rgba(143,91,255,.35);}',
-      '#videoPage .v052-live-thumb-fallback{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover;z-index:0;pointer-events:none;}',
+      '#homePage .v052-live-thumb-fallback{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover;z-index:0;pointer-events:none;}',
       '#homePage .stream-card .ct .v052-live-thumb-fallback + .tc{position:relative;}'
     ].join('');
     document.head.appendChild(style);
@@ -124,7 +124,7 @@
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ['src', 'class', 'style']
+      attributeFilter: ['src']
     });
   }
 
