@@ -8988,19 +8988,7 @@ body.nest-room-page-open{
     max-width:40vw;
   }
 
-  /* The address is the complete visible On-Chain control; do not show a
-     second "On Chain" label immediately before it. */
-  .onchain-profile-meta > .lbl{
-    display:none;
-  }
 }
-
-@media (max-width:760px){
-  .onchain-profile-meta > .lbl{
-    display:none;
-  }
-}
-
 
 /* ======== LIVE CHAT BORDER ======== */
 @media (min-width:701px){
