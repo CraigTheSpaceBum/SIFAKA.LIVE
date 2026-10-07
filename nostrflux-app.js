@@ -4823,7 +4823,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function parseLiveEvent(ev) {
-    const tagMap = parseTags(ev.tags || []);
+    if (!ev || Number(ev.kind || 0) !== KIND_LIVE_EVENT) return null;
+    const rawTags = Array.isArray(ev.tags) ? ev.tags : [];
+    const hasNip53Tag = rawTags.some((tag) => {
+      if (!Array.isArray(tag)) return false;
+      const key = String(tag[0] || '').toLowerCase();
+      return ['d','title','summary','status','starts','streaming','image','thumb','relay','p'].includes(key);
+    });
+    if (!hasNip53Tag) {
+      try {
+        const parsedContent = JSON.parse(String(ev.content || ''));
+        if (parsedContent && typeof parsedContent === 'object' && !Array.isArray(parsedContent)) return null;
+      } catch (_) {}
+    }
+    const tagMap = parseTags(rawTags);
     const d = firstTag(tagMap, 'd') || ev.id.slice(0, 12);
     const status = (firstTag(tagMap, 'status') || 'live').toLowerCase();
     const publisherPubkey = normalizePubkeyHex(ev.pubkey) || String(ev.pubkey || '').trim().toLowerCase();
@@ -9162,6 +9175,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function upsertStream(stream) {
+    if (!stream || typeof stream !== 'object' || !String(stream.address || '').trim()) return false;
     const existing = state.streamsByAddress.get(stream.address);
     const incoming = mergeIncomingStream(existing, stream);
     const existingCreatedAt = Number(existing && existing.created_at || 0);
@@ -25182,13 +25196,17 @@ window.saveAppSettings = function () {
       hostPubkey: '',
       hostName: '',
       lud16: '',
+      targetStream: null,
+      source: 'theater',
       onchainAddress: '',
       onchainLoadToken: 0,
       onchainDraft: null
     };
 
     function getTheaterDonationStream() {
-      return state.streamsByAddress.get(state.selectedStreamAddress) || null;
+      return theaterDonationContext.targetStream
+        || state.streamsByAddress.get(state.selectedStreamAddress)
+        || null;
     }
 
     async function resolveTheaterDonationPubkey(stream) {
@@ -25348,8 +25366,32 @@ window.saveAppSettings = function () {
       }
       const lud16 = String(profile.lud16 || theaterDonationContext.lud16 || '').trim();
       if (lightningEl) {
-        lightningEl.textContent = lud16 ? 'Lightning: ' + lud16 : 'Lightning address unavailable';
+        lightningEl.textContent = lud16 || 'Lightning address unavailable';
         lightningEl.classList.toggle('is-unavailable', !lud16);
+      }
+      const qrEl = qs('#theaterDonationLightningQr');
+      if (qrEl) {
+        qrEl.innerHTML = '';
+        if (lud16) {
+          fetchLightningAddressInfo(lud16, 0).then((info) => {
+            if (!qrEl || theaterDonationContext.lud16 !== lud16) return;
+            if (typeof window.QRCode !== 'function') {
+              qrEl.textContent = 'QR unavailable';
+              return;
+            }
+            qrEl.innerHTML = '';
+            new window.QRCode(qrEl, {
+              text: String(info.lnurl || info.payUrl || lud16),
+              width: 198,
+              height: 198,
+              correctLevel: window.QRCode.CorrectLevel ? window.QRCode.CorrectLevel.M : 0
+            });
+          }).catch(() => {
+            if (qrEl && theaterDonationContext.lud16 === lud16) qrEl.textContent = 'Could not load Lightning QR';
+          });
+        } else {
+          qrEl.textContent = 'Lightning address unavailable';
+        }
       }
     }
 
@@ -25615,7 +25657,7 @@ window.saveAppSettings = function () {
       theaterDonationContext.onchainDraft = null;
     }
 
-    window.theaterDonation = async function () {
+    window.theaterDonation = async function (preferredMethod = '') {
       if (!state.user) {
         window.openLogin();
         return;
@@ -25629,9 +25671,14 @@ window.saveAppSettings = function () {
       const initialPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
       const initialProfile = getTheaterDonationProfile(stream, initialPubkey);
       if (qs('#theaterDonationTitle')) qs('#theaterDonationTitle').textContent = 'Support ' + getTheaterDonationHostLabel(stream, initialProfile);
+      theaterDonationContext.targetStream = stream;
+      theaterDonationContext.source = 'theater';
       populateTheaterDonationChooser(stream, initialProfile, initialPubkey);
       showTheaterDonationChooser();
       modal.classList.add('open');
+      if (String(preferredMethod || '').toLowerCase() === 'lightning' && String(initialProfile.lud16 || '').trim()) {
+        await selectTheaterDonationMethod('lightning');
+      }
 
       resolveTheaterDonationPubkey(stream).then(async (resolvedPubkey) => {
         if (!resolvedPubkey || theaterDonationContext.streamAddress !== stream.address) return;
@@ -25640,6 +25687,9 @@ window.saveAppSettings = function () {
         const profile = getTheaterDonationProfile(stream, resolvedPubkey);
         populateTheaterDonationChooser(stream, profile, resolvedPubkey);
         if (qs('#theaterDonationTitle')) qs('#theaterDonationTitle').textContent = 'Support ' + getTheaterDonationHostLabel(stream, profile);
+        if (String(preferredMethod || '').toLowerCase() === 'lightning' && String(profile.lud16 || '').trim()) {
+          selectTheaterDonationMethod('lightning').catch(() => {});
+        }
       }).catch(() => {});
     };
 
@@ -25665,6 +25715,8 @@ window.saveAppSettings = function () {
         hostPubkey: '',
         hostName: '',
         lud16: '',
+        targetStream: null,
+        source: 'theater',
         onchainAddress: '',
         onchainLoadToken: 0,
         onchainDraft: null
@@ -25964,7 +26016,7 @@ window.saveAppSettings = function () {
       const stream = getTheaterDonationStream();
       if (!stream) return;
 
-      const profile = getTheaterDonationProfile(stream);
+      const profile = getTheaterDonationProfile(stream, theaterDonationContext.hostPubkey || '');
       const lud16 = String(profile.lud16 || theaterDonationContext.lud16 || '').trim();
       const amountSats = Math.floor(Number(qs('#theaterDonationAmount')?.value || 0));
       const status = qs('#theaterDonationStatus');
@@ -25997,11 +26049,13 @@ window.saveAppSettings = function () {
           lud16,
           amountSats * 1000,
           targetPubkey,
-          [
-            ['e', stream.id],
-            ['a', stream.address],
-            ['k', String(KIND_LIVE_EVENT)]
-          ]
+          theaterDonationContext.source === 'profile'
+            ? []
+            : [
+                ['e', stream.id],
+                ['a', stream.address],
+                ['k', String(KIND_LIVE_EVENT)]
+              ]
         );
         const walletLabel = payment.paymentMethod === 'nwc'
           ? 'Nostr Wallet Connect'
@@ -26015,6 +26069,73 @@ window.saveAppSettings = function () {
         if (status) status.textContent = err?.message || 'Lightning donation failed. Connect a compatible wallet in Settings → Connect Wallet.';
         if (btn) { btn.disabled = false; btn.textContent = 'Send donation'; }
       }
+    };
+
+    window.theaterLightningDonation = async function () {
+      return window.theaterDonation('lightning');
+    };
+
+    window.copyTheaterLightningAddress = async function () {
+      const value = String(theaterDonationContext.lud16 || '').trim();
+      if (!value) return;
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(value);
+          return;
+        }
+      } catch (_) {}
+      window.prompt('Copy Lightning address:', value);
+    };
+
+    window.openProfileLightningDonation = async function () {
+      if (!state.user) {
+        window.openLogin();
+        return;
+      }
+      const pubkey = normalizePubkeyHex(state.selectedProfilePubkey || '');
+      if (!pubkey) return;
+      const profile = profileFor(pubkey);
+      const lud16 = String(profile && profile.lud16 || '').trim();
+      if (!lud16) return;
+
+      const modal = qs('#theaterDonationModal');
+      if (!modal) return;
+
+      const syntheticStream = {
+        id: '',
+        address: 'profile:' + pubkey,
+        pubkey,
+        hostPubkey: pubkey,
+        title: '',
+        summary: '',
+        raw: null
+      };
+      theaterDonationContext.streamAddress = syntheticStream.address;
+      theaterDonationContext.hostPubkey = pubkey;
+      theaterDonationContext.hostName = String(profile.display_name || profile.name || 'this profile').trim() || 'this profile';
+      theaterDonationContext.lud16 = lud16;
+      theaterDonationContext.targetStream = syntheticStream;
+      theaterDonationContext.source = 'profile';
+      theaterDonationContext.onchainAddress = '';
+      theaterDonationContext.onchainDraft = null;
+
+      if (qs('#theaterDonationTitle')) {
+        qs('#theaterDonationTitle').textContent = 'Support ' + theaterDonationContext.hostName;
+      }
+      populateTheaterDonationChooser(syntheticStream, profile, pubkey);
+      modal.classList.add('open');
+      const choose = qs('#theaterDonationChooseView');
+      const lightning = qs('#theaterDonationLightningView');
+      const onchain = qs('#theaterDonationOnchainView');
+      if (choose) choose.hidden = true;
+      if (lightning) lightning.hidden = false;
+      if (onchain) onchain.hidden = true;
+      renderTheaterLightningRecipientIdentity(syntheticStream, pubkey);
+      refreshTheaterDonationWalletStatus().catch(() => {});
+      const amount = qs('#theaterDonationAmount');
+      if (amount) amount.value = '21';
+      const status = qs('#theaterDonationStatus');
+      if (status) status.textContent = '';
     };
 
     window.theaterZap = window.theaterDonation;
