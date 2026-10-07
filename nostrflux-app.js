@@ -4198,7 +4198,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       // Do not make a query wait for every configured relay. A single offline/slow
       // relay should not hold up pages when several relays have already answered.
       const relayCount = Math.max(1, Number((state.pool.urls && state.pool.urls.length) || 1));
-      const expectedEose = Math.min(3, relayCount);
+      const expectedEose = opts.waitForAllRelays ? relayCount : Math.min(3, relayCount);
       let done = false;
       let subId = null;
 
@@ -16969,6 +16969,28 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     insertChatRowChronological(sc, row, ev.id, ev.created_at);
 
     updateChatLikeUi(ev.id);
+
+    const pendingChatReactions = state.chatPendingReactionEventsByMessageId.get(ev.id);
+    if (pendingChatReactions && pendingChatReactions.length) {
+      state.chatPendingReactionEventsByMessageId.delete(ev.id);
+      pendingChatReactions
+        .slice()
+        .sort((a, b) => (Number(a.created_at || 0) - Number(b.created_at || 0)) || String(a.id || '').localeCompare(String(b.id || '')))
+        .forEach((reactionEv) => {
+          const deletedAt = Number(state.chatDeletedReactionIds.get(reactionEv.id) || 0);
+          if (deletedAt && deletedAt >= Number(reactionEv.created_at || 0)) return;
+          if (Number(reactionEv.kind || 0) !== KIND_REACTION) return;
+          const targetId = firstTagValue(reactionEv.tags, 'e');
+          if (targetId !== ev.id) return;
+          const kTag = firstTagValue(reactionEv.tags, 'k');
+          if (kTag && kTag !== String(KIND_LIVE_CHAT)) return;
+          const content = String(reactionEv.content || '').trim();
+          if (!content || content === '-') return;
+          applyChatLikeReaction(ev.id, normalizePubkeyHex(reactionEv.pubkey || ''), reactionEv.id);
+        });
+      updateChatLikeUi(ev.id);
+    }
+
     pruneTheaterChatRows(sc, maxRows);
     if (autoScroll && wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
@@ -17328,8 +17350,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         cacheKey: `profile-by-pubkey:${normalizedPubkey}`,
         force: forceRefresh,
         ttlMs: forceRefresh ? 0 : undefined,
-        timeoutMs: 1800,
-        maxEvents: 20,
+        timeoutMs: 1100,
+        maxEvents: 8,
         relayUrls: (() => {
           const urls = Array.isArray(state.pool && state.pool.urls) ? [...state.pool.urls] : [];
           const latency = state.relayPingMsByUrl instanceof Map ? state.relayPingMsByUrl : new Map();
@@ -17491,7 +17513,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let initialSyncComplete = false;
     let initialRenderStarted = false;
     let initialRenderTimer = null;
+    let liveProfileBootstrapTimer = null;
+    let liveProfileBootstrapStarted = false;
     state.liveInitialReadyPromise = new Promise((resolve) => { state.liveInitialReadyResolve = resolve; });
+
+    const scheduleLiveProfileBootstrap = () => {
+      if (liveProfileBootstrapStarted || liveProfileBootstrapTimer || !isHomeViewActive()) return;
+      liveProfileBootstrapTimer = setTimeout(() => {
+        liveProfileBootstrapTimer = null;
+        if (!isHomeViewActive()) return;
+        const entries = Array.from(state.streamsByAddress.values());
+        const pubSet = collectProfilePubkeysFromStreams(entries);
+        if (!pubSet.size) return;
+        liveProfileBootstrapStarted = true;
+        subscribeProfiles(Array.from(pubSet));
+      }, 90);
+    };
 
     const renderInitialGrid = () => {
       if (initialRenderStarted || !isHomeViewActive()) return;
@@ -17521,12 +17558,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (kind === KIND_LIVE_EVENT) {
             const stream = parseLiveEvent(ev);
             const changed = upsertStream(stream);
-            if (stream) {
-              const hostKey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
-              const platformKey = normalizePubkeyHex(stream.platformPubkey || '');
-              if (hostKey) fetchProfileIfNeeded(hostKey).catch(() => {});
-              if (platformKey && platformKey !== hostKey) fetchProfileIfNeeded(platformKey).catch(() => {});
-            }
+            if (stream) scheduleLiveProfileBootstrap();
             if (stream && normalizeStreamStatus(stream.status) === 'live'
               && state.user
               && normalizePubkeyHex(state.user.pubkey) === normalizePubkeyHex(stream.pubkey)) {
@@ -17549,7 +17581,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             const video = parseNip71VideoEvent(ev);
             if (!video) return;
             const changed = upsertNip71Video(video);
-            if (video.hostPubkey) fetchProfileIfNeeded(video.hostPubkey).catch(() => {});
+            if (video.hostPubkey) scheduleLiveProfileBootstrap();
             if (changed && isVideosPageVisible()) scheduleVideosPageRender(220);
           }
         },
@@ -17570,11 +17602,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             : [];
           const initialProfileEntries = [...allKnownLiveEntries, ...initialVisibleVideoEntries];
           const pubSet = collectProfilePubkeysFromStreams(initialProfileEntries);
-          subscribeProfiles(Array.from(pubSet));
-          Promise.allSettled(Array.from(collectProfilePubkeysFromStreams(initialProfileEntries)).map((pubkey) => fetchProfileIfNeeded(pubkey))).then(() => {
-            if (isHomeViewActive()) renderLiveGrid();
-            if (state.liveInitialReadyResolve) { state.liveInitialReadyResolve(true); state.liveInitialReadyResolve = null; }
-          });          ensureProfilesForStreams(initialProfileEntries);
+          if (pubSet.size) {
+            subscribeProfiles(Array.from(pubSet));
+            liveProfileBootstrapStarted = true;
+          }
+          if (isHomeViewActive()) renderLiveGrid();
+          if (state.liveInitialReadyResolve) {
+            state.liveInitialReadyResolve(true);
+            state.liveInitialReadyResolve = null;
+          }
+          ensureProfilesForStreams(isVideosPageVisible() ? initialVisibleVideoEntries : []);
           if (isHomeViewActive() && state.selectedProfilePubkey) renderProfilePage(state.selectedProfilePubkey);
         }
       }
@@ -17605,6 +17642,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.chatOwnLikeEventByMessageId = new Map();
     state.chatMessageEventsById = new Map();
     state.chatLikePublishPendingByMessageId = new Set();
+    state.chatPendingReactionEventsByMessageId = new Map();
+    state.chatDeletedReactionIds = new Map();
     state.streamReactionPubkeysByKey = new Map();
     state.streamReactionMetaByKey = new Map();
     state.streamReactionIdByKeyAndPubkey = new Map();
@@ -17806,12 +17845,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       });
     }
 
-    const reactionHistoryWindowSec = isArchive ? THEATER_REACTION_HISTORY_WINDOW_ARCHIVE_SEC : THEATER_REACTION_HISTORY_WINDOW_LIVE_SEC;
-    const reactionPaddingSec = isArchive ? 60 * 60 * 6 : 60 * 60;
+    const reactionSafetyWindowSec = 60 * 60 * 24 * 30;
+    const reactionPaddingSec = 60 * 10;
     const reactionSince = streamStart
-      ? Math.max(0, Math.max(streamStart - reactionPaddingSec, nowSec - reactionHistoryWindowSec))
-      : Math.max(0, nowSec - reactionHistoryWindowSec);
-    const reactionHistoryLimit = isArchive ? Math.max(THEATER_REACTION_HISTORY_LIMIT_ARCHIVE, 320) : Math.max(THEATER_REACTION_HISTORY_LIMIT_LIVE, 240);
+      ? Math.max(0, Math.max(streamStart - reactionPaddingSec, nowSec - reactionSafetyWindowSec))
+      : Math.max(0, nowSec - reactionSafetyWindowSec);
+    const reactionHistoryLimit = isArchive ? 2000 : 1200;
     const reactionLiveSince = Math.max(0, nowSec - THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC);
     const reactionHistoryFilters = [
       { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince },
@@ -17952,7 +17991,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
         const kTag = firstTagValue(ev.tags, 'k');
         if (kTag && kTag !== String(KIND_LIVE_CHAT)) return outcome;
-        if (!state.chatMessageEventsById.has(targetId)) return outcome;
+        if (!state.chatMessageEventsById.has(targetId)) {
+          const pending = state.chatPendingReactionEventsByMessageId.get(targetId) || [];
+          pending.push(ev);
+          if (pending.length > 80) pending.splice(0, pending.length - 80);
+          state.chatPendingReactionEventsByMessageId.set(targetId, pending);
+          return outcome;
+        }
+        const deletedAt = Number(state.chatDeletedReactionIds.get(ev.id) || 0);
+        if (deletedAt && deletedAt >= Number(ev.created_at || 0)) {
+          state.chatDeletedReactionIds.delete(ev.id);
+          return outcome;
+        }
         const reactionContent = (ev.content || '').trim();
         if (!reactionContent || reactionContent === '-') return outcome;
         applyChatLikeReaction(targetId, normalizePubkeyHex(ev.pubkey), ev.id);
@@ -17979,6 +18029,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (ev.kind === KIND_DELETION) {
         const deletedIds = allTagValues(ev.tags, 'e').filter((id) => /^[0-9a-f]{64}$/i.test(id));
         deletedIds.forEach((rid) => {
+          const existingDeletedAt = Number(state.chatDeletedReactionIds.get(rid) || 0);
+          const deletedAt = Number(ev.created_at || 0);
+          if (!existingDeletedAt || deletedAt > existingDeletedAt) {
+            state.chatDeletedReactionIds.set(rid, deletedAt);
+          }
           removeChatStreamReactionRow(rid);
           const streamReactionMeta = state.streamReactionEventById.get(rid);
           if (streamReactionMeta) {
@@ -18127,10 +18182,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     fetchEventsCached(reactionHistoryFilters, {
       scope: 'theater-reaction-history',
       cacheKey: `theater-reaction-history:${stream.address}:${reactionSince}:${reactionHistoryLimit}`,
-      timeoutMs: 2600,
-      maxEvents: Math.max(240, reactionHistoryLimit * 2),
+      timeoutMs: 4200,
+      maxEvents: Math.max(1200, reactionHistoryLimit * 2),
       ttlMs: THEATER_CHAT_CACHE_TTL_MS,
-      warmMs: THEATER_CHAT_CACHE_WARM_MS
+      warmMs: THEATER_CHAT_CACHE_WARM_MS,
+      waitForAllRelays: true
     }).then((events) => {
       if (!isSameSelectedStream()) return;
       const sorted = (events || [])
@@ -26203,6 +26259,8 @@ window.saveAppSettings = function () {
       state.chatOwnLikeEventByMessageId = new Map();
       state.chatMessageEventsById = new Map();
       state.chatLikePublishPendingByMessageId = new Set();
+      state.chatPendingReactionEventsByMessageId = new Map();
+      state.chatDeletedReactionIds = new Map();
       state.chatSendPending = false;
       state.chatSendPendingSince = 0;
       if (state._chatProfileFetchTimer) { clearTimeout(state._chatProfileFetchTimer); state._chatProfileFetchTimer = null; }
