@@ -2315,11 +2315,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let abortHandler = null;
     const responsePromise = new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
+        const pending = session.pendingRequests.get(requestEventId);
+        const wasPublished = !!(pending && pending.published);
         session.pendingRequests.delete(requestEventId);
         if (signal && abortHandler) {
           try { signal.removeEventListener('abort', abortHandler); } catch (_) {}
         }
-        reject(new Error(`Wallet timed out while waiting for ${payload.method}.`));
+        const timeoutError = new Error(`Wallet timed out while waiting for ${payload.method}.`);
+        timeoutError.nwcAmbiguous = wasPublished;
+        reject(timeoutError);
       }, timeoutMs);
 
       abortHandler = () => {
@@ -2334,7 +2338,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         timeoutId,
         abortSignal: signal,
         abortHandler,
-        mode
+        mode,
+        published: false
       });
       if (signal) signal.addEventListener('abort', abortHandler, { once: true });
     });
@@ -2344,7 +2349,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (!Array.isArray(publishes) || !publishes.length) {
         throw new Error('No relays configured for wallet requests.');
       }
-      await Promise.allSettled(publishes);
+      const pendingBeforePublishWait = session.pendingRequests.get(requestEventId);
+      if (pendingBeforePublishWait) pendingBeforePublishWait.published = true;
+      const publishResults = await Promise.allSettled(publishes);
+      const publishedToAnyRelay = publishResults.some((result) => result && result.status === 'fulfilled');
+      if (!publishedToAnyRelay) {
+        const pending = session.pendingRequests.get(requestEventId);
+        if (pending) {
+          session.pendingRequests.delete(requestEventId);
+          if (pending.timeoutId) clearTimeout(pending.timeoutId);
+          if (pending.abortSignal && pending.abortHandler) {
+            try { pending.abortSignal.removeEventListener('abort', pending.abortHandler); } catch (_) {}
+          }
+          pending.published = false;
+          const deliveryError = new Error('Wallet request could not be delivered to any configured relay.');
+          deliveryError.nwcAmbiguous = false;
+          pending.reject(deliveryError);
+        }
+      }
     } catch (err) {
       const pending = session.pendingRequests.get(requestEventId);
       if (pending) {
@@ -2378,6 +2400,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         return await sendNwcRequestOnce(session, method, params, mode, opts);
       } catch (err) {
         if (isAbortLikeError(err)) throw err;
+        // Once a request was delivered to a relay and the wallet service did not
+        // return a response, the outcome may be unknown. Never retry a payment
+        // request with another encryption mode in that state.
+        if (err && err.nwcAmbiguous) throw err;
         lastErr = err;
       }
     }
@@ -2696,6 +2722,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       } catch (err) {
         lastErr = err;
         console.warn('NWC payment failed:', err && err.message ? err.message : err);
+        // A delivered NWC pay_invoice request may have succeeded even if the
+        // response was lost. Do not hand the same invoice to another wallet.
+        if (err && err.nwcAmbiguous) throw err;
       }
     }
 
@@ -23540,10 +23569,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
         setLightningConnectionLayout(true);
 
+        // Read the wallet's NIP-47 info event before the first live request so
+        // modern wallets use NIP-44 immediately and legacy wallets use NIP-04.
+        try {
+          const infoEvent = await waitForNwcInfoEvent(session, { timeoutMs: Math.min(NWC_INFO_TIMEOUT_MS, 2500) });
+          const info = parseNwcInfoEvent(infoEvent);
+          if (info && info.preferredEncryption) {
+            session.encryption = info.preferredEncryption;
+            session.nip44ConversationKey = null;
+          }
+        } catch (_) {}
+
         let balanceResult = null;
+        let balanceError = null;
         try {
           balanceResult = await sendNwcRequest(session, 'get_balance', {}, { timeoutMs: NWC_REQUEST_TIMEOUT_MS });
-        } catch (_) {}
+        } catch (err) {
+          balanceError = err;
+        }
+        if (!balanceResult || typeof balanceResult !== 'object') {
+          throw balanceError || new Error('Wallet connected, but no Lightning balance was returned.');
+        }
 
         let txResult = null;
         try {
@@ -23589,6 +23635,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         setStatus('Wallet information updated.', 'success');
       } catch (err) {
         if (token !== state.walletPageLoadToken) return;
+        if (state.walletPageSession) {
+          teardownNwcSessionObject(state.walletPageSession, 'Wallet page connection failed.');
+          state.walletPageSession = null;
+        }
         balanceEl.textContent = '—';
         balanceSubEl.textContent = 'Could not load the live wallet balance.';
         if (chipEl) { chipEl.textContent = 'Connection error'; chipEl.className = 'wallet-status-chip is-error'; }
@@ -24391,6 +24441,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         probe = { info: null, liveInfo: null, warning: msg };
       }
 
+      const previousUri = String(state.settings && state.settings.nwcConnectionUri || '').trim();
+      if (previousUri !== config.raw && state.walletPageSession) {
+        teardownNwcSessionObject(state.walletPageSession, 'Nostr wallet connection changed.');
+        state.walletPageSession = null;
+      }
+
       const next = {
         ...state.settings,
         nwcConnectionUri: config.raw
@@ -24416,6 +24472,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         warning: probe && probe.warning ? String(probe.warning || '').trim() : ''
       };
       renderWalletSettingsSummary();
+      if (/^\/wallet\/?$/i.test(String(window.location && window.location.pathname || '')) && typeof window.loadWalletPage === 'function') {
+        window.loadWalletPage(true).catch(() => {});
+      }
       if (probe && probe.warning) {
         setWalletSettingsStatus(`Wallet saved. ${probe.warning}`, 'info');
       } else {
@@ -24425,6 +24484,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     window.clearWalletSettings = function () {
       stopWalletScanner({ keepStatus: true });
+      if (state.walletPageSession) {
+        teardownNwcSessionObject(state.walletPageSession, 'Nostr wallet disconnected.');
+        state.walletPageSession = null;
+      }
       const input = qs('#settingsNwcInput');
       if (input) input.value = '';
       state.nwcLastProbe = null;
