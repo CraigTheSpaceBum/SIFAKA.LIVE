@@ -2699,9 +2699,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function autoSelectNwcRoutingFeeMsats(invoice) {
     const clean = String(invoice || '').trim().toLowerCase();
     // BOLT11 amount is encoded immediately after lnbc/lntb/lnbcrt.
-    // Give routes a small percentage budget, with a 2-sat minimum so
-    // wallets do not reject otherwise valid routes whose fee is non-zero.
-    const match = clean.match(/^ln(?:bc|tb|bcrt)(\\d+)([munp])/);
+    // Give the wallet a small automatic routing-fee budget, with a 2-sat
+    // minimum so normal non-zero routes are not rejected by a zero limit.
+    const match = clean.match(/^ln(?:bc|tb|bcrt)(\d+)([munp])/);
     if (!match) return 2000;
     const value = Number(match[1]);
     if (!Number.isFinite(value) || value <= 0) return 2000;
@@ -2727,7 +2727,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const maxFeeMsats = autoSelectNwcRoutingFeeMsats(invoice);
       return await sendNwcRequest(session, 'pay_invoice', {
         invoice,
-        max_fee_msats: maxFeeMsats
+        max_fee: maxFeeMsats
       }, {
         timeoutMs: Math.max(NWC_REQUEST_TIMEOUT_MS, Number(opts.timeoutMs || 0))
       });
@@ -13461,6 +13461,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const hasViewers = viewerCount > 0;
     const hasVideo = !!stream.streaming;
     card.className = 'stream-card' + (!hasViewers && !hasVideo ? ' stream-card-dim' : '');
+    card.dataset.hostPubkey = normalizePubkeyHex(stream.hostPubkey) || String(stream.hostPubkey || '').trim().toLowerCase();
 
     const gradients = ['t1','t2','t3','t4','t5','t6','t7','t8'];
     const streamThumb = sanitizeMediaUrl(stream.image || '');
@@ -13473,8 +13474,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const fb = gradients[idx % gradients.length];
       thumbHtml = `<div class="ct-thumb-wrap"><img class="ct-thumb" src="${profileThumb}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'tc ${fb}\\'></div>'"></div>`;
     } else {
-      thumbHtml = `<div class="tc ${gradients[idx % gradients.length]}"></div>`;
+      thumbHtml = `<div class="ct-thumb-wrap"></div>`;
     }
+    card.dataset.streamHasThumbnail = streamThumb ? '1' : '0';
 
     const isOffline = isStreamPlaybackOffline(stream && stream.address);
     const statusLabel = isOffline
@@ -13549,6 +13551,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       const hostEl = qs('.ci-host', card);
       if (hostEl) hostEl.textContent = profile.display_name || profile.name || shortHex(normalized);
+
+      // If the stream has no thumbnail of its own, use the profile picture
+      // once profile metadata arrives. If neither exists, keep the thumb area empty.
+      const thumbWrap = qs('.ct-thumb-wrap', card);
+      if (thumbWrap && card.dataset.streamHasThumbnail !== '1') {
+        thumbWrap.innerHTML = '';
+        const profilePicture = sanitizeMediaUrl(profile.picture || '');
+        if (profilePicture) {
+          const img = document.createElement('img');
+          img.className = 'ct-thumb';
+          img.src = profilePicture;
+          img.alt = '';
+          img.loading = 'lazy';
+          img.onerror = () => { thumbWrap.innerHTML = ''; };
+          thumbWrap.appendChild(img);
+        }
+      }
     });
   }
 
@@ -14773,7 +14792,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const badge = document.createElement('span');
           badge.className = 'nip05-badge';
           badge.title = `NIP-05: ${verifiedNip05}`;
-          badge.textContent = '\\u2713';
+          badge.textContent = '✓';
           name.appendChild(document.createTextNode(' '));
           name.appendChild(badge);
         }
@@ -17544,7 +17563,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const badge = document.createElement('span');
           badge.className = 'nip05-badge';
           badge.title = `NIP-05: ${verifiedNip05}`;
-          badge.textContent = '\\u2713';
+          badge.textContent = '✓';
           name.appendChild(document.createTextNode(' '));
           name.appendChild(badge);
         }
