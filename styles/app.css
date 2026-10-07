@@ -2913,7 +2913,7 @@ nav .btn{
 .cb-viewers{position:absolute;bottom:6px;left:6px;background:rgba(0,0,0,.75);color:var(--text);font-family:'DM Mono',monospace;font-size:.6rem;padding:.13rem .42rem;border-radius:3px;}
 .ci{padding:.52rem .08rem .08rem;}
 .ci-row{display:flex;gap:.48rem;}
-.ci-av{width:34px;height:34px;border-radius:50%;background:var(--surface2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1rem;border:1px solid var(--border);}
+.ci-av{width:34px;height:34px;border-radius:5px;background:var(--surface2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1rem;border:1px solid var(--border);}
 .ci-av.nip05-square{border-radius:5px;border:1.5px solid rgba(155,114,255,.7);background:rgba(155,114,255,.13);box-shadow:0 0 8px rgba(155,114,255,.55),0 0 18px rgba(155,114,255,.25),inset 0 0 6px rgba(155,114,255,.1);animation:nip05Pulse 2.8s ease-in-out infinite;}
 .ci-title{font-size:.79rem;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .ci-host{font-size:.71rem;color:var(--text2);margin-top:.13rem;}
