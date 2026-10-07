@@ -16943,9 +16943,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
     state.chatMessageEventsById.set(ev.id, ev);
     const messagePubkey = normalizePubkeyHex(ev.pubkey || '') || String(ev.pubkey || '').trim();
+    const currentStream = state.streamsByAddress.get(state.selectedStreamAddress);
+    const streamHostPubkey = currentStream
+      ? normalizePubkeyHex(currentStream.hostPubkey || currentStream.pubkey || '')
+      : '';
+    const streamPublisherPubkey = currentStream
+      ? normalizePubkeyHex(currentStream.pubkey || '')
+      : '';
+    const isHostMessage = !!messagePubkey && (
+      messagePubkey === streamHostPubkey ||
+      messagePubkey === streamPublisherPubkey
+    );
     const p = profileFor(messagePubkey);
     const row = document.createElement('div');
-    row.className = 'cmsg';
+    row.className = 'cmsg' + (isHostMessage ? ' host-chat-msg' : '');
     row.dataset.pubkey = messagePubkey;
     row.innerHTML = `<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="c-time"></span></div><div class="c-text"></div></div><div class="chat-msg-actions"><button class="cma-btn like-cma chat-like-btn" title="Like">&#10084; <span class="chat-like-count">0</span></button></div>`;
     const avEl = qs('.c-av', row);
@@ -17985,9 +17996,35 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (ev.kind === KIND_REACTION) {
         const targetId = firstTagValue(ev.tags, 'e');
         const targetAddress = firstTagValue(ev.tags, 'a');
+        const kTag = firstTagValue(ev.tags, 'k');
+        const targetsKnownChatMessage = !!(
+          targetId &&
+          state.chatMessageEventsById.has(targetId) &&
+          targetAddress &&
+          stream.address &&
+          targetAddress === stream.address
+        );
+        const isLiveChatReaction = kTag === String(KIND_LIVE_CHAT) || targetsKnownChatMessage;
         const targetsStream =
-          (targetId && stream.id && targetId === stream.id) ||
-          (targetAddress && stream.address && targetAddress === stream.address);
+          !isLiveChatReaction &&
+          (
+            (targetId && stream.id && targetId === stream.id) ||
+            (targetAddress && stream.address && targetAddress === stream.address)
+          );
+        if (isLiveChatReaction) {
+          if (targetId) {
+            const deletedAt = Number(state.chatDeletedReactionIds.get(ev.id) || 0);
+            if (deletedAt && deletedAt >= Number(ev.created_at || 0)) {
+              state.chatDeletedReactionIds.delete(ev.id);
+              return outcome;
+            }
+            const reactionContent = String(ev.content || '').trim();
+            if (!reactionContent || reactionContent === '-') return outcome;
+            applyChatLikeReaction(targetId, normalizePubkeyHex(ev.pubkey), ev.id);
+            updateChatLikeUi(targetId);
+          }
+          return outcome;
+        }
         if (targetsStream && normalizeReactionContentKey(ev.content) === '-') {
           const reactionPubkey = normalizePubkeyHex(ev.pubkey || '');
           const priorLikeId = reactionPubkey
@@ -18016,7 +18053,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           }
 
           const reactionRows = qsa('#chatScroll .cmsg.reaction-ev');
-          if (reactionRows.length < chatReactionNotificationCap) {
+          const reactionCreatedAt = Number(ev.created_at || 0);
+          const allowChatReactionNotification =
+            reactionCreatedAt >= chatSince &&
+            reactionRows.length < chatReactionNotificationCap;
+          if (allowChatReactionNotification) {
             renderChatStreamReaction(ev, reactionMeta, {
               maxRows: visibleChatRows,
               autoScroll: false
@@ -18025,8 +18066,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           outcome.streamReactionsDirty = true;
           return outcome;
         }
-        const kTag = firstTagValue(ev.tags, 'k');
-        if (kTag && kTag !== String(KIND_LIVE_CHAT)) return outcome;
         if (!state.chatMessageEventsById.has(targetId)) {
           const pending = state.chatPendingReactionEventsByMessageId.get(targetId) || [];
           pending.push(ev);
@@ -24861,14 +24900,14 @@ window.saveAppSettings = function () {
             await signAndPublish(KIND_DELETION, 'unliked chat message', [['e', reactionId], ['k', String(KIND_REACTION)], ['a', stream.address]]);
             applyChatUnlikeByReactionId(reactionId);
           } else {
-            await signAndPublish(KIND_REACTION, '-', [['e', messageId], ['p', messageEvent.pubkey], ['a', stream.address]]);
+            await signAndPublish(KIND_REACTION, '-', [['e', messageId], ['p', messageEvent.pubkey], ['a', stream.address], ['k', String(KIND_LIVE_CHAT)]]);
           }
           updateChatLikeUi(messageId);
         } else {
           applyChatLikeReaction(messageId, userPubkey, '');
           updateChatLikeUi(messageId);
 
-          const likeEv = await signAndPublish(KIND_REACTION, '+', [['e', messageId], ['p', messageEvent.pubkey], ['a', stream.address]]);
+          const likeEv = await signAndPublish(KIND_REACTION, '+', [['e', messageId], ['p', messageEvent.pubkey], ['a', stream.address], ['k', String(KIND_LIVE_CHAT)]]);
           if (likeEv && likeEv.id) applyChatLikeReaction(messageId, userPubkey, likeEv.id);
           updateChatLikeUi(messageId);
         }

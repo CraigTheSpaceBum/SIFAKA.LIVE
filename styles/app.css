@@ -9211,3 +9211,14 @@ body.nest-room-page-open{
     min-height:0;
   }
 }
+
+
+/* ======== 0.4.5 LIVE CHAT REACTION / HOST MESSAGE POLISH ======== */
+#videoPage .chat-scroll .reaction-ev{background:linear-gradient(135deg,rgba(255,59,92,.13),rgba(255,59,92,.045));border-color:rgba(255,59,92,.28);box-shadow:0 0 0 1px rgba(255,59,92,.08) inset,0 8px 20px rgba(0,0,0,.16);}
+#videoPage .chat-scroll .reaction-ev .c-av{border-color:rgba(255,59,92,.48);background:rgba(255,59,92,.12);}
+#videoPage .chat-scroll .reaction-ev .c-name{color:#ffd1d9;}
+#videoPage .chat-scroll .reaction-ev .chat-reaction-badge{background:rgba(255,59,92,.10);border-color:rgba(255,59,92,.26);}
+#videoPage .chat-scroll .reaction-ev .c-text{color:#ffb8c3;}
+#videoPage .chat-scroll .host-chat-msg{background:linear-gradient(135deg,rgba(139,92,246,.18),rgba(139,92,246,.055));border:1px solid rgba(139,92,246,.42);border-radius:8px;padding:.42rem .62rem;box-shadow:0 0 0 1px rgba(139,92,246,.10) inset,0 8px 20px rgba(0,0,0,.18);}
+#videoPage .chat-scroll .host-chat-msg .c-av{border-color:rgba(139,92,246,.60);background:rgba(139,92,246,.14);box-shadow:0 0 10px rgba(139,92,246,.16);}
+#videoPage .chat-scroll .host-chat-msg .c-name{color:#d9c7ff;}
