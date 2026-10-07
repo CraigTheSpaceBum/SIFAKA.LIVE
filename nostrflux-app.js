@@ -357,6 +357,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     profileFetchInflightByPubkey: new Map(),
     profileNotesByPubkey: new Map(),
     profileFeedBackfillExhausted: new Set(),
+    profileCommentHydrationAtByKey: new Map(),
+    profileCommentThreadContext: null,
     profileStatsByPubkey: new Map(),
     liveSubId: null,
 
@@ -15406,17 +15408,19 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function _buildMentionPill(pubkey) {
-    const pill = document.createElement('span');
+    const pill = document.createElement('a');
     pill.className = 'nostr-mention-pill';
+    const npub = formatNpubForDisplay(pubkey);
+    if (npub && /^npub1/i.test(npub)) pill.href = '/' + npub.toLowerCase();
     const known = state.profilesByPubkey.has(pubkey);
     const p = profileFor(pubkey);
-    pill.textContent = '@' + (known ? p.name : shortHex(pubkey));
+    pill.textContent = '@' + (known ? (p.display_name || p.name || shortHex(pubkey)) : shortHex(pubkey));
     pill.style.cursor = 'pointer';
-    pill.onclick = (e) => { e.stopPropagation(); showProfileByPubkey(pubkey); };
+    pill.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showProfileByPubkey(pubkey); };
     if (!known) {
       fetchProfileIfNeeded(pubkey).then(() => {
         const fresh = profileFor(pubkey);
-        pill.textContent = '@' + (fresh.name || shortHex(pubkey));
+        pill.textContent = '@' + (fresh.display_name || fresh.name || shortHex(pubkey));
       }).catch(() => {});
     }
     return pill;
@@ -15545,7 +15549,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const raw = String(text || '');
     if (!raw) return;
 
-    const TOKEN_RE = /(`[^`\n]+`)|(\*\*[^*\n]+?\*\*)|(~~[^~\n]+?~~)|(\*[^*\n]+?\*)|(nostr:(npub1[a-zA-Z0-9]+|nprofile1[a-zA-Z0-9]+|nevent1[a-zA-Z0-9]+|note1[a-zA-Z0-9]+|naddr1[a-zA-Z0-9]+))|(https?:\/\/[^\s<]+)/g;
+    const TOKEN_RE = /(\`[^\`\n]+\`)|(\*\*[^*\n]+?\*\*)|(~~[^~\n]+?~~)|(\*[^*\n]+?\*)|(nostr:(npub1[a-zA-Z0-9]+|nprofile1[a-zA-Z0-9]+|nevent1[a-zA-Z0-9]+|note1[a-zA-Z0-9]+|naddr1[a-zA-Z0-9]+))|(\bnpub1[023456789acdefghjklmnpqrstuvwxyz]{20,})|(https?:\/\/[^\s<]+)/g;
     let cursor = 0;
     let match;
     while ((match = TOKEN_RE.exec(raw)) !== null) {
@@ -15577,7 +15581,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       } else if (match[5]) {
         _appendNostrEntityToNode(parent, match[6], match[5], { allowEventEmbeds: false });
       } else if (match[7]) {
-        const cleanUrl = trimUrlTrailingPunctuation(match[7]);
+        _appendNostrEntityToNode(parent, match[7], match[7], { allowEventEmbeds: false });
+      } else if (match[8]) {
+        const cleanUrl = trimUrlTrailingPunctuation(match[8]);
         const href = safeHrefFromUrl(cleanUrl);
         if (href) {
           const a = document.createElement('a');
@@ -17398,7 +17404,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const existing = state.profilesByPubkey.get(normalizedPubkey);
     const forceRefresh = !!opts.force;
-    if (existing && (existing.name || existing.display_name || existing.picture) && !forceRefresh) return Promise.resolve();
+    if (existing && (existing.name || existing.display_name || existing.picture || existing.about) && !forceRefresh) return Promise.resolve();
 
     // Profile metadata is requested from many surfaces (DMs, chat, videos, feed).
     // Deduplicate concurrent lookups so one person cannot trigger a burst of identical
@@ -19952,22 +19958,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function badgeInfoFromEvents(award, definition) {
-    const image = sanitizeMediaUrl(getBadgeDefTag(definition, 'image') || getBadgeDefTag(definition, 'thumb'));
-    const awardATag = ((award && award.tags) || []).find((t) => Array.isArray(t) && t[0] === 'a' && t[1]);
+    const awardTags = Array.isArray(award && award.tags) ? award.tags : [];
+    const imageCandidates = [
+      getBadgeDefTag(definition, 'image'),
+      getBadgeDefTag(definition, 'thumb'),
+      ...awardTags.filter((t) => Array.isArray(t) && (t[0] === 'image' || t[0] === 'thumb')).map((t) => t[1] || '')
+    ].map((value) => sanitizeMediaUrl(value)).filter((value) => isLikelyUrl(value));
+    const awardATag = awardTags.find((t) => Array.isArray(t) && t[0] === 'a' && t[1]);
     const ref = parseBadgeAddressRef(awardATag ? awardATag[1] : '');
     const badgeId = (getBadgeDefTag(definition, 'd') || (ref && ref.d) || '').trim();
     const displayName = (getBadgeDefTag(definition, 'name') || badgeId || '').trim();
     const fallbackName = displayName || (ref ? `Award ${shortHex(ref.pubkey)}` : 'Unknown award');
     const desc = getBadgeDefTag(definition, 'description') || '';
     const issuer = (getBadgeDefTag(definition, 'issuer') || (definition && definition.pubkey) || (ref && ref.pubkey) || '').trim();
-
-    return {
-      image,
-      name: fallbackName,
-      desc,
-      id: badgeId,
-      issuer
-    };
+    return { image: imageCandidates[0] || '', imageCandidates: [...new Set(imageCandidates)], name: fallbackName, desc, id: badgeId, issuer };
   }
 
   function subscribeBadges(pubkey) {
@@ -20036,43 +20040,47 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function renderProfileBadges(pubkey) {
     const panel = qs('#profileBadgesPanel');
     const grid = qs('#profileBadgesGrid');
-    const bioGrid = qs('#profileBioGrid');
-    if (!panel || !grid || !bioGrid) return;
-
+    if (!panel || !grid) return;
     const awardMap = state.badgesByPubkey.get(pubkey);
     const badges = awardMap ? Array.from(awardMap.values()) : [];
-
-    if (!badges.length) {
-      panel.style.display = 'none';
-      bioGrid.classList.remove('has-badges');
-      return;
-    }
-
+    if (!badges.length) { panel.style.display = 'none'; return; }
     panel.style.display = 'block';
-    bioGrid.classList.add('has-badges');
     grid.innerHTML = '';
-
-    const MAX_SHOWN = 9; // 3x3 grid
-
+    const MAX_SHOWN = 9;
     function makeBadgeChip(award, definition) {
       const chip = document.createElement('div');
       chip.className = 'profile-badge-chip';
       const info = badgeInfoFromEvents(award, definition);
-      if (info.image && isLikelyUrl(info.image)) {
+      const candidates = Array.isArray(info.imageCandidates) ? info.imageCandidates : (info.image ? [info.image] : []);
+      let candidateIndex = 0;
+      const renderFallback = () => {
+        chip.innerHTML = '';
+        const fallback = document.createElement('span');
+        fallback.className = 'profile-badge-fallback';
+        fallback.textContent = '🏅';
+        fallback.title = info.name;
+        chip.appendChild(fallback);
+      };
+      if (candidates.length) {
         const img = document.createElement('img');
-        img.src = info.image; img.alt = info.name; img.loading = 'lazy';
-        img.onerror = () => { chip.innerHTML = ''; };
+        img.alt = info.name;
+        img.loading = 'eager';
+        img.decoding = 'async';
+        img.fetchPriority = 'high';
+        img.referrerPolicy = 'no-referrer';
+        img.onerror = () => {
+          candidateIndex += 1;
+          if (candidateIndex < candidates.length) img.src = candidates[candidateIndex];
+          else renderFallback();
+        };
+        img.src = candidates[0];
         chip.appendChild(img);
-      } else { chip.textContent = ''; }
+      } else renderFallback();
       chip.title = info.name;
-      chip.addEventListener('click', () => { openBadgePopup({ ...info, definition, award }); });
+      chip.addEventListener('click', () => openBadgePopup({ ...info, definition, award }));
       return chip;
     }
-
-    badges.slice(0, MAX_SHOWN).forEach(({ award, definition }) => {
-      grid.appendChild(makeBadgeChip(award, definition));
-    });
-
+    badges.slice(0, MAX_SHOWN).forEach(({ award, definition }) => grid.appendChild(makeBadgeChip(award, definition)));
     if (badges.length > MAX_SHOWN) {
       const more = document.createElement('div');
       more.className = 'badge-see-more';
@@ -20185,12 +20193,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function renderProfileFollowButton(pubkey) {
     const isOwn = !!(pubkey && state.user && state.user.pubkey === pubkey);
     const messageBtn = qs('#profileMessageBtn');
-    const zapBtn = qs('#profileZapBtn');
+    const donationBtn = qs('#profileDonationBtn');
     const editBtn = qs('#profileEditBtn');
     const btn = qs('#profileFollowBtn');
 
     if (messageBtn) messageBtn.style.display = isOwn ? 'none' : '';
-    if (zapBtn) zapBtn.style.display = isOwn ? 'none' : '';
+    if (donationBtn) donationBtn.style.display = isOwn ? 'none' : '';
     if (btn) btn.style.display = isOwn ? 'none' : '';
     if (editBtn) editBtn.style.display = isOwn ? 'inline-flex' : 'none';
     if (!btn) return;
@@ -20352,6 +20360,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (photosEl) photosEl.dataset.mediaLimit = '0';
 
     const selectedKey = normalizePubkeyHex(pubkey) || pubkey;
+    const isOwnProfile = !!(state.user && normalizePubkeyHex(state.user.pubkey) === selectedKey);
     const existing = state.profileNotesByPubkey.get(pubkey);
     if (!existing) state.profileNotesByPubkey.set(pubkey, new Map());
 
@@ -20364,7 +20373,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
       .slice(0, Math.max(1, Math.min(PROFILE_FEED_RELAY_COUNT, state.pool.urls.length || 1)))
       .map((item) => item.url);
-    const profileSince = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * PROFILE_FEED_INITIAL_DAYS;
+    const profileSince = isOwnProfile ? 1 : Math.floor(Date.now() / 1000) - 60 * 60 * 24 * PROFILE_FEED_INITIAL_DAYS;
+    const authoredKinds = isOwnProfile ? [1, KIND_COMMENT, 6] : [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT];
+    const authoredLimit = isOwnProfile ? 1000 : 320;
 
     let feedRenderTimer = null;
     const flushProfileFeedRender = () => {
@@ -20384,8 +20395,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.profileFeedSubId = state.pool.subscribe(
       [
-        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT], authors: [pubkey], limit: 320, since: profileSince },
-        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 520, since: profileSince }
+        { kinds: authoredKinds, authors: [pubkey], limit: authoredLimit, since: profileSince },
+        { kinds: [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#p': [pubkey], limit: 520, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * PROFILE_FEED_INITIAL_DAYS }
       ],
       {
         event: (ev) => {
@@ -20651,11 +20662,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     openStream(state.selectedProfileLiveAddress);
   }
 
-  function showProfileByPubkey(pubkey, opts = {}) {
+  async function showProfileByPubkey(pubkey, opts = {}) {
     const routeMode = opts.routeMode || 'push';
     const normalizedPubkey = normalizePubkeyHex(pubkey);
     if (!normalizedPubkey) return;
-
     state.selectedProfilePubkey = normalizedPubkey;
     const loadToken = ++state.profileLoadToken;
     setProfilePageLoading(true, 'Loading profile information...');
@@ -20663,18 +20673,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.profileLoadingTimer = setTimeout(() => {
       if (loadToken === state.profileLoadToken && isProfilePageVisible()) setProfilePageLoading(false);
     }, 7000);
-
-    // Reuse any already-hydrated profile immediately. Relay subscriptions and the
-    // bounded profile cache still refresh metadata without making clicks wait on a network round-trip.
     const profileRequest = fetchProfileIfNeeded(normalizedPubkey, { force: false });
+    try { await Promise.race([profileRequest, new Promise((resolve) => setTimeout(resolve, 1250))]); } catch (_) {}
+    if (loadToken !== state.profileLoadToken || normalizePubkeyHex(state.selectedProfilePubkey) !== normalizedPubkey) return;
     const p = profileFor(normalizedPubkey);
     const verifiedNip05 = getVerifiedNip05ForPubkey(normalizedPubkey, p.nip05 || '');
-    if (!verifiedNip05 && normalizeNip05Value(p.nip05 || '')) {
-      ensureNip05Verification(normalizedPubkey, p.nip05 || '').catch(() => {});
-    }
-
+    if (!verifiedNip05 && normalizeNip05Value(p.nip05 || '')) ensureNip05Verification(normalizedPubkey, p.nip05 || '').catch(() => {});
     window.showProfile(
-      p.name,
+      p.name || p.display_name || shortNpubForDisplay(normalizedPubkey),
       pickAvatar(normalizedPubkey),
       formatNpubForDisplay(normalizedPubkey),
       verifiedNip05,
@@ -20686,7 +20692,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     subscribeProfileStats(normalizedPubkey);
     subscribeProfileStatus(normalizedPubkey);
     subscribeBadges(normalizedPubkey);
-
     Promise.resolve(profileRequest).finally(() => {
       if (loadToken !== state.profileLoadToken) return;
       if (normalizePubkeyHex(state.selectedProfilePubkey) !== normalizedPubkey) return;
