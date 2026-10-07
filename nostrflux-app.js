@@ -17566,7 +17566,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (kind === KIND_LIVE_EVENT) {
             const stream = parseLiveEvent(ev);
             const changed = upsertStream(stream);
-            if (stream) scheduleLiveProfileBootstrap();
+            if (stream) {
+              scheduleLiveProfileBootstrap();
+              if (liveProfileBootstrapStarted) {
+                const hostKey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+                const platformKey = normalizePubkeyHex(stream.platformPubkey || '');
+                if (hostKey) fetchProfileIfNeeded(hostKey).catch(() => {});
+                if (platformKey && platformKey !== hostKey) fetchProfileIfNeeded(platformKey).catch(() => {});
+              }
+            }
             if (stream && normalizeStreamStatus(stream.status) === 'live'
               && state.user
               && normalizePubkeyHex(state.user.pubkey) === normalizePubkeyHex(stream.pubkey)) {
