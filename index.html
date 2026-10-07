@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.4.6">
+<link rel="stylesheet" href="./styles/app.css?v=0.5.0">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -808,6 +808,22 @@ body.nest-preview-open{overflow:hidden}
         </div>
       </aside>
     </div>
+  </div>
+</div>
+
+<!-- ========= PROFILE COMMENT THREAD PAGE ========= -->
+<div id="profileCommentThreadPage">
+  <div class="profile-comment-thread-wrap">
+    <div class="profile-comment-thread-header">
+      <button class="btn btn-ghost" type="button" onclick="closeProfileCommentThread()">&#8592; Back</button>
+      <div class="profile-comment-thread-heading">
+        <strong>Comment Thread</strong>
+        <span id="profileCommentThreadSubhead">Replies</span>
+      </div>
+    </div>
+    <div class="profile-comment-thread-card" id="profileCommentThreadRoot"></div>
+    <div class="profile-comment-thread-replies" id="profileCommentThreadReplies"></div>
+    <div class="profile-feed-empty" id="profileCommentThreadStatus" style="display:none;"></div>
   </div>
 </div>
 
@@ -2125,11 +2141,6 @@ body.nest-preview-open{overflow:hidden}
                 </div>
                 <div class="profile-since" id="profNostrSince" style="display:none"></div>
               </div>
-            <!-- Badges panel: shown only when badges are present -->
-            <div class="profile-badges-panel" id="profileBadgesPanel" style="display:none;">
-              <div class="profile-badges-title">&#127942; Badges</div>
-              <div class="profile-badges-grid" id="profileBadgesGrid"></div>
-            </div>
           </div>
         </div>
       </div>
@@ -2138,7 +2149,7 @@ body.nest-preview-open{overflow:hidden}
         <div class="profile-action-box">
           <div class="profile-actions-row">
             <button class="btn btn-ghost" id="profileMessageBtn" onclick="openProfileMessage()">Message</button>
-            <button class="btn btn-zap" id="profileZapBtn">Zap</button>
+            <button class="action-btn theater-donation-btn" id="profileDonationBtn" type="button" onclick="openProfileDonation()" title="Donate to this profile">&#9889; Donation</button>
             <button class="btn btn-follow" id="profileFollowBtn" onclick="toggleFollowProfile()">Follow</button>
             <button class="btn btn-primary" id="profileEditBtn" onclick="openProfileEditSettings()" style="display:none;">Edit Profile</button>
             <div class="atl-wrap" id="atlWrap">
@@ -2162,10 +2173,10 @@ body.nest-preview-open{overflow:hidden}
           <div class="profile-inline-stats">
             <div class="pis"><div class="iv" id="profFollowers">0</div><div class="il">Followers</div></div>
             <div class="pis"><div class="iv" id="profFollowing">0</div><div class="il">Following</div></div>
-            <div class="pis"><div class="iv" id="profPostCount">0</div><div class="il">Post Count</div></div>
-            <div class="pis"><div class="iv" id="profStreams">0</div><div class="il">Stream Count</div></div>
-            <div class="pis"><div class="iv" id="profNostrAgeStat">-</div><div class="il">Time on Nostr</div></div>
-            <div class="pis"><div class="iv" id="profSats">0</div><div class="il">Total Sats Received</div></div>
+            <div class="profile-badges-panel" id="profileBadgesPanel" style="display:none;">
+              <div class="profile-badges-title">&#127942; Badges</div>
+              <div class="profile-badges-grid" id="profileBadgesGrid"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -2288,7 +2299,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.4.6" defer></script>
+<script src="./nostrflux-app.js?v=0.5.0" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
