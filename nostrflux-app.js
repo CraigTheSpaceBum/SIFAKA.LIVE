@@ -21191,6 +21191,12 @@ function renderProfileFeed(pubkey) {
     window.closeLogin();
     subscribeProfiles([pubkey]);
 
+    // Restore the encrypted NWC connection for this identity after any login.
+    // The helper is deduped per pubkey, so startup restore and login restore can coexist safely.
+    if (nextUser && state.pool) {
+      restoreNwcSettingsForActiveUser().catch(() => {});
+    }
+
     if (previousUser && nextUser && (previousUser !== nextUser || previousAuthMode !== authMode)) {
       // Changing signer type can leave an in-flight decrypt queue from the
       // previous crypto provider. Reset DM state even when the public key is
@@ -26267,6 +26273,8 @@ window.saveAppSettings = function () {
       if (status) status.textContent = '';
       const amount = qs('#theaterDonationAmount');
       if (amount) amount.value = '330';
+      const message = qs('#theaterDonationMessage');
+      if (message) message.value = '';
     };
 
     window.selectTheaterDonationMethod = async function (method) {
@@ -26678,6 +26686,8 @@ window.saveAppSettings = function () {
       refreshTheaterDonationWalletStatus().catch(() => {});
       const amount = qs('#theaterDonationAmount');
       if (amount) amount.value = '21';
+      const message = qs('#theaterDonationMessage');
+      if (message) message.value = '';
       const status = qs('#theaterDonationStatus');
       if (status) status.textContent = '';
     };
