@@ -972,6 +972,9 @@ body.nest-preview-open{overflow:hidden}
           <label class="theater-donation-custom-amount">Custom amount (sats)
             <input id="theaterDonationAmount" type="number" min="1" step="1" inputmode="numeric" value="21" placeholder="Amount in sats">
           </label>
+          <label class="theater-donation-custom-amount">Message (optional)
+            <textarea id="theaterDonationMessage" rows="3" maxlength="280" placeholder="Write a message with your zap..." aria-label="Optional zap message"></textarea>
+          </label>
           <div class="theater-donation-actions">
             <button class="btn btn-primary" type="button" id="theaterDonationSendBtn" onclick="sendTheaterLightningDonation()">Send donation</button>
             <button class="btn btn-ghost" type="button" onclick="closeTheaterDonation()">Cancel</button>
@@ -2299,7 +2302,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.5.3" defer></script>
+<script src="./nostrflux-app.js?v=0.5.4" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
