@@ -13467,7 +13467,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const host = String(card.dataset.hostPubkey || '').toLowerCase();
       if (host !== normalized) return;
       const av = qs('.ci-av', card);
-      if (av) setAvatarEl(av, profile.picture || '', pickAvatar(normalized));
+      if (av) {
+        setAvatarEl(av, profile.picture || '', pickAvatar(normalized));
+        const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
+        const verifiedNip05 = getVerifiedNip05ForPubkey(normalized, profile.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+        av.classList.toggle('nip05-square', !!verifiedNip05);
+        if (claimedNip05) {
+          ensureNip05Verification(normalized, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
+        }
+      }
       const hostEl = qs('.ci-host', card);
       if (hostEl) hostEl.textContent = profile.display_name || profile.name || shortHex(normalized);
     });
