@@ -27220,7 +27220,7 @@ window.saveAppSettings = function () {
       } catch (_) {}
       try {
         if (state.user) {
-          const restoredNwc = await restoreNwcSettingsFromNostr();
+          const restoredNwc = await restoreNwcSettingsForActiveUser();
           if (restoredNwc && typeof window.loadWalletPage === 'function' && /^\/wallet\/?$/i.test(String(window.location && window.location.pathname || ''))) {
             window.loadWalletPage(true).catch(() => {});
           }
