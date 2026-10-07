@@ -20399,7 +20399,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const lud16 = (p.lud16 || '').trim();
     const lud16Visible = !!lud16;
     if (lud16Visible) {
-      if (lud16Bio) lud16Bio.textContent = lud16;
+      if (lud16Bio) {
+        lud16Bio.textContent = lud16;
+        lud16Bio.title = 'Donate Lightning to ' + String(p.display_name || p.name || 'this profile').trim();
+        lud16Bio.setAttribute('aria-label', 'Donate Lightning to ' + String(p.display_name || p.name || 'this profile').trim());
+      }
       if (lud16Row) lud16Row.style.display = 'flex';
     } else if (lud16Row) {
       lud16Row.style.display = 'none';
