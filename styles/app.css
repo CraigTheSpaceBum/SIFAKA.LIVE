@@ -3218,7 +3218,7 @@ nav .btn{
 .theater-donation-status{min-height:1.25rem;margin-top:.7rem;color:var(--text2);font-size:.67rem;line-height:1.45;}
 .theater-lightning-donation-grid{
   display:grid;
-  grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
+  grid-template-columns:minmax(0,2fr) minmax(0,3fr);
   gap:.8rem;
   align-items:stretch;
 }
@@ -8374,7 +8374,7 @@ body.nest-room-page-open{
 
   #walletOnchainSendModal .wallet-onchain-send-body.is-profile-donation{
     display:grid;
-    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    grid-template-columns:minmax(0,2fr) minmax(0,3fr);
     gap:20px;
     height:calc(100% - 74px);
     min-height:0;
@@ -8971,4 +8971,12 @@ body.nest-room-page-open{
   #videoPage .chat-bottom{
     flex:0 0 auto;
   }
+}
+
+/* ======== DONATION PANEL BALANCE / ON-CHAIN LABEL ======== */
+.profile-bio-meta .bitcoin-label{display:none;}
+.profile-bio-meta .profile-bitcoin-send-btn{
+  display:inline-flex;
+  align-items:baseline;
+  gap:.28rem;
 }
