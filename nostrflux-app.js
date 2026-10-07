@@ -7365,8 +7365,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           img.className = 'dm-peer-banner-img';
           img.src = bannerUrl;
           img.alt = 'profile banner';
-          img.loading = 'lazy';
-          img.referrerPolicy = 'no-referrer';
+          img.loading = 'eager';
+          img.fetchPriority = 'high';
+          img.referrerPolicy = 'strict-origin-when-cross-origin';
           img.decoding = 'async';
           img.onerror = () => {
             applyBannerFallback();
@@ -20487,9 +20488,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const bannerImg = qs('#profBannerImg');
       if (bannerImg && p.banner && isLikelyUrl(p.banner)) {
         bannerImg.src = p.banner;
-        bannerImg.loading = 'lazy';
+        bannerImg.loading = 'eager';
         bannerImg.decoding = 'async';
-        bannerImg.referrerPolicy = 'no-referrer';
+        bannerImg.fetchPriority = 'high';
+        bannerImg.referrerPolicy = 'strict-origin-when-cross-origin';
+        bannerImg.onerror = function () {
+          bannerImg.style.display = 'none';
+          bannerImg.removeAttribute('src');
+        };
         bannerImg.style.display = 'block';
       } else if (bannerImg) {
       bannerImg.removeAttribute('src');
@@ -25342,6 +25348,8 @@ window.saveAppSettings = function () {
       const bannerUrl = rawBanner ? sanitizeMediaUrl(rawBanner) : '';
       if (bannerUrl) {
         bannerEl.style.backgroundImage = 'url("' + bannerUrl.replace(/"/g, '\\"') + '")';
+        bannerEl.style.backgroundSize = 'cover';
+        bannerEl.style.backgroundPosition = 'center';
         bannerEl.hidden = false;
       } else {
         bannerEl.style.backgroundImage = 'none';
