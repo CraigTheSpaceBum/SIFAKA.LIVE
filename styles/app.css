@@ -3430,7 +3430,7 @@ nav .btn{
 .cmsg{display:flex;gap:.4rem;align-items:flex-start;position:relative;}
 .cmsg:hover .chat-msg-actions{opacity:1;pointer-events:all;}
 .c-av{width:28px;height:28px;border-radius:50%;background:var(--surface2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.78rem;border:1px solid var(--border);cursor:pointer;transition:border-color .15s;}
-.c-av:hover{border-color:var(--accent);}.c-av.no-avatar{visibility:hidden!important;pointer-events:none;}
+.c-av:hover{border-color:var(--accent);border-radius:4px;box-shadow:0 0 8px rgba(139,92,246,.34),0 0 16px rgba(139,92,246,.16);}.c-av.no-avatar{visibility:hidden!important;pointer-events:none;}
 .c-av.nip05-square{border-radius:4px;border:1.5px solid rgba(155,114,255,.7);background:rgba(155,114,255,.13);box-shadow:0 0 6px rgba(155,114,255,.55),0 0 14px rgba(155,114,255,.22);animation:nip05Pulse 2.8s ease-in-out infinite;}
 .c-body{flex:1;}
 .c-name-row{display:flex;align-items:center;gap:.28rem;flex-wrap:wrap;}
