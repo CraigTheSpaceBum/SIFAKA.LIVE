@@ -13659,7 +13659,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
     if (hostPubkey && !sanitizeMediaUrl(stream.image || '') && !sanitizeMediaUrl(profile && profile.picture || '')) {
       fetchProfileIfNeeded(hostPubkey, { skipNip05: true }).then(() => {
-        if (!document.body.contains(card)) return;
         const freshProfile = profileFor(hostPubkey);
         if (sanitizeMediaUrl(freshProfile.picture || '')) renderStreamThumbnail(inner, stream, freshProfile, idx);
       }).catch(() => {});
