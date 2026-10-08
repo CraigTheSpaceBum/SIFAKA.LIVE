@@ -17896,7 +17896,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
       }
       , {
-        relayUrls: Array.from(new Set((state.relays || []).filter(Boolean))).slice(0, 6)
+        // Live discovery must query the full configured relay set. Limiting this
+        // subscription to the first six relays can silently hide valid NIP-53
+        // kind:30311 streams that are published only to other configured relays.
+        // Keep the existing relay pool and incremental rendering behavior intact;
+        // this only broadens the read set used for Live Now discovery.
+        relayUrls: Array.from(new Set((state.relays || []).filter(Boolean)))
       }
     );
   }
