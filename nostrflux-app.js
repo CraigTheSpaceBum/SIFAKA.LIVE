@@ -184,6 +184,11 @@
   const REMOTE_SIGNER_SCAN_TIMEOUT_MS = 180000;
   const REMOTE_SIGNER_REQUESTED_PERMS = 'sign_event,nip04_encrypt,nip04_decrypt';
   const NWC_REQUEST_TIMEOUT_MS = 18000;
+  // Payment responses can occasionally arrive later than ordinary wallet queries.
+  // Give pay_invoice more time, then reconcile the invoice if the response is lost.
+  const NWC_PAYMENT_TIMEOUT_MS = 30000;
+  const NWC_PAYMENT_STATUS_CHECK_ATTEMPTS = 4;
+  const NWC_PAYMENT_STATUS_CHECK_DELAY_MS = 1200;
   const NWC_INFO_TIMEOUT_MS = 4500;
   const NWC_SCAN_INTERVAL_MS = 420;
   const SETTINGS_STORAGE_KEY = 'nostrflux_settings_v1';
@@ -2696,6 +2701,83 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function delayMs(ms) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+  }
+
+  function normalizeNwcPaymentState(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  async function confirmNwcInvoicePayment(session, invoice, info) {
+    const cleanInvoice = String(invoice || '').trim();
+    if (!session || !cleanInvoice) return null;
+
+    const capabilityList = Array.isArray(info && info.capabilities) ? info.capabilities : [];
+    const explicitlyUnsupportedLookup = capabilityList.length > 0 && !capabilityList.includes('lookup_invoice');
+    const explicitlyUnsupportedList = capabilityList.length > 0 && !capabilityList.includes('list_transactions');
+    let lastLookupError = null;
+
+    for (let attempt = 0; attempt < NWC_PAYMENT_STATUS_CHECK_ATTEMPTS; attempt += 1) {
+      let lookupResult = null;
+      if (!explicitlyUnsupportedLookup) {
+        try {
+          lookupResult = await sendNwcRequest(
+            session,
+            'lookup_invoice',
+            { invoice: cleanInvoice },
+            { timeoutMs: 6500 }
+          );
+          const state = normalizeNwcPaymentState(lookupResult && lookupResult.state);
+          if (state === 'settled' || state === 'paid' || state === 'success' || state === 'succeeded' || state === 'completed' || lookupResult?.preimage) {
+            return { status: 'settled', result: lookupResult };
+          }
+          if (state === 'failed' || state === 'expired') {
+            return { status: 'failed', result: lookupResult };
+          }
+        } catch (err) {
+          lastLookupError = err;
+        }
+      }
+
+      if (!explicitlyUnsupportedList) {
+        try {
+          const txResult = await sendNwcRequest(
+            session,
+            'list_transactions',
+            { limit: 20 },
+            { timeoutMs: 6500 }
+          );
+          const transactions = Array.isArray(txResult && txResult.transactions)
+            ? txResult.transactions
+            : (Array.isArray(txResult) ? txResult : []);
+          const cleanLower = cleanInvoice.toLowerCase();
+          const paymentHash = String(lookupResult && lookupResult.payment_hash || '').trim().toLowerCase();
+          const matched = transactions.some((tx) => {
+            if (!tx || typeof tx !== 'object') return false;
+            const invoiceValues = [
+              tx.invoice,
+              tx.payment_request,
+              tx.paymentRequest,
+              tx.bolt11
+            ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+            if (invoiceValues.includes(cleanLower)) return true;
+            if (paymentHash && String(tx.payment_hash || '').trim().toLowerCase() === paymentHash) return true;
+            return false;
+          });
+          if (matched) return { status: 'settled', result: lookupResult || null };
+        } catch (_) {}
+      }
+
+      if (attempt < NWC_PAYMENT_STATUS_CHECK_ATTEMPTS - 1) {
+        await delayMs(NWC_PAYMENT_STATUS_CHECK_DELAY_MS);
+      }
+    }
+
+    if (lastLookupError) console.warn('NWC payment status lookup did not complete:', lastLookupError && lastLookupError.message ? lastLookupError.message : lastLookupError);
+    return null;
+  }
+
   async function payInvoiceWithNwcConfig(config, invoice, opts = {}) {
     const session = await createNwcSession(config);
     try {
@@ -2705,9 +2787,26 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         session.encryption = info.preferredEncryption;
         session.nip44ConversationKey = null;
       }
-      return await sendNwcRequest(session, 'pay_invoice', { invoice }, {
-        timeoutMs: Math.max(NWC_REQUEST_TIMEOUT_MS, Number(opts.timeoutMs || 0))
-      });
+      try {
+        return await sendNwcRequest(session, 'pay_invoice', { invoice }, {
+          timeoutMs: Math.max(NWC_PAYMENT_TIMEOUT_MS, Number(opts.timeoutMs || 0))
+        });
+      } catch (err) {
+        if (!err || !err.nwcAmbiguous) throw err;
+        // The wallet may have paid the invoice but lost only the NWC response.
+        // Reconcile the exact invoice before reporting failure or offering another wallet.
+        const confirmation = await confirmNwcInvoicePayment(session, invoice, info);
+        if (confirmation && confirmation.status === 'settled') return confirmation.result || {};
+        if (confirmation && confirmation.status === 'failed') {
+          const failedError = new Error('Lightning wallet reports that the payment failed.');
+          failedError.nwcAmbiguous = false;
+          failedError.nwcErrorCode = 'PAYMENT_FAILED';
+          throw failedError;
+        }
+        const ambiguousError = new Error('Lightning payment status could not be confirmed. Please check your wallet before trying again.');
+        ambiguousError.nwcAmbiguous = true;
+        throw ambiguousError;
+      }
     } finally {
       teardownNwcSessionObject(session, 'Wallet payment finished.');
     }
@@ -25848,7 +25947,7 @@ window.saveAppSettings = function () {
           const balanceMsats = Number(balanceResult && (balanceResult.balance ?? balanceResult.amount) || 0);
           if (!Number.isFinite(balanceMsats)) throw new Error('Lightning wallet returned an invalid balance.');
           const balanceSats = Math.max(0, Math.floor(balanceMsats / 1000));
-          status.textContent = 'Available balance: ' + formatCount(balanceSats) + ' sats';
+          status.textContent = 'Available balance: ' + Math.max(0, Math.floor(balanceSats)).toLocaleString('en-US') + ' sats';
           status.classList.add('is-connected');
           return;
         } catch (err) {
@@ -25869,7 +25968,7 @@ window.saveAppSettings = function () {
             const numeric = Number(rawBalance);
             if (Number.isFinite(numeric)) {
               const sats = numeric > 100000000 ? Math.floor(numeric / 1000) : Math.floor(numeric);
-              status.textContent = 'Available balance: ' + formatCount(Math.max(0, sats)) + ' sats';
+              status.textContent = 'Available balance: ' + Math.max(0, sats).toLocaleString('en-US') + ' sats';
               status.classList.add('is-connected');
               return;
             }
