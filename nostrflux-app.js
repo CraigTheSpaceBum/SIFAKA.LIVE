@@ -17823,7 +17823,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
 
     state.liveSubId = state.pool.subscribe(
-      [{ kinds: [KIND_LIVE_EVENT, KIND_NIP71_VIDEO, KIND_NIP71_REEL], limit: 100, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 }],
+      [
+        // NIP-53 kind:30311 events are addressable/replaceable stream announcements.
+        // Do not apply a 24-hour created_at cutoff: a stream can remain live while
+        // its current replaceable event is older than a day. Keep 30311 separate
+        // from NIP-71 video events so their limits cannot starve Live Now discovery.
+        { kinds: [KIND_LIVE_EVENT], limit: 250 },
+        { kinds: [KIND_NIP71_VIDEO, KIND_NIP71_REEL], limit: 100, since: Math.floor(Date.now() / 1000) - 60 * 60 * 24 }
+      ],
       {
         event: (ev) => {
           const kind = Number(ev && ev.kind || 0);
