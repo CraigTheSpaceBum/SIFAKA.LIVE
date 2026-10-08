@@ -25672,6 +25672,8 @@ window.saveAppSettings = function () {
         }
         const item = document.createElement('div');
         item.className = 'stream-card reco-card';
+        item.dataset.hostPubkey = normalizePubkeyHex(s.hostPubkey || s.pubkey || '');
+        item.dataset.streamAddress = String(s.address || '');
         item.innerHTML = `
           <div class="ct">
             <div class="ct-inner">${thumbHtml}</div>
@@ -25687,6 +25689,7 @@ window.saveAppSettings = function () {
               </div>
             </div>
           </div>`;
+        hydrateMissingStreamThumbnail(item, s, p, i);
         const avEl = qs('.ci-av', item);
         if (avEl) {
           setAvatarEl(avEl, p.picture || '', pickAvatar(s.hostPubkey));
