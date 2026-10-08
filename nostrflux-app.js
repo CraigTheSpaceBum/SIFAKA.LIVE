@@ -13613,6 +13613,59 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function renderStreamThumbnail(container, stream, profile, idx = 0) {
+    if (!container) return;
+    const gradients = ['t1','t2','t3','t4','t5','t6','t7','t8'];
+    const fallbackClass = gradients[Math.abs(Number(idx || 0)) % gradients.length];
+    const streamThumb = sanitizeMediaUrl(stream && stream.image || '');
+    const profileThumb = sanitizeMediaUrl(profile && profile.picture || '');
+    const renderFallback = () => {
+      container.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'ct-thumb-wrap';
+      const fallback = document.createElement('div');
+      fallback.className = 'tc ' + fallbackClass;
+      wrap.appendChild(fallback);
+      container.appendChild(wrap);
+    };
+    const renderImage = (src, allowProfileFallback) => {
+      container.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'ct-thumb-wrap';
+      const img = document.createElement('img');
+      img.className = 'ct-thumb';
+      img.src = src;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.referrerPolicy = 'no-referrer';
+      img.onerror = () => {
+        if (allowProfileFallback && profileThumb && profileThumb !== src) renderImage(profileThumb, false);
+        else renderFallback();
+      };
+      wrap.appendChild(img);
+      container.appendChild(wrap);
+    };
+    if (streamThumb) renderImage(streamThumb, !!profileThumb);
+    else if (profileThumb) renderImage(profileThumb, false);
+    else renderFallback();
+  }
+
+  function hydrateMissingStreamThumbnail(card, stream, profile, idx = 0) {
+    if (!card || !stream) return;
+    const inner = qs('.ct-inner', card);
+    if (!inner) return;
+    renderStreamThumbnail(inner, stream, profile, idx);
+    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+    if (hostPubkey && !sanitizeMediaUrl(stream.image || '') && !sanitizeMediaUrl(profile && profile.picture || '')) {
+      fetchProfileIfNeeded(hostPubkey, { skipNip05: true }).then(() => {
+        if (!document.body.contains(card)) return;
+        const freshProfile = profileFor(hostPubkey);
+        if (sanitizeMediaUrl(freshProfile.picture || '')) renderStreamThumbnail(inner, stream, freshProfile, idx);
+      }).catch(() => {});
+    }
+  }
+
   function buildStreamCard(stream, idx) {
     // NIP-53: show actual streamer (hostPubkey), not the platform publisher
     const p = profileFor(stream.hostPubkey);
@@ -13647,6 +13700,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const viewerText = hasViewers ? `&#128065; ${viewerCount.toLocaleString()}` : (hasVideo ? '&#128065; 0' : '&#8212;');
     const hideLiveBadge = isDirectFileVideoUrl(stream && stream.streaming);
 
+    card.dataset.hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+    card.dataset.streamAddress = String(stream.address || '');
     card.innerHTML = `
       <div class="ct">
         <div class="ct-inner">${thumbHtml}</div>
@@ -13664,6 +13719,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         </div>
       </div>`;
 
+    hydrateMissingStreamThumbnail(card, stream, p, idx);
     const avEl = qs('.ci-av', card);
     if (avEl) {
       setAvatarEl(avEl, p.picture || '', pickAvatar(stream.hostPubkey));
@@ -15612,16 +15668,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     pill.className = 'nostr-mention-pill';
     const npub = formatNpubForDisplay(pubkey);
     if (npub && /^npub1/i.test(npub)) pill.href = '/' + npub.toLowerCase();
-    const known = state.profilesByPubkey.has(pubkey);
-    const p = profileFor(pubkey);
-    pill.textContent = '@' + (known ? (p.display_name || p.name || shortHex(pubkey)) : shortHex(pubkey));
+    const renderLabel = () => {
+      const profile = profileFor(pubkey);
+      const label = theaterChatDisplayName(profile, pubkey, '');
+      pill.textContent = '@' + (label && label !== 'anonymous' ? label : shortHex(pubkey));
+    };
+    renderLabel();
     pill.style.cursor = 'pointer';
     pill.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showProfileByPubkey(pubkey); };
-    if (!known) {
-      fetchProfileIfNeeded(pubkey).then(() => {
-        const fresh = profileFor(pubkey);
-        pill.textContent = '@' + (fresh.display_name || fresh.name || shortHex(pubkey));
-      }).catch(() => {});
+    const existing = state.profilesByPubkey.get(normalizePubkeyHex(pubkey));
+    if (!existing || !existing.__hydrated) {
+      fetchProfileIfNeeded(pubkey).then(renderLabel).catch(() => {});
     }
     return pill;
   }
