@@ -24036,9 +24036,19 @@ function renderProfileFeed(pubkey) {
           txEl.innerHTML = '<div class="wallet-empty-state">No recent wallet transactions were returned.</div>';
         } else {
           txEl.innerHTML = sortedTx.map((tx) => {
-            const type = String(tx.type || '').toLowerCase();
-            const incoming = type === 'incoming' || type === 'receive' || Number(tx.amount || 0) > 0;
-            const sats = Math.abs(Number(tx.amount || 0)) / 1000;
+            const type = String(tx.type || '').trim().toLowerCase();
+            const direction = String(tx.direction || tx.flow || tx.category || '').trim().toLowerCase();
+            const incomingTypes = new Set(['incoming', 'receive', 'received', 'inbound', 'credit', 'deposit']);
+            const outgoingTypes = new Set(['outgoing', 'send', 'sent', 'outbound', 'debit', 'payment', 'paid', 'withdrawal']);
+            const explicitIncoming = incomingTypes.has(type) || incomingTypes.has(direction);
+            const explicitOutgoing = outgoingTypes.has(type) || outgoingTypes.has(direction);
+            const amountNumber = Number(tx.amount || 0);
+            const incoming = explicitOutgoing
+              ? false
+              : explicitIncoming
+                ? true
+                : amountNumber > 0;
+            const sats = Math.abs(amountNumber) / 1000;
             const timestamp = Number(tx.settled_at || tx.created_at || 0);
             const date = timestamp ? new Date(timestamp * 1000).toLocaleString() : 'Date unavailable';
             const description = String(tx.description || tx.metadata?.comment || tx.payment_hash || 'Lightning transaction').trim();
@@ -26217,6 +26227,9 @@ window.saveAppSettings = function () {
       const modal = qs('#theaterDonationModal');
       if (!modal) return;
 
+      resetTheaterLightningSendState();
+      window.hideTheaterDonationResult();
+
       const initialPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
       const initialProfile = getTheaterDonationProfile(stream, initialPubkey);
       if (qs('#theaterDonationTitle')) qs('#theaterDonationTitle').textContent = 'Support ' + getTheaterDonationHostLabel(stream, initialProfile);
@@ -26242,6 +26255,17 @@ window.saveAppSettings = function () {
       }).catch(() => {});
     };
 
+    function resetTheaterLightningSendState() {
+      const btn = qs('#theaterDonationSendBtn');
+      const status = qs('#theaterDonationStatus');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Send donation';
+        btn.onclick = window.sendTheaterLightningDonation;
+      }
+      if (status) status.textContent = '';
+    }
+
     window.showTheaterDonationChooser = function () {
       const choose = qs('#theaterDonationChooseView');
       const lightning = qs('#theaterDonationLightningView');
@@ -26250,6 +26274,7 @@ window.saveAppSettings = function () {
       if (lightning) lightning.hidden = true;
       if (onchain) onchain.hidden = true;
       refreshTheaterDonationWalletStatus().catch(() => {});
+      resetTheaterLightningSendState();
       const amount = qs('#theaterDonationAmount');
       if (amount && (!amount.value || Number(amount.value) <= 0)) amount.value = '330';
     };
@@ -26276,6 +26301,7 @@ window.saveAppSettings = function () {
       if (status) status.textContent = '';
       const amount = qs('#theaterDonationAmount');
       if (amount) amount.value = '330';
+      resetTheaterLightningSendState();
       const messageInput = qs('#theaterDonationZapMessage');
       if (messageInput) messageInput.value = '';
     };
@@ -26317,6 +26343,7 @@ window.saveAppSettings = function () {
       }
 
       if (method === 'lightning') {
+        resetTheaterLightningSendState();
         if (!String(profile.lud16 || '').trim()) {
           const note = qs('#theaterDonationChooseNote');
           if (note) note.textContent = 'Lightning donation is unavailable for this profile.';
