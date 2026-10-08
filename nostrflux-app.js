@@ -2781,6 +2781,89 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return { paymentMethod, usedZap: false };
   }
 
+  const THEATER_ONCHAIN_MESSAGE_MAX_BYTES = 72;
+
+  function encodeOnchainDonationMessage(message) {
+    const clean = String(message || '').trim();
+    if (!clean) return { clean: '', bytes: new Uint8Array() };
+    const bytes = new TextEncoder().encode(clean);
+    if (bytes.length > THEATER_ONCHAIN_MESSAGE_MAX_BYTES) {
+      throw new Error('On-chain donation messages must be 72 UTF-8 bytes or fewer.');
+    }
+    return { clean, bytes };
+  }
+
+  function buildOnchainDonationMessageScript(message) {
+    const encoded = encodeOnchainDonationMessage(message);
+    if (!encoded.bytes.length) return null;
+    const script = new Uint8Array(encoded.bytes.length + 2);
+    script[0] = 0x6a;
+    script[1] = encoded.bytes.length;
+    script.set(encoded.bytes, 2);
+    return script;
+  }
+
+  let theaterDonationAudioContext = null;
+  function prepareTheaterDonationAudio() {
+    try {
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) return null;
+      if (!theaterDonationAudioContext) theaterDonationAudioContext = new AudioContextCtor();
+      if (theaterDonationAudioContext.state === 'suspended') theaterDonationAudioContext.resume().catch(() => {});
+      return theaterDonationAudioContext;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function playTheaterDonationSuccessSound() {
+    const ctx = prepareTheaterDonationAudio();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.13, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
+      gain.connect(ctx.destination);
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(1320, now + 0.18);
+      osc.connect(gain);
+      osc.start(now);
+      osc.stop(now + 0.36);
+      osc.addEventListener('ended', () => {
+        try { osc.disconnect(); } catch (_) {}
+        try { gain.disconnect(); } catch (_) {}
+      }, { once: true });
+    } catch (_) {}
+  }
+
+  let theaterDonationResultTimer = 0;
+  window.hideTheaterDonationResult = function () {
+    if (theaterDonationResultTimer) {
+      clearTimeout(theaterDonationResultTimer);
+      theaterDonationResultTimer = 0;
+    }
+    const popup = qs('#theaterDonationResultPopup');
+    if (popup) popup.hidden = true;
+  };
+
+  function showTheaterDonationResult(success, title, detail) {
+    const popup = qs('#theaterDonationResultPopup');
+    if (!popup) return;
+    const titleEl = qs('#theaterDonationResultTitle', popup);
+    const detailEl = qs('#theaterDonationResultDetail', popup);
+    popup.hidden = false;
+    popup.classList.toggle('success', !!success);
+    popup.classList.toggle('failure', !success);
+    if (titleEl) titleEl.textContent = title || (success ? 'Lightning donation successful' : 'Lightning donation failed');
+    if (detailEl) detailEl.textContent = detail || '';
+    if (theaterDonationResultTimer) clearTimeout(theaterDonationResultTimer);
+    theaterDonationResultTimer = window.setTimeout(() => window.hideTheaterDonationResult(), 4500);
+  }
+
   function sanitizeMediaUrl(v) {
     const raw = String(v || '').trim();
     if (!raw) return '';
@@ -23308,6 +23391,8 @@ function renderProfileFeed(pubkey) {
       const btn = qs('#walletOnchainReviewBtn');
       if (summary) summary.textContent = 'Enter a recipient and amount to prepare the transaction.';
       if (status) status.textContent = '';
+      const messageEl = qs('#walletOnchainSendMessage');
+      if (messageEl) messageEl.value = '';
       if (btn) { btn.disabled = false; btn.textContent = 'Review transaction'; btn.onclick = window.prepareWalletOnchainSend; }
     }
 
@@ -23332,6 +23417,10 @@ function renderProfileFeed(pubkey) {
           witnessUtxo: { script: spend.script, amount: BigInt(Math.floor(Number(utxo.value))) }
         });
       });
+      if (draft.message) {
+        const messageScript = buildOnchainDonationMessageScript(draft.message);
+        if (messageScript) tx.addOutput({ script: messageScript, amount: 0n });
+      }
       tx.addOutputAddress(draft.destination, BigInt(draft.amountSats));
       if (draft.changeSats >= 330) tx.addOutputAddress(ownAddress, BigInt(draft.changeSats));
       tx.sign(spendSecret);
@@ -23577,6 +23666,7 @@ function renderProfileFeed(pubkey) {
       const addressEl = qs('#walletOnchainSendAddress');
       const amountEl = qs('#walletOnchainSendAmount');
       const feeRateEl = qs('#walletOnchainSendFeeRate');
+      const messageEl = qs('#walletOnchainSendMessage');
       const summary = qs('#walletOnchainSendSummary');
       const status = qs('#walletOnchainSendStatus');
       const btn = qs('#walletOnchainReviewBtn');
@@ -23587,6 +23677,8 @@ function renderProfileFeed(pubkey) {
         : String(addressEl?.value || '').trim();
       const amountSats = Math.floor(Number(amountEl?.value || 0));
       let feeRate = Number(feeRateEl?.value || 0);
+      let messageInfo = { clean: '', bytes: new Uint8Array() };
+      let messageOutputCount = 0;
       if (!destination || !/^(bc1[ac-hj-np-z02-9]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,62})$/i.test(destination)) { if (status) status.textContent = 'Enter a valid Bitcoin mainnet address.'; return; }
       if (!Number.isFinite(amountSats) || amountSats < (isProfileDonation ? 330 : 1)) {
         if (status) status.textContent = isProfileDonation
@@ -23598,6 +23690,8 @@ function renderProfileFeed(pubkey) {
         requireLocalOnchainSigner();
         if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
         if (status) status.textContent = 'Loading UTXOs and fee rate…';
+        messageInfo = encodeOnchainDonationMessage(messageEl?.value || '');
+        messageOutputCount = messageInfo.bytes.length ? 1 : 0;
         if (!Number.isFinite(feeRate) || feeRate <= 0) { feeRate = await fetchWalletOnchainFeeRate(); if (feeRateEl) feeRateEl.value = String(feeRate); }
          const suggestedFeeEl = qs('#walletOnchainSendSuggestedFee');
          if (suggestedFeeEl) suggestedFeeEl.textContent = feeRate + ' sat/vB';
@@ -23616,17 +23710,17 @@ function renderProfileFeed(pubkey) {
         for (const utxo of utxos) {
           selected.push(utxo);
           totalInputSats += Math.floor(Number(utxo.value));
-          const feeWithChange = estimateWalletOnchainFee(selected.length, 2, feeRate);
-          const feeWithoutChange = estimateWalletOnchainFee(selected.length, 1, feeRate);
+          const feeWithChange = estimateWalletOnchainFee(selected.length, 2 + messageOutputCount, feeRate);
+          const feeWithoutChange = estimateWalletOnchainFee(selected.length, 1 + messageOutputCount, feeRate);
           if (totalInputSats >= amountSats + feeWithChange + 330 || totalInputSats >= amountSats + feeWithoutChange) break;
         }
-        if (totalInputSats < amountSats + estimateWalletOnchainFee(selected.length, 1, feeRate)) throw new Error('Insufficient balance for this payment and network fee.');
-        const feeWithChange = estimateWalletOnchainFee(selected.length, 2, feeRate);
+        if (totalInputSats < amountSats + estimateWalletOnchainFee(selected.length, 1 + messageOutputCount, feeRate)) throw new Error('Insufficient balance for this payment and network fee.');
+        const feeWithChange = estimateWalletOnchainFee(selected.length, 2 + messageOutputCount, feeRate);
         const candidateChange = totalInputSats - amountSats - feeWithChange;
         const changeSats = candidateChange >= 330 ? candidateChange : 0;
         const actualFee = totalInputSats - amountSats - changeSats;
-        state.walletOnchainSendDraft = { destination, amountSats, feeRate, utxos: selected, totalInputSats, changeSats };
-        if (summary) summary.textContent = 'Recipient: ' + destination + ' • Send: ' + formatCount(amountSats) + ' sats • Fee: ~' + formatCount(actualFee) + ' sats • Total: ' + formatCount(amountSats + actualFee) + ' sats';
+        state.walletOnchainSendDraft = { destination, amountSats, feeRate, message: messageInfo.clean, utxos: selected, totalInputSats, changeSats };
+        if (summary) summary.textContent = 'Recipient: ' + destination + ' • Send: ' + formatCount(amountSats) + ' sats • Fee: ~' + formatCount(actualFee) + ' sats • Total: ' + formatCount(amountSats + actualFee) + (messageInfo.clean ? ' • Message attached' : '');
         if (status) status.textContent = 'Review the transaction details, then confirm the broadcast.';
         if (btn) { btn.disabled = false; btn.textContent = 'Confirm & broadcast'; btn.onclick = window.confirmWalletOnchainSend; }
       } catch (err) {
@@ -23641,7 +23735,8 @@ function renderProfileFeed(pubkey) {
       const btn = qs('#walletOnchainReviewBtn');
       if (!draft) return;
       const fee = draft.totalInputSats - draft.amountSats - draft.changeSats;
-      if (!window.confirm('Send ' + formatCount(draft.amountSats) + ' sats to ' + draft.destination + '?\n\nEstimated network fee: ' + formatCount(fee) + ' sats.')) return;
+      const messageLine = draft.message ? '\n\nMessage: ' + draft.message : '';
+      if (!window.confirm('Send ' + formatCount(draft.amountSats) + ' sats to ' + draft.destination + '?' + messageLine + '\n\nEstimated network fee: ' + formatCount(fee) + ' sats.')) return;
       try {
         if (btn) { btn.disabled = true; btn.textContent = 'Signing…'; }
         if (status) status.textContent = 'Signing the Taproot transaction locally…';
@@ -26164,6 +26259,7 @@ window.saveAppSettings = function () {
       if (!modal) return;
       if (event && event.target !== modal) return;
       modal.classList.remove('open');
+      window.hideTheaterDonationResult();
       theaterDonationContext = {
         streamAddress: '',
         hostPubkey: '',
@@ -26289,6 +26385,7 @@ window.saveAppSettings = function () {
       const addressInput = qs('#theaterDonationOnchainAddress');
       const amountInput = qs('#theaterDonationOnchainAmount');
       const feeInput = qs('#theaterDonationOnchainFeeRate');
+      const messageInput = qs('#theaterDonationOnchainMessage');
       const summary = qs('#theaterDonationOnchainSummary');
       const status = qs('#theaterDonationOnchainStatus');
       const button = qs('#theaterDonationOnchainReviewBtn');
@@ -26296,6 +26393,8 @@ window.saveAppSettings = function () {
       const destination = String(addressInput?.value || '').trim();
       const amountSats = Math.floor(Number(amountInput?.value || 0));
       let feeRate = Number(feeInput?.value || 0);
+      let messageInfo = { clean: '', bytes: new Uint8Array() };
+      let messageOutputCount = 0;
 
       if (!/^(bc1[ac-hj-np-z02-9]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,62})$/i.test(destination)) {
         if (status) status.textContent = 'Enter a valid Bitcoin mainnet recipient address.';
@@ -26309,7 +26408,7 @@ window.saveAppSettings = function () {
       const canSpendWithSifaka = state.authMode === 'local' && !!state.localSecretKey;
       if (!canSpendWithSifaka) {
         const btcAmount = (amountSats / 100000000).toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
-        const bitcoinUri = 'bitcoin:' + destination + '?amount=' + btcAmount;
+        const bitcoinUri = 'bitcoin:' + destination + '?amount=' + btcAmount + (messageInfo.clean ? '&message=' + encodeURIComponent(messageInfo.clean) : '');
         theaterDonationContext.onchainAddress = destination;
         theaterDonationContext.onchainDraft = {
           external: true,
@@ -26337,6 +26436,8 @@ window.saveAppSettings = function () {
 
       try {
         requireLocalOnchainSigner();
+        messageInfo = encodeOnchainDonationMessage(messageInput?.value || '');
+        messageOutputCount = messageInfo.bytes.length ? 1 : 0;
         if (button) { button.disabled = true; button.textContent = 'Preparing review…'; }
         if (status) status.textContent = 'Loading your Taproot wallet UTXOs and fee rate…';
 
@@ -26360,12 +26461,12 @@ window.saveAppSettings = function () {
           if (totalInputSats >= amountSats + feeWithChange + 330 || totalInputSats >= amountSats + feeWithoutChange) break;
         }
 
-        const minimumFee = estimateWalletOnchainFee(selected.length, 1, feeRate);
+        const minimumFee = estimateWalletOnchainFee(selected.length, 1 + messageOutputCount, feeRate);
         if (totalInputSats < amountSats + minimumFee) {
           throw new Error('Insufficient balance for this donation and network fee.');
         }
 
-        const feeWithChange = estimateWalletOnchainFee(selected.length, 2, feeRate);
+        const feeWithChange = estimateWalletOnchainFee(selected.length, 2 + messageOutputCount, feeRate);
         const candidateChange = totalInputSats - amountSats - feeWithChange;
         const changeSats = candidateChange >= 330 ? candidateChange : 0;
         const actualFee = totalInputSats - amountSats - changeSats;
@@ -26378,7 +26479,8 @@ window.saveAppSettings = function () {
           utxos: selected,
           totalInputSats,
           changeSats,
-          senderAddress: ownAddress
+          senderAddress: ownAddress,
+          message: messageInfo.clean
         };
 
         if (addressInput) addressInput.disabled = true;
@@ -26388,6 +26490,7 @@ window.saveAppSettings = function () {
         if (summary) {
           summary.textContent =
             'Review: send ' + formatCount(amountSats) + ' sats to ' + destination +
+            (messageInfo.clean ? ' with message attached' : '') +
             ' from ' + shortBitcoinAddress(ownAddress) +
             '. Estimated fee: ' + formatCount(actualFee) + ' sats. Total debit: ' +
             formatCount(amountSats + actualFee) + ' sats.';
@@ -26428,9 +26531,11 @@ window.saveAppSettings = function () {
       }
 
       const fee = draft.totalInputSats - draft.amountSats - draft.changeSats;
+      const messageLine = draft.message ? '\\n\\nMessage: ' + draft.message : '';
       if (!window.confirm(
         'Send ' + formatCount(draft.amountSats) + ' sats to ' + draft.destination +
-        '?\\n\\nEstimated network fee: ' + formatCount(fee) + ' sats.'
+        '?' + messageLine +
+        '\\n\\nEstimated network fee: ' + formatCount(fee) + ' sats.'
       )) return;
 
       try {
@@ -26499,6 +26604,7 @@ window.saveAppSettings = function () {
         return;
       }
 
+      prepareTheaterDonationAudio();
       if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
       if (status) status.textContent = 'Creating the Lightning donation invoice…';
 
@@ -26521,12 +26627,18 @@ window.saveAppSettings = function () {
           : 'your browser Lightning wallet';
         const zapLabel = payment.usedZap ? ' NIP-57 zap.' : '';
         if (status) status.textContent = 'Donation sent successfully via ' + walletLabel + '.' + zapLabel;
-        if (btn) btn.textContent = 'Donation sent';
-        setTimeout(() => closeTheaterDonation(), 1500);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Send donation';
+        }
+        playTheaterDonationSuccessSound();
+        showTheaterDonationResult(true, 'Lightning donation successful', formatCount(amountSats) + ' sats was sent to ' + getTheaterDonationHostLabel(stream, profile) + '.');
       } catch (err) {
         console.warn('Lightning donation failed:', err && err.message ? err.message : err);
-        if (status) status.textContent = err?.message || 'Lightning donation failed. Connect a compatible wallet in Settings → Connect Wallet.';
+        const failureText = err?.message || 'Lightning donation failed. Connect a compatible wallet in Settings → Connect Wallet.';
+        if (status) status.textContent = failureText;
         if (btn) { btn.disabled = false; btn.textContent = 'Send donation'; }
+        showTheaterDonationResult(false, 'Lightning donation failed', failureText);
       }
     };
 
