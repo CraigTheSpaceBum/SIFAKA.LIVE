@@ -13638,7 +13638,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const isOffline = isStreamPlaybackOffline(stream && stream.address);
     const statusLabel = isOffline
-      ? 'OFFLINE'
+      ? 'UNAVAILABLE'
       : (stream.status === 'planned' ? 'SOON' : stream.status.toUpperCase());
     const statusBg = isOffline
       ? 'background:#5c6678;color:#e4e8ef;border:1px solid rgba(210,220,235,.25);'
@@ -14734,7 +14734,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           isStale,
           onAttach: (instance) => { state.hlsInstance = instance; },
           onFatal: () => {
-            showFailure('Playback failed after multiple retries. The stream may be offline, blocked by CORS, or unsupported in this browser.');
+            showFailure('Playback failed after multiple retries. The stream may be offline, blocked by CORS, or unsupported in this browser.', { markOffline: true });
           },
           hlsConfig: {
             xhrSetup: (xhr) => { xhr.withCredentials = false; },
@@ -14803,7 +14803,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           }, 900 * mediaErrorCount);
           return;
         }
-        showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.');
+        showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.', { markOffline: true });
       })().catch(() => {
         showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.');
       });
