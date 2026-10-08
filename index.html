@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.6">
+<link rel="stylesheet" href="./styles/app.css?v=0.6.1">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -916,6 +916,10 @@ body.nest-preview-open{overflow:hidden}
           <input id="theaterDonationOnchainFeeRate" type="number" min="1" step="0.1" inputmode="decimal" placeholder="1">
         </label>
       </div>
+      <label class="theater-donation-custom-message">On-chain message (optional)
+        <textarea id="theaterDonationOnchainMessage" maxlength="72" rows="3" placeholder="Optional message"></textarea>
+        <small>Stored in the Bitcoin transaction's data output. Maximum 72 UTF-8 bytes.</small>
+      </label>
 
       <div class="theater-donation-actions">
         <button class="btn btn-primary" type="button" id="theaterDonationOnchainReviewBtn" onclick="prepareTheaterOnchainDonation()">Review transaction</button>
@@ -974,7 +978,6 @@ body.nest-preview-open{overflow:hidden}
           </label>
           <label class="theater-donation-custom-message">Zap message (optional)
             <textarea id="theaterDonationZapMessage" maxlength="500" rows="3" placeholder="⚡ donation from Sifaka Live"></textarea>
-            <small>Used for the NIP-57 zap when the streamer supports zap requests. Ordinary Lightning fallback payments may not carry a message.</small>
           </label>
           <div class="theater-donation-actions">
             <button class="btn btn-primary" type="button" id="theaterDonationSendBtn" onclick="sendTheaterLightningDonation()">Send donation</button>
@@ -984,6 +987,15 @@ body.nest-preview-open{overflow:hidden}
         </section>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="theater-donation-result-popup" id="theaterDonationResultPopup" hidden>
+  <div class="theater-donation-result-card" role="status" aria-live="polite">
+    <button type="button" class="theater-donation-result-close" onclick="hideTheaterDonationResult()" aria-label="Close">×</button>
+    <div class="theater-donation-result-icon" aria-hidden="true">⚡</div>
+    <strong id="theaterDonationResultTitle">Lightning donation successful</strong>
+    <div id="theaterDonationResultDetail"></div>
   </div>
 </div>
 
@@ -1507,6 +1519,10 @@ body.nest-preview-open{overflow:hidden}
             </label>
             <label>Fee rate (sat/vB)
               <input id="walletOnchainSendFeeRate" type="number" min="1" step="0.1" inputmode="decimal" placeholder="1">
+            </label>
+            <label class="wallet-onchain-send-message">Message (optional)
+              <textarea id="walletOnchainSendMessage" maxlength="72" rows="3" placeholder="Optional message"></textarea>
+              <small>Stored in the Bitcoin transaction's data output. Maximum 72 UTF-8 bytes.</small>
             </label>
           </div>
           <div class="wallet-onchain-send-summary" id="walletOnchainSendSummary">Enter a recipient and amount to prepare the transaction.</div>
@@ -2303,7 +2319,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.6" defer></script>
+<script src="./nostrflux-app.js?v=0.6.1" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
