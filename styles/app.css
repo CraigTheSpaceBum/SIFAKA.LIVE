@@ -9428,3 +9428,32 @@ body.nest-room-page-open{
   white-space:normal;
   overflow-wrap:anywhere;
 }
+
+
+/* ======== 0.8.2 LIVE NOW PREVIEW HASHTAGS ======== */
+#heroHashtags.hero-hashtags{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:.35rem;
+  margin-top:.5rem;
+  min-width:0;
+}
+#heroHashtags.hero-hashtags[hidden]{display:none!important;}
+#heroHashtags .hero-hashtag{
+  display:inline-flex;
+  align-items:center;
+  max-width:100%;
+  padding:.2rem .48rem;
+  border:1px solid rgba(155,114,255,.28);
+  border-radius:999px;
+  background:rgba(139,92,246,.09);
+  color:var(--purple);
+  font:600 .62rem/1.35 'DM Sans',sans-serif;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+@media(max-width:760px){
+  #heroHashtags.hero-hashtags{gap:.28rem;margin-top:.4rem;}
+  #heroHashtags .hero-hashtag{font-size:.6rem;padding:.18rem .4rem;}
+}
