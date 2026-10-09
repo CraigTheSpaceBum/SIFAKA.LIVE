@@ -9478,3 +9478,75 @@ body.nest-room-page-open{
 .boost-ev .c-av{border-color:rgba(96,165,250,.6);background:rgba(59,130,246,.16)}
 .boost-ev .c-name{color:#bfdbfe}
 .chat-boost-badge{display:inline-flex;align-items:center;justify-content:center;min-height:1.1rem;padding:.08rem .35rem;border:1px solid rgba(96,165,250,.42);border-radius:999px;background:rgba(59,130,246,.14);color:#bfdbfe;font:700 .52rem/1.1 var(--font-mono,monospace);letter-spacing:.04em;white-space:nowrap}
+
+
+/* Sifaka 0.8.6: profile post media should preserve original image proportions. */
+.profile-feed-media {
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: .28rem;
+  align-items: start;
+}
+.profile-feed-media.one { grid-template-columns: minmax(0, 1fr); }
+.profile-feed-photo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  aspect-ratio: auto;
+  height: auto;
+  max-height: none;
+  overflow: hidden;
+  min-width: 0;
+}
+.profile-feed-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 480px;
+  object-fit: contain;
+}
+
+/* Replies stay tucked away until the post is hovered or explicitly expanded.
+   Max-height + opacity + translate create the requested drop/fade motion. */
+.profile-feed-item.has-profile-comments .profile-feed-comments {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-9px);
+  margin-top: 0;
+  padding-top: 0;
+  border-top-color: transparent;
+  pointer-events: none;
+  transition:
+    opacity .25s ease,
+    max-height .34s ease,
+    transform .3s ease,
+    margin-top .3s ease,
+    padding-top .3s ease,
+    border-color .3s ease;
+}
+.profile-feed-item.has-profile-comments.comments-hover .profile-feed-comments,
+.profile-feed-item.has-profile-comments.comments-pinned .profile-feed-comments {
+  max-height: 2400px;
+  opacity: 1;
+  overflow: hidden;
+  transform: translateY(0);
+  margin-top: .56rem;
+  padding-top: .5rem;
+  border-top-color: var(--border);
+  pointer-events: auto;
+}
+button.pfs-comments {
+  cursor: pointer;
+  color: var(--text2);
+  font: inherit;
+}
+button.pfs-comments:hover,
+button.pfs-comments[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-feed-item.has-profile-comments .profile-feed-comments {
+    transition: none;
+  }
+}

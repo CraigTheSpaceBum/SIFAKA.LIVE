@@ -601,6 +601,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     nip05VerificationByPubkey: new Map(),   // pubkey -> { nip05, verified, checkedAt }
     nip05VerificationPendingByPubkey: new Set(),
     nip05LookupCacheByNip05: new Map(),     // nip05 -> { pubkey, checkedAt }
+    nip05LookupInflightByNip05: new Map(),  // nip05 -> Promise<pubkey>
     oneShotQueryCacheByKey: new Map(),      // key -> { events, savedAt }
     oneShotQueryInflightByKey: new Map(),   // key -> Promise<events[]>
     liveStreamCachePersistTimer: null,
@@ -5692,39 +5693,81 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (age < ttl) return await normalizeNip05ResolvedPubkeyAsync(cached.pubkey || '');
     }
 
-    const [localPart, domain] = normalized.split('@');
-    const urls = [
-      `https://${domain}/.well-known/nostr.json?name=${encodeURIComponent(localPart)}`,
-      `https://${domain}/.well-known/nostr.json`
-    ];
+    const inFlight = state.nip05LookupInflightByNip05.get(normalized);
+    if (inFlight) return inFlight;
 
-    let hadResponse = false;
-    let hadNetworkError = false;
-    let resolved = '';
-    for (let i = 0; i < urls.length && !resolved; i += 1) {
-      try {
-        const resp = await fetch(urls[i], { cache: 'no-store' });
-        hadResponse = true;
-        if (!resp.ok) continue;
+    const request = (async () => {
+      const [localPart, domain] = normalized.split('@');
+      const urls = [
+        `https://${domain}/.well-known/nostr.json?name=${encodeURIComponent(localPart)}`,
+        `https://${domain}/.well-known/nostr.json`
+      ];
+      let hadResponse = false;
+      let hadNetworkError = false;
+      let resolved = '';
+      const controllers = [];
+      const timers = [];
 
-        let data = null;
+      const fetchCandidate = async (url, controller) => {
+        let response;
         try {
-          data = await resp.json();
-        } catch (_) {
-          continue;
+          response = await fetch(url, {
+            cache: 'no-store',
+            ...(controller ? { signal: controller.signal } : {})
+          });
+        } catch (err) {
+          if (!err || err.name !== 'AbortError') hadNetworkError = true;
+          throw err;
         }
-
+        hadResponse = true;
+        if (!response.ok) throw new Error('NIP-05 endpoint returned HTTP ' + response.status);
+        const data = await response.json();
         const names = data && data.names && typeof data.names === 'object' ? data.names : {};
         const candidate = pickNip05NameMatch(names, localPart);
-        resolved = await normalizeNip05ResolvedPubkeyAsync(candidate || '');
-      } catch (_) {
-        hadNetworkError = true;
+        const pubkey = await normalizeNip05ResolvedPubkeyAsync(candidate || '');
+        if (!pubkey) throw new Error('NIP-05 name was not present in this response.');
+        return pubkey;
+      };
+
+      try {
+        const pending = urls.map((url) => {
+          const controller = typeof AbortController === 'function' ? new AbortController() : null;
+          controllers.push(controller);
+          if (controller) timers.push(setTimeout(() => {
+            try { controller.abort(); } catch (_) {}
+          }, 1800));
+          return fetchCandidate(url, controller);
+        });
+        try {
+          resolved = await Promise.any(pending);
+        } catch (_) {
+          resolved = '';
+        }
+      } finally {
+        timers.forEach((timer) => clearTimeout(timer));
+        // The first valid public NIP-05 mapping is enough; stop any slower duplicate fetch.
+        if (resolved) controllers.forEach((controller) => {
+          try { if (controller) controller.abort(); } catch (_) {}
+        });
+      }
+
+      const resultType = resolved ? 'hit' : ((hadNetworkError && !hadResponse) ? 'error' : 'miss');
+      state.nip05LookupCacheByNip05.set(normalized, {
+        pubkey: resolved,
+        checkedAt: Date.now(),
+        resultType
+      });
+      return resolved;
+    })();
+
+    state.nip05LookupInflightByNip05.set(normalized, request);
+    try {
+      return await request;
+    } finally {
+      if (state.nip05LookupInflightByNip05.get(normalized) === request) {
+        state.nip05LookupInflightByNip05.delete(normalized);
       }
     }
-
-    const resultType = resolved ? 'hit' : ((hadNetworkError && !hadResponse) ? 'error' : 'miss');
-    state.nip05LookupCacheByNip05.set(normalized, { pubkey: resolved, checkedAt: now, resultType });
-    return resolved;
   }
 
   async function ensureNip05Verification(pubkey, nip05Input, opts = {}) {
@@ -18269,36 +18312,47 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const inflight = state.profileFetchInflightByPubkey.get(normalizedPubkey);
     if (inflight) return inflight;
 
-    const request = fetchEventsCached(
-      [{ kinds: [KIND_PROFILE], authors: [normalizedPubkey], limit: 2 }],
-      {
-        scope: 'profile-by-pubkey',
-        cacheKey: `profile-by-pubkey:${normalizedPubkey}`,
-        force: forceRefresh,
-        ttlMs: forceRefresh ? 0 : 10000,
-        warmMs: 45000,
+    const urls = Array.isArray(state.pool && state.pool.urls) ? [...state.pool.urls] : [];
+    const latency = state.relayPingMsByUrl instanceof Map ? state.relayPingMsByUrl : new Map();
+    const preferred = PROFILE_DISCOVERY_RELAYS.filter((url) => urls.includes(url));
+    const ranked = urls
+      .filter((url) => !preferred.includes(url))
+      .map((url, index) => ({ url, index, ms: Number(latency.get(url) || Number.POSITIVE_INFINITY) }))
+      .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
+      .slice(0, 2)
+      .map((item) => item.url);
+    const primaryRelayUrls = [...new Set([...preferred, ...ranked])];
+    const fallbackRelayUrls = urls.filter((url) => !primaryRelayUrls.includes(url));
+    const profileFilter = [{ kinds: [KIND_PROFILE], authors: [normalizedPubkey], limit: 2 }];
+    const latestMatchingProfile = (events) => (events || [])
+      .filter((ev) => ev && ev.kind === KIND_PROFILE && normalizePubkeyHex(ev.pubkey || '') === normalizedPubkey)
+      .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))[0] || null;
+
+    const request = fetchEventsCached(profileFilter, {
+      scope: 'profile-by-pubkey',
+      cacheKey: `profile-by-pubkey:${normalizedPubkey}`,
+      force: forceRefresh,
+      ttlMs: forceRefresh ? 0 : 10000,
+      warmMs: 45000,
+      allowStale: false,
+      timeoutMs: Math.max(1200, Number(opts.timeoutMs || 1400)),
+      maxEvents: 8,
+      relayUrls: primaryRelayUrls
+    }).then((events) => {
+      const latest = latestMatchingProfile(events);
+      if (latest || !fallbackRelayUrls.length) return latest;
+      return fetchEventsCached(profileFilter, {
+        scope: 'profile-by-pubkey-fallback',
+        cacheKey: `profile-by-pubkey-fallback:${normalizedPubkey}`,
+        force: true,
+        ttlMs: 0,
+        warmMs: 30000,
         allowStale: false,
-        timeoutMs: Math.max(1800, Number(opts.timeoutMs || 2800)),
+        timeoutMs: 1800,
         maxEvents: 8,
-        relayUrls: (() => {
-          const urls = Array.isArray(state.pool && state.pool.urls) ? [...state.pool.urls] : [];
-          const latency = state.relayPingMsByUrl instanceof Map ? state.relayPingMsByUrl : new Map();
-          const preferred = PROFILE_DISCOVERY_RELAYS.filter((url) => urls.includes(url));
-          const ranked = urls
-            .filter((url) => !preferred.includes(url))
-            .map((url, index) => ({ url, index, ms: Number(latency.get(url) || Number.POSITIVE_INFINITY) }))
-            .sort((a, b) => (a.ms - b.ms) || (a.index - b.index))
-            .slice(0, 2)
-            .map((item) => item.url);
-          // Keep the targeted lookup small so profiles render quickly while still
-          // retaining a couple of latency-ranked fallbacks for less common profiles.
-          return [...new Set([...preferred, ...ranked])];
-        })()
-      }
-    ).then((events) => {
-      const latest = (events || [])
-        .filter((ev) => ev && ev.kind === KIND_PROFILE && normalizePubkeyHex(ev.pubkey || '') === normalizedPubkey)
-        .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))[0];
+        relayUrls: fallbackRelayUrls
+      }).then(latestMatchingProfile);
+    }).then((latest) => {
       if (!latest) return;
 
       const parsed = parseProfile(latest);
@@ -19914,7 +19968,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         <div class="profile-feed-text"></div>
         <div class="profile-feed-media-wrap"></div>
         <div class="profile-feed-stats">
-          <span class="pfs pfs-comments"><strong>0</strong> Comments</span>
+          <button type="button" class="pfs pfs-comments" aria-expanded="false"><strong>0</strong> Comments</button>
           <button class="pfs pfs-btn profile-post-like-btn" type="button"><strong>0</strong> Likes</button>
           <button class="pfs pfs-btn pfs-zaps profile-post-zap-btn" type="button"><strong>0</strong> Zaps</button>
           <button class="pfs pfs-btn profile-post-boost-btn" type="button"><strong>0</strong> Boosts</button>
@@ -20084,6 +20138,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const zapsCount = qs('.pfs-zaps strong', item);
       const boostsCount = qs('.profile-post-boost-btn strong', item);
       if (commentsCount) commentsCount.textContent = `${comments.length}`;
+      item.classList.toggle('has-profile-comments', comments.length > 0);
       if (likesCount) likesCount.textContent = `${stats.likes}`;
       if (zapsCount) zapsCount.textContent = `${stats.zaps}`;
       if (boostsCount) boostsCount.textContent = `${stats.boosts}`;
@@ -20367,6 +20422,49 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
       };
       renderComments();
+
+      const commentsToggle = qs('.pfs-comments', item);
+      const syncCommentsDisclosure = () => {
+        if (!commentsToggle) return;
+        commentsToggle.setAttribute(
+          'aria-expanded',
+          item.classList.contains('comments-pinned') || item.classList.contains('comments-hover') ? 'true' : 'false'
+        );
+      };
+      const toggleCommentsDisclosure = () => {
+        const isOpen = item.classList.contains('comments-pinned') || item.classList.contains('comments-hover');
+        if (isOpen) {
+          item.classList.remove('comments-pinned', 'comments-hover');
+          item.classList.add('comments-collapsed-manual');
+        } else {
+          item.classList.remove('comments-collapsed-manual');
+          item.classList.add('comments-pinned');
+        }
+        syncCommentsDisclosure();
+      };
+      item.addEventListener('mouseenter', () => {
+        if (comments.length && !item.classList.contains('comments-collapsed-manual')) {
+          item.classList.add('comments-hover');
+        }
+        syncCommentsDisclosure();
+      });
+      item.addEventListener('mouseleave', () => {
+        item.classList.remove('comments-hover', 'comments-collapsed-manual');
+        syncCommentsDisclosure();
+      });
+      if (commentsToggle) commentsToggle.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleCommentsDisclosure();
+      });
+      item.addEventListener('click', (event) => {
+        if (!comments.length) return;
+        const target = event.target;
+        if (target && target.closest && target.closest(
+          'button,a,input,textarea,select,[contenteditable="true"],.profile-feed-author,.pf-boost-banner,.profile-feed-comments'
+        )) return;
+        toggleCommentsDisclosure();
+      });
 
       commentInput = qs('.profile-comment-input', item);
       commentBtn = qs('.profile-comment-btn', item);
@@ -21087,6 +21185,7 @@ function renderProfileFeed(pubkey) {
   if (!state.badgesByPubkey) state.badgesByPubkey = new Map();
   if (!state.badgeSubId) state.badgeSubId = null;
   if (!state.badgeDefMap) state.badgeDefMap = new Map(); // Map<"pubkey:d", definition event>
+  if (!state.badgeDefFetchPendingByKey) state.badgeDefFetchPendingByKey = new Map();
 
   function parseBadgeAddressRef(value) {
     const raw = String(value || '').trim();
@@ -21103,8 +21202,8 @@ function renderProfileFeed(pubkey) {
   function badgeInfoFromEvents(award, definition) {
     const awardTags = Array.isArray(award && award.tags) ? award.tags : [];
     const imageCandidates = [
-      getBadgeDefTag(definition, 'image'),
-      getBadgeDefTag(definition, 'thumb'),
+      ...getBadgeDefTags(definition, 'image'),
+      ...getBadgeDefTags(definition, 'thumb'),
       ...awardTags.filter((t) => Array.isArray(t) && (t[0] === 'image' || t[0] === 'thumb')).map((t) => t[1] || '')
     ].map((value) => sanitizeMediaUrl(value)).filter((value) => isLikelyUrl(value));
     const awardATag = awardTags.find((t) => Array.isArray(t) && t[0] === 'a' && t[1]);
@@ -21153,31 +21252,68 @@ function renderProfileFeed(pubkey) {
 
   function fetchBadgeDefinition(creatorPubkey, d) {
     const defKey = `${creatorPubkey}:${d}`;
-    if (state.badgeDefMap.has(defKey)) return;
-    const subId = state.pool.subscribe(
+    if (!state.pool || state.badgeDefMap.has(defKey) || state.badgeDefFetchPendingByKey.has(defKey)) return;
+
+    let subId = null;
+    let finished = false;
+    const eoseRelays = new Set();
+    let timeoutId = null;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (subId && state.pool) {
+        try { state.pool.unsubscribe(subId); } catch (_) {}
+      }
+      state.badgeDefFetchPendingByKey.delete(defKey);
+    };
+
+    // Relays signal EOSE separately. Do not close the lookup when the first relay
+    // finishes; the issuer's badge definition may only exist on another relay.
+    timeoutId = setTimeout(finish, 4800);
+    subId = state.pool.subscribe(
       [{ kinds: [30009], authors: [creatorPubkey], '#d': [d], limit: 1 }],
       {
         event: (ev) => {
-          if (ev.kind !== 30009) return;
-          state.badgeDefMap.set(defKey, ev);
-          // Update any awaiting badge entries
+          if (!ev || Number(ev.kind) !== 30009) return;
+          if (normalizePubkeyHex(ev.pubkey || '') !== normalizePubkeyHex(creatorPubkey)) return;
+          if (String(getBadgeDefTag(ev, 'd') || '') !== String(d || '')) return;
+          const current = state.badgeDefMap.get(defKey);
+          if (!current || Number(current.created_at || 0) <= Number(ev.created_at || 0)) {
+            state.badgeDefMap.set(defKey, ev);
+          }
+          // Update any awaiting badge entries.
           state.badgesByPubkey.forEach((awardMap, pubkey) => {
             if (awardMap.has(defKey)) {
-              awardMap.get(defKey).definition = ev;
+              awardMap.get(defKey).definition = state.badgeDefMap.get(defKey);
               if (state.selectedProfilePubkey === pubkey) renderProfileBadges(pubkey);
             }
           });
-          state.pool.unsubscribe(subId);
+          finish();
         },
-        eose: () => { state.pool.unsubscribe(subId); }
+        eose: (relayUrl) => {
+          if (relayUrl) eoseRelays.add(String(relayUrl));
+          const sub = subId && state.pool && state.pool.subscriptions.get(subId);
+          const expected = sub && Array.isArray(sub.relayUrls) ? sub.relayUrls.length : 0;
+          if (expected > 0 && eoseRelays.size >= expected) finish();
+        }
       }
     );
+    state.badgeDefFetchPendingByKey.set(defKey, { subId, startedAt: Date.now() });
   }
 
   function getBadgeDefTag(ev, tagName) {
     if (!ev || !Array.isArray(ev.tags)) return '';
     const t = ev.tags.find((t) => t[0] === tagName);
     return t ? (t[1] || '') : '';
+  }
+
+  function getBadgeDefTags(ev, tagName) {
+    if (!ev || !Array.isArray(ev.tags)) return [];
+    return ev.tags
+      .filter((tag) => Array.isArray(tag) && tag[0] === tagName && tag[1])
+      .map((tag) => String(tag[1] || '').trim())
+      .filter(Boolean);
   }
 
   function renderProfileBadges(pubkey) {
@@ -21213,7 +21349,7 @@ function renderProfileFeed(pubkey) {
         img.loading = 'eager';
         img.decoding = 'async';
         img.fetchPriority = 'high';
-        img.referrerPolicy = 'no-referrer';
+        img.referrerPolicy = 'strict-origin-when-cross-origin';
         img.onerror = () => {
           candidateIndex += 1;
           if (candidateIndex < candidates.length) img.src = candidates[candidateIndex];
@@ -21293,7 +21429,7 @@ function renderProfileFeed(pubkey) {
     state.profileStatsSubId = state.pool.subscribe(
       [
         { kinds: [3], authors: [target], limit: 10 },
-        { kinds: [3], '#p': [target], limit: 400 }
+        { kinds: [3], '#p': [target], limit: 1000 }
       ],
       {
         event: (ev) => {
@@ -21565,7 +21701,7 @@ function renderProfileFeed(pubkey) {
     const p = profileFor(pubkey);
 
     const profName = qs('#profName');
-    if (profName) profName.textContent = p.name;
+    if (profName) profName.textContent = p.display_name || p.name || shortNpubForDisplay(pubkey);
 
     setAvatarEl(qs('#profAv'), p.picture || '', pickAvatar(pubkey));
     const profileAvatarImg = qs('#profAv img');
@@ -21833,7 +21969,7 @@ function renderProfileFeed(pubkey) {
     const verifiedNip05 = getVerifiedNip05ForPubkey(normalizedPubkey, p.nip05 || '');
     if (!verifiedNip05 && normalizeNip05Value(p.nip05 || '')) ensureNip05Verification(normalizedPubkey, p.nip05 || '').catch(() => {});
     window.showProfile(
-      p.name || p.display_name || shortNpubForDisplay(normalizedPubkey),
+      p.display_name || p.name || shortNpubForDisplay(normalizedPubkey),
       pickAvatar(normalizedPubkey),
       formatNpubForDisplay(normalizedPubkey),
       verifiedNip05,
@@ -27798,15 +27934,28 @@ window.saveAppSettings = function () {
 
       if (imgWrap) {
         imgWrap.innerHTML = '';
-        const imageUrl = sanitizeMediaUrl(image || info.image || '');
-        if (imageUrl && isLikelyUrl(imageUrl)) {
+        const candidates = [...new Set([
+          image,
+          ...(Array.isArray(info.imageCandidates) ? info.imageCandidates : []),
+          info.image
+        ].map((value) => sanitizeMediaUrl(value)).filter((value) => isLikelyUrl(value)))];
+        if (candidates.length) {
+          let candidateIndex = 0;
           const img = document.createElement('img');
-          img.src = imageUrl;
           img.alt = finalName || 'Award';
-          img.onerror = () => { imgWrap.textContent = ''; };
+          img.referrerPolicy = 'strict-origin-when-cross-origin';
+          img.onerror = () => {
+            candidateIndex += 1;
+            if (candidateIndex < candidates.length) {
+              img.src = candidates[candidateIndex];
+            } else {
+              imgWrap.textContent = '🏅';
+            }
+          };
+          img.src = candidates[0];
           imgWrap.appendChild(img);
         } else {
-          imgWrap.textContent = '';
+          imgWrap.textContent = '🏅';
         }
       }
 
@@ -27851,12 +28000,27 @@ window.saveAppSettings = function () {
         const chip = document.createElement('div');
         chip.className = 'profile-badge-chip';
         const info = badgeInfoFromEvents(award, definition);
-        if (info.image && isLikelyUrl(info.image)) {
+        const candidates = Array.isArray(info.imageCandidates) ? info.imageCandidates : (info.image ? [info.image] : []);
+        const usableCandidates = [...new Set(candidates.map((value) => sanitizeMediaUrl(value)).filter((value) => isLikelyUrl(value)))];
+        if (usableCandidates.length) {
+          let candidateIndex = 0;
           const img = document.createElement('img');
-          img.src = info.image; img.alt = info.name; img.loading = 'lazy';
-          img.onerror = () => { chip.innerHTML = ''; };
+          img.alt = info.name;
+          img.loading = 'lazy';
+          img.referrerPolicy = 'strict-origin-when-cross-origin';
+          img.onerror = () => {
+            candidateIndex += 1;
+            if (candidateIndex < usableCandidates.length) img.src = usableCandidates[candidateIndex];
+            else {
+              chip.innerHTML = '';
+              chip.textContent = '🏅';
+            }
+          };
+          img.src = usableCandidates[0];
           chip.appendChild(img);
-        } else { chip.textContent = ''; }
+        } else {
+          chip.textContent = '🏅';
+        }
         chip.title = info.name;
         chip.addEventListener('click', () => { openBadgePopup({ ...info, definition, award }); });
         grid.appendChild(chip);
