@@ -153,6 +153,7 @@
   const KIND_PROFILE = 0;
   const KIND_DELETION = 5;
   const KIND_CONTACTS = 3;
+  const KIND_REPOST = 6; // NIP-18 repost / stream boost
   const KIND_REACTION = 7;
   const KIND_LIVE_EVENT = 30311;
   const KIND_LIVE_CHAT = 1311;
@@ -15193,17 +15194,50 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
   // Inline mobile theater chat control needs to be available from the page scope.
   window.toggleMobileTheaterChat = toggleMobileTheaterChat;
+  function renderTheaterHashtags(stream) {
+    const container = qs('#theaterHashtags');
+    if (!container) return;
+    container.textContent = '';
+    const tags = Array.isArray(stream && stream.hashtags) ? stream.hashtags : [];
+    tags.slice(0, 12).forEach((raw) => {
+      const tag = String(raw || '').trim().replace(/^#+/, '').replace(/[\x00-\x1f]/g, '').replace(/\s+/g, '').slice(0, 48);
+      if (!tag) return;
+      const chip = document.createElement('span');
+      chip.className = 'sib-hashtag';
+      chip.textContent = '#' + tag;
+      container.appendChild(chip);
+    });
+    container.hidden = container.childElementCount === 0;
+  }
+
   function renderVideo(stream) {
-    const hostPubkey = normalizePubkeyHex(stream.hostPubkey) || normalizePubkeyHex(stream.pubkey) || stream.hostPubkey || stream.pubkey;
+    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || '') || normalizePubkeyHex(stream.pubkey || '') || '';
+    const platformPubkey = normalizePubkeyHex(stream.platformPubkey || '') || '';
     // Start each theater visit collapsed on phones; desktop CSS is unaffected.
     toggleMobileTheaterChat(false);
     const p = profileFor(hostPubkey);
+    if (hostPubkey) {
+      fetchProfileIfNeeded(hostPubkey).then(() => {
+        if (state.selectedStreamAddress !== stream.address || !isVideoPageVisible()) return;
+        if (!state.profilesByPubkey.has(hostPubkey)) {
+          const nameEl = qs('.sib-name');
+          if (nameEl && nameEl.classList.contains('sib-profile-loading')) {
+            nameEl.textContent = shortNpubForDisplay(hostPubkey) || 'Unknown streamer';
+            nameEl.classList.remove('sib-profile-loading');
+          }
+        }
+      }).catch(() => {});
+    }
+    if (platformPubkey && platformPubkey !== hostPubkey) {
+      fetchProfileIfNeeded(platformPubkey).catch(() => {});
+    }
 
     // Title & summary
     const title = qs('.sib-title');
     if (title) title.textContent = stream.title;
     const summary = qs('.sib-summary');
     if (summary) summary.textContent = stream.summary || 'Live stream.';
+    renderTheaterHashtags(stream);
 
     const claimedNip05 = normalizeNip05Value(p.nip05 || '');
     const verifiedNip05 = getVerifiedNip05ForPubkey(hostPubkey, p.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
@@ -15244,6 +15278,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           name.appendChild(document.createTextNode(' '));
           name.appendChild(badge);
         }
+      } else {
+        name.innerHTML = '';
+        name.textContent = hostPubkey ? 'Loading profile…' : 'Unknown streamer';
+        name.dataset.profileDisplay = '';
+        name.classList.add('sib-profile-loading');
       }
       name.onclick = () => showProfileByPubkey(hostPubkey);
       name.title = 'Open profile';
@@ -15269,8 +15308,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       else if (ident && ident.parentNode) ident.parentNode.appendChild(sibHostedBy);
     }
     sibHostedBy.innerHTML = '';
-    if (stream.platformPubkey) {
-      const plat = profileFor(stream.platformPubkey);
+    if (platformPubkey) {
+      const plat = profileFor(platformPubkey);
       const host = profileFor(hostPubkey);
       const platName = plat.display_name || plat.name || '';
       const hostName = host.display_name || host.name || '';
@@ -17821,6 +17860,64 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     pruneTheaterChatRows(sc, maxRows);
     if (autoScroll && wasNearBottom) sc.scrollTop = sc.scrollHeight;
   }
+  function renderChatStreamBoost(ev, opts = {}) {
+    const sc = qs('#chatScroll');
+    if (!sc || !ev || !ev.id) return;
+    const eventId = String(ev.id || '').trim();
+    if (!eventId || sc.querySelector(`.cmsg.boost-ev[data-msg-id="${CSS.escape(eventId)}"]`)) return;
+
+    const maxRows = Math.max(1, Number(opts.maxRows || theaterChatVisibleRowLimit()) || theaterChatVisibleRowLimit());
+    const autoScroll = opts.autoScroll !== false;
+    const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
+    const senderPubkey = normalizePubkeyHex(ev.pubkey || '');
+    const profile = senderPubkey ? profileFor(senderPubkey) : null;
+    const displayName = theaterChatDisplayName(profile, senderPubkey);
+
+    const row = document.createElement('div');
+    row.className = 'cmsg boost-ev';
+    row.dataset.pubkey = senderPubkey;
+    row.innerHTML = '<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="chat-boost-badge">BOOST</span><span class="c-time"></span></div><div class="c-text"></div></div>';
+
+    const avEl = qs('.c-av', row);
+    setLiveChatAvatar(avEl, profile && profile.picture ? profile.picture : '');
+    const chatNip05 = senderPubkey ? getVerifiedNip05ForPubkey(senderPubkey, profile && profile.nip05 ? profile.nip05 : '') : '';
+    avEl.classList.toggle('nip05-square', !!chatNip05);
+    if (senderPubkey) avEl.onclick = () => showProfileByPubkey(senderPubkey);
+
+    const nameEl = qs('.c-name', row);
+    nameEl.textContent = displayName;
+    if (senderPubkey) nameEl.onclick = () => showProfileByPubkey(senderPubkey);
+
+    const timeEl = qs('.c-time', row);
+    if (timeEl) {
+      timeEl.textContent = formatChatTimestamp(ev.created_at);
+      try { timeEl.title = new Date(Number(ev.created_at || 0) * 1000).toLocaleString(); } catch (_) {}
+    }
+
+    const textEl = qs('.c-text', row);
+    textEl.textContent = 'Boosted this live stream';
+    insertChatRowChronological(sc, row, eventId, ev.created_at);
+
+    if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) {
+      fetchProfileIfNeeded(senderPubkey, { skipNip05: true }).then(() => {
+        const updated = profileFor(senderPubkey);
+        const targetRow = sc.querySelector(`.cmsg.boost-ev[data-msg-id="${CSS.escape(eventId)}"]`);
+        if (!targetRow || !updated) return;
+        const targetAv = qs('.c-av', targetRow);
+        if (targetAv) {
+          setLiveChatAvatar(targetAv, updated.picture || '');
+          const verified = !!getVerifiedNip05ForPubkey(senderPubkey, updated.nip05 || '');
+          targetAv.classList.toggle('nip05-square', verified);
+        }
+        const targetName = qs('.c-name', targetRow);
+        if (targetName) targetName.textContent = theaterChatDisplayName(updated, senderPubkey, displayName);
+      }).catch(() => {});
+    }
+
+    pruneTheaterChatRows(sc, maxRows);
+    if (autoScroll && wasNearBottom) sc.scrollTop = sc.scrollHeight;
+  }
+
   function setLoggedInUi(on) {
     const out = qs('#navLoggedOut');
     const inn = qs('#navLoggedIn');
@@ -18074,7 +18171,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!isVideoPageVisible() || !state.selectedStreamAddress) return;
     const stream = state.streamsByAddress.get(state.selectedStreamAddress);
     if (!stream) return;
-    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || String(stream.hostPubkey || stream.pubkey || '').trim().toLowerCase();
+    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || '') || normalizePubkeyHex(stream.pubkey || '') || '';
     const platformPubkey = normalizePubkeyHex(stream.platformPubkey || '') || '';
     const normalized = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
     if (normalized !== hostPubkey && normalized !== platformPubkey) return;
@@ -18549,18 +18646,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const reactionHistoryLimit = isArchive ? 2000 : 1200;
     const reactionLiveSince = Math.max(0, nowSec - THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC);
     const reactionHistoryFilters = [
-      { kinds: [KIND_REACTION, KIND_DELETION], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince },
+      { kinds: [KIND_REACTION, KIND_DELETION, KIND_REPOST], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince },
       { kinds: [KIND_ZAP_RECEIPT], '#a': [stream.address], limit: reactionHistoryLimit, since: reactionSince }
     ];
     // Stream reactions can target the NIP-53 address (#a) or event id (#e).
     // Listen for both so theater likes/reactions populate on a fresh open.
     const reactionLiveFilters = [
-      { kinds: [KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#a': [stream.address], since: reactionLiveSince }
+      { kinds: [KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT, KIND_REPOST], '#a': [stream.address], since: reactionLiveSince }
     ];
     if (stream.id) {
-      reactionHistoryFilters.push({ kinds: [KIND_REACTION, KIND_DELETION], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
+      reactionHistoryFilters.push({ kinds: [KIND_REACTION, KIND_DELETION, KIND_REPOST], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
       reactionHistoryFilters.push({ kinds: [KIND_ZAP_RECEIPT], '#e': [stream.id], limit: reactionHistoryLimit, since: reactionSince });
-      reactionLiveFilters.push({ kinds: [KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT], '#e': [stream.id], since: reactionLiveSince });
+      reactionLiveFilters.push({ kinds: [KIND_REACTION, KIND_DELETION, KIND_ZAP_RECEIPT, KIND_REPOST], '#e': [stream.id], since: reactionLiveSince });
     }
     // Do not query creator-wide #p zap traffic here. It can dwarf stream-specific
     // traffic and compete with the video/chat rendering path. Stream zaps are
@@ -18644,6 +18741,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (seenReactionIds.has(ev.id)) return outcome;
       seenReactionIds.add(ev.id);
       capTheaterEventSet(seenReactionIds, THEATER_REACTION_SEEN_ID_CAP);
+
+      if (Number(ev.kind || 0) === KIND_REPOST) {
+        const eventIds = allTagValues(ev.tags, 'e').map((value) => String(value || '').trim());
+        const addresses = allTagValues(ev.tags, 'a').map((value) => String(value || '').trim());
+        const targetsStream = (!!stream.id && eventIds.includes(String(stream.id))) ||
+          (!!stream.address && addresses.includes(String(stream.address)));
+        if (targetsStream) renderChatStreamBoost(ev, { maxRows: visibleChatRows, autoScroll: true });
+        return outcome;
+      }
 
       if (ev.kind === KIND_REACTION) {
         const targetId = firstTagValue(ev.tags, 'e');
@@ -18908,7 +19014,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     fetchEventsCached(reactionHistoryFilters, {
       scope: 'theater-reaction-history',
-      cacheKey: `theater-reaction-history:${stream.address}:${reactionSince}:${reactionHistoryLimit}`,
+      cacheKey: `theater-reaction-history-v2:${stream.address}:${reactionSince}:${reactionHistoryLimit}`,
       timeoutMs: 4200,
       maxEvents: Math.max(1200, reactionHistoryLimit * 2),
       ttlMs: THEATER_CHAT_CACHE_TTL_MS,
@@ -18920,7 +19026,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         .filter((ev) => ev && ev.id && (
           Number(ev.kind || 0) === KIND_REACTION ||
           Number(ev.kind || 0) === KIND_ZAP_RECEIPT ||
-          Number(ev.kind || 0) === KIND_DELETION
+          Number(ev.kind || 0) === KIND_DELETION ||
+          Number(ev.kind || 0) === KIND_REPOST
         ))
         .sort((a, b) => {
           const byTime = Number(a.created_at || 0) - Number(b.created_at || 0);
