@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.3">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.4">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -2026,11 +2026,9 @@ body.nest-preview-open{overflow:hidden}
         </div>
         <!-- Host row (avatar + name/nip05 + hosted-via pill injected by JS) -->
         <div class="sib-host-row">
-          <div class="sib-av" onclick="showProfile('wavesound','','npub1abc...xyz','wave@bitcoin-cats.ca')"></div>
+          <div class="sib-av" aria-label="Streamer profile picture"></div>
           <div class="sib-host-info">
-            <div class="sib-name">wavesound
-              <span class="nip05-badge" title="NIP-05 Verified: wave@bitcoin-cats.ca"></span>
-            </div>
+            <div class="sib-name sib-profile-loading">Loading profile…</div>
             <div class="sib-identity nip05-text">Loading profile…</div>
           </div>
         </div>
@@ -2064,6 +2062,7 @@ body.nest-preview-open{overflow:hidden}
           <div class="sib-summary">Live jazz set from my home studio. Self-hosted on a $5 VPS - no middlemen, no censorship.</div>
           <button class="block-pencil owner-only visible" title="Edit description"></button>
         </div>
+        <div class="sib-hashtags" id="theaterHashtags" aria-label="Stream hashtags" hidden></div>
         <div class="stream-reactions-row">
           <div class="stream-emoji-list" id="streamEmojiList"></div>
           <div class="stream-like-counter" id="streamLikeCounter">0 likes</div>
@@ -2327,7 +2326,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.8.3" defer></script>
+<script src="./nostrflux-app.js?v=0.8.4" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
