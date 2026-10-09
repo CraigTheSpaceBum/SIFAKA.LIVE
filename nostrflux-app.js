@@ -171,10 +171,23 @@
   const AUTH_SESSION_STORAGE_KEY = 'nostrflux_auth_session_v1';
   const NOSTR_TOOLS_SRC = 'https://unpkg.com/nostr-tools/lib/nostr.bundle.js';
   const HLS_JS_SOURCES = [
-    'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
-    'https://unpkg.com/hls.js@1.5.17/dist/hls.min.js',
+    'https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.min.js',
+    'https://unpkg.com/hls.js@1.7.3/dist/hls.min.js',
+    // Keep the established CDN as a last-resort fallback if both current builds fail to load.
     'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js'
   ];
+  // Default mute remains active if the editable list file cannot be fetched.
+  const INITIAL_MUTED_PUBKEYS = ['4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa'];
+  const mutedAuthorPubkeys = new Set(INITIAL_MUTED_PUBKEYS);
+  let mutedNpubsLoadPromise = Promise.resolve(false);
+  const MUTED_NPUBS_FILE_URL = (() => {
+    try {
+      const scriptUrl = document.currentScript && document.currentScript.src;
+      return new URL('./muted-npubs.json', scriptUrl || window.location.href).toString();
+    } catch (_) {
+      return './muted-npubs.json';
+    }
+  })();
   const NOSTR_CONNECT_KIND = 24133;
   const NWC_INFO_KIND = 13194;
   const NWC_REQUEST_KIND = 23194;
@@ -602,14 +615,19 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     connectAll() {
-      // Stagger relay handshakes so the browser is not hit with every WebSocket
-      // connection and subscription at exactly the same time.
-      this.urls.forEach((url, index) => {
-        const timer = setTimeout(() => {
-          this.connectTimers.delete(timer);
-          if (!this.destroyed) this.connect(url);
-        }, Math.min(index * 90, 900));
-        this.connectTimers.add(timer);
+      // Wait for the small local mute-list file before issuing subscriptions to relays.
+      // A built-in fallback still blocks the configured npub if the file fetch fails.
+      Promise.resolve(mutedNpubsLoadPromise).catch(() => false).then(() => {
+        if (this.destroyed) return;
+        // Stagger relay handshakes so the browser is not hit with every WebSocket
+        // connection and subscription at exactly the same time.
+        this.urls.forEach((url, index) => {
+          const timer = setTimeout(() => {
+            this.connectTimers.delete(timer);
+            if (!this.destroyed) this.connect(url);
+          }, Math.min(index * 90, 900));
+          this.connectTimers.add(timer);
+        });
       });
     }
 
@@ -655,6 +673,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           const sub = this.subscriptions.get(data[1]);
           const ev = data[2];
           if (!sub || !sub.handlers || typeof sub.handlers.event !== 'function' || !ev || !ev.id) return;
+          // Nostr relays do not support negative-author filters. Drop muted authors
+          // centrally before events reach profile, feed, chat, notification, or stream handlers.
+          if (isMutedNostrAuthor(ev.pubkey)) return;
 
           // The same event commonly arrives from several relays. Drop duplicate
           // deliveries before application code does any parsing, DOM work, or
@@ -3468,7 +3489,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       image: sanitizeMediaUrl(stream.image || ''),
       streaming: sanitizeMediaUrl(stream.streaming || ''),
       starts: Number(stream.starts || 0) || null,
-      participants: Number(stream.participants || 0) || 0
+      participants: Number(stream.participants || 0) || 0,
+      hashtags: Array.isArray(stream.hashtags)
+        ? Array.from(new Set(stream.hashtags.map((tag) => String(tag || '').trim().replace(/^#+/, '').slice(0, 48)).filter(Boolean))).slice(0, 12)
+        : []
     };
   }
 
@@ -3483,6 +3507,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       items.forEach((item) => {
         const stream = cloneCachedStream(item);
         if (!stream || !stream.address || !stream.pubkey) return;
+        if (isMutedNostrAuthor(stream.pubkey) || isMutedNostrAuthor(stream.hostPubkey) || isMutedNostrAuthor(stream.platformPubkey)) return;
         state.streamsByAddress.set(stream.address, stream);
         rememberStreamEventId(stream.address, stream.id);
       });
@@ -4352,6 +4377,111 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return npub || shortHex(String(pubkeyOrNpub || ''));
   }
 
+  function isMutedNostrAuthor(pubkey) {
+    const normalized = normalizePubkeyHex(pubkey || '');
+    return !!normalized && mutedAuthorPubkeys.has(normalized);
+  }
+
+  function decodeMutedNpubToPubkey(npub) {
+    const value = String(npub || '').trim().toLowerCase();
+    if (!/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/.test(value)) return '';
+    const separator = value.lastIndexOf('1');
+    if (separator < 1 || value.slice(0, separator) !== 'npub') return '';
+    const words = [];
+    for (const char of value.slice(separator + 1)) {
+      const word = BECH32_CHARSET.indexOf(char);
+      if (word < 0) return '';
+      words.push(word);
+    }
+    if (words.length <= 6 || bech32Polymod(bech32HrpExpand('npub').concat(words)) !== 1) return '';
+    let bytes;
+    try { bytes = convertBits(words.slice(0, -6), 5, 8, false); } catch (_) { return ''; }
+    if (!Array.isArray(bytes) || bytes.length !== 32) return '';
+    return bytes.map((byte) => Number(byte).toString(16).padStart(2, '0')).join('');
+  }
+
+  function removeMutedStreamsFromRuntime() {
+    let removed = false;
+    const removedAddresses = new Set();
+    for (const [address, stream] of state.streamsByAddress.entries()) {
+      if (!stream || !(
+        isMutedNostrAuthor(stream.pubkey) ||
+        isMutedNostrAuthor(stream.hostPubkey) ||
+        isMutedNostrAuthor(stream.platformPubkey)
+      )) continue;
+      state.streamsByAddress.delete(address);
+      state.streamEventIdsByAddress.delete(address);
+      state.streamZapTotals.delete(address);
+      state.streamRecentZapsByAddress.delete(address);
+      state.streamZapEventIdsByAddress.delete(address);
+      removedAddresses.add(address);
+      removed = true;
+    }
+    for (const [id, video] of state.nip71VideosByEventId.entries()) {
+      if (video && (isMutedNostrAuthor(video.pubkey) || isMutedNostrAuthor(video.hostPubkey))) {
+        state.nip71VideosByEventId.delete(id);
+      }
+    }
+    mutedAuthorPubkeys.forEach((pubkey) => state.profilesByPubkey.delete(pubkey));
+    if (state.selectedStreamAddress && removedAddresses.has(state.selectedStreamAddress)) {
+      state.selectedStreamAddress = null;
+      try { clearPlayback(); } catch (_) {}
+      const videoPage = qs('#videoPage');
+      if (videoPage && videoPage.classList.contains('active') && typeof window.showPage === 'function') {
+        window.showPage('home');
+      }
+    }
+    if (removed) {
+      state.liveGridRenderSignature = '';
+      try { persistLiveStreamsCache(); } catch (_) {}
+      if (isHomeViewActive()) renderLiveGrid();
+    }
+    const chat = qs('#chatScroll');
+    if (chat) {
+      chat.querySelectorAll('.cmsg[data-pubkey]').forEach((row) => {
+        if (isMutedNostrAuthor(row.dataset.pubkey || '')) row.remove();
+      });
+    }
+  }
+
+  async function loadMutedNpubsList() {
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timeoutId = window.setTimeout(() => {
+      try { controller && controller.abort(); } catch (_) {}
+    }, 1400);
+    try {
+      const fileUrl = new URL(MUTED_NPUBS_FILE_URL, window.location.href);
+      fileUrl.searchParams.set('v', '0.8.2');
+      const response = await fetch(fileUrl.toString(), {
+        cache: 'no-store',
+        ...(controller ? { signal: controller.signal } : {})
+      });
+      if (!response.ok) throw new Error('Mute list returned HTTP ' + response.status);
+      const payload = await response.json();
+      if (!payload || !Array.isArray(payload.npubs)) throw new Error('Mute list must contain an npubs array.');
+      const filePubkeys = new Set();
+      payload.npubs.forEach((npub) => {
+        const value = String(npub || '').trim().toLowerCase();
+        const pubkey = decodeMutedNpubToPubkey(value);
+        if (!pubkey) {
+          if (value) console.warn('Ignoring invalid npub in muted-npubs.json.');
+          return;
+        }
+        filePubkeys.add(pubkey);
+      });
+      // A valid file is authoritative, so removing an npub from it also unmutes it.
+      mutedAuthorPubkeys.clear();
+      filePubkeys.forEach((pubkey) => mutedAuthorPubkeys.add(pubkey));
+      removeMutedStreamsFromRuntime();
+      return true;
+    } catch (err) {
+      console.warn('Could not load muted-npubs.json; keeping built-in mute entries.', err && err.message ? err.message : err);
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   function parseTags(tags) {
     const map = new Map();
     tags.forEach((t) => {
@@ -5039,7 +5169,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function parseLiveEvent(ev) {
-    if (!ev || Number(ev.kind || 0) !== KIND_LIVE_EVENT) return null;
+    if (!ev || Number(ev.kind || 0) !== KIND_LIVE_EVENT || isMutedNostrAuthor(ev.pubkey)) return null;
     const rawTags = Array.isArray(ev.tags) ? ev.tags : [];
     const hasCoreNip53Tag = rawTags.some((tag) => {
       if (!Array.isArray(tag)) return false;
@@ -5081,6 +5211,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     }
     const platformPubkey = normalizePubkeyHex(platformPubkey_ref.val || '') || null;
+    if (isMutedNostrAuthor(hostPubkey) || isMutedNostrAuthor(platformPubkey)) return null;
+
+    const hashtags = [];
+    const seenHashtags = new Set();
+    rawTags.forEach((tag) => {
+      if (!Array.isArray(tag) || String(tag[0] || '').toLowerCase() !== 't') return;
+      const value = String(tag[1] || '').trim().replace(/^#+/, '').replace(/[\u0000-\u001f]/g, '').replace(/\s+/g, '').slice(0, 48);
+      const key = value.toLowerCase();
+      if (!value || seenHashtags.has(key)) return;
+      seenHashtags.add(key);
+      hashtags.push(value);
+    });
 
     return {
       id: ev.id,
@@ -5098,6 +5240,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       streaming,
       starts,
       participants,
+      hashtags: hashtags.slice(0, 12),
       raw: ev
     };
   }
@@ -9393,6 +9536,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function upsertStream(stream) {
     if (!stream || typeof stream !== 'object' || !String(stream.address || '').trim()) return false;
+    if (isMutedNostrAuthor(stream.pubkey) || isMutedNostrAuthor(stream.hostPubkey) || isMutedNostrAuthor(stream.platformPubkey)) return false;
     const existing = state.streamsByAddress.get(stream.address);
     const incoming = mergeIncomingStream(existing, stream);
     const existingCreatedAt = Number(existing && existing.created_at || 0);
@@ -9411,7 +9555,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       && String(existing.title || '') === String(incoming.title || '')
       && String(existing.summary || '') === String(incoming.summary || '')
       && Number(existing.participants || 0) === Number(incoming.participants || 0)
-      && sanitizeMediaUrl(existing.image || '') === sanitizeMediaUrl(incoming.image || '');
+      && sanitizeMediaUrl(existing.image || '') === sanitizeMediaUrl(incoming.image || '')
+      && JSON.stringify(existing.hashtags || []) === JSON.stringify(incoming.hashtags || []);
 
     let didStore = false;
     if (!existing || incomingCreatedAt > existingCreatedAt || (incomingCreatedAt === existingCreatedAt && !sameCoreEvent)) {
@@ -14193,6 +14338,26 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   /* ---- Render hero info panel ---- */
+  function renderHeroHashtags(stream) {
+    const container = qs('#heroHashtags');
+    if (!container) return;
+    container.textContent = '';
+    const tags = Array.isArray(stream && stream.hashtags) ? stream.hashtags : [];
+    if (!tags.length) {
+      container.hidden = true;
+      return;
+    }
+    tags.slice(0, 12).forEach((raw) => {
+      const tag = String(raw || '').trim().replace(/^#+/, '').slice(0, 48);
+      if (!tag) return;
+      const chip = document.createElement('span');
+      chip.className = 'hero-hashtag';
+      chip.textContent = '#' + tag;
+      container.appendChild(chip);
+    });
+    container.hidden = container.childElementCount === 0;
+  }
+
   function renderHero(stream, idx, total) {
     if (!stream) return;
     state.featuredCurrentAddress = stream.address;
@@ -14202,6 +14367,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const viewerCount = effectiveParticipants(stream);
     set('heroTitle', stream.title);
     set('heroSummary', stream.summary || 'Live stream on Nostr.');
+    renderHeroHashtags(stream);
     set('heroHostName', p.name);
     set('heroStatusLabel', (stream.status || 'live').toUpperCase());
     set('heroViewers', viewerCount > 0 ? viewerCount.toLocaleString() : '-');
@@ -14906,9 +15072,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const attached = await attachHls();
         if (attached) {
           scheduleStartupRecovery();
+          // Don't force a reconnect while a healthy manifest/first segment is still loading.
+          // The longer startup watchdog and normal stall/error recovery paths remain active.
           window.setTimeout(() => {
             if (isStale()) return;
-            attemptPlaybackRecovery('error').catch(() => {});
+            attemptInitialPlayback().catch(() => {});
           }, 900);
           return;
         }
@@ -27616,6 +27784,7 @@ window.saveAppSettings = function () {
     appBootStartedAt=Date.now();
     setAppBootStatus('Preparing your local settings...');
     startAppBootTimeout();
+    mutedNpubsLoadPromise = loadMutedNpubsList();
     loadSettingsFromStorage();
     loadFollowedPubkeys();
     loadSavedExternalLists();
