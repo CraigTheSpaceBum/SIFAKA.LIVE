@@ -17227,9 +17227,103 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     pruneChatStateForMessageId(safeMsgId);
   }
 
+  function parseOnchainDonationChatEvent(ev) {
+    if (!ev || Number(ev.kind || 0) !== KIND_LIVE_CHAT) return null;
+    const tags = Array.isArray(ev.tags) ? ev.tags : [];
+    if (String(firstTagValue(tags, 'donation') || '').trim().toLowerCase() !== 'onchain') return null;
+
+    const sats = Number(firstTagValue(tags, 'amount') || 0);
+    const txid = String(firstTagValue(tags, 'txid') || '').trim().toLowerCase();
+    if (!Number.isSafeInteger(sats) || sats < 330 || sats > 2100000000000000) return null;
+    if (!/^[0-9a-f]{64}$/.test(txid)) return null;
+
+    return {
+      eventId: String(ev.id || '').trim(),
+      created_at: Number(ev.created_at || 0),
+      sats,
+      senderPubkey: normalizePubkeyHex(ev.pubkey || ''),
+      note: String(ev.content || '').trim(),
+      txid
+    };
+  }
+
+  function renderChatOnchainDonation(ev, opts = {}, parsed = parseOnchainDonationChatEvent(ev)) {
+    const sc = qs('#chatScroll');
+    if (!sc || !ev || !ev.id || !parsed) return;
+    const eventId = String(ev.id || '').trim();
+    if (!eventId || state.chatMessageEventsById.has(eventId)) return;
+
+    state.chatMessageEventsById.set(eventId, ev);
+    const maxRows = Math.max(1, Number(opts.maxRows || theaterChatVisibleRowLimit()) || theaterChatVisibleRowLimit());
+    const autoScroll = opts.autoScroll !== false;
+    const wasNearBottom = !autoScroll || ((sc.scrollHeight - sc.scrollTop - sc.clientHeight) <= 28);
+    const senderPubkey = normalizePubkeyHex(parsed.senderPubkey || ev.pubkey || '');
+    const profile = senderPubkey ? profileFor(senderPubkey) : null;
+    const displayName = theaterChatDisplayName(profile, senderPubkey);
+    const picture = (profile && profile.picture) || '';
+
+    const row = document.createElement('div');
+    row.className = 'cmsg zap-ev onchain-donation-ev';
+    row.dataset.pubkey = senderPubkey;
+    row.dataset.msgId = eventId;
+    row.innerHTML = '<div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name"></span><span class="chat-zap-amount"></span><span class="c-time"></span></div><div class="c-text"></div></div>';
+
+    const avEl = qs('.c-av', row);
+    setLiveChatAvatar(avEl, picture);
+    const chatNip05 = senderPubkey ? getVerifiedNip05ForPubkey(senderPubkey, profile && profile.nip05 ? profile.nip05 : '') : '';
+    avEl.classList.toggle('nip05-square', !!chatNip05);
+    if (senderPubkey) avEl.onclick = () => showProfileByPubkey(senderPubkey);
+
+    const nameEl = qs('.c-name', row);
+    nameEl.textContent = displayName;
+    if (senderPubkey) nameEl.onclick = () => showProfileByPubkey(senderPubkey);
+
+    const amountEl = qs('.chat-zap-amount', row);
+    amountEl.textContent = `₿ On-Chain · ${formatCount(parsed.sats)} sats`;
+
+    const timeEl = qs('.c-time', row);
+    if (timeEl) {
+      timeEl.textContent = formatChatTimestamp(parsed.created_at);
+      try { timeEl.title = new Date(Number(parsed.created_at || 0) * 1000).toLocaleString(); } catch (_) {}
+    }
+
+    const textEl = qs('.c-text', row);
+    textEl.appendChild(renderNostrContent(parsed.note || ('Bitcoin transaction: https://mempool.space/tx/' + parsed.txid)));
+
+    insertChatRowChronological(sc, row, eventId, parsed.created_at);
+
+    if (senderPubkey && !state.profilesByPubkey.has(senderPubkey)) {
+      fetchProfileIfNeeded(senderPubkey, { skipNip05: true }).then(() => {
+        const escapedId = (window.CSS && typeof window.CSS.escape === 'function')
+          ? window.CSS.escape(eventId)
+          : eventId.replace(/["\\]/g, '');
+        const targetRow = sc.querySelector(`.cmsg.onchain-donation-ev[data-msg-id="${escapedId}"]`);
+        if (!targetRow) return;
+        const updated = profileFor(senderPubkey);
+        if (!updated) return;
+        const targetAv = qs('.c-av', targetRow);
+        if (targetAv) {
+          setLiveChatAvatar(targetAv, updated.picture || '');
+          const verified = !!getVerifiedNip05ForPubkey(senderPubkey, updated.nip05 || '');
+          targetAv.classList.toggle('nip05-square', verified);
+        }
+        const targetName = qs('.c-name', targetRow);
+        if (targetName) targetName.textContent = theaterChatDisplayName(updated, senderPubkey, displayName);
+      }).catch(() => {});
+    }
+
+    pruneTheaterChatRows(sc, maxRows);
+    if (autoScroll && wasNearBottom) sc.scrollTop = sc.scrollHeight;
+  }
+
   function renderChatMessage(ev, opts = {}) {
     const sc = qs('#chatScroll');
     if (!sc || !ev || !ev.id) return;
+    const onchainDonation = parseOnchainDonationChatEvent(ev);
+    if (onchainDonation) {
+      renderChatOnchainDonation(ev, opts, onchainDonation);
+      return;
+    }
     if (state.chatMessageEventsById.has(ev.id)) return;
 
     const maxRows = Math.max(1, Number(opts.maxRows || theaterChatVisibleRowLimit()) || theaterChatVisibleRowLimit());
@@ -17443,7 +17537,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (senderPubkey) nameEl.onclick = () => showProfileByPubkey(senderPubkey);
 
     const amountEl = qs('.chat-zap-amount', row);
-    amountEl.textContent = `⚡ ${formatCount(Number(entry.sats || 0))} sats`;
+    amountEl.textContent = `⚡ Lightning · ${formatCount(Number(entry.sats || 0))} sats`;
 
     const timeEl = qs('.c-time', row);
     if (timeEl) {
@@ -23556,7 +23650,9 @@ function renderProfileFeed(pubkey) {
       const summary = qs('#walletOnchainSendSummary');
       const status = qs('#walletOnchainSendStatus');
       const btn = qs('#walletOnchainReviewBtn');
-      if (summary) summary.textContent = 'Enter a recipient and amount to prepare the transaction.';
+      if (summary) summary.textContent = state.walletOnchainDonationContext && state.walletOnchainDonationContext.active
+        ? 'Recipient address is already set above. Choose a donation amount, then review the transaction.'
+        : 'Enter a recipient and amount to prepare the transaction.';
       if (status) status.textContent = '';
       const messageEl = qs('#walletOnchainSendMessage');
       if (messageEl) messageEl.value = '';
@@ -23617,7 +23713,10 @@ function renderProfileFeed(pubkey) {
             active: true,
             address: recipientAddress,
             recipientPubkey,
-            recipientName
+            recipientName,
+            streamAddress: String(recipientMeta.streamAddress || '').trim(),
+            streamEventId: String(recipientMeta.streamEventId || '').trim(),
+            streamPubkey: normalizePubkeyHex(recipientMeta.streamPubkey || '')
           }
         : null;
 
@@ -23896,10 +23995,40 @@ function renderProfileFeed(pubkey) {
       }
     };
 
+    async function publishWalletOnchainDonationChatNotification(context, draft, txid) {
+      const streamAddress = String(context && context.streamAddress || '').trim();
+      const normalizedTxid = String(txid || '').trim().toLowerCase();
+      const amountSats = Math.floor(Number(draft && draft.amountSats || 0));
+      if (!state.user || !streamAddress || /^profile:/i.test(streamAddress)) return null;
+      if (!/^[0-9a-f]{64}$/.test(normalizedTxid)) return null;
+      if (!Number.isSafeInteger(amountSats) || amountSats < 330) return null;
+
+      const tags = [['a', streamAddress, '', 'root']];
+      const streamEventId = String(context.streamEventId || '').trim();
+      if (/^[0-9a-f]{64}$/i.test(streamEventId)) tags.push(['e', streamEventId, '', 'root']);
+      const streamPubkey = normalizePubkeyHex(context.streamPubkey || '');
+      const recipientPubkey = normalizePubkeyHex(context.recipientPubkey || '');
+      if (streamPubkey) tags.push(['p', streamPubkey]);
+      if (recipientPubkey && recipientPubkey !== streamPubkey) tags.push(['p', recipientPubkey, '', 'host']);
+      tags.push(['donation', 'onchain'], ['amount', String(amountSats)], ['txid', normalizedTxid]);
+
+      const note = String(draft && draft.message || '').trim();
+      const content = 'Bitcoin transaction: https://mempool.space/tx/' + normalizedTxid +
+        (note ? '\nMessage: ' + note : '');
+      const signed = await signAndPublish(KIND_LIVE_CHAT, content, tags);
+      if (signed && state.selectedStreamAddress === streamAddress) {
+        renderChatMessage(signed, { autoScroll: true });
+      }
+      return signed;
+    }
+
     window.confirmWalletOnchainSend = async function () {
       const draft = state.walletOnchainSendDraft;
       const status = qs('#walletOnchainSendStatus');
       const btn = qs('#walletOnchainReviewBtn');
+      const donationContext = state.walletOnchainDonationContext && state.walletOnchainDonationContext.active
+        ? { ...state.walletOnchainDonationContext }
+        : null;
       if (!draft) return;
       const fee = draft.totalInputSats - draft.amountSats - draft.changeSats;
       const messageLine = draft.message ? '\n\nMessage: ' + draft.message : '';
@@ -23914,8 +24043,21 @@ function renderProfileFeed(pubkey) {
         const body = await response.text();
         if (!response.ok) throw new Error(body || ('Broadcast failed (' + response.status + ').'));
         state.walletOnchainSendDraft = null;
-        if (status) status.textContent = 'Sent successfully. Transaction: ' + String(body || built.txid).trim();
-        if (btn) { btn.disabled = false; btn.textContent = 'Done'; btn.onclick = window.closeWalletOnchainSend; }
+        const broadcastTxid = String(body || '').trim() || String(built.txid || '').trim();
+        if (status) status.textContent = 'Sent successfully. Transaction: ' + broadcastTxid;
+        if (donationContext) {
+          playTheaterDonationSuccessSound();
+          window.closeWalletOnchainSend();
+          if (donationContext.streamAddress) {
+            publishWalletOnchainDonationChatNotification(donationContext, draft, broadcastTxid).catch((notifyErr) => {
+              console.warn('Bitcoin donation was broadcast, but its live-chat notification could not be published:', notifyErr && notifyErr.message ? notifyErr.message : notifyErr);
+            });
+          }
+        } else if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Done';
+          btn.onclick = window.closeWalletOnchainSend;
+        }
         setTimeout(() => window.loadWalletPage(true), 1200);
       } catch (err) {
         if (status) status.textContent = err?.message || 'Bitcoin transaction failed.';
@@ -26534,7 +26676,17 @@ window.saveAppSettings = function () {
           if (!address) throw new Error('Could not derive the streamer Bitcoin address.');
           const legacyModal = qs('#theaterDonationModal');
           if (legacyModal) legacyModal.classList.remove('open');
-          window.openWalletOnchainSend(address, { recipientPubkey: resolvedPubkey, recipientName, profileDonation: true });
+          const streamChatAddress = theaterDonationContext.source === 'theater' && !String(stream.address || '').startsWith('profile:')
+            ? String(stream.address || '').trim()
+            : '';
+          window.openWalletOnchainSend(address, {
+            recipientPubkey: resolvedPubkey,
+            recipientName,
+            profileDonation: true,
+            streamAddress: streamChatAddress,
+            streamEventId: streamChatAddress ? String(stream.id || '').trim() : '',
+            streamPubkey: streamChatAddress ? normalizePubkeyHex(stream.pubkey || '') : ''
+          });
         } catch (err) {
           const note = qs('#theaterDonationChooseNote');
           if (note) note.textContent = err?.message || 'Could not open the on-chain donation window.';
