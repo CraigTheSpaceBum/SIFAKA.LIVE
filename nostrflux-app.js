@@ -24030,6 +24030,7 @@ function renderProfileFeed(pubkey) {
         ? { ...state.walletOnchainDonationContext }
         : null;
       if (!draft) return;
+      if (donationContext) prepareTheaterDonationAudio();
       const fee = draft.totalInputSats - draft.amountSats - draft.changeSats;
       const messageLine = draft.message ? '\n\nMessage: ' + draft.message : '';
       if (!window.confirm('Send ' + formatCount(draft.amountSats) + ' sats to ' + draft.destination + '?' + messageLine + '\n\nEstimated network fee: ' + formatCount(fee) + ' sats.')) return;
