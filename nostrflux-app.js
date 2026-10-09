@@ -4451,7 +4451,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }, 1400);
     try {
       const fileUrl = new URL(MUTED_NPUBS_FILE_URL, window.location.href);
-      fileUrl.searchParams.set('v', '0.8.2');
+      fileUrl.searchParams.set('v', '0.8.3');
       const response = await fetch(fileUrl.toString(), {
         cache: 'no-store',
         ...(controller ? { signal: controller.signal } : {})
@@ -13890,9 +13890,37 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return card;
   }
 
-  function updateLiveGridCardsForProfile(pubkey) {
+  function refreshHeroProfileForPubkey(pubkey) {
     const normalized = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
     if (!normalized || !isHomeViewActive()) return;
+    const address = String(state.featuredCurrentAddress || '').trim();
+    const stream = address ? state.streamsByAddress.get(address) : null;
+    if (!stream) return;
+    const relatedPubkeys = [stream.hostPubkey, stream.pubkey, stream.platformPubkey]
+      .map((key) => normalizePubkeyHex(key || '') || String(key || '').trim().toLowerCase())
+      .filter(Boolean);
+    if (!relatedPubkeys.includes(normalized)) return;
+    const featured = heroFeaturedStreams();
+    const index = featured.findIndex((item) => item.address === address);
+    if (index < 0) return;
+    state.featuredIndex = index;
+    renderHero(stream, index, featured.length);
+    const bgEl = qs('#heroPlayerBg');
+    if (bgEl && !sanitizeMediaUrl(stream.image || '')) {
+      const profile = profileFor(stream.hostPubkey || stream.pubkey);
+      const picture = sanitizeMediaUrl(profile.picture || '');
+      if (picture) {
+        const safeImage = picture.replace(/"/g, '\\"');
+        bgEl.style.cssText = `width:100%;height:100%;background:url("${safeImage}") center/cover no-repeat,linear-gradient(135deg,#0d1e30,#1a0a00);`;
+      }
+    }
+  }
+
+  function updateLiveGridCardsForProfile(pubkey) {
+    const normalized = normalizePubkeyHex(pubkey || '') || String(pubkey || '').trim().toLowerCase();
+    if (!normalized) return;
+    refreshHeroProfileForPubkey(normalized);
+    if (!isHomeViewActive()) return;
     const profile = profileFor(normalized);
     qsa('.stream-card').forEach((card) => {
       const host = String(card.dataset.hostPubkey || '').toLowerCase();
@@ -13936,7 +13964,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const allStreams = sortedLiveStreams();
     const streams = getFilteredStreams();
 
-    const renderSignature = state.activeListFilter + '::' + streams.map((stream) => [stream.address, stream.id, stream.status, stream.streaming, stream.image, stream.title, stream.summary, stream.participants].join('|')).join('||');
+    const renderSignature = state.activeListFilter + '::' + streams.map((stream) => [stream.address, stream.id, stream.status, stream.streaming, stream.image, stream.title, stream.summary, stream.participants, isStreamPlaybackOffline(stream.address)].join('|')).join('||');
     if (grid.querySelector('.stream-card') && state.liveGridRenderSignature === renderSignature) return;
     state.liveGridRenderSignature = renderSignature;
 
@@ -14139,6 +14167,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     const ovEl = qs('#heroPlayOv');
     if (ovEl) ovEl.style.display = '';
+    const audioBtn = qs('#heroAudioBtn');
+    if (audioBtn) { audioBtn.hidden = true; audioBtn.onclick = null; audioBtn.onpointerdown = null; }
     if (state.heroHlsInstance) {
       try { state.heroHlsInstance.destroy(); } catch (_) {}
       state.heroHlsInstance = null;
@@ -14153,7 +14183,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!playerEl || !bgEl) return;
 
     const url = sanitizeMediaUrl(stream.streaming || '');
-    const heroProfile = profileFor(stream.hostPubkey);
+    const heroProfile = profileFor(stream.hostPubkey || stream.pubkey);
     const image = sanitizeMediaUrl(stream.image || '') || sanitizeMediaUrl(heroProfile.picture || '');
 
     // Set background: thumbnail or gradient
@@ -14175,10 +14205,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const video = document.createElement('video');
-    // Keep the hero player muted unless the user has already interacted.
-    video.muted = true;
-    video.defaultMuted = true;
-    video.autoplay = true;
+    // Try audible autoplay first; if rejected by browser policy, fall back to muted playback.
+    // A dedicated button lets the viewer enable audio with a direct user gesture.
+    video.muted = false;
+    video.defaultMuted = false;
+    video.volume = 0.8;
+    video.autoplay = false;
     video.playsInline = true;
     video.preload = 'auto';
     video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:2;';
@@ -14188,21 +14220,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let heroNetworkRecoveries = 0;
     let heroMediaRecoveries = 0;
 
-    // Start muted so browser autoplay policies cannot prevent the stream itself
-    // from starting. Once the browser has recorded a user interaction, keep
-    // retrying the audio unlock because some HLS streams expose their audio
-    // track after the first canplay event.
     let heroAudioRetryTimers = [];
+    const audioBtn = qs('#heroAudioBtn');
+    const updateHeroAudioButton = () => {
+      if (!audioBtn) return;
+      const muted = !!video.muted;
+      audioBtn.textContent = muted ? 'Enable audio' : 'Mute audio';
+      audioBtn.setAttribute('aria-label', muted ? 'Enable preview audio' : 'Mute preview audio');
+      audioBtn.setAttribute('aria-pressed', muted ? 'false' : 'true');
+    };
     const clearHeroAudioRetries = () => {
       heroAudioRetryTimers.forEach((id) => clearTimeout(id));
       heroAudioRetryTimers = [];
     };
-    const tryHeroAudio = async () => {
+    const tryHeroAudio = async (fromUserGesture = false) => {
       if (token !== state.heroPlaybackToken || !document.body.contains(video)) return false;
       const hasUserActivation = !!(navigator.userActivation && navigator.userActivation.hasBeenActive);
-      if (!hasUserActivation) return false;
-      if (!video.muted) return true;
-
+      if (!hasUserActivation && !fromUserGesture) return false;
+      if (!video.muted) {
+        updateHeroAudioButton();
+        return true;
+      }
       video.muted = false;
       video.defaultMuted = false;
       video.volume = 0.8;
@@ -14210,14 +14248,38 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         await video.play();
         if (!video.muted) {
           clearHeroAudioRetries();
+          updateHeroAudioButton();
           return true;
         }
       } catch (_) {}
-
-      // Restore muted autoplay if the browser still requires a gesture.
       video.muted = true;
       video.defaultMuted = true;
+      updateHeroAudioButton();
       return false;
+    };
+    const startHeroPlayback = async () => {
+      if (token !== state.heroPlaybackToken || !document.body.contains(video)) return false;
+      video.muted = false;
+      video.defaultMuted = false;
+      video.volume = 0.8;
+      updateHeroAudioButton();
+      try {
+        await video.play();
+        updateHeroAudioButton();
+        return true;
+      } catch (_) {}
+      if (token !== state.heroPlaybackToken || !document.body.contains(video)) return false;
+      video.muted = true;
+      video.defaultMuted = true;
+      updateHeroAudioButton();
+      try {
+        await video.play();
+        updateHeroAudioButton();
+        return !video.paused;
+      } catch (_) {
+        updateHeroAudioButton();
+        return false;
+      }
     };
     const scheduleHeroAudioRetries = () => {
       if (token !== state.heroPlaybackToken) return;
@@ -14230,6 +14292,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
     const onHeroPlayable = () => {
       if (token !== state.heroPlaybackToken) return;
+      updateHeroAudioButton();
       setActiveHeroViewerAddress(stream.address);
       startViewerPresence(stream.address);
       markStreamPlaybackOnline(stream.address);
@@ -14241,9 +14304,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
     video.addEventListener('canplay', onHeroPlayable);
     video.addEventListener('playing', onHeroPlayable);
+    if (audioBtn) {
+      audioBtn.hidden = false;
+      audioBtn.onpointerdown = (event) => event.stopPropagation();
+      audioBtn.onclick = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (video.muted) {
+          await tryHeroAudio(true);
+        } else {
+          video.muted = true;
+          video.defaultMuted = true;
+          updateHeroAudioButton();
+          try { await video.play(); } catch (_) {}
+        }
+        updateHeroAudioButton();
+      };
+      updateHeroAudioButton();
+    }
 
     // A click/tap anywhere after autoplay begins should immediately retry audio.
-    const unlockHeroAudio = () => {
+    const unlockHeroAudio = (event) => {
       if (token !== state.heroPlaybackToken) return;
       if (document.hidden) {
         try { video.pause(); } catch (_) {}
@@ -14253,7 +14334,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         try { video.play().catch(() => {}); } catch (_) {}
       }
       if (!video.muted) return;
-      tryHeroAudio().catch(() => {});
+      const fromUserGesture = !!(event && ['pointerdown', 'keydown', 'touchstart'].includes(event.type));
+      tryHeroAudio(fromUserGesture).catch(() => {});
     };
     document.addEventListener('pointerdown', unlockHeroAudio, { passive: true });
     document.addEventListener('keydown', unlockHeroAudio);
@@ -14276,11 +14358,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     });
 
     playerEl.appendChild(video);
+    if (audioBtn) audioBtn.hidden = false;
 
     if (isHls) {
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
-        video.play().catch(() => {});
+        startHeroPlayback().catch(() => {});
       } else {
         try {
           const Hls = await ensureHlsJs();
@@ -14300,7 +14383,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             hlsObj.attachMedia(video);
             hlsObj.on(Hls.Events.MANIFEST_PARSED, () => {
               if (token !== state.heroPlaybackToken) return;
-              video.play().catch(() => {});
+              startHeroPlayback().catch(() => {});
             });
             hlsObj.on(Hls.Events.ERROR, (_e, data) => {
               if (!data || token !== state.heroPlaybackToken) return;
@@ -14333,7 +14416,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     } else {
       video.src = url;
-      video.play().catch(() => {});
+      startHeroPlayback().catch(() => {});
     }
   }
 
@@ -14361,26 +14444,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function renderHero(stream, idx, total) {
     if (!stream) return;
     state.featuredCurrentAddress = stream.address;
-    const p = profileFor(stream.hostPubkey);
+    const heroPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || stream.hostPubkey || stream.pubkey;
+    const p = profileFor(heroPubkey);
 
     const set = (id, v) => { const el = qs('#' + id); if (el) el.textContent = v; };
     const viewerCount = effectiveParticipants(stream);
     set('heroTitle', stream.title);
     set('heroSummary', stream.summary || 'Live stream on Nostr.');
     renderHeroHashtags(stream);
-    set('heroHostName', p.name);
+    set('heroHostName', p.display_name || p.name || shortHex(heroPubkey));
     set('heroStatusLabel', (stream.status || 'live').toUpperCase());
     set('heroViewers', viewerCount > 0 ? viewerCount.toLocaleString() : '-');
     set('heroSats', '-');
     set('heroTime', stream.starts ? new Date(stream.starts * 1000).toUTCString().slice(17, 22) + ' UTC' : 'live');
 
     const avEl = qs('#heroAv');
-    if (avEl) setAvatarEl(avEl, p.picture || '', pickAvatar(stream.hostPubkey));
+    if (avEl) setAvatarEl(avEl, p.picture || '', pickAvatar(heroPubkey));
     const nip05El = qs('#heroNip05');
     const claimedNip05 = normalizeNip05Value(p.nip05 || '');
-    const heroNip05 = getVerifiedNip05ForPubkey(stream.hostPubkey, p.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+    const heroNip05 = getVerifiedNip05ForPubkey(heroPubkey, p.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
     if (claimedNip05) {
-      ensureNip05Verification(stream.hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
+      ensureNip05Verification(heroPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
     }
     if (nip05El) { nip05El.style.display = heroNip05 ? 'inline' : 'none'; if (heroNip05) nip05El.title = heroNip05; }
 
@@ -15026,7 +15110,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }
         showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.', { markOffline: true });
       })().catch(() => {
-        showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.');
+        showFailure('Playback failed in this browser. The stream may be offline, blocked by CORS, or unsupported.', { markOffline: true });
       });
     });
     const scheduleStartupRecovery = () => {
