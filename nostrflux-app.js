@@ -6174,10 +6174,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     const naddr = extractNaddrFromPath(window.location.pathname);
     if (naddr) {
+      // Do not reveal the static theater template while a shared stream URL is resolving.
+      // Keep the current page visible until the exact NIP-53 event has been loaded.
+      const routePath = window.location.pathname;
       state.pendingRouteNaddr = naddr;
-      if (window.showVideoPage) window.showVideoPage({ routeMode: 'skip' });
+      state.pendingRouteAddress = '';
       const address = await decodeNaddrToAddress(naddr);
-      if (!address) {
+      if (window.location.pathname !== routePath || state.pendingRouteNaddr !== naddr) return;
+      if (!address || Number(address.split(':')[0]) !== KIND_LIVE_EVENT) {
         state.pendingRouteAddress = '';
         state.pendingRouteNaddr = '';
         if (fallbackMode !== 'skip' && !isHomePath(window.location.pathname)) syncHomeRoute(fallbackMode);
@@ -6185,7 +6189,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         return;
       }
       state.pendingRouteAddress = address;
-      tryOpenPendingRouteStream();
+      if (tryOpenPendingRouteStream()) return;
+
+      // The event may not yet be in the broad Live Now cache on a fresh visit.
+      // Fetch it by its exact author + d-tag instead of leaving sample theater content visible.
+      try {
+        const stream = await _fetchLiveStreamByNaddrEntity(naddr, {
+          timeoutMs: 6500,
+          force: true
+        });
+        if (window.location.pathname !== routePath || state.pendingRouteNaddr !== naddr) return;
+        if (stream && stream.address === address && tryOpenPendingRouteStream()) return;
+      } catch (_) {}
+
+      // A normal live subscription can still satisfy this pending route when the
+      // target relay responds later. Keep Live Now visible rather than showing mocks.
+      if (tryOpenPendingRouteStream()) return;
+      if (isHomeViewActive()) ensureHomeLiveSubscription();
       return;
     }
 
@@ -15770,7 +15790,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     ).then((events) => events.find((ev) => ev && ev.id === eventId) || null);
   }
 
-  async function _fetchLiveStreamByNaddrEntity(entity) {
+  async function _fetchLiveStreamByNaddrEntity(entity, opts = {}) {
     const decoded = _decodeNostrEntity(entity);
     if (!decoded || decoded.type !== 'naddr') return null;
     if (Number(decoded.kind || 0) !== KIND_LIVE_EVENT) return null;
@@ -15788,8 +15808,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       {
         scope: 'live-by-naddr',
         cacheKey: `live-by-naddr:${address}`,
-        timeoutMs: 3200,
-        maxEvents: 12
+        timeoutMs: Math.max(3200, Number(opts.timeoutMs || 3200)),
+        maxEvents: 12,
+        force: !!opts.force,
+        waitForAllRelays: !!opts.waitForAllRelays,
+        relayUrls: Array.isArray(opts.relayUrls) ? opts.relayUrls : undefined
       }
     );
     if (!events.length) return null;
