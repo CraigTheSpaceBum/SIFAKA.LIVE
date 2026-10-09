@@ -9457,3 +9457,11 @@ body.nest-room-page-open{
   #heroHashtags.hero-hashtags{gap:.28rem;margin-top:.4rem;}
   #heroHashtags .hero-hashtag{font-size:.6rem;padding:.18rem .4rem;}
 }
+
+
+/* Live Now hero preview audio control */
+.hero-audio-btn{position:absolute;top:14px;right:14px;z-index:12;display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:8px 12px;border:1px solid rgba(167,139,250,.48);border-radius:999px;background:rgba(7,11,21,.86);color:var(--text,#fff);font:700 11px/1.2 var(--font-mono,monospace);letter-spacing:.04em;cursor:pointer;backdrop-filter:blur(8px);box-shadow:0 4px 18px rgba(0,0,0,.3);transition:background .15s ease,border-color .15s ease,transform .15s ease}
+.hero-audio-btn:hover{background:rgba(70,45,130,.9);border-color:rgba(196,181,253,.8);transform:translateY(-1px)}
+.hero-audio-btn:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
+.hero-audio-btn[hidden]{display:none!important}
+@media(max-width:600px){.hero-audio-btn{top:9px;right:9px;min-height:30px;padding:7px 9px;font-size:10px}}
