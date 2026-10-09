@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.5">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.5.1">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -71,6 +71,14 @@ body.nest-preview-open{overflow:hidden}
 .nest-preview-dialog.is-live-room .nest-preview-actions{position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--surface,#111827) 24%);z-index:2}
 .nest-preview-empty,.nest-preview-loading{padding:12px;border:1px dashed rgba(255,255,255,.1);border-radius:12px;color:var(--text2,#94a3b8);font-size:13px}
 @media(max-width:680px){.nest-preview-overlay{padding:0;align-items:flex-end}.nest-preview-dialog{width:100%;max-height:94vh;border-radius:22px 22px 0 0}.nest-preview-cover{height:190px}.nest-preview-content{padding:20px 18px 22px}.nest-preview-people{grid-template-columns:1fr 1fr}.nest-preview-actions{position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--surface,#111827) 28%);padding-top:24px}.nest-preview-actions .btn{flex:1}.nest-preview-footnote{text-align:center}}
+</style>
+<style id="sifaka-share-qr-0851">
+.share-web-qr-wrap{display:flex;flex-direction:column;align-items:center;gap:.42rem;padding:.1rem 0 .25rem}
+#shareWebQr{width:160px;height:160px;padding:8px;background:#fff;border:1px solid rgba(59,130,246,.25);border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#shareWebQr img,#shareWebQr canvas{display:block;max-width:100%;height:auto}
+.share-web-qr-caption{color:var(--text2);font-size:.69rem;text-align:center}
+.share-choice-btn.boosted,.share-choice-btn.boosted:hover{border-color:#3b82f6;background:rgba(59,130,246,.18);color:#60a5fa}
+.share-choice-btn.boosted .sub{color:#93c5fd}
 </style>
 </head>
 <body>
@@ -727,10 +735,13 @@ body.nest-preview-open{overflow:hidden}
     <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeShareModal()">x</button>
     <div class="sm-hd"><div class="sm-title">Share Stream</div></div>
     <div class="share-modal-body">
-      <div class="share-choice-grid">
-        <button class="share-choice-btn" onclick="shareStreamAction('boost')"><span>Boost</span><span class="sub">Post to Nostr</span></button>
-        <button class="share-choice-btn" onclick="shareStreamAction('copy')"><span>Copy Link</span><span class="sub">Web URL</span></button>
+      <div class="share-choice-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));">
+        <button id="shareBoostBtn" class="share-choice-btn" aria-pressed="false" onclick="shareStreamAction('boost')"><span>Boost</span><span class="sub">Post to Nostr</span></button>
         <button class="share-choice-btn" onclick="shareStreamAction('app')"><span>Share App</span><span class="sub">Text / App</span></button>
+      </div>
+      <div class="share-web-qr-wrap">
+        <div id="shareWebQr" aria-label="QR code for the live stream URL"></div>
+        <div class="share-web-qr-caption">Scan to watch this stream</div>
       </div>
       <div class="share-field">
         <label for="shareWebUrl">Web URL</label>
@@ -2326,7 +2337,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.8.5" defer></script>
+<script src="./nostrflux-app.js?v=0.8.5.1" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>

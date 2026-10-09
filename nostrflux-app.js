@@ -26,7 +26,9 @@
     'wss://relay.nostr.net',
     'wss://nostr.wine',
     'wss://nostr21.com',
-    'wss://nos.lol'
+    'wss://nos.lol',
+    'wss://purplepag.es',
+    'wss://profiles.nostr1.com'
   ];
   const RELAY_BUCKET_DEFS = [
     {
@@ -468,6 +470,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     notificationsSubId: null,
     notificationsRenderTimer: null,
     notificationsRenderLimit: 60,
+    notificationsStreamAddresses: new Set(),
+    notificationsStreamAddressesFetchedAt: 0,
+    notificationsStreamAddressFetchPromise: null,
+    notificationsStreamAddressesOwnerPubkey: '',
     // Hero featured stream cycling
     heroHlsInstance: null,
     heroPlaybackToken: 0,
@@ -12552,23 +12558,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function notificationTypeEnabled(type) {
     if (type === 'mention') return !!state.settings.notificationsMentions;
-    if (type === 'reply') return !!state.settings.notificationsReplies;
+    if (type === 'reply' || type === 'chat') return !!state.settings.notificationsReplies;
     if (type === 'like') return !!state.settings.notificationsLikes;
     if (type === 'repost') return !!state.settings.notificationsReposts;
-    if (type === 'zap') return !!state.settings.notificationsZaps;
+    if (type === 'zap' || type === 'onchain') return !!state.settings.notificationsZaps;
     if (type === 'follow') return !!state.settings.notificationsFollows;
-    if (type === 'dm') return true;
+    if (type === 'dm') return false;
     return true;
   }
 
   function notificationTypeLabel(type) {
     if (type === 'mention') return 'Mention';
     if (type === 'reply') return 'Reply';
+    if (type === 'chat') return 'Live chat';
     if (type === 'like') return 'Like';
-    if (type === 'repost') return 'Repost';
-    if (type === 'zap') return 'Zap';
+    if (type === 'repost') return 'Boost';
+    if (type === 'zap') return 'Lightning donation';
+    if (type === 'onchain') return 'On-chain donation';
     if (type === 'follow') return 'Follow';
-    if (type === 'dm') return 'DM';
     return 'Activity';
   }
 
@@ -12639,39 +12646,51 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return { sats: Number(sats || 0), senderPubkey, note, targetId, targetPubkeys };
   }
 
+  function notificationTargetsOwnStream(tags) {
+    const owned = state.notificationsStreamAddresses instanceof Set
+      ? state.notificationsStreamAddresses
+      : new Set();
+    if (!owned.size) return false;
+    const values = [...allTagValues(tags || [], 'a'), ...allTagValues(tags || [], 'A')];
+    return values.some((value) => owned.has(String(value || '').trim()));
+  }
+
   function buildNotificationEntry(ev, ownPubkey) {
     if (!ev || !ev.id || !ownPubkey) return null;
     const actorPubkey = normalizePubkeyHex(ev.pubkey || '');
     if (!actorPubkey || actorPubkey === ownPubkey) return null;
 
     const normalizePRefs = (tags) => [...new Set(
-      allTagValues(tags || [], 'p')
+      [...allTagValues(tags || [], 'p'), ...allTagValues(tags || [], 'P')]
         .map((pk) => normalizePubkeyHex(pk))
         .filter(Boolean)
     )];
+    const pRefs = normalizePRefs(ev.tags);
+    const targetsOwnStream = notificationTargetsOwnStream(ev.tags);
 
-    if (ev.kind === 1) {
-      const pRefs = normalizePRefs(ev.tags);
-      if (!pRefs.includes(ownPubkey)) return null;
-      const eRefs = allTagValues(ev.tags, 'e').filter((id) => /^[0-9a-f]{64}$/i.test(id));
+    if (ev.kind === 1 || ev.kind === KIND_COMMENT) {
+      if (!pRefs.includes(ownPubkey) && !targetsOwnStream) return null;
+      const eRefs = [...allTagValues(ev.tags, 'e'), ...allTagValues(ev.tags, 'E')]
+        .filter((id) => /^[0-9a-f]{64}$/i.test(id));
       const content = String(ev.content || '').trim();
+      const isComment = ev.kind === KIND_COMMENT;
+      const isReply = isComment || eRefs.length > 0;
       return {
         id: ev.id,
         created_at: Number(ev.created_at || 0) || 0,
-        type: eRefs.length ? 'reply' : 'mention',
+        type: isReply ? 'reply' : 'mention',
         actorPubkey,
         targetId: eRefs.length ? String(eRefs[eRefs.length - 1] || '').toLowerCase() : '',
-        summary: truncateNotificationText(content || (eRefs.length ? 'Sent you a reply.' : 'Mentioned you in a note.')),
+        summary: truncateNotificationText(content || (isReply ? 'Replied to or commented on your content.' : 'Mentioned you in a note.')),
         raw: ev
       };
     }
 
     if (ev.kind === KIND_REACTION) {
-      const pRefs = normalizePRefs(ev.tags);
-      if (!pRefs.includes(ownPubkey)) return null;
+      if (!pRefs.includes(ownPubkey) && !targetsOwnStream) return null;
+      const target = firstTagValue(ev.tags, 'e') || firstTagValue(ev.tags, 'E');
       const reactionMeta = parseReactionMeta(ev.content, ev.tags);
       if (!reactionMeta) return null;
-      const target = firstTagValue(ev.tags, 'e');
       const targetId = /^[0-9a-f]{64}$/i.test(target || '') ? String(target || '').toLowerCase() : '';
       const isLike = reactionMeta.key === '+';
       const reactionLabel = reactionMeta.label || reactionMeta.key || '';
@@ -12682,8 +12701,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         actorPubkey,
         targetId,
         summary: isLike
-          ? (targetId ? 'Liked one of your notes.' : 'Liked your content.')
-          : (targetId ? `Reacted to your post with ${reactionLabel}.` : `Reacted with ${reactionLabel}.`),
+          ? (targetId ? 'Liked one of your notes or stream messages.' : 'Liked your content.')
+          : (targetId ? `Reacted to your content with ${reactionLabel}.` : `Reacted with ${reactionLabel}.`),
         reactionKey: reactionMeta.key || '',
         reactionLabel,
         reactionImageUrl: reactionMeta.imageUrl || '',
@@ -12692,10 +12711,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       };
     }
 
-    if (ev.kind === 6) {
-      const pRefs = normalizePRefs(ev.tags);
-      if (!pRefs.includes(ownPubkey)) return null;
-      const target = allTagValues(ev.tags, 'e');
+    if (ev.kind === KIND_REPOST) {
+      if (!pRefs.includes(ownPubkey) && !targetsOwnStream) return null;
+      const target = [...allTagValues(ev.tags, 'e'), ...allTagValues(ev.tags, 'E')];
       const ref = target.length ? target[target.length - 1] : '';
       const targetId = /^[0-9a-f]{64}$/i.test(ref || '') ? String(ref || '').toLowerCase() : '';
       return {
@@ -12704,7 +12722,35 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         type: 'repost',
         actorPubkey,
         targetId,
-        summary: 'Boosted your note.',
+        summary: 'Boosted your post or live stream.',
+        raw: ev
+      };
+    }
+
+    if (ev.kind === KIND_LIVE_CHAT) {
+      if (!pRefs.includes(ownPubkey) && !targetsOwnStream) return null;
+      const onchainDonation = parseOnchainDonationChatEvent(ev);
+      if (onchainDonation) {
+        return {
+          id: ev.id,
+          created_at: Number(ev.created_at || 0) || 0,
+          type: 'onchain',
+          actorPubkey,
+          targetId: String(firstTagValue(ev.tags, 'e') || ''),
+          sats: Number(onchainDonation.sats || 0),
+          summary: `Sent an on-chain donation of ${formatCount(onchainDonation.sats)} sats.` +
+            (onchainDonation.note ? ` ${truncateNotificationText(onchainDonation.note, 120)}` : ''),
+          raw: ev
+        };
+      }
+      const eRefs = allTagValues(ev.tags, 'e').filter((id) => /^[0-9a-f]{64}$/i.test(id));
+      return {
+        id: ev.id,
+        created_at: Number(ev.created_at || 0) || 0,
+        type: 'chat',
+        actorPubkey,
+        targetId: eRefs.length ? String(eRefs[eRefs.length - 1] || '').toLowerCase() : '',
+        summary: truncateNotificationText(String(ev.content || '').trim() || 'Sent a message in your live chat.'),
         raw: ev
       };
     }
@@ -12716,7 +12762,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (!senderPubkey || senderPubkey === ownPubkey) return null;
       const sats = Number(zap.sats || 0);
       const summary = truncateNotificationText(
-        zap.note || (sats > 0 ? `Sent you ${formatCount(sats)} sats.` : 'Sent you a zap.')
+        zap.note || (sats > 0 ? `Sent you a Lightning donation of ${formatCount(sats)} sats.` : 'Sent you a Lightning donation.')
       );
       return {
         id: ev.id,
@@ -12730,22 +12776,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       };
     }
 
-    if (ev.kind === KIND_DIRECT_MESSAGE) {
-      const pRefs = normalizePRefs(ev.tags);
-      if (!pRefs.includes(ownPubkey)) return null;
-      return {
-        id: ev.id,
-        created_at: Number(ev.created_at || 0) || 0,
-        type: 'dm',
-        actorPubkey,
-        targetId: '',
-        summary: 'Sent you a direct message.',
-        raw: ev
-      };
-    }
-
     if (ev.kind === KIND_CONTACTS) {
-      const pRefs = normalizePRefs(ev.tags);
       if (!pRefs.includes(ownPubkey)) return null;
       return {
         id: ev.id,
@@ -12814,7 +12845,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (state.notificationsRenderTimer) return;
     state.notificationsRenderTimer = setTimeout(() => {
       state.notificationsRenderTimer = null;
-      scheduleRenderNotifications();
+      if (isNotificationsPageVisible()) renderNotifications();
     }, 250);
   }
 
@@ -12896,12 +12927,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       else if (entry.type === 'like') actionText = (entry.reactionKey && entry.reactionKey !== '+')
         ? 'reacted to your post'
         : 'liked your post';
-      else if (entry.type === 'repost') actionText = 'boosted your post';
+      else if (entry.type === 'repost') actionText = 'boosted your post or stream';
+      else if (entry.type === 'chat') actionText = 'posted in your live chat';
+      else if (entry.type === 'onchain') actionText = entry.sats > 0
+        ? `sent you an on-chain donation of ${formatCount(entry.sats)} sats`
+        : 'sent you an on-chain donation';
       else if (entry.type === 'follow') actionText = 'followed you';
-      else if (entry.type === 'dm') actionText = 'sent you a direct message';
       else if (entry.type === 'zap') actionText = entry.sats > 0
-        ? `zapped you ${formatCount(entry.sats)} sats`
-        : 'sent you a zap';
+        ? `sent you a Lightning donation of ${formatCount(entry.sats)} sats`
+        : 'sent you a Lightning donation';
 
       const row = document.createElement('article');
       row.className = `notif-item type-${entry.type}${isUnread ? ' unread' : ''}`;
@@ -12936,7 +12970,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       try { timeEl.title = new Date(Number(entry.created_at || 0) * 1000).toLocaleString(); } catch (_) {}
 
       const chipEl = qs('.notif-type-chip', row);
-      chipEl.textContent = entry.type === 'dm' ? 'DM' : ((entry.type === 'like' && entry.reactionKey && entry.reactionKey !== '+') ? 'Reaction' : typeLabel);
+      chipEl.textContent = (entry.type === 'like' && entry.reactionKey && entry.reactionKey !== '+') ? 'Reaction' : typeLabel;
 
       const textEl = qs('.notif-text', row);
       const summary = truncateNotificationText(entry.summary || '');
@@ -13006,6 +13040,72 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     });
   }
 
+  function refreshNotificationsStreamAddresses(pubkey, force = false) {
+    const key = normalizePubkeyHex(pubkey || '');
+    if (!key || !state.pool) return Promise.resolve([]);
+    if (state.notificationsStreamAddressesOwnerPubkey !== key) {
+      state.notificationsStreamAddresses = new Set();
+      state.notificationsStreamAddressesFetchedAt = 0;
+      state.notificationsStreamAddressesOwnerPubkey = key;
+    }
+    const nowMs = Date.now();
+    if (!force && nowMs - Number(state.notificationsStreamAddressesFetchedAt || 0) < 120000) {
+      return Promise.resolve(Array.from(state.notificationsStreamAddresses || []));
+    }
+    if (state.notificationsStreamAddressFetchPromise) return state.notificationsStreamAddressFetchPromise;
+
+    const promise = fetchEventsCached(
+      [
+        { kinds: [KIND_LIVE_EVENT], authors: [key], limit: 120 },
+        { kinds: [KIND_LIVE_EVENT], '#p': [key], limit: 120 }
+      ],
+      {
+        scope: 'notifications-owned-streams',
+        cacheKey: `notifications-owned-streams:${key}`,
+        timeoutMs: 2600,
+        maxEvents: 260,
+        ttlMs: 120000,
+        warmMs: 240000,
+        allowStale: false,
+        force
+      }
+    ).then((events) => {
+      const activePubkey = state.user ? normalizePubkeyHex(state.user.pubkey || '') : '';
+      if (activePubkey && activePubkey !== key) return Array.from(state.notificationsStreamAddresses || []);
+      const candidates = new Map();
+      (state.streamsByAddress instanceof Map ? Array.from(state.streamsByAddress.values()) : []).forEach((stream) => {
+        if (!stream || !stream.address) return;
+        const publisher = normalizePubkeyHex(stream.pubkey || '');
+        const host = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+        if (publisher === key || host === key) {
+          candidates.set(stream.address, { address: stream.address, created_at: Number(stream.created_at || 0) });
+        }
+      });
+      (events || []).forEach((ev) => {
+        const stream = parseLiveEvent(ev);
+        if (!stream) return;
+        const publisher = normalizePubkeyHex(stream.pubkey || '');
+        const host = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+        if (publisher !== key && host !== key) return;
+        candidates.set(stream.address, { address: stream.address, created_at: Number(stream.created_at || 0) });
+      });
+      const addresses = Array.from(candidates.values())
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, 48)
+        .map((item) => item.address);
+      state.notificationsStreamAddresses = new Set(addresses);
+      state.notificationsStreamAddressesFetchedAt = Date.now();
+      return addresses;
+    }).catch(() => {
+      state.notificationsStreamAddressesFetchedAt = Date.now();
+      return Array.from(state.notificationsStreamAddresses || []);
+    }).finally(() => {
+      state.notificationsStreamAddressFetchPromise = null;
+    });
+    state.notificationsStreamAddressFetchPromise = promise;
+    return promise;
+  }
+
   function notificationFiltersForUser(pubkey, opts = {}) {
     const key = normalizePubkeyHex(pubkey);
     if (!key) return [];
@@ -13014,25 +13114,43 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const limit = Math.max(60, Number(opts.limit || 120));
     const filters = [];
     const settings = state.settings || {};
+    const streamAddresses = Array.from(state.notificationsStreamAddresses || []).slice(0, 48);
+    const common = { since: sinceSec, limit };
 
     if (settings.notificationsMentions || settings.notificationsReplies) {
-      filters.push({ kinds: [1], '#p': [key], since: sinceSec, limit });
+      filters.push({ kinds: [1], '#p': [key], ...common });
+      filters.push({ kinds: [KIND_COMMENT], '#p': [key], ...common });
+      // NIP-22 root author tags use uppercase P; support both conventions.
+      filters.push({ kinds: [KIND_COMMENT], '#P': [key], ...common });
+      if (streamAddresses.length) {
+        filters.push({ kinds: [1, KIND_COMMENT], '#a': streamAddresses, ...common });
+        filters.push({ kinds: [KIND_COMMENT], '#A': streamAddresses, ...common });
+      }
     }
     if (settings.notificationsLikes) {
-      filters.push({ kinds: [KIND_REACTION], '#p': [key], since: sinceSec, limit });
+      filters.push({ kinds: [KIND_REACTION], '#p': [key], ...common });
+      if (streamAddresses.length) filters.push({ kinds: [KIND_REACTION], '#a': streamAddresses, ...common });
     }
     if (settings.notificationsReposts) {
-      filters.push({ kinds: [6], '#p': [key], since: sinceSec, limit });
+      filters.push({ kinds: [KIND_REPOST], '#p': [key], ...common });
+      if (streamAddresses.length) filters.push({ kinds: [KIND_REPOST], '#a': streamAddresses, ...common });
     }
     if (settings.notificationsZaps) {
-      filters.push({ kinds: [KIND_ZAP_RECEIPT], '#p': [key], since: sinceSec, limit });
+      filters.push({ kinds: [KIND_ZAP_RECEIPT], '#p': [key], ...common });
+      if (streamAddresses.length) filters.push({ kinds: [KIND_ZAP_RECEIPT], '#a': streamAddresses, ...common });
+    }
+    if (settings.notificationsReplies || settings.notificationsZaps) {
+      filters.push({ kinds: [KIND_LIVE_CHAT], '#p': [key], ...common });
+      filters.push({ kinds: [KIND_LIVE_CHAT], '#P': [key], ...common });
+      if (streamAddresses.length) {
+        filters.push({ kinds: [KIND_LIVE_CHAT], '#a': streamAddresses, ...common });
+        filters.push({ kinds: [KIND_LIVE_CHAT], '#A': streamAddresses, ...common });
+      }
     }
     if (settings.notificationsFollows) {
       filters.push({ kinds: [KIND_CONTACTS], '#p': [key], since: sinceSec, limit: Math.min(limit, 80) });
     }
-
-    // Keep kind:4 because DM activity is intentionally shown in the notification center.
-    filters.push({ kinds: [KIND_DIRECT_MESSAGE], '#p': [key], since: sinceSec, limit });
+    // No kind:4 filters: encrypted direct messages are deliberately excluded.
     return filters;
   }
   function notificationTargetPreviewState(entry) {
@@ -13234,40 +13352,49 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!silent && isNotificationsPageVisible()) renderNotifications();
 
     const ownPubkey = normalizePubkeyHex(state.user.pubkey || '');
-    const filters = notificationFiltersForUser(ownPubkey, {
-      sinceSec: Math.floor(Date.now() / 1000) - (7 * 86400),
-      limit: 120
-    });
-    const fetchPromise = fetchEventsCached(filters, {
-      scope: 'notifications-feed',
-      timeoutMs: 3600,
-      maxEvents: 800,
-      ttlMs: 45000,
-      warmMs: 180000,
-      allowStale: true,
-      force
-    }).then((events) => {
-      const activePubkey = state.user ? normalizePubkeyHex(state.user.pubkey || '') : '';
-      if (!activePubkey || activePubkey !== ownPubkey) return [];
-      state.notificationsById = new Map();
-      mergeNotificationEvents(events, ownPubkey);
-      state.notificationsLastLoadedAt = Date.now();
-      state.notificationsLoading = false;
-      state.notificationsError = '';
-      hydrateNotificationTargetNotes(Array.from(state.notificationsById.values()), { force }).catch(() => {});
-      renderNotificationsBell();
-      scheduleRenderNotifications();
-      return Array.from(state.notificationsById.values());
-    }).catch(() => {
-      state.notificationsLoading = false;
-      state.notificationsError = 'Could not load notifications from relays right now.';
-      renderNotificationsBell();
-      if (!silent || isNotificationsPageVisible()) renderNotifications();
-      return [];
-    }).finally(() => {
-      state.notificationsFetchPending = false;
-      state.notificationsFetchPromise = null;
-    });
+    const fetchPromise = refreshNotificationsStreamAddresses(ownPubkey, force)
+      .catch(() => [])
+      .then(() => {
+        const activePubkey = state.user ? normalizePubkeyHex(state.user.pubkey || '') : '';
+        if (!activePubkey || activePubkey !== ownPubkey || !state.pool) return [];
+        const filters = notificationFiltersForUser(ownPubkey, {
+          sinceSec: Math.floor(Date.now() / 1000) - (7 * 86400),
+          limit: 120
+        });
+        return fetchEventsCached(filters, {
+          scope: 'notifications-feed',
+          cacheKey: `notifications-feed:${ownPubkey}:${filters.length}:${Array.from(state.notificationsStreamAddresses || []).join(',')}`,
+          timeoutMs: 4200,
+          maxEvents: 1200,
+          ttlMs: 45000,
+          warmMs: 180000,
+          allowStale: false,
+          force
+        });
+      })
+      .then((events) => {
+        const activePubkey = state.user ? normalizePubkeyHex(state.user.pubkey || '') : '';
+        if (!activePubkey || activePubkey !== ownPubkey) return [];
+        state.notificationsById = new Map();
+        mergeNotificationEvents(events, ownPubkey);
+        state.notificationsLastLoadedAt = Date.now();
+        state.notificationsLoading = false;
+        state.notificationsError = '';
+        hydrateNotificationTargetNotes(Array.from(state.notificationsById.values()), { force }).catch(() => {});
+        renderNotificationsBell();
+        scheduleRenderNotifications();
+        startNotificationsSubscription();
+        return Array.from(state.notificationsById.values());
+      }).catch(() => {
+        state.notificationsLoading = false;
+        state.notificationsError = 'Could not load notifications from relays right now.';
+        renderNotificationsBell();
+        if (!silent || isNotificationsPageVisible()) renderNotifications();
+        return [];
+      }).finally(() => {
+        state.notificationsFetchPending = false;
+        state.notificationsFetchPromise = null;
+      });
 
     state.notificationsFetchPending = true;
     state.notificationsFetchPromise = fetchPromise;
@@ -15237,7 +15364,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     toggleMobileTheaterChat(false);
     const p = profileFor(hostPubkey);
     if (hostPubkey) {
-      fetchProfileIfNeeded(hostPubkey).then(() => {
+      fetchProfileIfNeeded(hostPubkey, { force: !((state.profilesByPubkey.get(hostPubkey) || {}).__hydrated), timeoutMs: 3200 }).then(() => {
         if (state.selectedStreamAddress !== stream.address || !isVideoPageVisible()) return;
         if (!state.profilesByPubkey.has(hostPubkey)) {
           const nameEl = qs('.sib-name');
@@ -15249,7 +15376,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }).catch(() => {});
     }
     if (platformPubkey && platformPubkey !== hostPubkey) {
-      fetchProfileIfNeeded(platformPubkey).catch(() => {});
+      fetchProfileIfNeeded(platformPubkey, { force: !((state.profilesByPubkey.get(platformPubkey) || {}).__hydrated), timeoutMs: 3200 }).catch(() => {});
     }
 
     // Title & summary
@@ -15490,10 +15617,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function updateTheaterShareBtn(stream) {
-    const btn = qs('#theaterShareBtn');
+    const btn = qs('#shareBoostBtn');
     if (!btn) return;
     const boosted = !!(state.user && stream && state.boostedStreamAddresses.has(stream.address));
     btn.classList.toggle('boosted', boosted);
+    btn.setAttribute('aria-pressed', boosted ? 'true' : 'false');
+    const label = btn.querySelector('span');
+    if (label) label.textContent = boosted ? 'Boosted' : 'Boost';
+    const sub = btn.querySelector('.sub');
+    if (sub) sub.textContent = boosted ? 'Already boosted' : 'Post to Nostr';
   }
 
   async function findOwnStreamBoostEventId(stream) {
@@ -18143,8 +18275,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         scope: 'profile-by-pubkey',
         cacheKey: `profile-by-pubkey:${normalizedPubkey}`,
         force: forceRefresh,
-        ttlMs: forceRefresh ? 0 : undefined,
-        timeoutMs: 1100,
+        ttlMs: forceRefresh ? 0 : 10000,
+        warmMs: 45000,
+        allowStale: false,
+        timeoutMs: Math.max(1800, Number(opts.timeoutMs || 2800)),
         maxEvents: 8,
         relayUrls: (() => {
           const urls = Array.isArray(state.pool && state.pool.urls) ? [...state.pool.urls] : [];
@@ -27524,6 +27658,31 @@ window.saveAppSettings = function () {
     window.theaterZap = window.theaterDonation;
 
     // ---- Share stream ----
+    function renderShareStreamQr(url) {
+      const qr = qs('#shareWebQr');
+      if (!qr) return;
+      qr.innerHTML = '';
+      const value = String(url || '').trim();
+      if (!value) {
+        qr.textContent = 'Stream URL unavailable';
+        return;
+      }
+      if (typeof window.QRCode !== 'function') {
+        qr.textContent = 'QR code unavailable';
+        return;
+      }
+      try {
+        new window.QRCode(qr, {
+          text: value,
+          width: 160,
+          height: 160,
+          correctLevel: window.QRCode.CorrectLevel ? window.QRCode.CorrectLevel.M : 0
+        });
+      } catch (_) {
+        qr.textContent = 'QR code unavailable';
+      }
+    }
+
     window.closeShareModal = function (e) {
       const ov = qs('#shareModal');
       if (!ov) return;
@@ -27593,17 +27752,24 @@ window.saveAppSettings = function () {
       syncTheaterRoute(stream, 'replace');
       state.shareModalStreamAddress = stream.address;
 
-      const webUrl = window.location.href;
       const naddrInput = qs('#shareNaddr');
       const webInput = qs('#shareWebUrl');
-      if (webInput) webInput.value = webUrl;
-
       const initialNaddr = encodeStreamNaddr(stream);
+      const canonicalUrl = initialNaddr
+        ? `${window.location.origin}/${initialNaddr}`
+        : window.location.href;
+      if (webInput) webInput.value = canonicalUrl;
       if (naddrInput) naddrInput.value = initialNaddr || '';
+      renderShareStreamQr(canonicalUrl);
+      updateTheaterShareBtn(stream);
+
       if (!initialNaddr) {
         ensureNostrTools().then(() => {
           const next = encodeStreamNaddr(stream);
+          const resolvedUrl = next ? `${window.location.origin}/${next}` : window.location.href;
           if (naddrInput) naddrInput.value = next || '';
+          if (webInput) webInput.value = resolvedUrl;
+          renderShareStreamQr(resolvedUrl);
         }).catch(() => {});
       }
 
