@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.7.3">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.0">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -930,9 +930,6 @@ body.nest-preview-open{overflow:hidden}
     </div>
 
     <div class="theater-donation-view" id="theaterDonationLightningView" hidden>
-      <div class="theater-donation-back-row">
-        <button class="btn btn-ghost" type="button" onclick="showTheaterDonationChooser()">← Back</button>
-      </div>
       <div class="theater-lightning-donation-grid">
         <section class="theater-lightning-address-panel">
           <div class="theater-donation-onchain-recipient-card theater-donation-lightning-recipient-card" id="theaterDonationLightningRecipientCard">
@@ -980,10 +977,19 @@ body.nest-preview-open{overflow:hidden}
             <textarea id="theaterDonationZapMessage" maxlength="500" rows="3" placeholder="⚡ donation from Sifaka Live"></textarea>
           </label>
           <div class="theater-donation-actions">
-            <button class="btn btn-primary" type="button" id="theaterDonationSendBtn" onclick="sendTheaterLightningDonation()">Send donation</button>
-            <button class="btn btn-ghost" type="button" onclick="closeTheaterDonation()">Cancel</button>
+            <button class="btn btn-primary" type="button" id="theaterDonationSendBtn" onclick="sendTheaterLightningDonation()">Send donation (via NWC)</button>
+            <button class="btn btn-ghost" type="button" id="theaterDonationExtensionSendBtn" onclick="sendTheaterLightningDonationViaExtension()">Send donation (via Extension)</button>
+          </div>
+          <div class="theater-donation-loading" id="theaterDonationLoading" role="status" aria-live="polite" hidden>
+            <span class="theater-donation-loading-spinner" aria-hidden="true"></span>
+            <span id="theaterDonationLoadingText">Creating the Lightning donation invoice…</span>
           </div>
           <div class="theater-donation-status" id="theaterDonationStatus" aria-live="polite"></div>
+          <div class="theater-donation-external-wallet" id="theaterDonationExternalWalletFallback" hidden>
+            <span>Invoice ready for your Lightning wallet.</span>
+            <a id="theaterDonationExternalWalletLink" href="lightning:" onclick="openTheaterLightningExternalWallet(event)">Open Lightning wallet</a>
+            <button class="btn btn-ghost" type="button" onclick="copyTheaterLightningInvoice()">Copy invoice</button>
+          </div>
         </section>
       </div>
     </div>
@@ -2319,7 +2325,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.7.3" defer></script>
+<script src="./nostrflux-app.js?v=0.8.0" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>

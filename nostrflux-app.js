@@ -2851,11 +2851,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return await payInvoiceWithPreferredWallet(invoice);
   }
 
-  async function payLightningDonationForLud16(lud16, amountMsats, recipientPubkey, extraTags = [], message = '') {
+
+  async function createLightningDonationInvoiceForLud16(lud16, amountMsats, recipientPubkey, extraTags = [], message = '') {
     const info = await fetchLightningAddressInfo(lud16, amountMsats);
     const zapMessage = String(message || '').trim() || '⚡ donation from Sifaka Live';
     const canCreateZap = !!(state.user && info.allowsNostr && info.receiptPubkey);
-
     if (canCreateZap) {
       let zapRequest = null;
       let zapInvoice = '';
@@ -2866,18 +2866,18 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       } catch (err) {
         console.warn('NIP-57 donation setup unavailable; using ordinary Lightning payment:', err && err.message ? err.message : err);
       }
-
-      // Never fall back after an invoice has been handed to a wallet.
-      // A wallet timeout can be ambiguous about whether payment actually succeeded.
-      if (zapInvoice) {
-        const paymentMethod = await payInvoiceWithPreferredWallet(zapInvoice);
-        return { paymentMethod, usedZap: true };
-      }
+      if (zapInvoice) return { invoice: zapInvoice, usedZap: true };
     }
+    return {
+      invoice: await buildLightningInvoiceForLud16(lud16, amountMsats, { lightningInfo: info }),
+      usedZap: false
+    };
+  }
 
-    const invoice = await buildLightningInvoiceForLud16(lud16, amountMsats, { lightningInfo: info });
-    const paymentMethod = await payInvoiceWithPreferredWallet(invoice);
-    return { paymentMethod, usedZap: false };
+  async function payLightningDonationForLud16(lud16, amountMsats, recipientPubkey, extraTags = [], message = '') {
+    const generated = await createLightningDonationInvoiceForLud16(lud16, amountMsats, recipientPubkey, extraTags, message);
+    const paymentMethod = await payInvoiceWithPreferredWallet(generated.invoice);
+    return { paymentMethod, usedZap: generated.usedZap };
   }
 
   const THEATER_ONCHAIN_MESSAGE_MAX_BYTES = 72;
@@ -22701,17 +22701,15 @@ function renderProfileFeed(pubkey) {
       toggleFollowSelectedProfile();
     };
 
+
     window.openProfileDonation = async function () {
-      if (!state.user) { window.openLogin(); return; }
       const pubkey = normalizePubkeyHex(state.selectedProfilePubkey);
       const modal = qs('#theaterDonationModal');
       if (!pubkey || !modal) return;
       try { await fetchProfileIfNeeded(pubkey); } catch (_) {}
       const profile = profileFor(pubkey);
       const syntheticStream = {
-        address: 'profile:' + pubkey,
-        pubkey,
-        hostPubkey: pubkey,
+        address: 'profile:' + pubkey, pubkey, hostPubkey: pubkey,
         hostName: profile.display_name || profile.name || 'this profile',
         raw: { pubkey, tags: [['p', pubkey, '', 'host']] }
       };
@@ -22723,9 +22721,11 @@ function renderProfileFeed(pubkey) {
       theaterDonationContext.source = 'profile';
       populateTheaterDonationChooser(syntheticStream, profile, pubkey);
       if (qs('#theaterDonationTitle')) qs('#theaterDonationTitle').textContent = 'Support ' + getTheaterDonationHostLabel(syntheticStream, profile);
-      showTheaterDonationChooser();
       modal.classList.add('open');
+      if (!state.user && theaterDonationContext.lud16) window.selectTheaterDonationMethod('lightning').catch(() => {});
+      else showTheaterDonationChooser();
     };
+
 
     window.openProfileMessage = function () {
       const peer = normalizePubkeyHex(state.selectedProfilePubkey);
@@ -25918,6 +25918,8 @@ window.saveAppSettings = function () {
     };
 
     // ---- Theater Donation ----
+    let theaterDonationExternalInvoice = '';
+
     let theaterDonationContext = {
       streamAddress: '',
       hostPubkey: '',
@@ -25996,6 +25998,7 @@ window.saveAppSettings = function () {
     async function refreshTheaterDonationWalletStatus() {
       const status = qs('#theaterDonationWalletStatus');
       if (!status) return;
+      if (!state.user) { status.textContent = ''; status.classList.remove('is-connected', 'is-disconnected'); return; }
 
       status.classList.remove('is-connected', 'is-disconnected');
       status.textContent = 'Loading live Lightning balance…';
@@ -26386,32 +26389,36 @@ window.saveAppSettings = function () {
       theaterDonationContext.onchainDraft = null;
     }
 
+
     window.theaterDonation = async function (preferredMethod = '') {
-      if (!state.user) {
-        window.openLogin();
-        return;
-      }
       const stream = getTheaterDonationStream();
       if (!stream) return;
-
       const modal = qs('#theaterDonationModal');
       if (!modal) return;
-
       resetTheaterLightningSendState();
       window.hideTheaterDonationResult();
-
       const initialPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
       const initialProfile = getTheaterDonationProfile(stream, initialPubkey);
       if (qs('#theaterDonationTitle')) qs('#theaterDonationTitle').textContent = 'Support ' + getTheaterDonationHostLabel(stream, initialProfile);
       theaterDonationContext.targetStream = stream;
       theaterDonationContext.source = 'theater';
       populateTheaterDonationChooser(stream, initialProfile, initialPubkey);
-      showTheaterDonationChooser();
-      modal.classList.add('open');
-      if (String(preferredMethod || '').toLowerCase() === 'lightning' && String(initialProfile.lud16 || '').trim()) {
-        await selectTheaterDonationMethod('lightning');
+      const hasLightning = !!String(initialProfile.lud16 || theaterDonationContext.lud16 || '').trim();
+      const wantsLightning = String(preferredMethod || '').toLowerCase() === 'lightning' && hasLightning;
+      const guestLightningOnly = !state.user && hasLightning;
+      if (wantsLightning || guestLightningOnly) {
+        const choose = qs('#theaterDonationChooseView');
+        const lightning = qs('#theaterDonationLightningView');
+        const onchain = qs('#theaterDonationOnchainView');
+        if (choose) choose.hidden = true;
+        if (lightning) lightning.hidden = false;
+        if (onchain) onchain.hidden = true;
+        setTheaterDonationGuestMode(!state.user);
+      } else {
+        showTheaterDonationChooser();
       }
-
+      modal.classList.add('open');
+      if (wantsLightning || guestLightningOnly) await window.selectTheaterDonationMethod('lightning');
       resolveTheaterDonationPubkey(stream).then(async (resolvedPubkey) => {
         if (!resolvedPubkey || theaterDonationContext.streamAddress !== stream.address) return;
         theaterDonationContext.hostPubkey = resolvedPubkey;
@@ -26419,22 +26426,47 @@ window.saveAppSettings = function () {
         const profile = getTheaterDonationProfile(stream, resolvedPubkey);
         populateTheaterDonationChooser(stream, profile, resolvedPubkey);
         if (qs('#theaterDonationTitle')) qs('#theaterDonationTitle').textContent = 'Support ' + getTheaterDonationHostLabel(stream, profile);
-        if (String(preferredMethod || '').toLowerCase() === 'lightning' && String(profile.lud16 || '').trim()) {
-          selectTheaterDonationMethod('lightning').catch(() => {});
+        if ((String(preferredMethod || '').toLowerCase() === 'lightning' || !state.user) && String(profile.lud16 || '').trim()) {
+          window.selectTheaterDonationMethod('lightning').catch(() => {});
         }
       }).catch(() => {});
     };
 
+
+
+    function setTheaterDonationGuestMode(guest) {
+      const modal = qs('#theaterDonationModal');
+      if (modal) modal.classList.toggle('guest-lightning-only', !!guest);
+      const subtitle = qs('#theaterDonationModal .sm-subtitle');
+      if (subtitle) subtitle.textContent = guest
+        ? 'Scan the QR code or copy the Lightning address to donate.'
+        : 'Choose how you would like to donate.';
+    }
     function resetTheaterLightningSendState() {
       const btn = qs('#theaterDonationSendBtn');
+      const extensionBtn = qs('#theaterDonationExtensionSendBtn');
       const status = qs('#theaterDonationStatus');
+      const loading = qs('#theaterDonationLoading');
+      const fallback = qs('#theaterDonationExternalWalletFallback');
       if (btn) {
         btn.disabled = false;
-        btn.textContent = 'Send donation';
+        btn.textContent = 'Send donation (via NWC)';
         btn.onclick = window.sendTheaterLightningDonation;
       }
+      if (extensionBtn) {
+        extensionBtn.disabled = false;
+        extensionBtn.textContent = 'Send donation (via Extension)';
+        extensionBtn.onclick = window.sendTheaterLightningDonationViaExtension;
+      }
       if (status) status.textContent = '';
+      if (loading) loading.hidden = true;
+      if (fallback) fallback.hidden = true;
+      theaterDonationExternalInvoice = '';
+      const externalLink = qs('#theaterDonationExternalWalletLink');
+      if (externalLink) externalLink.href = 'lightning:';
     }
+
+
 
     window.showTheaterDonationChooser = function () {
       const choose = qs('#theaterDonationChooseView');
@@ -26443,28 +26475,33 @@ window.saveAppSettings = function () {
       if (choose) choose.hidden = false;
       if (lightning) lightning.hidden = true;
       if (onchain) onchain.hidden = true;
-      refreshTheaterDonationWalletStatus().catch(() => {});
+      setTheaterDonationGuestMode(false);
+      if (state.user) refreshTheaterDonationWalletStatus().catch(() => {});
+      else {
+        const walletStatus = qs('#theaterDonationWalletStatus');
+        if (walletStatus) {
+          walletStatus.textContent = '';
+          walletStatus.classList.remove('is-connected', 'is-disconnected');
+        }
+      }
       resetTheaterLightningSendState();
       const amount = qs('#theaterDonationAmount');
       if (amount && (!amount.value || Number(amount.value) <= 0)) amount.value = '330';
     };
+
+
 
     window.closeTheaterDonation = function (event) {
       const modal = qs('#theaterDonationModal');
       if (!modal) return;
       if (event && event.target !== modal) return;
       modal.classList.remove('open');
+      setTheaterDonationGuestMode(false);
       window.hideTheaterDonationResult();
       theaterDonationContext = {
-        streamAddress: '',
-        hostPubkey: '',
-        hostName: '',
-        lud16: '',
-        targetStream: null,
-        source: 'theater',
-        onchainAddress: '',
-        onchainLoadToken: 0,
-        onchainDraft: null
+        streamAddress: '', hostPubkey: '', hostName: '', lud16: '',
+        targetStream: null, source: 'theater', onchainAddress: '',
+        onchainLoadToken: 0, onchainDraft: null
       };
       resetTheaterOnchainView();
       const status = qs('#theaterDonationStatus');
@@ -26476,17 +26513,14 @@ window.saveAppSettings = function () {
       if (messageInput) messageInput.value = '';
     };
 
+
+
     window.selectTheaterDonationMethod = async function (method) {
-      if (!state.user) {
-        window.openLogin();
-        return;
-      }
+      if (!state.user && method !== 'lightning') { window.openLogin(); return; }
       const stream = getTheaterDonationStream();
       if (!stream) return;
-
       const hostPubkey = theaterDonationContext.hostPubkey || normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
       const profile = getTheaterDonationProfile(stream, hostPubkey);
-
       if (method === 'onchain') {
         const resolvedPubkey = theaterDonationContext.hostPubkey || normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
         if (!resolvedPubkey || typeof window.openWalletOnchainSend !== 'function') {
@@ -26500,26 +26534,22 @@ window.saveAppSettings = function () {
           if (!address) throw new Error('Could not derive the streamer Bitcoin address.');
           const legacyModal = qs('#theaterDonationModal');
           if (legacyModal) legacyModal.classList.remove('open');
-          window.openWalletOnchainSend(address, {
-            recipientPubkey: resolvedPubkey,
-            recipientName,
-            profileDonation: true
-          });
+          window.openWalletOnchainSend(address, { recipientPubkey: resolvedPubkey, recipientName, profileDonation: true });
         } catch (err) {
           const note = qs('#theaterDonationChooseNote');
           if (note) note.textContent = err?.message || 'Could not open the on-chain donation window.';
         }
         return;
       }
-
       if (method === 'lightning') {
         resetTheaterLightningSendState();
-        if (!String(profile.lud16 || '').trim()) {
+        const lightningAddress = String(profile.lud16 || theaterDonationContext.lud16 || '').trim();
+        if (!lightningAddress) {
           const note = qs('#theaterDonationChooseNote');
           if (note) note.textContent = 'Lightning donation is unavailable for this profile.';
           return;
         }
-        theaterDonationContext.lud16 = String(profile.lud16 || '').trim();
+        theaterDonationContext.lud16 = lightningAddress;
         renderTheaterLightningRecipientIdentity(stream, hostPubkey);
         const choose = qs('#theaterDonationChooseView');
         const lightning = qs('#theaterDonationLightningView');
@@ -26527,12 +26557,22 @@ window.saveAppSettings = function () {
         if (choose) choose.hidden = true;
         if (lightning) lightning.hidden = false;
         if (onchain) onchain.hidden = true;
-        refreshTheaterDonationWalletStatus().catch(() => {});
+        setTheaterDonationGuestMode(!state.user);
+        if (state.user) refreshTheaterDonationWalletStatus().catch(() => {});
+        else {
+          const walletStatus = qs('#theaterDonationWalletStatus');
+          if (walletStatus) {
+            walletStatus.textContent = '';
+            walletStatus.classList.remove('is-connected', 'is-disconnected');
+          }
+        }
         const status = qs('#theaterDonationStatus');
         if (status) status.textContent = '';
-        setTimeout(() => qs('#theaterDonationAmount')?.focus(), 0);
+        const amount = qs('#theaterDonationAmount');
+        if (state.user && amount) setTimeout(() => amount.focus(), 0);
       }
     };
+
 
     window.retryTheaterOnchainAddress = async function () {
       const stream = getTheaterDonationStream();
@@ -26770,74 +26810,110 @@ window.saveAppSettings = function () {
       }
     };
 
-    window.sendTheaterLightningDonation = async function () {
+
+    async function sendTheaterLightningDonationWithMethod(method) {
       const stream = getTheaterDonationStream();
       if (!stream) return;
-
+      const status = qs('#theaterDonationStatus');
+      const nwcButton = qs('#theaterDonationSendBtn');
+      const extensionButton = qs('#theaterDonationExtensionSendBtn');
+      const loading = qs('#theaterDonationLoading');
+      const loadingText = qs('#theaterDonationLoadingText');
+      const fallback = qs('#theaterDonationExternalWalletFallback');
+      if (!state.user) {
+        if (status) status.textContent = 'Scan the QR code or copy the Lightning address to donate without signing in.';
+        return;
+      }
+      const nwcConfig = method === 'nwc' ? getSavedNwcConfig() : null;
+      if (method === 'nwc' && !nwcConfig) {
+        if (status) status.textContent = 'No NWC wallet is connected. Connect NWC in Settings → Connect Wallet to use this button. It will not fall back to an extension.';
+        return;
+      }
       const profile = getTheaterDonationProfile(stream, theaterDonationContext.hostPubkey || '');
       const lud16 = String(profile.lud16 || theaterDonationContext.lud16 || '').trim();
       const amountSats = Math.floor(Number(qs('#theaterDonationAmount')?.value || 0));
-      const status = qs('#theaterDonationStatus');
-      const btn = qs('#theaterDonationSendBtn');
-      const messageInput = qs('#theaterDonationZapMessage');
-      const zapMessage = String(messageInput?.value || '').trim();
-
-      if (!lud16) {
-        if (status) status.textContent = 'This streamer does not have a Lightning address.';
-        return;
-      }
-      if (!Number.isFinite(amountSats) || amountSats < 1) {
-        if (status) status.textContent = 'Enter a valid donation amount in sats.';
-        return;
-      }
-      if (amountSats > 100000000) {
-        if (status) status.textContent = 'Enter an amount of 100,000,000 sats or less.';
-        return;
-      }
-
+      const zapMessage = String(qs('#theaterDonationZapMessage')?.value || '').trim();
+      if (!lud16) { if (status) status.textContent = 'This streamer does not have a Lightning address.'; return; }
+      if (!Number.isFinite(amountSats) || amountSats < 1) { if (status) status.textContent = 'Enter a valid donation amount in sats.'; return; }
+      if (amountSats > 100000000) { if (status) status.textContent = 'Enter an amount of 100,000,000 sats or less.'; return; }
       const targetPubkey = normalizePubkeyHex(theaterDonationContext.hostPubkey || stream.hostPubkey || stream.pubkey || '');
-      if (!targetPubkey) {
-        if (status) status.textContent = 'The streamer public key is not available yet.';
-        return;
-      }
-
+      if (!targetPubkey) { if (status) status.textContent = 'The streamer public key is not available yet.'; return; }
       prepareTheaterDonationAudio();
-      if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
-      if (status) status.textContent = 'Creating the Lightning donation invoice…';
-
+      if (status) status.textContent = '';
+      if (loading) loading.hidden = false;
+      if (loadingText) loadingText.textContent = 'Creating the Lightning donation invoice…';
+      if (fallback) fallback.hidden = true;
+      theaterDonationExternalInvoice = '';
+      if (nwcButton) nwcButton.disabled = true;
+      if (extensionButton) extensionButton.disabled = true;
+      if (method === 'nwc' && nwcButton) nwcButton.textContent = 'Preparing NWC donation…';
+      if (method === 'extension' && extensionButton) extensionButton.textContent = 'Preparing extension donation…';
       try {
-        const payment = await payLightningDonationForLud16(
-          lud16,
-          amountSats * 1000,
-          targetPubkey,
-          theaterDonationContext.source === 'profile'
-            ? []
-            : [
-                ['e', stream.id],
-                ['a', stream.address],
-                ['k', String(KIND_LIVE_EVENT)]
-              ],
+        const generated = await createLightningDonationInvoiceForLud16(
+          lud16, amountSats * 1000, targetPubkey,
+          theaterDonationContext.source === 'profile' ? [] : [
+            ['e', stream.id], ['a', stream.address], ['k', String(KIND_LIVE_EVENT)]
+          ],
           zapMessage
         );
-        const walletLabel = payment.paymentMethod === 'nwc'
-          ? 'Nostr Wallet Connect'
-          : 'your browser Lightning wallet';
-        const zapLabel = payment.usedZap ? ' NIP-57 zap.' : '';
-        if (status) status.textContent = 'Donation sent successfully via ' + walletLabel + '.' + zapLabel;
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Send donation';
+        if (method === 'nwc') {
+          if (loadingText) loadingText.textContent = 'Sending donation via NWC…';
+          // This route pays only with the configured NWC connection.
+          // Do not call payInvoiceWithPreferredWallet(), which can fall back to WebLN.
+          await payInvoiceWithNwcConfig(nwcConfig, generated.invoice);
+        } else if (window.webln && typeof window.webln.sendPayment === 'function') {
+          if (loadingText) loadingText.textContent = 'Connecting to your Lightning wallet extension…';
+          if (typeof window.webln.enable === 'function') await window.webln.enable();
+          await window.webln.sendPayment(generated.invoice);
+        } else {
+          const invoice = String(generated.invoice || '').trim();
+          if (!invoice) throw new Error('The Lightning wallet did not return a payment invoice.');
+          theaterDonationExternalInvoice = invoice;
+          const externalLink = qs('#theaterDonationExternalWalletLink');
+          if (externalLink) externalLink.href = 'lightning:' + invoice;
+          if (fallback) fallback.hidden = false;
+          if (loading) loading.hidden = true;
+          if (status) status.textContent = 'Invoice created. Opening your Lightning wallet… If it does not open, use the controls below. Sifaka cannot confirm payment made in another app.';
+          try { window.location.href = 'lightning:' + invoice; } catch (_) {}
+          return;
         }
+        const walletLabel = method === 'nwc' ? 'Nostr Wallet Connect (NWC)' : 'your Lightning wallet extension';
+        const zapLabel = generated.usedZap ? ' NIP-57 zap.' : '';
+        if (status) status.textContent = 'Donation sent successfully via ' + walletLabel + '.' + zapLabel;
         playTheaterDonationSuccessSound();
         showTheaterDonationResult(true, 'Lightning donation successful', formatCount(amountSats) + ' sats was sent to ' + getTheaterDonationHostLabel(stream, profile) + '.');
       } catch (err) {
         console.warn('Lightning donation failed:', err && err.message ? err.message : err);
-        const failureText = err?.message || 'Lightning donation failed. Connect a compatible wallet in Settings → Connect Wallet.';
+        const failureText = err?.message || (method === 'nwc' ? 'NWC could not complete the donation.' : 'The Lightning wallet extension could not complete the donation.');
         if (status) status.textContent = failureText;
-        if (btn) { btn.disabled = false; btn.textContent = 'Send donation'; }
         showTheaterDonationResult(false, 'Lightning donation failed', failureText);
+      } finally {
+        if (loading) loading.hidden = true;
+        if (nwcButton) { nwcButton.disabled = false; nwcButton.textContent = 'Send donation (via NWC)'; }
+        if (extensionButton) { extensionButton.disabled = false; extensionButton.textContent = 'Send donation (via Extension)'; }
       }
+    }
+    window.sendTheaterLightningDonation = async function () { return sendTheaterLightningDonationWithMethod('nwc'); };
+    window.sendTheaterLightningDonationViaExtension = async function () { return sendTheaterLightningDonationWithMethod('extension'); };
+    window.openTheaterLightningExternalWallet = function (event) {
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      if (!theaterDonationExternalInvoice) return;
+      window.location.href = 'lightning:' + theaterDonationExternalInvoice;
     };
+    window.copyTheaterLightningInvoice = async function () {
+      const invoice = String(theaterDonationExternalInvoice || '').trim();
+      if (!invoice) return;
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(invoice);
+          const status = qs('#theaterDonationStatus');
+          if (status) status.textContent = 'Lightning invoice copied. Complete payment in your wallet.';
+          return;
+        }
+      } catch (_) {}
+      window.prompt('Copy Lightning invoice:', invoice);
+    };
+
 
     window.theaterLightningDonation = async function () {
       return window.theaterDonation('lightning');
@@ -26856,10 +26932,6 @@ window.saveAppSettings = function () {
     };
 
     window.openProfileLightningDonation = async function () {
-      if (!state.user) {
-        window.openLogin();
-        return;
-      }
       const pubkey = normalizePubkeyHex(state.selectedProfilePubkey || '');
       if (!pubkey) return;
       const profile = profileFor(pubkey);
@@ -26891,7 +26963,9 @@ window.saveAppSettings = function () {
         qs('#theaterDonationTitle').textContent = 'Support ' + theaterDonationContext.hostName;
       }
       populateTheaterDonationChooser(syntheticStream, profile, pubkey);
+      resetTheaterLightningSendState();
       modal.classList.add('open');
+      setTheaterDonationGuestMode(!state.user);
       const choose = qs('#theaterDonationChooseView');
       const lightning = qs('#theaterDonationLightningView');
       const onchain = qs('#theaterDonationOnchainView');
@@ -26899,7 +26973,11 @@ window.saveAppSettings = function () {
       if (lightning) lightning.hidden = false;
       if (onchain) onchain.hidden = true;
       renderTheaterLightningRecipientIdentity(syntheticStream, pubkey);
-      refreshTheaterDonationWalletStatus().catch(() => {});
+      if (state.user) refreshTheaterDonationWalletStatus().catch(() => {});
+      else {
+        const walletStatus = qs('#theaterDonationWalletStatus');
+        if (walletStatus) { walletStatus.textContent = ''; walletStatus.classList.remove('is-connected', 'is-disconnected'); }
+      }
       const amount = qs('#theaterDonationAmount');
       if (amount) amount.value = '21';
       const messageInput = qs('#theaterDonationZapMessage');

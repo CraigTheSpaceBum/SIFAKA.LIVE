@@ -3293,6 +3293,17 @@ nav .btn{
 .theater-donation-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;}
 .theater-donation-actions .btn{min-height:42px;}
 .theater-donation-status{min-height:1.25rem;margin-top:.7rem;color:var(--text2);font-size:.67rem;line-height:1.45;}
+.theater-donation-loading{display:flex;align-items:center;gap:.5rem;margin-top:.65rem;color:var(--text2);font-size:.72rem;line-height:1.45;}
+.theater-donation-loading[hidden],.theater-donation-external-wallet[hidden]{display:none!important;}
+.theater-donation-loading-spinner{display:inline-block;width:14px;height:14px;flex:0 0 14px;border:2px solid var(--border2);border-top-color:var(--zap);border-radius:50%;animation:spin .7s linear infinite;}
+.theater-donation-external-wallet{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-top:.65rem;padding:.7rem;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text2);font-size:.72rem;line-height:1.45;}
+.theater-donation-external-wallet a{color:var(--zap);font-weight:700;text-decoration:none;}
+.theater-donation-external-wallet a:hover{text-decoration:underline;}
+.theater-donation-external-wallet .btn{min-height:34px;padding:.35rem .6rem;}
+.theater-donation-actions .btn{min-width:0;white-space:normal;line-height:1.25;}
+#theaterDonationModal.guest-lightning-only .theater-lightning-donation-grid{grid-template-columns:minmax(0,1fr);}
+#theaterDonationModal.guest-lightning-only .theater-lightning-nwc-panel{display:none!important;}
+
 .theater-lightning-donation-grid{
   display:grid;
   grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
