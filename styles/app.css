@@ -9362,3 +9362,69 @@ body.nest-room-page-open{
 /* 0.5.1 NADDR identity metadata */
 .naddr-stream-host-id{font-family:'DM Mono',monospace;font-size:.63rem;color:var(--muted);word-break:break-all;}
 .naddr-stream-host-nip05{font-family:'DM Mono',monospace;font-size:.62rem;color:var(--nip05);margin-top:.12rem;word-break:break-word;}
+
+
+/* ======== 0.8.1 ON-CHAIN DONATION DIALOG MATCHES LIGHTNING ======== */
+@media (min-width:761px){
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
+    box-sizing:border-box;
+    width:40vw!important;
+    max-width:40vw!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:90vh!important;
+    padding:1.25rem!important;
+    overflow:auto!important;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-body.is-profile-donation{
+    height:auto!important;
+    max-height:none!important;
+    margin-top:.75rem!important;
+    gap:.75rem;
+    align-items:start;
+    overflow:visible!important;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-body.is-profile-donation > .wallet-profile-donation-card{
+    height:auto!important;
+    max-height:none!important;
+    overflow:visible!important;
+  }
+}
+@media (max-width:760px){
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-card{
+    box-sizing:border-box;
+    width:calc(100vw - 1rem)!important;
+    max-width:calc(100vw - 1rem)!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:92vh!important;
+    padding:1rem!important;
+    overflow:auto!important;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-body.is-profile-donation{
+    height:auto!important;
+    max-height:none!important;
+    overflow:visible!important;
+  }
+  #walletOnchainSendModal.profile-donation .wallet-onchain-send-body.is-profile-donation > .wallet-profile-donation-card{
+    height:auto!important;
+    max-height:none!important;
+    overflow:visible!important;
+  }
+}
+
+/* Donation chat badges identify the payment rail on compact screens too. */
+#videoPage .chat-scroll .onchain-donation-ev .chat-zap-amount{
+  color:#ffe0b2;
+  border-color:rgba(247,147,26,.55);
+  background:linear-gradient(135deg,rgba(247,147,26,.25),rgba(247,147,26,.1));
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+#videoPage .chat-scroll .onchain-donation-ev .c-text{
+  color:#ffd9ad;
+}
+#videoPage .chat-scroll .zap-ev:not(.onchain-donation-ev) .chat-zap-amount{
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
