@@ -9924,7 +9924,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       audioWrap.hidden = false;
       updateGoLiveAudioPreviewDetails();
       status.textContent = 'Loading audio preview…';
-      audio.src = raw;
     } else {
       video.style.display = 'block';
       audioWrap.hidden = true;
@@ -9974,7 +9973,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           ? 'Could not load this audio URL. Check that it is a direct, browser-playable audio stream.'
           : 'Could not load preview. Try HLS (.m3u8), MP4, WebM, MOV, or another browser-supported video URL.';
       }, { once: true });
-      if (!audioOnly) media.src = raw;
+      media.src = raw;
       await media.play().catch(() => {
         if (audioOnly && token === state.goLivePreviewToken) status.textContent = 'Audio preview ready — press play to listen.';
       });
