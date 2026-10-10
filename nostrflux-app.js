@@ -16322,6 +16322,49 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     });
   }
 
+  function updateTheaterTitleMarquee(titleElement) {
+    const title = titleElement || qs('.sib-title');
+    if (!title) return;
+    const measure = () => {
+      if (!document.body.contains(title)) return;
+      const row = title.closest('.editable-row');
+      if (!row) return;
+      const rowStyle = window.getComputedStyle ? window.getComputedStyle(row) : null;
+      const paddingLeft = rowStyle ? (parseFloat(rowStyle.paddingLeft) || 0) : 0;
+      const paddingRight = rowStyle ? (parseFloat(rowStyle.paddingRight) || 0) : 0;
+      const availableWidth = Math.max(0, row.clientWidth - paddingLeft - paddingRight);
+      const distance = Math.max(0, title.scrollWidth - availableWidth);
+      title.style.setProperty('--theater-title-scroll-distance', '-' + Math.ceil(distance) + 'px');
+      title.classList.toggle('theater-title-overflow', distance > 10);
+    };
+    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(measure);
+    else window.setTimeout(measure, 0);
+    if (!window.__SIFAKA_THEATER_TITLE_RESIZE_BOUND) {
+      window.__SIFAKA_THEATER_TITLE_RESIZE_BOUND = true;
+      window.addEventListener('resize', () => {
+        const currentTitle = qs('.sib-title');
+        if (currentTitle) updateTheaterTitleMarquee(currentTitle);
+      }, { passive: true });
+    }
+  }
+
+  function updateTheaterMainHostBanner(pubkey, streamAddress) {
+    const key = normalizePubkeyHex(pubkey || '');
+    if (!key || state.selectedStreamAddress !== streamAddress || !isVideoPageVisible()) return;
+    const card = qs('#theaterMainHostCard');
+    if (!card) return;
+    const profile = profileFor(key);
+    const bannerUrl = sanitizeMediaUrl(profile && profile.banner || '');
+    if (bannerUrl && isLikelyUrl(bannerUrl)) {
+      const safeBannerUrl = bannerUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      card.style.setProperty('--theater-profile-banner-image', 'url("' + safeBannerUrl + '")');
+      card.classList.add('has-profile-banner');
+    } else {
+      card.style.removeProperty('--theater-profile-banner-image');
+      card.classList.remove('has-profile-banner');
+    }
+  }
+
   function updateTheaterMainHostVerification(pubkey, streamAddress) {
     const key = normalizePubkeyHex(pubkey || '');
     if (!key || state.selectedStreamAddress !== streamAddress || !isVideoPageVisible()) return;
@@ -16333,6 +16376,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       : '';
     const card = qs('#theaterMainHostCard');
     const identity = qs('.sib-identity');
+    updateTheaterMainHostBanner(key, streamAddress);
     if (card) card.classList.toggle('is-nip05-valid', !!verifiedNip05);
     if (identity) {
       identity.textContent = verifiedNip05 || shortNpubForDisplay(key);
@@ -16349,6 +16393,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (hostPubkey) {
       fetchProfileIfNeeded(hostPubkey, { force: !((state.profilesByPubkey.get(hostPubkey) || {}).__hydrated), timeoutMs: 3200 }).then(() => {
         if (state.selectedStreamAddress !== stream.address || !isVideoPageVisible()) return;
+        updateTheaterMainHostBanner(hostPubkey, stream.address);
         if (!state.profilesByPubkey.has(hostPubkey)) {
           const nameEl = qs('.sib-name');
           if (nameEl && nameEl.classList.contains('sib-profile-loading')) {
@@ -16364,7 +16409,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     // Title & summary
     const title = qs('.sib-title');
-    if (title) title.textContent = stream.title;
+    if (title) {
+      title.textContent = stream.title;
+      updateTheaterTitleMarquee(title);
+    }
     const summary = qs('.sib-summary');
     if (summary) summary.textContent = stream.summary || 'Live stream.';
     renderTheaterHashtags(stream);
@@ -16372,6 +16420,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const claimedNip05 = normalizeNip05Value(p.nip05 || '');
     const verifiedNip05 = getVerifiedNip05ForPubkey(hostPubkey, p.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
     const mainHostCard = qs('#theaterMainHostCard');
+    updateTheaterMainHostBanner(hostPubkey, stream.address);
     if (mainHostCard) mainHostCard.classList.toggle('is-nip05-valid', !!verifiedNip05);
     if (claimedNip05) {
       ensureNip05Verification(hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS })
