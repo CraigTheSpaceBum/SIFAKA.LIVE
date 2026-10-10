@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.10.3">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.11">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -103,8 +103,7 @@ body.nest-preview-open{overflow:hidden}
       <button class="dd-item" onclick="showPage('home');closeAllDD()"><span class="ddi">&#128308;</span>Live Now <span class="dd-count">24</span></button>
       <button class="dd-item" onclick="showPage('podcastRadio');closeAllDD()"><span class="ddi">&#127925;</span>Podcast Radio</button>
       <button class="dd-item" onclick="showPage('messages');closeAllDD()"><span class="ddi">&#128172;</span>Messages</button>
-      <button class="dd-item" onclick="showPage('feed');closeAllDD()"><span class="ddi">&#128225;</span>Nostr Feed</button>
-      <button class="dd-item" onclick="showPage('videos',{videosFilter:'all'});closeAllDD()"><span class="ddi">&#127909;</span>Videos</button>
+      <button class="dd-item" onclick="showPage('feed');closeAllDD()"><span class="ddi">&#128225;</span>Feed &amp; Videos</button>
       <button class="dd-item" onclick="showPage('faq');closeAllDD()"><span class="ddi">&#10067;</span>FAQ & Help</button>
     </div>
   </div>
@@ -1201,7 +1200,12 @@ body.nest-preview-open{overflow:hidden}
 
 <!-- ========= VIDEOS PAGE ========= -->
 <div id="videosPage">
+  <section id="mobileNostrReels" class="mobile-nostr-reels" aria-label="Nostr Reels">
+    <div class="mobile-nostr-reels-head"><div><h2>Nostr Reels</h2><p>Quick clips from Nostr</p></div><button type="button" class="mobile-nostr-reels-library-btn" onclick="toggleMobileVideoLibrary()">All videos</button></div>
+    <div id="mobileNostrReelsGrid" class="mobile-nostr-reels-row"><div class="videos-empty">Loading Nostr Reels…</div></div>
+  </section>
   <div class="videos-page-wrap">
+    <button type="button" id="mobileVideoLibraryBackBtn" class="mobile-video-library-back" onclick="toggleMobileVideoLibrary()">← Back to Reels &amp; Feed</button>
     <div class="videos-page-head">
       <div class="videos-page-title-wrap">
         <h2>Videos</h2>
@@ -1238,6 +1242,43 @@ body.nest-preview-open{overflow:hidden}
         </select>
       </div>
     </div>
+    <section class="nostr-feed-composer" id="nostrFeedComposer" hidden>
+      <div class="nostr-feed-composer-head">
+        <div><strong>Create on Nostr</strong><span>Publish to your connected relays</span></div>
+        <label class="nostr-feed-composer-type-label" for="nostrFeedComposerType">Event type
+          <select id="nostrFeedComposerType" onchange="updateNostrFeedComposerType(this.value)">
+            <option value="post">Post</option><option value="article">Article</option><option value="poll">Poll</option><option value="calendar">Calendar Event</option>
+          </select>
+        </label>
+      </div>
+      <div class="nostr-feed-composer-field" id="nostrFeedComposerTitleWrap" hidden><label for="nostrFeedComposerTitle">Title</label><input id="nostrFeedComposerTitle" type="text" maxlength="180" placeholder="Give this event a title"></div>
+      <div class="nostr-feed-composer-field" id="nostrFeedComposerSummaryWrap" hidden><label for="nostrFeedComposerSummary">Summary (optional)</label><input id="nostrFeedComposerSummary" type="text" maxlength="500" placeholder="A short summary"></div>
+      <div class="nostr-feed-composer-field" id="nostrFeedComposerImageWrap" hidden><label for="nostrFeedComposerImage">Cover image URL (optional)</label><input id="nostrFeedComposerImage" type="url" placeholder="https://…"></div>
+      <textarea id="nostrFeedComposerContent" rows="4" maxlength="20000" placeholder="What’s on your mind?" aria-label="Event content"></textarea>
+      <div class="nostr-feed-composer-type-fields" id="nostrFeedComposerPollFields" hidden>
+        <label for="nostrFeedComposerPollOptions">Poll options (one per line; 2–8 options)</label><textarea id="nostrFeedComposerPollOptions" rows="3" maxlength="1800" placeholder="Option one&#10;Option two"></textarea>
+        <div class="nostr-feed-composer-inline-fields">
+          <label for="nostrFeedComposerPollType">Voting<select id="nostrFeedComposerPollType"><option value="singlechoice">Single choice</option><option value="multiplechoice">Multiple choice</option></select></label>
+          <label for="nostrFeedComposerPollExpiry">Poll closes<select id="nostrFeedComposerPollExpiry"><option value="86400">In 1 day</option><option value="259200">In 3 days</option><option value="604800" selected>In 7 days</option><option value="2592000">In 30 days</option><option value="0">Never</option></select></label>
+        </div>
+      </div>
+      <div class="nostr-feed-composer-type-fields" id="nostrFeedComposerCalendarFields" hidden>
+        <div class="nostr-feed-composer-inline-fields">
+          <label for="nostrFeedComposerStart">Starts<input id="nostrFeedComposerStart" type="datetime-local"></label>
+          <label for="nostrFeedComposerEnd">Ends (optional)<input id="nostrFeedComposerEnd" type="datetime-local"></label>
+        </div>
+        <div class="nostr-feed-composer-inline-fields">
+          <label for="nostrFeedComposerTimezone">Timezone (optional)<input id="nostrFeedComposerTimezone" type="text" maxlength="80" placeholder="America/Toronto"></label>
+          <label for="nostrFeedComposerLocation">Location (optional)<input id="nostrFeedComposerLocation" type="text" maxlength="300" placeholder="Venue or address"></label>
+        </div>
+        <div class="nostr-feed-composer-inline-fields">
+          <label for="nostrFeedComposerGeohash">Geohash (optional)<input id="nostrFeedComposerGeohash" type="text" maxlength="12" placeholder="Geohash"></label>
+          <label for="nostrFeedComposerLink">Website / online event URL (optional)<input id="nostrFeedComposerLink" type="url" placeholder="https://…"></label>
+        </div>
+        <label for="nostrFeedComposerParticipants">Participants (optional; one npub or public key per line)</label><textarea id="nostrFeedComposerParticipants" rows="2" placeholder="npub1…"></textarea>
+      </div>
+      <div class="nostr-feed-composer-footer"><div class="nostr-feed-composer-status" id="nostrFeedComposerStatus" aria-live="polite"></div><button class="btn btn-primary" id="nostrFeedComposerPublishBtn" type="button" onclick="publishNostrFeedEvent()">Publish</button></div>
+    </section>
     <div class="nostr-feed-status" id="nostrFeedStatus" aria-live="polite"></div>
     <div class="profile-feed-list nostr-feed-list" id="nostrFeedList" data-feed-limit="24">
       <div class="profile-feed-empty">Open Nostr Feed to load notes.</div>
@@ -2367,7 +2408,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.8.10.3" defer></script>
+<script src="./nostrflux-app.js?v=0.8.11" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
