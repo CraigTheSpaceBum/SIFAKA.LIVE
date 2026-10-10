@@ -14275,10 +14275,35 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function getPodcastRadioStreams() {
-    return Array.from(state.streamsByAddress.values())
+    const eligibleStreams = Array.from(state.streamsByAddress.values())
       .filter((stream) => normalizeStreamStatus(stream.status) !== 'ended')
       .filter((stream) => isAudioOnlyStream(stream))
-      .filter((stream) => /^https?:\/\//i.test(String(stream.streaming || '').trim()))
+      .filter((stream) => /^https?:\/\//i.test(String(stream.streaming || '').trim()));
+
+    // A single publisher can publish multiple NIP-53 events that point to the
+    // same audio URL. Show only that publisher's newest event for each URL.
+    // Keep different URLs from the same publisher as separate radio cards.
+    const latestByPublisherAndUrl = new Map();
+    eligibleStreams.forEach((stream) => {
+      const publisherKey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '')
+        || normalizePubkeyHex(stream.pubkey || '')
+        || ('unknown:' + String(stream.address || stream.id || ''));
+      const rawUrl = String(stream.streaming || '').trim();
+      let normalizedUrl = rawUrl;
+      try {
+        const parsedUrl = new URL(rawUrl);
+        // Fragments are client-side only and do not identify a different HTTP audio source.
+        parsedUrl.hash = '';
+        normalizedUrl = parsedUrl.href;
+      } catch (_) {}
+      const sourceKey = publisherKey + '\u0000' + normalizedUrl;
+      const previous = latestByPublisherAndUrl.get(sourceKey);
+      if (!previous || Number(stream.created_at || 0) > Number(previous.created_at || 0)) {
+        latestByPublisherAndUrl.set(sourceKey, stream);
+      }
+    });
+
+    return Array.from(latestByPublisherAndUrl.values())
       .sort((a, b) => {
         const offlineA = isStreamPlaybackOffline(a && a.address);
         const offlineB = isStreamPlaybackOffline(b && b.address);
