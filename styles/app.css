@@ -10657,3 +10657,88 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     grid-template-columns: none;
   }
 }
+
+
+/* Finalize the theater Hosted via card: preserve the avatar and stack its provider name below the label. */
+#videoPage .sib-actions-row.hosted-platform-row {
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
+  grid-template-columns: none;
+}
+#videoPage .sib-actions-row.hosted-platform-row .sib-hosted-by {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  overflow: visible;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  min-width: 0;
+  height: auto;
+  gap: .46rem;
+  overflow: visible;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: .14rem;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  white-space: normal;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-label {
+  display: block;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-name {
+  display: block;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: 1.2;
+}
+@media (max-width: 700px) {
+  #videoPage .sib-actions-row.hosted-platform-row {
+    justify-content: flex-start;
+    width: max-content;
+    max-width: 100%;
+    overflow: visible;
+  }
+  #videoPage .sib-actions-row.hosted-platform-row .hosted-by-box {
+    max-width: none;
+  }
+  #videoPage .sib-actions-row.hosted-platform-row .hosted-by-name {
+    font-size: clamp(.62rem, 2.2vw, .76rem);
+  }
+}
