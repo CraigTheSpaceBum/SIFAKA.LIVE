@@ -16034,7 +16034,25 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return ['accepted', 'tentative', 'declined'].includes(value) ? value : '';
   }
 
-  function makeProfileCalendarRsvpDTag() {
+  async function makeProfileCalendarRsvpDTag(ownerPubkey, coordinate) {
+    // Kind 31925 RSVP events are addressable: their d tag must be stable for the
+    // same signer + calendar event and different for every other event. A
+    // deterministic UUIDv8 avoids inheriting a colliding RSVP id from relay data.
+    const owner = normalizePubkeyHex(ownerPubkey || '') || String(ownerPubkey || '').trim().toLowerCase();
+    const address = String(coordinate || '').trim();
+    const seed = 'sifaka-nip52-rsvp:' + owner + ':' + address;
+    try {
+      if (window.crypto && window.crypto.subtle && typeof TextEncoder === 'function') {
+        const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed));
+        const bytes = new Uint8Array(digest).slice(0, 16);
+        // UUIDv8 is designed for custom hash-based UUID schemes.
+        bytes[6] = (bytes[6] & 0x0f) | 0x80;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+        return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+      }
+    } catch (_) {}
+    // Secure-context fallback: random UUIDs still prevent cross-event collisions.
     try {
       if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
     } catch (_) {}
@@ -16084,6 +16102,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     content.innerHTML = '';
     const panel = document.createElement('div');
     panel.className = 'profile-calendar-event';
+    panel.dataset.eventCoordinate = '31923:' + normalizePubkeyHex(event.pubkey || '') + ':' + readTag('d');
 
     if (imageUrl && isLikelyUrl(imageUrl)) {
       const imageLink = document.createElement('a');
@@ -16257,7 +16276,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       panel.appendChild(section);
     }
 
-    const rsvpSection = document.createElement('div'); rsvpSection.className = 'profile-calendar-event-rsvp';
+    const rsvpSection = document.createElement('div');
+    rsvpSection.className = 'profile-calendar-event-rsvp';
+    rsvpSection.dataset.eventCoordinate = coordinate;
     const rsvpHeading = document.createElement('strong'); rsvpHeading.className = 'profile-calendar-event-section-title'; rsvpHeading.textContent = 'Your response';
     rsvpSection.appendChild(rsvpHeading);
     const rsvpStatusLine = document.createElement('div'); rsvpStatusLine.className = 'profile-calendar-event-rsvp-status';
@@ -16288,9 +16309,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         pending = true; buttons.forEach((entry) => { entry.disabled = true; });
         rsvpStatusLine.textContent = 'Publishing your response…';
         try {
-          const ownResponses = await fetchProfileCalendarOwnRsvps(owner, coordinate).catch(() => []);
-          const previous = ownResponses[0] || null;
-          const dTag = String(previous && firstTagValue(previous.tags, 'd') || '').trim() || makeProfileCalendarRsvpDTag();
+          // Keep each response keyed to this exact event, never to another
+          // event's previous RSVP id returned by a relay.
+          const dTag = await makeProfileCalendarRsvpDTag(owner, coordinate);
           const responseTags = [['a', coordinate], ['e', String(event.id || '')], ['d', dTag], ['status', option.status], ['p', publisherPubkey]].filter((tag) => tag[1]);
           const signed = await signAndPublish(31925, '', responseTags);
           const cacheKey = 'profile-calendar-rsvps:' + owner + ':' + coordinate;
