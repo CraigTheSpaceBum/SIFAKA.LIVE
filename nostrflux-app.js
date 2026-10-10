@@ -14364,7 +14364,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         .trim()
         .replace(/^#+/, '')
         .replace(/[ -]/g, '')
-        .replace(/s+/g, '')
+        .replace(/\s+/g, '')
         .slice(0, 48);
       const key = tag.toLowerCase();
       if (!tag || seenHashtags.has(key)) return;
