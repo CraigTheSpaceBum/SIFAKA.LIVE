@@ -20913,44 +20913,355 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function renderNostrFeedPoll(event, container) {
     if (!event || !container) return;
     const tags = Array.isArray(event.tags) ? event.tags : [];
-    const options = tags.filter((tag) => Array.isArray(tag) && tag[0] === 'option' && tag[1] && tag[2])
-      .map((tag) => ({ id: String(tag[1]), label: String(tag[2]) })).slice(0, 12);
-    if (!options.length) return;
+    const optionsById = new Map();
+    tags.filter((tag) => Array.isArray(tag) && tag[0] === 'option' && tag[1] && tag[2])
+      .forEach((tag) => {
+        const id = String(tag[1]);
+        if (!optionsById.has(id)) optionsById.set(id, { id, label: String(tag[2]) });
+      });
+    const options = Array.from(optionsById.values()).slice(0, 12);
+    const post = container.closest('.profile-feed-item');
+    if (post) post.classList.add('has-profile-poll');
+    container.innerHTML = '';
+    if (!options.length) {
+      container.style.display = 'none';
+      return;
+    }
+
+    const pollId = String(event.id || '').trim().toLowerCase();
     const multiple = String(firstTagValue(tags, 'polltype') || 'singlechoice').toLowerCase() === 'multiplechoice';
-    const form = document.createElement('div'); form.className = 'nostr-feed-composer-poll';
-    const heading = document.createElement('div'); heading.className = 'nostr-feed-composer-poll-title';
-    heading.textContent = multiple ? 'Poll · choose any that apply' : 'Poll · choose one';
-    const choices = document.createElement('div'); choices.className = 'nostr-feed-poll-options';
-    const status = document.createElement('div'); status.className = 'nostr-feed-poll-status';
-    const voteButton = document.createElement('button'); voteButton.type = 'button'; voteButton.className = 'btn btn-ghost'; voteButton.textContent = 'Vote';
-    const groupName = 'nostr-poll-' + String(event.id || '');
+    const rawEnd = Number(firstTagValue(tags, 'endsAt') || firstTagValue(tags, 'end') || 0);
+    const closesAt = Number.isFinite(rawEnd) && rawEnd > 0
+      ? (rawEnd > 1000000000000 ? Math.floor(rawEnd / 1000) : Math.floor(rawEnd))
+      : 0;
+    const optionIds = new Set(options.map((option) => option.id));
+
+    if (!(state.nostrPollResponsesById instanceof Map)) state.nostrPollResponsesById = new Map();
+    let pollState = state.nostrPollResponsesById.get(pollId);
+    if (!pollState) {
+      pollState = { responses: [], loadedAt: 0, pending: null, optimisticResponses: new Map(), refreshTimer: null };
+      state.nostrPollResponsesById.set(pollId, pollState);
+    }
+    if (!(pollState.optimisticResponses instanceof Map)) {
+      pollState.optimisticResponses = new Map(
+        pollState.optimisticResponse ? [[normalizePubkeyHex(pollState.optimisticResponse.pubkey || ''), pollState.optimisticResponse]] : []
+      );
+      delete pollState.optimisticResponse;
+    }
+
+    const form = document.createElement('section');
+    form.className = 'nostr-feed-composer-poll';
+    form.dataset.pollId = pollId;
+    const header = document.createElement('div');
+    header.className = 'nostr-feed-poll-header';
+    const badge = document.createElement('span');
+    badge.className = 'nostr-feed-poll-badge';
+    badge.textContent = 'COMMUNITY POLL';
+    const heading = document.createElement('div');
+    heading.className = 'nostr-feed-composer-poll-title';
+    heading.textContent = multiple ? 'Choose any that apply' : 'Choose one option';
+    const timer = document.createElement('div');
+    timer.className = 'nostr-feed-poll-countdown';
+    timer.setAttribute('aria-live', 'polite');
+    header.appendChild(badge);
+    header.appendChild(heading);
+    header.appendChild(timer);
+
+    const choices = document.createElement('div');
+    choices.className = 'nostr-feed-poll-options';
+    const results = document.createElement('div');
+    results.className = 'nostr-feed-poll-results';
+    results.hidden = true;
+    const status = document.createElement('div');
+    status.className = 'nostr-feed-poll-status';
+    status.setAttribute('aria-live', 'polite');
+    const voteButton = document.createElement('button');
+    voteButton.type = 'button';
+    voteButton.className = 'nostr-feed-poll-submit';
+    voteButton.textContent = 'Submit vote';
+    const selectedIds = new Set();
+    let localVoted = false;
+    let closedTransitionHandled = false;
+    const optionButtons = new Map();
+
+    const isClosed = () => !!closesAt && Math.floor(Date.now() / 1000) >= closesAt;
+    const normalizedResponseIds = (response) => {
+      const responseTags = Array.isArray(response && response.tags) ? response.tags : [];
+      return responseTags
+        .filter((tag) => Array.isArray(tag) && tag[0] === 'response' && tag[1])
+        .map((tag) => String(tag[1]))
+        .filter((id, index, all) => optionIds.has(id) && all.indexOf(id) === index);
+    };
+    const latestResponses = () => {
+      const all = pollState.responses.slice();
+      pollState.optimisticResponses.forEach((response) => all.push(response));
+      const latestByVoter = new Map();
+      all.forEach((response) => {
+        if (!response || Number(response.kind) !== 1018 || !normalizePubkeyHex(response.pubkey || '')) return;
+        const responseTags = Array.isArray(response.tags) ? response.tags : [];
+        if (!responseTags.some((tag) => Array.isArray(tag) && tag[0] === 'e' && String(tag[1] || '').toLowerCase() === pollId)) return;
+        const ids = normalizedResponseIds(response);
+        if (!ids.length) return;
+        const voter = normalizePubkeyHex(response.pubkey);
+        const previous = latestByVoter.get(voter);
+        const createdAt = Number(response.created_at || 0);
+        const previousAt = Number(previous && previous.created_at || 0);
+        const responseIsOptimistic = !!response.__sifakaOptimistic;
+        const previousIsOptimistic = !!(previous && previous.__sifakaOptimistic);
+        if (!previous || createdAt > previousAt ||
+            (createdAt === previousAt && responseIsOptimistic && !previousIsOptimistic) ||
+            (createdAt === previousAt && responseIsOptimistic === previousIsOptimistic && String(response.id || '') > String(previous.id || ''))) {
+          latestByVoter.set(voter, { ...response, __pollOptionIds: ids });
+        }
+      });
+      return Array.from(latestByVoter.values());
+    };
+    const getPollCounts = () => {
+      const responses = latestResponses();
+      const counts = new Map(options.map((option) => [option.id, 0]));
+      responses.forEach((response) => {
+        (response.__pollOptionIds || normalizedResponseIds(response)).forEach((id) => {
+          if (counts.has(id)) counts.set(id, counts.get(id) + 1);
+        });
+      });
+      return { responses, counts, totalVoters: responses.length };
+    };
+
+    const renderResults = () => {
+      const { responses, counts, totalVoters } = getPollCounts();
+      results.innerHTML = '';
+      const summary = document.createElement('div');
+      summary.className = 'nostr-feed-poll-results-summary';
+      summary.textContent = totalVoters + (totalVoters === 1 ? ' response' : ' responses');
+      results.appendChild(summary);
+      options.forEach((option) => {
+        const count = counts.get(option.id) || 0;
+        const percent = totalVoters ? Math.round((count / totalVoters) * 100) : 0;
+        const row = document.createElement('div');
+        row.className = 'nostr-feed-poll-result-row';
+        if (selectedIds.has(option.id) || responses.some((response) =>
+          normalizePubkeyHex(response.pubkey || '') === normalizePubkeyHex(state.user && state.user.pubkey || '') &&
+          (response.__pollOptionIds || normalizedResponseIds(response)).includes(option.id))) {
+          row.classList.add('is-selected');
+        }
+        const line = document.createElement('div');
+        line.className = 'nostr-feed-poll-result-line';
+        const label = document.createElement('span');
+        label.className = 'nostr-feed-poll-result-label';
+        label.textContent = option.label;
+        const value = document.createElement('span');
+        value.className = 'nostr-feed-poll-result-value';
+        value.textContent = percent + '% · ' + count;
+        line.appendChild(label);
+        line.appendChild(value);
+        const track = document.createElement('div');
+        track.className = 'nostr-feed-poll-result-track';
+        track.setAttribute('role', 'meter');
+        track.setAttribute('aria-label', option.label + ' vote share');
+        track.setAttribute('aria-valuemin', '0');
+        track.setAttribute('aria-valuemax', '100');
+        track.setAttribute('aria-valuenow', String(percent));
+        const fill = document.createElement('div');
+        fill.className = 'nostr-feed-poll-result-fill';
+        fill.style.width = percent + '%';
+        track.appendChild(fill);
+        row.appendChild(line);
+        row.appendChild(track);
+        results.appendChild(row);
+      });
+      results.setAttribute('aria-label', 'Poll results');
+    };
+
+    const hasVoted = () => {
+      const voter = normalizePubkeyHex(state.user && state.user.pubkey || '');
+      return !!voter && (localVoted || latestResponses().some((response) => normalizePubkeyHex(response.pubkey || '') === voter));
+    };
+    const renderPollState = () => {
+      const closed = isClosed();
+      const showResults = closed || hasVoted();
+      choices.hidden = showResults;
+      voteButton.hidden = showResults;
+      results.hidden = !showResults;
+      form.classList.toggle('is-closed', closed);
+      form.classList.toggle('is-results', showResults);
+      if (closed) {
+        status.textContent = 'Voting has closed. These are the final results.';
+      } else if (localVoted) {
+        status.textContent = 'Your vote is recorded. Results are shown below.';
+      } else if (hasVoted()) {
+        status.textContent = 'You have already voted. Results are shown below.';
+      } else if (!state.user) {
+        status.textContent = 'Sign in to cast your vote.';
+      } else if (selectedIds.size) {
+        status.textContent = multiple ? selectedIds.size + ' options selected.' : 'Option selected.';
+      } else {
+        status.textContent = 'Select an option to vote.';
+      }
+      if (showResults) renderResults();
+    };
+
     options.forEach((option) => {
-      const row = document.createElement('label'); row.className = 'nostr-feed-poll-option';
-      const input = document.createElement('input'); input.type = multiple ? 'checkbox' : 'radio'; input.name = groupName; input.value = option.id;
-      const label = document.createElement('span'); label.textContent = option.label;
-      row.appendChild(input); row.appendChild(label); choices.appendChild(row);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'nostr-feed-poll-option';
+      button.textContent = option.label;
+      button.setAttribute('aria-pressed', 'false');
+      button.addEventListener('click', (clickEvent) => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+        if (!state.user) {
+          if (typeof window.openLogin === 'function') window.openLogin();
+          return;
+        }
+        if (isClosed() || hasVoted()) return;
+        if (multiple) {
+          if (selectedIds.has(option.id)) selectedIds.delete(option.id);
+          else selectedIds.add(option.id);
+        } else {
+          selectedIds.clear();
+          selectedIds.add(option.id);
+        }
+        optionButtons.forEach((otherButton, otherId) => {
+          const selected = selectedIds.has(otherId);
+          otherButton.classList.toggle('is-selected', selected);
+          otherButton.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
+        renderPollState();
+      });
+      optionButtons.set(option.id, button);
+      choices.appendChild(button);
     });
+
+    const refreshResponses = (force = false) => {
+      if (pollState.pending) return pollState.pending;
+      if (!force && pollState.loadedAt && Date.now() - pollState.loadedAt < 10000) {
+        return Promise.resolve(pollState.responses);
+      }
+      pollState.pending = fetchEventsCached(
+        [{ kinds: [1018], '#e': [pollId], limit: 1000 }],
+        {
+          scope: 'nostr-poll-responses',
+          cacheKey: 'nostr-poll-responses:' + pollId,
+          timeoutMs: 3000,
+          maxEvents: 1200,
+          ttlMs: 8000,
+          warmMs: 20000,
+          force
+        }
+      ).then((events) => {
+        pollState.responses = (events || []).filter((response) => {
+          return response && Number(response.kind) === 1018 &&
+            (response.tags || []).some((tag) => Array.isArray(tag) && tag[0] === 'e' && String(tag[1] || '').toLowerCase() === pollId);
+        });
+        pollState.optimisticResponses.forEach((optimistic, voter) => {
+          const optimisticIds = normalizedResponseIds(optimistic).slice().sort().join(',');
+          const synced = pollState.responses.some((response) =>
+            normalizePubkeyHex(response.pubkey || '') === voter &&
+            Number(response.created_at || 0) >= Number(optimistic.created_at || 0) &&
+            normalizedResponseIds(response).slice().sort().join(',') === optimisticIds);
+          if (synced) pollState.optimisticResponses.delete(voter);
+        });
+        pollState.loadedAt = Date.now();
+        return pollState.responses;
+      }).finally(() => {
+        pollState.pending = null;
+      });
+      return pollState.pending;
+    };
+
     voteButton.addEventListener('click', async (clickEvent) => {
-      clickEvent.preventDefault(); clickEvent.stopPropagation();
-      if (!state.user) { if (typeof window.openLogin === 'function') window.openLogin(); return; }
-      const selected = Array.from(choices.querySelectorAll('input:checked')).map((input) => String(input.value || ''));
-      if (!selected.length) { status.textContent = 'Select an option first.'; return; }
-      voteButton.disabled = true; status.textContent = 'Submitting vote…';
+      clickEvent.preventDefault();
+      clickEvent.stopPropagation();
+      if (!state.user) {
+        if (typeof window.openLogin === 'function') window.openLogin();
+        return;
+      }
+      if (isClosed()) {
+        renderPollState();
+        refreshResponses(true).then(renderPollState).catch(() => {});
+        return;
+      }
+      if (!selectedIds.size) {
+        status.textContent = 'Select an option first.';
+        return;
+      }
+      voteButton.disabled = true;
+      status.textContent = 'Submitting your vote…';
       try {
+        const selected = Array.from(selectedIds);
         const responseTags = [['e', String(event.id || ''), '', 'root']];
         selected.forEach((optionId) => responseTags.push(['response', optionId]));
         if (event.pubkey) responseTags.push(['p', String(event.pubkey)]);
-        tags.filter((tag) => Array.isArray(tag) && tag[0] === 'relay' && tag[1]).slice(0,8)
+        tags.filter((tag) => Array.isArray(tag) && tag[0] === 'relay' && tag[1]).slice(0, 8)
           .forEach((tag) => responseTags.push(['relay', String(tag[1])]));
+        const publishedAt = Math.floor(Date.now() / 1000);
+        const voterPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
         await signAndPublish(1018, '', responseTags);
-        status.textContent = 'Vote submitted.'; voteButton.textContent = 'Vote submitted';
+        pollState.optimisticResponses.set(voterPubkey, {
+          kind: 1018,
+          id: 'sifaka-optimistic-' + pollId + '-' + voterPubkey,
+          pubkey: voterPubkey,
+          created_at: publishedAt,
+          tags: responseTags,
+          __sifakaOptimistic: true
+        });
+        pollState.loadedAt = Date.now();
+        localVoted = true;
+        renderPollState();
+        status.textContent = 'Vote submitted. Updating results…';
+        if (pollState.refreshTimer) clearTimeout(pollState.refreshTimer);
+        pollState.refreshTimer = setTimeout(() => {
+          refreshResponses(true).then(renderPollState).catch(() => {});
+        }, 1800);
       } catch (error) {
         status.textContent = error && error.message ? error.message : 'Could not submit your vote.';
         voteButton.disabled = false;
       }
     });
-    form.appendChild(heading); form.appendChild(choices); form.appendChild(status); form.appendChild(voteButton);
-    container.appendChild(form); container.style.display = 'block';
+
+    form.appendChild(header);
+    form.appendChild(choices);
+    form.appendChild(results);
+    form.appendChild(status);
+    form.appendChild(voteButton);
+    container.appendChild(form);
+    container.style.display = 'block';
+
+    let countdownTimer = null;
+    const updateCountdown = () => {
+      if (!form.isConnected) {
+        if (countdownTimer) clearInterval(countdownTimer);
+        return;
+      }
+      if (!closesAt) {
+        timer.textContent = 'No closing time set';
+        return;
+      }
+      const now = Math.floor(Date.now() / 1000);
+      const remaining = closesAt - now;
+      if (remaining <= 0) {
+        timer.textContent = 'Poll closed · final results';
+        if (!closedTransitionHandled) {
+          closedTransitionHandled = true;
+          renderPollState();
+          refreshResponses(true).then(renderPollState).catch(() => {});
+        }
+        return;
+      }
+      const days = Math.floor(remaining / 86400);
+      const hours = Math.floor((remaining % 86400) / 3600);
+      const minutes = Math.floor((remaining % 3600) / 60);
+      const seconds = remaining % 60;
+      const time = days
+        ? days + 'd ' + String(hours).padStart(2, '0') + 'h ' + String(minutes).padStart(2, '0') + 'm'
+        : String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+      timer.textContent = 'Closes in ' + time;
+    };
+    updateCountdown();
+    if (closesAt) countdownTimer = setInterval(updateCountdown, 1000);
+
+    renderPollState();
+    refreshResponses(false).then(renderPollState).catch(() => {});
   }
 
   function renderProfileFeedInto(listEl, notes, profile, pubkey, aggregates) {
