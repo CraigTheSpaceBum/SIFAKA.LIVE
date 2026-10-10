@@ -10351,49 +10351,113 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
   88%, 100% { transform: translate3d(var(--theater-title-scroll-distance,0px),0,0); }
 }
 
-#videoPage #theaterMainHostCard {
-  position: relative; isolation: isolate; overflow: hidden;
-  background: linear-gradient(135deg,rgba(19,22,32,.92),rgba(12,17,24,.94));
+/* Sifaka 0.8.19: apply banner to the full info panel, and keep stats/actions visually aligned. */
+#videoPage #theaterHostInfoPanel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: linear-gradient(135deg,rgba(19,22,32,.93),rgba(12,17,24,.95));
 }
-#videoPage #theaterMainHostCard::before {
-  content: ""; position: absolute; z-index: 0; inset: 0; border-radius: inherit;
+#videoPage #theaterHostInfoPanel::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
   background-image: var(--theater-profile-banner-image, none);
-  background-size: cover; background-position: center; background-repeat: no-repeat;
-  opacity: .3; pointer-events: none;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: .3;
+  pointer-events: none;
 }
-#videoPage #theaterMainHostCard > .sib-av,
-#videoPage #theaterMainHostCard > .sib-host-info { position: relative; z-index: 1; }
-
-/* Remove the separate boxed treatment around follow/stats/share/report while
-   preserving every button and its existing event handler. */
-#videoPage .sib-host-info-panel { gap: .38rem .62rem; padding: .48rem .58rem; }
-#videoPage .sib-host-info-panel .sib-stats-links-row {
-  flex: 1 1 100%; min-width: 0; margin-top: 0; gap: .3rem .52rem;
+#videoPage #theaterHostInfoPanel > * { position: relative; z-index: 1; }
+#videoPage #theaterHostInfoPanel > .sib-hosts,
+#videoPage #theaterHostInfoPanel > .sib-stats-links-row {
+  flex: 1 1 100%; width: 100%; min-width: 0;
 }
-#videoPage .sib-host-info-panel .sib-stats-row {
-  display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center;
-  justify-content: flex-start; gap: .35rem .55rem; width: 100%;
-  min-width: 0; max-width: 100%; margin: 0; padding: 0; border: 0;
+#videoPage #theaterHostInfoPanel > .theater-panel-description {
+  display: block; flex: 1 1 100%; width: 100%; min-width: 0;
+  margin-top: .5rem !important;
+}
+#videoPage #theaterHostInfoPanel > .theater-description-links {
+  display: flex; flex: 1 1 100%; width: 100%; max-width: 100%; min-width: 0;
+  margin-top: .15rem;
+}
+#videoPage #theaterHostInfoPanel > .sib-tags-reactions-row {
+  display: flex; flex: 1 1 100%; width: 100%; max-width: 100%; min-width: 0;
+  align-items: flex-start; justify-content: flex-start; flex-wrap: wrap;
+  gap: .35rem .55rem; margin-top: .1rem;
+}
+#videoPage #theaterHostInfoPanel .sib-stats-links-row {
+  flex: 1 1 100%; width: 100%; min-width: 0; margin-top: 0;
+}
+#videoPage #theaterHostInfoPanel .sib-stats-row {
+  display: grid !important; grid-template-columns: repeat(7,minmax(0,1fr));
+  gap: .35rem; width: 100%; min-width: 0; max-width: 100%;
+  margin: .12rem 0 0; padding: .45rem 0 0;
+  border: 0; border-top: 1px solid rgba(148,163,184,.24);
   border-radius: 0; background: transparent; box-shadow: none;
-  overflow: visible; box-sizing: border-box; grid-template-columns: none;
+  box-sizing: border-box; overflow: visible;
 }
-#videoPage .sib-host-info-panel .sib-stats-row .ss,
-#videoPage .sib-host-info-panel .sib-stats-row .ss + .ss {
-  display: flex; flex: 0 0 auto; flex-direction: row; align-items: center;
-  justify-content: flex-start; gap: .24rem; min-width: 0; margin: 0;
-  padding: .12rem .18rem; border: 0 !important; border-radius: 6px;
-  background: transparent; text-align: left;
+#videoPage #theaterHostInfoPanel .sib-stats-row .ss:not(.fol):not(.likes):not(.theater-stat-action) {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .16rem; min-width: 0; min-height: 36px; margin: 0; padding: .3rem .24rem;
+  border: 1px solid rgba(148,163,184,.3); border-radius: 8px;
+  background: rgba(6,10,18,.42); box-shadow: inset 0 1px rgba(255,255,255,.035);
+  text-align: center; box-sizing: border-box;
 }
-#videoPage .sib-host-info-panel .sib-stats-row .ss > .btn,
-#videoPage .sib-host-info-panel .sib-stats-row .ss > .action-btn {
-  width: auto; max-width: 100%;
+#videoPage #theaterHostInfoPanel .sib-stats-row .ss.fol,
+#videoPage #theaterHostInfoPanel .sib-stats-row .ss.likes,
+#videoPage #theaterHostInfoPanel .sib-stats-row .ss.theater-stat-action {
+  display: flex; min-width: 0; min-height: 36px; margin: 0; padding: 0;
+  border: 0; border-radius: 8px; background: transparent; box-shadow: none;
 }
+#videoPage #theaterHostInfoPanel .sib-stats-row .ss.fol > #theaterFollowBtn,
+#videoPage #theaterHostInfoPanel .sib-stats-row .ss.likes > #likeBtn,
+#videoPage #theaterHostInfoPanel .sib-stats-row .ss.theater-stat-action > .action-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; max-width: 100%; min-width: 0; min-height: 36px; height: 100%;
+  margin: 0; padding: .3rem .22rem; border: 1px solid rgba(148,163,184,.3);
+  border-radius: 8px; box-shadow: inset 0 1px rgba(255,255,255,.035);
+  box-sizing: border-box; white-space: normal; line-height: 1.25; font-size: .68rem;
+}
+#videoPage #theaterHostInfoPanel .theater-description-links .theater-host-link-card {
+  flex: 0 1 auto; width: max-content; max-width: 100%; min-width: 0; align-self: flex-start;
+}
+#videoPage #theaterHostInfoPanel .theater-description-links .theater-host-link-card > a,
+#videoPage #theaterHostInfoPanel .theater-description-links .theater-host-link-card > button {
+  flex: 0 1 auto; width: auto; max-width: min(22rem,58vw); min-width: 0;
+}
+#videoPage #theaterHostInfoPanel .sib-tags-reactions-row .sib-hashtags {
+  display: flex; flex: 0 1 auto; align-items: center; max-width: 100%; margin: 0;
+}
+#videoPage #theaterHostInfoPanel .sib-tags-reactions-row .stream-reactions-row {
+  display: flex; flex: 1 1 180px; min-width: 0; max-width: 100%;
+  margin: 0; padding: 0; border: 0;
+}
+#videoPage #theaterHostInfoPanel .sib-tags-reactions-row .stream-emoji-list { min-width: 0; max-width: 100%; }
 @media (max-width: 700px) {
   #videoPage .sib-title-col .editable-row .sib-title { font-size: 1.12rem; }
-  #videoPage .sib-host-info-panel { gap: .32rem .4rem; padding: .4rem .42rem; }
-  #videoPage .sib-host-info-panel .sib-stats-links-row { gap: .22rem .32rem; }
-  #videoPage .sib-host-info-panel .sib-stats-row { gap: .22rem .32rem; }
-  #videoPage .sib-host-info-panel .sib-stats-row .ss { padding: .1rem .12rem; }
+  #videoPage #theaterHostInfoPanel { gap: .34rem .4rem; padding: .45rem .42rem; }
+  #videoPage #theaterHostInfoPanel > .theater-panel-description {
+    display: block !important; margin-top: .25rem !important;
+  }
+  #videoPage #theaterHostInfoPanel .sib-stats-row {
+    grid-template-columns: repeat(4,minmax(0,1fr)); gap: .28rem; padding-top: .38rem;
+  }
+  #videoPage #theaterHostInfoPanel .sib-stats-row .ss:not(.fol):not(.likes):not(.theater-stat-action) {
+    min-height: 34px; padding: .25rem .12rem;
+  }
+  #videoPage #theaterHostInfoPanel .sib-stats-row .ss.fol > #theaterFollowBtn,
+  #videoPage #theaterHostInfoPanel .sib-stats-row .ss.likes > #likeBtn,
+  #videoPage #theaterHostInfoPanel .sib-stats-row .ss.theater-stat-action > .action-btn {
+    min-height: 34px; padding: .25rem .1rem; font-size: .64rem;
+  }
+  #videoPage #theaterHostInfoPanel .theater-description-links .theater-host-link-card > a,
+  #videoPage #theaterHostInfoPanel .theater-description-links .theater-host-link-card > button {
+    max-width: min(22rem,82vw);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   #videoPage .sib-title-col .editable-row .sib-title.theater-title-overflow {
