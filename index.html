@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.16">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.17">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -2134,8 +2134,8 @@ body.nest-preview-open{overflow:hidden}
               <button class="edit-pencil owner-only visible" title="Edit title"></button>
             </div>
           </div>
-          <div class="sib-actions-row">
-            <button class="action-btn theater-donation-btn" id="theaterZapBtn" type="button" onclick="theaterDonation()" title="Donate to the streamer">&#9889; Donation</button>
+          <div class="sib-actions-row" aria-label="Hosting platform">
+            <div class="sib-hosted-by" aria-label="Hosting platform"></div>
           </div>
         </div>
         <!-- Streamer identity and live controls share one information panel. -->
@@ -2147,13 +2147,16 @@ body.nest-preview-open{overflow:hidden}
                 <div class="sib-host-info">
                   <div class="sib-name sib-profile-loading">Loading profile…</div>
                   <div class="sib-identity nip05-text">Loading profile…</div>
+                  <div class="theater-profile-followers" aria-label="Followers">
+                    <span class="theater-profile-followers-count" id="theaterFollowers">—</span>
+                    <span class="theater-profile-followers-label">followers</span>
+                  </div>
                 </div>
               </div>
             </div>
             <div class="sib-stats-links-row">
               <div class="sib-stats-row" role="group" aria-label="Stream statistics and actions">
                 <div class="ss fol">
-                  <span class="n" id="theaterFollowers" hidden>—</span>
                   <button class="btn btn-follow" id="theaterFollowBtn" type="button" onclick="toggleTheaterFollow()">Follow</button>
                 </div>
                 <div class="ss lv"><span class="n" id="theaterViewers">—</span><span class="l">watching</span></div>
@@ -2451,7 +2454,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.8.16" defer></script>
+<script src="./nostrflux-app.js?v=0.8.17" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
