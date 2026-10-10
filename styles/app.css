@@ -10546,3 +10546,38 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
   #videoPage .action-btn.like-btn.liked,
   #videoPage .action-btn.share-btn.boosted { animation: none; }
 }
+
+
+/* Sifaka 0.8.21: keep the theater "Hosted via" label and platform name on one line. */
+#videoPage .hosted-by-box {
+  width: max-content;
+  max-width: 100%;
+}
+#videoPage .hosted-by-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .28rem;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  white-space: nowrap;
+}
+#videoPage .hosted-by-label {
+  flex: 0 0 auto;
+  width: max-content;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+#videoPage .hosted-by-name {
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  line-height: 1.25;
+}
