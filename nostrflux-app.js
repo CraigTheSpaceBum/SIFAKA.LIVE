@@ -16554,25 +16554,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return ['accepted', 'tentative', 'declined'].includes(value) ? value : '';
   }
 
-  async function makeProfileCalendarRsvpDTag(ownerPubkey, coordinate) {
-    // Kind 31925 RSVP events are addressable: their d tag must be stable for the
-    // same signer + calendar event and different for every other event. A
-    // deterministic UUIDv8 avoids inheriting a colliding RSVP id from relay data.
+  async function makeProfileCalendarRsvpDTag(ownerPubkey, coordinate, eventId) {
+    // Keep RSVPs distinct by viewer + addressable event coordinate + exact event id.
     const owner = normalizePubkeyHex(ownerPubkey || '') || String(ownerPubkey || '').trim().toLowerCase();
     const address = String(coordinate || '').trim();
-    const seed = 'sifaka-nip52-rsvp:' + owner + ':' + address;
+    const targetEventId = String(eventId || '').trim().toLowerCase();
+    const seed = 'sifaka-nip52-rsvp:' + owner + ':' + address + ':' + targetEventId;
     try {
       if (window.crypto && window.crypto.subtle && typeof TextEncoder === 'function') {
         const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed));
         const bytes = new Uint8Array(digest).slice(0, 16);
-        // UUIDv8 is designed for custom hash-based UUID schemes.
         bytes[6] = (bytes[6] & 0x0f) | 0x80;
         bytes[8] = (bytes[8] & 0x3f) | 0x80;
         const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
         return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
       }
     } catch (_) {}
-    // Secure-context fallback: random UUIDs still prevent cross-event collisions.
     try {
       if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
     } catch (_) {}
@@ -16587,18 +16584,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
   }
 
-  async function fetchProfileCalendarOwnRsvps(ownerPubkey, coordinate) {
+  async function fetchProfileCalendarOwnRsvps(ownerPubkey, coordinate, eventId) {
     const owner = normalizePubkeyHex(ownerPubkey || '');
-    if (!owner || !coordinate) return [];
-    const cacheKey = 'profile-calendar-rsvps:' + owner + ':' + coordinate;
+    const targetEventId = String(eventId || '').trim().toLowerCase();
+    if (!owner || !coordinate || !/^[0-9a-f]{64}$/.test(targetEventId)) return [];
+    const cacheKey = 'profile-calendar-rsvps:' + owner + ':' + coordinate + ':' + targetEventId;
     const events = await fetchEventsCached(
-      [{ kinds: [31925], authors: [owner], '#a': [coordinate], limit: 100 }],
+      [{ kinds: [31925], authors: [owner], '#a': [coordinate], '#e': [targetEventId], limit: 100 }],
       { scope: 'profile-calendar-rsvps', cacheKey, force: true, ttlMs: 0, warmMs: 0, allowStale: false, timeoutMs: 1800, maxEvents: 120 }
     );
     return (events || [])
-      .filter((event) => event && Number(event.kind) === 31925
-        && normalizePubkeyHex(event.pubkey || '') === owner
-        && getTagValues(event, 'a').includes(coordinate))
+      .filter((response) => response && Number(response.kind) === 31925
+        && normalizePubkeyHex(response.pubkey || '') === owner
+        && getTagValues(response, 'a').includes(coordinate)
+        && getTagValues(response, 'e').some((id) => String(id || '').toLowerCase() === targetEventId))
       .sort((left, right) => Number(right.created_at || 0) - Number(left.created_at || 0));
   }
 
@@ -16617,6 +16616,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const startText = formatProfileCalendarTimestamp(readTag('start'), startTzid);
     const endText = formatProfileCalendarTimestamp(readTag('end'), endTzid);
     const coordinate = '31923:' + publisherPubkey + ':' + readTag('d');
+    const calendarEventId = String(event && event.id || '').trim().toLowerCase();
 
     summary.textContent = titleText + ' · Calendar event · hover or click this post to expand';
     content.innerHTML = '';
@@ -16816,6 +16816,28 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       rsvpStatusLine.textContent = !state.user ? 'Sign in to RSVP to this event.'
         : (currentStatus ? 'Your response: ' + labels[currentStatus] : 'You have not responded yet.');
     };
+    const getRsvpStorageKey = () => {
+      const viewer = normalizePubkeyHex(state.user && state.user.pubkey || '');
+      return viewer && calendarEventId
+        ? 'sifaka:calendar-rsvp:' + viewer + ':' + coordinate + ':' + calendarEventId
+        : '';
+    };
+    const saveRsvpStatus = (status) => {
+      const key = getRsvpStorageKey();
+      if (!key || !['accepted', 'tentative', 'declined'].includes(String(status || ''))) return;
+      try {
+        localStorage.setItem(key, JSON.stringify({ status: String(status), coordinate, eventId: calendarEventId, updatedAt: Date.now() }));
+      } catch (_) {}
+    };
+    const readSavedRsvpStatus = () => {
+      const key = getRsvpStorageKey();
+      if (!key) return '';
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || 'null');
+        if (!saved || saved.coordinate !== coordinate || saved.eventId !== calendarEventId) return '';
+        return ['accepted', 'tentative', 'declined'].includes(String(saved.status || '')) ? String(saved.status) : '';
+      } catch (_) { return ''; }
+    };
     options.forEach((option) => {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'profile-calendar-event-rsvp-button'; button.textContent = option.label;
       button.addEventListener('click', async (clickEvent) => {
@@ -16823,18 +16845,19 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (pending) return;
         if (!state.user) { if (typeof window.openLogin === 'function') window.openLogin(); else rsvpStatusLine.textContent = 'Sign in to RSVP to this event.'; return; }
         const owner = normalizePubkeyHex(state.user && state.user.pubkey || '');
-        if (!owner || !publisherPubkey || !readTag('d')) {
-          rsvpStatusLine.textContent = 'This event is missing the public key or identifier needed for an RSVP.'; return;
+        if (!owner || !publisherPubkey || !readTag('d') || !/^[0-9a-f]{64}$/.test(calendarEventId)) {
+          rsvpStatusLine.textContent = 'This event is missing the public key, identifier, or event ID needed for an RSVP.'; return;
         }
         pending = true; buttons.forEach((entry) => { entry.disabled = true; });
         rsvpStatusLine.textContent = 'Publishing your response…';
         try {
           // Keep each response keyed to this exact event, never to another
           // event's previous RSVP id returned by a relay.
-          const dTag = await makeProfileCalendarRsvpDTag(owner, coordinate);
-          const responseTags = [['a', coordinate], ['e', String(event.id || '')], ['d', dTag], ['status', option.status], ['p', publisherPubkey]].filter((tag) => tag[1]);
+          const dTag = await makeProfileCalendarRsvpDTag(owner, coordinate, calendarEventId);
+          const responseTags = [['a', coordinate], ['e', calendarEventId], ['d', dTag], ['status', option.status], ['p', publisherPubkey]].filter((tag) => tag[1]);
           const signed = await signAndPublish(31925, '', responseTags);
-          const cacheKey = 'profile-calendar-rsvps:' + owner + ':' + coordinate;
+          saveRsvpStatus(option.status);
+          const cacheKey = 'profile-calendar-rsvps:' + owner + ':' + coordinate + ':' + calendarEventId;
           if (state.oneShotQueryCacheByKey && typeof state.oneShotQueryCacheByKey.delete === 'function') state.oneShotQueryCacheByKey.delete(cacheKey);
           updateRsvpUi(option.status);
           rsvpStatusLine.textContent = 'Your response: ' + labels[option.status] + ' · published';
@@ -16845,6 +16868,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       });
       rsvpButtons.appendChild(button); buttons.set(option.status, button);
     });
+    const savedRsvpStatus = readSavedRsvpStatus();
+    if (savedRsvpStatus) updateRsvpUi(savedRsvpStatus);
     rsvpSection.appendChild(rsvpButtons); panel.appendChild(rsvpSection);
 
     const openLink = document.createElement('a'); openLink.className = 'profile-calendar-event-open';
@@ -16852,11 +16877,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     panel.appendChild(openLink); content.appendChild(panel);
 
     if (state.user && normalizePubkeyHex(state.user.pubkey || '') && publisherPubkey && readTag('d')) {
-      fetchProfileCalendarOwnRsvps(state.user.pubkey, coordinate).then((responses) => {
+      fetchProfileCalendarOwnRsvps(state.user.pubkey, coordinate, calendarEventId).then((responses) => {
         if (!content.contains(rsvpSection)) return;
-        updateRsvpUi(profileCalendarRsvpStatus(responses[0] || null));
+        const networkStatus = profileCalendarRsvpStatus(responses[0] || null);
+        if (networkStatus) {
+          updateRsvpUi(networkStatus);
+          saveRsvpStatus(networkStatus);
+        } else if (!currentStatus) {
+          updateRsvpUi('');
+        }
       }).catch(() => {
-        if (content.contains(rsvpSection)) rsvpStatusLine.textContent = 'Could not load your current RSVP. You can still choose a response.';
+        if (!content.contains(rsvpSection)) return;
+        rsvpStatusLine.textContent = currentStatus
+          ? 'Your response: ' + labels[currentStatus] + ' · could not refresh from relays.'
+          : 'Could not load your current RSVP. You can still choose a response.';
       });
     }
   }
@@ -16896,7 +16930,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (Number(decoded.kind) === KIND_LIVE_EVENT) {
         summary.textContent = 'Linked live stream · hover or click this post to expand';
         content.innerHTML = '';
-        content.appendChild(_buildNaddrStreamCard(entity));
+        const streamCard = _buildNaddrStreamCard(entity);
+        streamCard.classList.add('profile-post-naddr-stream-card');
+        content.appendChild(streamCard);
         return;
       }
 
@@ -17104,33 +17140,34 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
       card.appendChild(thumbWrap);
 
-      if (isLikelyUrl(stream.image || '')) {
-        const thumbUrl = document.createElement('a');
-        thumbUrl.className = 'naddr-stream-thumb-url';
-        thumbUrl.href = stream.image;
-        thumbUrl.target = '_blank';
-        thumbUrl.rel = 'noopener noreferrer';
-        thumbUrl.textContent = stream.image;
-        card.appendChild(thumbUrl);
-      }
-
       if (platformPubkey && platformPubkey !== hostPubkey) {
         const via = document.createElement('div');
         via.className = 'naddr-stream-via';
-        via.textContent = `Hosted via ${platformProfile.display_name || platformProfile.name || shortHex(platformPubkey)}`;
+        const box = document.createElement('div');
+        box.className = 'hosted-by-box';
+        const platformAvatar = document.createElement('div');
+        platformAvatar.className = 'hosted-by-av';
+        setAvatarEl(platformAvatar, platformProfile.picture || '', pickAvatar(platformPubkey));
+        const inner = document.createElement('div');
+        inner.className = 'hosted-by-inner';
+        const label = document.createElement('span');
+        label.className = 'hosted-by-label';
+        label.textContent = 'Hosted via';
+        const platformName = document.createElement('span');
+        platformName.className = 'hosted-by-name';
+        platformName.textContent = platformProfile.display_name || platformProfile.name || shortHex(platformPubkey);
+        inner.appendChild(label);
+        inner.appendChild(platformName);
+        box.appendChild(platformAvatar);
+        box.appendChild(inner);
+        box.addEventListener('click', (clickEvent) => {
+          clickEvent.preventDefault();
+          clickEvent.stopPropagation();
+          showProfileByPubkey(platformPubkey);
+        });
+        via.appendChild(box);
         card.appendChild(via);
       }
-
-      const openLink = document.createElement('a');
-      openLink.className = 'naddr-stream-open';
-      openLink.href = `/${'a'}/${encodeStreamNaddr(stream) || entity}`;
-      openLink.textContent = 'Open stream';
-      openLink.addEventListener('click', (evt) => {
-        evt.preventDefault();
-        evt.stopPropagation();
-        openStream(stream.address);
-      });
-      card.appendChild(openLink);
 
       card.addEventListener('click', (evt) => {
         if (evt.target && evt.target.closest('a')) return;
@@ -20959,7 +20996,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     badge.textContent = 'COMMUNITY POLL';
     const heading = document.createElement('div');
     heading.className = 'nostr-feed-composer-poll-title';
-    heading.textContent = multiple ? 'Choose any that apply' : 'Choose one option';
+    const pollQuestion = String(event.content || '').trim()
+      || String(firstTagValue(tags, 'question') || firstTagValue(tags, 'title') || firstTagValue(tags, 'summary') || '').trim();
+    heading.textContent = pollQuestion || (multiple ? 'Choose any that apply' : 'Choose one option');
     const timer = document.createElement('div');
     timer.className = 'nostr-feed-poll-countdown';
     timer.setAttribute('aria-live', 'polite');
@@ -20992,7 +21031,29 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         .map((tag) => String(tag[1]))
         .filter((id, index, all) => optionIds.has(id) && all.indexOf(id) === index);
     };
+    const restorePersistedOwnVote = () => {
+      const voter = normalizePubkeyHex(state.user && state.user.pubkey || '');
+      if (!voter) return;
+      const existing = pollState.optimisticResponses.get(voter);
+      if (existing && existing.__sifakaLocalPersisted) return;
+      const storageKey = 'sifaka:nip88-vote:' + pollId + ':' + voter;
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch (_) {}
+      if (!saved || saved.pollId !== pollId || normalizePubkeyHex(saved.pubkey || '') !== voter || !Array.isArray(saved.optionIds)) return;
+      const ids = saved.optionIds.map((id) => String(id)).filter((id, index, all) => optionIds.has(id) && all.indexOf(id) === index);
+      if (!ids.length) return;
+      const createdAt = Math.max(0, Math.floor(Number(saved.createdAt || 0)));
+      const responseTags = [['e', pollId, '', 'root'], ...ids.map((id) => ['response', id])];
+      const response = {
+        kind: 1018, id: 'sifaka-local-vote-' + pollId + '-' + voter, pubkey: voter,
+        created_at: createdAt, tags: responseTags,
+        __sifakaOptimistic: true, __sifakaLocalPersisted: true
+      };
+      const previousAt = Number(existing && existing.created_at || 0);
+      if (!existing || createdAt >= previousAt) pollState.optimisticResponses.set(voter, response);
+    };
     const latestResponses = () => {
+      restorePersistedOwnVote();
       const all = pollState.responses.slice();
       pollState.optimisticResponses.forEach((response) => all.push(response));
       const latestByVoter = new Map();
@@ -21086,16 +21147,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       form.classList.toggle('is-results', showResults);
       if (closed) {
         status.textContent = 'Voting has closed. These are the final results.';
-      } else if (localVoted) {
-        status.textContent = 'Your vote is recorded. Results are shown below.';
-      } else if (hasVoted()) {
-        status.textContent = 'You have already voted. Results are shown below.';
-      } else if (!state.user) {
-        status.textContent = 'Sign in to cast your vote.';
-      } else if (selectedIds.size) {
-        status.textContent = multiple ? selectedIds.size + ' options selected.' : 'Option selected.';
       } else {
-        status.textContent = 'Select an option to vote.';
+        const viewer = normalizePubkeyHex(state.user && state.user.pubkey || '');
+        const ownResponse = viewer ? latestResponses().find((response) => normalizePubkeyHex(response.pubkey || '') === viewer) : null;
+        const ownIds = ownResponse ? (ownResponse.__pollOptionIds || normalizedResponseIds(ownResponse)) : [];
+        if (ownIds.length) {
+          const chosenLabels = ownIds.map((id) => options.find((option) => option.id === id)?.label || id);
+          status.textContent = 'Your response: ' + chosenLabels.join(', ') + '. Results are shown below.';
+        } else if (localVoted) {
+          status.textContent = 'Your vote is recorded. Results are shown below.';
+        } else if (hasVoted()) {
+          status.textContent = 'You have already voted. Results are shown below.';
+        } else if (!state.user) {
+          status.textContent = 'Sign in to cast your vote.';
+        } else if (selectedIds.size) {
+          status.textContent = multiple ? selectedIds.size + ' options selected.' : 'Option selected.';
+        } else {
+          status.textContent = 'Select an option to vote.';
+        }
       }
       if (showResults) renderResults();
     };
@@ -21155,7 +21224,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             normalizePubkeyHex(response.pubkey || '') === voter &&
             Number(response.created_at || 0) >= Number(optimistic.created_at || 0) &&
             normalizedResponseIds(response).slice().sort().join(',') === optimisticIds);
-          if (synced) pollState.optimisticResponses.delete(voter);
+          if (synced && !optimistic.__sifakaLocalPersisted) pollState.optimisticResponses.delete(voter);
         });
         pollState.loadedAt = Date.now();
         return pollState.responses;
@@ -21193,13 +21262,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const publishedAt = Math.floor(Date.now() / 1000);
         const voterPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
         await signAndPublish(1018, '', responseTags);
+        const localVoteStorageKey = 'sifaka:nip88-vote:' + pollId + ':' + voterPubkey;
+        try {
+          localStorage.setItem(localVoteStorageKey, JSON.stringify({
+            pollId, pubkey: voterPubkey, optionIds: selected, createdAt: publishedAt
+          }));
+        } catch (_) {}
         pollState.optimisticResponses.set(voterPubkey, {
           kind: 1018,
           id: 'sifaka-optimistic-' + pollId + '-' + voterPubkey,
           pubkey: voterPubkey,
           created_at: publishedAt,
           tags: responseTags,
-          __sifakaOptimistic: true
+          __sifakaOptimistic: true,
+          __sifakaLocalPersisted: true
         });
         pollState.loadedAt = Date.now();
         localVoted = true;
@@ -21471,7 +21547,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const textEl = qs('.profile-feed-text', item);
       if (textEl) {
         textEl.innerHTML = '';
-        if (displayKind === 31923) {
+        if (displayKind === 1068) {
+          textEl.textContent = '';
+          textEl.style.display = 'none';
+        } else if (displayKind === 31923) {
           const eventCard = document.createElement('article'); eventCard.className = 'profile-feed-event-embed';
           const eventSummary = document.createElement('div'); eventSummary.className = 'profile-feed-event-summary';
           const eventContent = document.createElement('div'); eventContent.className = 'profile-feed-event-content'; eventContent.textContent = 'Loading calendar event…';
