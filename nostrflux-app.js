@@ -16004,6 +16004,322 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return stream;
   }
 
+  function formatProfileCalendarTimestamp(rawTimestamp, timeZone = '') {
+    const stampText = String(rawTimestamp || '').trim();
+    const seconds = Number(stampText);
+    if (!stampText || !Number.isFinite(seconds) || seconds <= 0) return '';
+    const date = new Date(seconds * 1000);
+    if (!Number.isFinite(date.getTime())) return '';
+    const options = { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+    const cleanZone = String(timeZone || '').trim();
+    if (cleanZone) {
+      try { return new Intl.DateTimeFormat(undefined, { ...options, timeZone: cleanZone }).format(date) + ' (' + cleanZone + ')'; }
+      catch (_) { return date.toLocaleString() + ' (' + cleanZone + ' — unrecognized time zone)'; }
+    }
+    return date.toLocaleString();
+  }
+
+  function profileCalendarTagRows(event, tagName) {
+    return (event && Array.isArray(event.tags) ? event.tags : [])
+      .filter((tag) => Array.isArray(tag) && tag[0] === tagName && String(tag[1] || '').trim())
+      .map((tag) => tag);
+  }
+
+  function profileCalendarRsvpStatus(event) {
+    const directStatus = String(firstTagValue(event && event.tags, 'status') || '').trim().toLowerCase();
+    if (['accepted', 'tentative', 'declined'].includes(directStatus)) return directStatus;
+    const label = profileCalendarTagRows(event, 'l')
+      .find((tag) => String(tag[2] || '').toLowerCase() === 'status');
+    const value = String(label && label[1] || '').trim().toLowerCase();
+    return ['accepted', 'tentative', 'declined'].includes(value) ? value : '';
+  }
+
+  function makeProfileCalendarRsvpDTag() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    } catch (_) {}
+    const bytes = new Uint8Array(16);
+    try {
+      if (window.crypto && typeof window.crypto.getRandomValues === 'function') window.crypto.getRandomValues(bytes);
+      else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+    } catch (_) { for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256); }
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+  }
+
+  async function fetchProfileCalendarOwnRsvps(ownerPubkey, coordinate) {
+    const owner = normalizePubkeyHex(ownerPubkey || '');
+    if (!owner || !coordinate) return [];
+    const cacheKey = 'profile-calendar-rsvps:' + owner + ':' + coordinate;
+    const events = await fetchEventsCached(
+      [{ kinds: [31925], authors: [owner], '#a': [coordinate], limit: 100 }],
+      { scope: 'profile-calendar-rsvps', cacheKey, force: true, ttlMs: 0, warmMs: 0, allowStale: false, timeoutMs: 1800, maxEvents: 120 }
+    );
+    return (events || [])
+      .filter((event) => event && Number(event.kind) === 31925
+        && normalizePubkeyHex(event.pubkey || '') === owner
+        && getTagValues(event, 'a').includes(coordinate))
+      .sort((left, right) => Number(right.created_at || 0) - Number(left.created_at || 0));
+  }
+
+  function renderProfileCalendarEvent31923(event, entity, content, summary) {
+    const tags = Array.isArray(event && event.tags) ? event.tags : [];
+    const readTag = (name) => String(firstTagValue(tags, name) || '').trim();
+    const allValues = (name) => profileCalendarTagRows(event, name).map((tag) => String(tag[1] || '').trim()).filter(Boolean);
+    const organizerRoleTag = profileCalendarTagRows(event, 'p').find((tag) => /^(organizer|host)$/i.test(String(tag[3] || '').trim()));
+    const publisherPubkey = normalizePubkeyHex(event.pubkey || '');
+    const organizerPubkey = normalizePubkeyHex(organizerRoleTag && organizerRoleTag[1] || '') || publisherPubkey;
+    const titleText = readTag('title') || readTag('name') || 'Untitled event';
+    const eventSummary = readTag('summary');
+    const imageUrl = sanitizeMediaUrl(readTag('image'));
+    const startTzid = readTag('start_tzid');
+    const endTzid = readTag('end_tzid') || startTzid;
+    const startText = formatProfileCalendarTimestamp(readTag('start'), startTzid);
+    const endText = formatProfileCalendarTimestamp(readTag('end'), endTzid);
+    const coordinate = '31923:' + publisherPubkey + ':' + readTag('d');
+
+    summary.textContent = titleText + ' · Calendar event · hover or click this post to expand';
+    content.innerHTML = '';
+    const panel = document.createElement('div');
+    panel.className = 'profile-calendar-event';
+
+    if (imageUrl && isLikelyUrl(imageUrl)) {
+      const imageLink = document.createElement('a');
+      imageLink.className = 'profile-calendar-event-image-link';
+      imageLink.href = imageUrl; imageLink.target = '_blank'; imageLink.rel = 'noopener noreferrer';
+      const image = document.createElement('img');
+      image.className = 'profile-calendar-event-image';
+      image.src = imageUrl; image.alt = titleText; image.loading = 'lazy'; image.decoding = 'async';
+      imageLink.appendChild(image); panel.appendChild(imageLink);
+    }
+
+    const heading = document.createElement('div');
+    heading.className = 'profile-calendar-event-heading';
+    const title = document.createElement('h3');
+    title.className = 'profile-calendar-event-title'; title.textContent = titleText;
+    heading.appendChild(title);
+    const kindLabel = document.createElement('span');
+    kindLabel.className = 'profile-calendar-event-kind'; kindLabel.textContent = 'KIND 31923';
+    heading.appendChild(kindLabel); panel.appendChild(heading);
+
+    if (eventSummary) {
+      const el = document.createElement('p');
+      el.className = 'profile-calendar-event-summary'; el.textContent = eventSummary; panel.appendChild(el);
+    }
+    const description = String(event.content || '').trim();
+    if (description) {
+      const el = document.createElement('div');
+      el.className = 'profile-calendar-event-description';
+      el.appendChild(renderNostrContent(description)); panel.appendChild(el);
+    }
+
+    if (startText || endText) {
+      const section = document.createElement('div');
+      section.className = 'profile-calendar-event-section';
+      const headingEl = document.createElement('strong');
+      headingEl.className = 'profile-calendar-event-section-title'; headingEl.textContent = 'Date & time';
+      section.appendChild(headingEl);
+      [[ 'Starts', startText ], [ 'Ends', endText ]].filter((row) => row[1]).forEach((row) => {
+        const line = document.createElement('div'); line.className = 'profile-calendar-event-detail';
+        const label = document.createElement('span'); label.className = 'profile-calendar-event-label'; label.textContent = row[0];
+        const value = document.createElement('span'); value.className = 'profile-calendar-event-value'; value.textContent = row[1];
+        line.appendChild(label); line.appendChild(value); section.appendChild(line);
+      });
+      panel.appendChild(section);
+    }
+
+    const locations = allValues('location');
+    const geohashes = allValues('g');
+    if (locations.length || geohashes.length) {
+      const section = document.createElement('div'); section.className = 'profile-calendar-event-section';
+      const headingEl = document.createElement('strong'); headingEl.className = 'profile-calendar-event-section-title'; headingEl.textContent = 'Location';
+      section.appendChild(headingEl);
+      locations.forEach((value) => {
+        const line = document.createElement('div'); line.className = 'profile-calendar-event-detail';
+        const href = safeHrefFromUrl(value);
+        if (href) {
+          const anchor = document.createElement('a'); anchor.className = 'profile-calendar-event-link';
+          anchor.href = href; anchor.target = '_blank'; anchor.rel = 'noopener noreferrer'; anchor.textContent = value; line.appendChild(anchor);
+        } else {
+          const text = document.createElement('span'); text.className = 'profile-calendar-event-value'; text.textContent = value; line.appendChild(text);
+        }
+        section.appendChild(line);
+      });
+      geohashes.forEach((geohash) => {
+        const line = document.createElement('div'); line.className = 'profile-calendar-event-detail';
+        const label = document.createElement('span'); label.className = 'profile-calendar-event-label'; label.textContent = 'Map';
+        const anchor = document.createElement('a'); anchor.className = 'profile-calendar-event-link';
+        anchor.href = 'https://geohash.org/' + encodeURIComponent(geohash); anchor.target = '_blank'; anchor.rel = 'noopener noreferrer'; anchor.textContent = 'View map (' + geohash + ')';
+        line.appendChild(label); line.appendChild(anchor); section.appendChild(line);
+      });
+      panel.appendChild(section);
+    }
+
+    const refs = [...new Set([
+      ...locations.filter((value) => !!safeHrefFromUrl(value)),
+      ...profileCalendarTagRows(event, 'r').map((tag) => String(tag[1] || '').trim()).filter(Boolean)
+    ])];
+    const validRefs = refs.filter((value) => !!safeHrefFromUrl(value));
+    if (validRefs.length) {
+      const section = document.createElement('div'); section.className = 'profile-calendar-event-section';
+      const headingEl = document.createElement('strong'); headingEl.className = 'profile-calendar-event-section-title'; headingEl.textContent = 'Links & online location';
+      section.appendChild(headingEl);
+      validRefs.forEach((value) => {
+        const href = safeHrefFromUrl(value);
+        const line = document.createElement('div'); line.className = 'profile-calendar-event-detail';
+        const anchor = document.createElement('a'); anchor.className = 'profile-calendar-event-link';
+        anchor.href = href; anchor.target = '_blank'; anchor.rel = 'noopener noreferrer';
+        let label = value;
+        try { const url = new URL(href); if (/video|meet|zoom|jitsi|stream|call|live/i.test(value)) label = 'Join online event (' + url.hostname + ')'; } catch (_) {}
+        anchor.textContent = label; line.appendChild(anchor); section.appendChild(line);
+      });
+      panel.appendChild(section);
+    }
+
+    const renderPerson = (pubkey, avatar, name, meta, role) => {
+      const key = normalizePubkeyHex(pubkey || '');
+      if (!key) { name.textContent = shortHex(pubkey || ''); meta.textContent = role || ''; return; }
+      const update = () => {
+        const profile = profileFor(key);
+        setAvatarEl(avatar, profile.picture || '', pickAvatar(key));
+        name.textContent = profile.display_name || profile.name || shortHex(key);
+        meta.textContent = role || (profile.nip05 ? normalizeNip05Value(profile.nip05) : shortHex(key));
+      };
+      avatar.style.cursor = 'pointer'; avatar.title = 'Open profile';
+      name.onclick = (clickEvent) => { clickEvent.stopPropagation(); showProfileByPubkey(key); };
+      avatar.onclick = (clickEvent) => { clickEvent.stopPropagation(); showProfileByPubkey(key); };
+      update(); fetchProfileIfNeeded(key, { timeoutMs: 1400 }).then(update).catch(() => {});
+    };
+
+    const organizerSection = document.createElement('div'); organizerSection.className = 'profile-calendar-event-section';
+    const organizerTitle = document.createElement('strong'); organizerTitle.className = 'profile-calendar-event-section-title'; organizerTitle.textContent = 'Organizer';
+    organizerSection.appendChild(organizerTitle);
+    const organizerRow = document.createElement('div'); organizerRow.className = 'profile-calendar-event-person';
+    const organizerAvatar = document.createElement('div'); organizerAvatar.className = 'profile-calendar-event-person-avatar';
+    const organizerIdentity = document.createElement('div'); organizerIdentity.className = 'profile-calendar-event-person-identity';
+    const organizerName = document.createElement('button'); organizerName.type = 'button'; organizerName.className = 'profile-calendar-event-person-name';
+    const organizerMeta = document.createElement('span'); organizerMeta.className = 'profile-calendar-event-person-meta';
+    organizerRow.appendChild(organizerAvatar); organizerIdentity.appendChild(organizerName); organizerIdentity.appendChild(organizerMeta); organizerRow.appendChild(organizerIdentity);
+    organizerSection.appendChild(organizerRow); panel.appendChild(organizerSection);
+    renderPerson(organizerPubkey, organizerAvatar, organizerName, organizerMeta, 'Event organizer');
+
+    const participants = []; const participantSeen = new Set();
+    profileCalendarTagRows(event, 'p').forEach((tag) => {
+      const key = normalizePubkeyHex(tag[1] || '');
+      if (!key || key === organizerPubkey || participantSeen.has(key)) return;
+      participantSeen.add(key); participants.push({ pubkey: key, role: String(tag[3] || '').trim() });
+    });
+    if (participants.length) {
+      const section = document.createElement('div'); section.className = 'profile-calendar-event-section';
+      const headingEl = document.createElement('strong'); headingEl.className = 'profile-calendar-event-section-title'; headingEl.textContent = 'Participants (' + participants.length + ')';
+      section.appendChild(headingEl);
+      const list = document.createElement('div'); list.className = 'profile-calendar-event-participants';
+      participants.slice(0, 24).forEach((participant) => {
+        const row = document.createElement('div'); row.className = 'profile-calendar-event-person';
+        const avatar = document.createElement('div'); avatar.className = 'profile-calendar-event-person-avatar';
+        const identity = document.createElement('div'); identity.className = 'profile-calendar-event-person-identity';
+        const name = document.createElement('button'); name.type = 'button'; name.className = 'profile-calendar-event-person-name';
+        const meta = document.createElement('span'); meta.className = 'profile-calendar-event-person-meta';
+        row.appendChild(avatar); identity.appendChild(name); identity.appendChild(meta); row.appendChild(identity);
+        renderPerson(participant.pubkey, avatar, name, meta, participant.role || 'Participant'); list.appendChild(row);
+      });
+      if (participants.length > 24) {
+        const more = document.createElement('span'); more.className = 'profile-calendar-event-muted';
+        more.textContent = (participants.length - 24) + ' more participants'; list.appendChild(more);
+      }
+      section.appendChild(list); panel.appendChild(section);
+    }
+
+    const hashtags = allValues('t').map((value) => value.replace(/^#+/, '')).filter(Boolean);
+    if (hashtags.length) {
+      const section = document.createElement('div'); section.className = 'profile-calendar-event-section';
+      const headingEl = document.createElement('strong'); headingEl.className = 'profile-calendar-event-section-title'; headingEl.textContent = 'Topics';
+      section.appendChild(headingEl);
+      const wrap = document.createElement('div'); wrap.className = 'profile-calendar-event-tags';
+      hashtags.slice(0, 30).forEach((value) => {
+        const chip = document.createElement('span'); chip.className = 'profile-calendar-event-tag'; chip.textContent = '#' + value; wrap.appendChild(chip);
+      });
+      section.appendChild(wrap); panel.appendChild(section);
+    }
+
+    const calendarRefs = profileCalendarTagRows(event, 'a').filter((tag) => /^31924:[0-9a-f]{64}:/i.test(String(tag[1] || '')));
+    if (calendarRefs.length) {
+      const section = document.createElement('div'); section.className = 'profile-calendar-event-section';
+      const headingEl = document.createElement('strong'); headingEl.className = 'profile-calendar-event-section-title'; headingEl.textContent = 'Calendar references';
+      section.appendChild(headingEl);
+      calendarRefs.forEach((tag) => {
+        const anchor = document.createElement('a'); anchor.className = 'profile-calendar-event-link';
+        anchor.href = 'nostr:' + String(tag[1] || ''); anchor.textContent = 'Open calendar · ' + String(tag[1] || '');
+        section.appendChild(anchor);
+      });
+      panel.appendChild(section);
+    }
+
+    const rsvpSection = document.createElement('div'); rsvpSection.className = 'profile-calendar-event-rsvp';
+    const rsvpHeading = document.createElement('strong'); rsvpHeading.className = 'profile-calendar-event-section-title'; rsvpHeading.textContent = 'Your response';
+    rsvpSection.appendChild(rsvpHeading);
+    const rsvpStatusLine = document.createElement('div'); rsvpStatusLine.className = 'profile-calendar-event-rsvp-status';
+    rsvpStatusLine.textContent = state.user ? 'Checking your response…' : 'Sign in to RSVP to this event.';
+    rsvpSection.appendChild(rsvpStatusLine);
+    const rsvpButtons = document.createElement('div'); rsvpButtons.className = 'profile-calendar-event-rsvp-buttons';
+    const options = [{ status: 'accepted', label: 'Attending' }, { status: 'tentative', label: 'Tentative' }, { status: 'declined', label: 'Declined' }];
+    const buttons = new Map();
+    let pending = false;
+    let currentStatus = '';
+    const labels = { accepted: 'Attending', tentative: 'Tentative', declined: 'Declined' };
+    const updateRsvpUi = (status) => {
+      currentStatus = status || '';
+      buttons.forEach((button, value) => button.classList.toggle('active', value === currentStatus));
+      rsvpStatusLine.textContent = !state.user ? 'Sign in to RSVP to this event.'
+        : (currentStatus ? 'Your response: ' + labels[currentStatus] : 'You have not responded yet.');
+    };
+    options.forEach((option) => {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'profile-calendar-event-rsvp-button'; button.textContent = option.label;
+      button.addEventListener('click', async (clickEvent) => {
+        clickEvent.preventDefault(); clickEvent.stopPropagation();
+        if (pending) return;
+        if (!state.user) { if (typeof window.openLogin === 'function') window.openLogin(); else rsvpStatusLine.textContent = 'Sign in to RSVP to this event.'; return; }
+        const owner = normalizePubkeyHex(state.user && state.user.pubkey || '');
+        if (!owner || !publisherPubkey || !readTag('d')) {
+          rsvpStatusLine.textContent = 'This event is missing the public key or identifier needed for an RSVP.'; return;
+        }
+        pending = true; buttons.forEach((entry) => { entry.disabled = true; });
+        rsvpStatusLine.textContent = 'Publishing your response…';
+        try {
+          const ownResponses = await fetchProfileCalendarOwnRsvps(owner, coordinate).catch(() => []);
+          const previous = ownResponses[0] || null;
+          const dTag = String(previous && firstTagValue(previous.tags, 'd') || '').trim() || makeProfileCalendarRsvpDTag();
+          const responseTags = [['a', coordinate], ['e', String(event.id || '')], ['d', dTag], ['status', option.status], ['p', publisherPubkey]].filter((tag) => tag[1]);
+          const signed = await signAndPublish(31925, '', responseTags);
+          const cacheKey = 'profile-calendar-rsvps:' + owner + ':' + coordinate;
+          if (state.oneShotQueryCacheByKey && typeof state.oneShotQueryCacheByKey.delete === 'function') state.oneShotQueryCacheByKey.delete(cacheKey);
+          updateRsvpUi(option.status);
+          rsvpStatusLine.textContent = 'Your response: ' + labels[option.status] + ' · published';
+          if (!signed || Number(signed.kind) !== 31925) rsvpStatusLine.textContent = 'Response submitted; waiting for relay confirmation.';
+        } catch (error) {
+          rsvpStatusLine.textContent = error && error.message ? error.message : 'Could not publish your RSVP.';
+        } finally { pending = false; buttons.forEach((entry) => { entry.disabled = false; }); }
+      });
+      rsvpButtons.appendChild(button); buttons.set(option.status, button);
+    });
+    rsvpSection.appendChild(rsvpButtons); panel.appendChild(rsvpSection);
+
+    const openLink = document.createElement('a'); openLink.className = 'profile-calendar-event-open';
+    openLink.href = 'nostr:' + entity; openLink.rel = 'noopener noreferrer'; openLink.textContent = 'Open event in Nostr';
+    panel.appendChild(openLink); content.appendChild(panel);
+
+    if (state.user && normalizePubkeyHex(state.user.pubkey || '') && publisherPubkey && readTag('d')) {
+      fetchProfileCalendarOwnRsvps(state.user.pubkey, coordinate).then((responses) => {
+        if (!content.contains(rsvpSection)) return;
+        updateRsvpUi(profileCalendarRsvpStatus(responses[0] || null));
+      }).catch(() => {
+        if (content.contains(rsvpSection)) rsvpStatusLine.textContent = 'Could not load your current RSVP. You can still choose a response.';
+      });
+    }
+  }
+
   function _buildProfileNaddrEventCard(entity) {
     const card = document.createElement('article');
     card.className = 'profile-feed-event-embed';
@@ -16070,6 +16386,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (!ev) {
         summary.textContent = 'Linked Nostr event · hover or click this post to expand';
         content.textContent = 'Event not found on connected relays.';
+        return;
+      }
+
+      if (kind === 31923) {
+        renderProfileCalendarEvent31923(ev, entity, content, summary);
         return;
       }
 
