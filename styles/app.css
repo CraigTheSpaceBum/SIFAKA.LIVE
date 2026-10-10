@@ -9654,3 +9654,64 @@ button.pfs-comments[aria-expanded="true"] {
 @media(prefers-reduced-motion:reduce) {
   .profile-feed-item.has-profile-events .profile-feed-event-content { transition:none; }
 }
+
+
+/* Sifaka 0.8.10 — Podcast Radio page and Spotify-style audio theater. */
+#podcastRadioPage { display:none; padding-top:76px; }
+.podcast-radio-wrap { width:100%; max-width:1440px; margin:0 auto; padding:0 1rem 2rem; }
+.podcast-radio-page-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin:0 0 1.05rem; }
+.podcast-radio-page-head h2 { margin:.15rem 0 .35rem; font-family:var(--font-display); font-size:clamp(1.35rem,2.4vw,1.9rem); font-weight:850; letter-spacing:-.035em; color:var(--text); }
+.podcast-radio-page-head p { margin:0; max-width:680px; color:var(--text2); font-size:.82rem; line-height:1.55; }
+.podcast-radio-eyebrow,.podcast-radio-intro-label { color:var(--zap); font:700 .64rem/1.4 'DM Mono',monospace; letter-spacing:.14em; text-transform:uppercase; }
+.podcast-radio-count { flex-shrink:0; padding:.38rem .65rem; border:1px solid var(--border2); border-radius:999px; background:var(--surface); color:var(--text2); font:600 .68rem/1.4 'DM Mono',monospace; }
+.podcast-radio-intro { display:flex; align-items:center; gap:1rem; margin:0 0 1.15rem; padding:1rem 1.15rem; border:1px solid var(--border2); border-radius:15px; background:linear-gradient(110deg,rgba(29,185,84,.1),rgba(139,92,246,.08) 60%,var(--surface)); }
+.podcast-radio-intro-art { display:flex; align-items:center; justify-content:center; width:65px; height:65px; flex:0 0 65px; border-radius:12px; color:white; font-size:2rem; background:linear-gradient(145deg,#1db954,#136a53 55%,#3c1e72); box-shadow:0 9px 26px rgba(0,0,0,.3); }
+.podcast-radio-intro h3 { margin:.18rem 0 .3rem; color:var(--text); font-size:1rem; font-weight:800; }
+.podcast-radio-intro p { margin:0; color:var(--text2); font-size:.75rem; line-height:1.55; }
+.podcast-radio-card .ct { position:relative; }
+.podcast-radio-card-badge { display:flex; align-items:center; gap:.25rem; background:rgba(17,24,39,.88); border:1px solid rgba(29,185,84,.38); color:#a7f3c0; font:700 .57rem/1.2 'DM Mono',monospace; letter-spacing:.04em; }
+.podcast-radio-card-copy { min-width:0; }
+.podcast-radio-card-summary { margin:.45rem 0 .7rem; color:var(--text2); font-size:.72rem; line-height:1.45; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
+.podcast-radio-listen-btn { display:inline-flex; align-items:center; justify-content:center; gap:.35rem; min-height:34px; padding:.42rem .7rem; border:1px solid rgba(29,185,84,.4); border-radius:8px; background:rgba(29,185,84,.12); color:#a7f3c0; font-size:.7rem; font-weight:750; cursor:pointer; transition:background .15s,border-color .15s,transform .15s; }
+.podcast-radio-listen-btn:hover { background:rgba(29,185,84,.2); border-color:rgba(29,185,84,.7); transform:translateY(-1px); }
+.podcast-radio-empty { grid-column:1/-1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.55rem; min-height:180px; padding:2rem 1rem; border:1px dashed var(--border2); border-radius:14px; color:var(--text2); text-align:center; }
+.podcast-radio-empty-icon { color:#4ade80; font-size:2rem; }
+.podcast-radio-empty strong { color:var(--text); font-size:.9rem; }
+.podcast-radio-empty span { max-width:520px; color:var(--muted); font-size:.73rem; line-height:1.55; }
+.podcast-theater-player { position:absolute; inset:0; display:grid; grid-template-columns:minmax(160px,.82fr) minmax(0,1.18fr); align-items:center; gap:clamp(1rem,3vw,2.3rem); padding:clamp(1rem,3.4vw,2.5rem); overflow:hidden; background:radial-gradient(ellipse at 18% 10%,rgba(29,185,84,.22),transparent 52%),radial-gradient(ellipse at 82% 95%,rgba(139,92,246,.2),transparent 54%),linear-gradient(135deg,#0c1115,#141a1c 55%,#0a0c0e); }
+.podcast-theater-artwork { width:100%; max-width:300px; aspect-ratio:1/1; justify-self:center; overflow:hidden; border-radius:12px; background:linear-gradient(145deg,#1db954,#136a53 55%,#3c1e72); box-shadow:0 20px 55px rgba(0,0,0,.52); }
+.podcast-theater-artwork img { display:block; width:100%; height:100%; object-fit:cover; }
+.podcast-artwork-fallback { display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.9); font-size:clamp(3rem,9vw,6rem); }
+.podcast-theater-details { min-width:0; width:100%; max-width:580px; justify-self:start; }
+.podcast-theater-top-row { display:flex; align-items:center; justify-content:space-between; gap:.6rem; }
+.podcast-theater-top-row .end-stream-btn { position:static; flex-shrink:0; margin:0; }
+.podcast-theater-eyebrow { color:#6ee7a1; font:700 .64rem/1.4 'DM Mono',monospace; letter-spacing:.17em; }
+.podcast-theater-title { margin:.55rem 0 .35rem; color:#fff; font-size:clamp(1.05rem,2.4vw,1.8rem); font-weight:850; letter-spacing:-.025em; line-height:1.2; overflow-wrap:anywhere; }
+.podcast-theater-artist { color:#e6e9eb; font-size:.85rem; font-weight:700; overflow-wrap:anywhere; }
+.podcast-theater-subline { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; margin-top:.4rem; color:#aeb7b9; font-size:.72rem; line-height:1.5; }
+.podcast-theater-controls { display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:.7rem .8rem; margin-top:1.3rem; }
+.podcast-theater-play { width:46px; height:46px; border:0; border-radius:50%; background:#1ed760; color:#06130a; font-size:1.15rem; font-weight:900; cursor:pointer; box-shadow:0 4px 18px rgba(29,185,84,.22); transition:transform .15s,background .15s; }
+.podcast-theater-play:hover { transform:scale(1.05); background:#63f28f; }
+.podcast-theater-seek { min-width:0; }
+.podcast-theater-time-row { display:grid; grid-template-columns:34px minmax(0,1fr) 34px; align-items:center; gap:.35rem; color:#cbd5d7; font:500 .61rem/1.2 'DM Mono',monospace; }
+.podcast-theater-time-row span:last-child { text-align:right; }
+.podcast-theater-time-row input[type=range],.podcast-theater-volume-row input[type=range] { width:100%; min-width:0; accent-color:#1ed760; cursor:pointer; }
+.podcast-theater-volume-row { grid-column:2; display:flex; align-items:center; gap:.45rem; max-width:180px; color:#aeb7b9; font-size:.8rem; }
+.podcast-theater-status { min-height:1rem; margin-top:.6rem; color:#aeb7b9; font-size:.67rem; line-height:1.4; }
+@media(max-width:640px) {
+  .podcast-radio-wrap { padding:0 .7rem 1.4rem; }
+  .podcast-radio-page-head { align-items:center; }
+  .podcast-radio-intro { gap:.75rem; padding:.8rem; }
+  .podcast-radio-intro-art { width:52px; height:52px; flex-basis:52px; }
+  .podcast-theater-player { grid-template-columns:minmax(0,1fr); align-content:center; justify-items:center; gap:.85rem; padding:1rem; }
+  .podcast-theater-artwork { width:min(49vw,190px); max-width:190px; }
+  .podcast-theater-details { text-align:center; justify-self:center; }
+  .podcast-theater-title { margin-top:.35rem; font-size:1rem; }
+  .podcast-theater-artist { font-size:.77rem; }
+  .podcast-theater-subline { display:none; }
+  .podcast-theater-controls { max-width:420px; margin-top:.8rem; text-align:left; }
+  .podcast-theater-volume-row { justify-self:center; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .podcast-radio-listen-btn,.podcast-theater-play { transition:none; }
+}
