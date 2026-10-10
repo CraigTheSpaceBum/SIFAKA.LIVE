@@ -14353,13 +14353,29 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const summary = document.createElement('div');
     summary.className = 'podcast-radio-card-summary';
-    summary.textContent = String(stream.summary || 'Audio-only stream. Select to listen and open live chat.');
+    summary.textContent = String(stream.summary || 'Audio-only stream.');
     content.appendChild(summary);
-    const listen = document.createElement('button');
-    listen.className = 'podcast-radio-listen-btn';
-    listen.type = 'button';
-    listen.textContent = '▶  Listen & open chat';
-    content.appendChild(listen);
+
+    const hashtags = document.createElement('div');
+    hashtags.className = 'podcast-radio-card-hashtags sib-hashtags';
+    const seenHashtags = new Set();
+    (Array.isArray(stream.hashtags) ? stream.hashtags : []).slice(0, 12).forEach((rawTag) => {
+      const tag = String(rawTag || '')
+        .trim()
+        .replace(/^#+/, '')
+        .replace(/[ -]/g, '')
+        .replace(/s+/g, '')
+        .slice(0, 48);
+      const key = tag.toLowerCase();
+      if (!tag || seenHashtags.has(key)) return;
+      seenHashtags.add(key);
+      const chip = document.createElement('span');
+      chip.className = 'sib-hashtag';
+      chip.textContent = '#' + tag;
+      hashtags.appendChild(chip);
+    });
+    hashtags.hidden = hashtags.childElementCount === 0;
+    if (!hashtags.hidden) content.appendChild(hashtags);
     card.appendChild(thumb);
     card.appendChild(content);
 
@@ -14382,11 +14398,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const open = () => openStream(stream.address);
     card.addEventListener('click', open);
-    listen.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      open();
-    });
     return card;
   }
 
