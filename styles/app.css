@@ -10156,3 +10156,46 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
 @media (prefers-reduced-motion: reduce) {
   #videoPage .sib-profile-links .theater-host-link-card { transition: none; }
 }
+
+
+/* Sifaka 0.8.16: compact theater identity + action panel. */
+.sib-host-info-panel {
+  width: 100%; min-width: 0; display: flex; flex-wrap: wrap; align-items: center;
+  gap: .5rem .8rem; padding: .72rem; border: 1px solid var(--border);
+  border-radius: 12px; background: linear-gradient(135deg,rgba(155,114,255,.055),rgba(255,255,255,.012));
+}
+.sib-host-info-panel > .sib-hosts { flex: 1 1 230px; min-width: 0; }
+.sib-host-info-panel > .sib-hosted-by { margin-left: 0; }
+.sib-host-info-panel .sib-stats-links-row { flex: 1 1 100%; min-width: 0; }
+.sib-host-info-panel .sib-stats-row { margin-top: 0; padding-top: .55rem; gap: .42rem; border-top: 1px solid var(--border); }
+.sib-stats-row .ss.fol { gap: 0; }
+.sib-stats-row .ss.fol #theaterFollowBtn { min-height: 30px; padding: .3rem .62rem !important; font-size: .7rem !important; }
+.sib-stats-row .ss.likes { gap: 0; }
+.sib-stats-row .ss.likes #likeBtn { min-height: 30px; padding: .28rem .5rem; font-size: .72rem; white-space: nowrap; }
+.sib-stats-row .ss.likes #streamLikeCounter { color: inherit; font-size: inherit; }
+.sib-stats-row .theater-stat-action .action-btn { min-height: 30px; padding: .28rem .5rem; font-size: .7rem; white-space: nowrap; }
+.theater-description-links { margin-top: .55rem; }
+
+/* Search-style hashtag and co-host chip fields. */
+.go-live-token-field { position: relative; display:flex; flex-wrap:wrap; align-items:center; gap:.35rem; min-height:42px; padding:.35rem; border:1px solid var(--border2); border-radius:10px; background:var(--surface2); }
+.go-live-token-field:focus-within { border-color:var(--accent); box-shadow:0 0 0 2px rgba(155,114,255,.11); }
+.go-live-token-field > input[type="text"] { flex:1 1 170px; min-width:120px; width:auto; border:0; outline:0; background:transparent; box-shadow:none; padding:.35rem .45rem; }
+.go-live-token-chips { display:contents; }
+.go-live-token-chip { display:inline-flex; align-items:center; gap:.24rem; max-width:100%; padding:.24rem .38rem .24rem .5rem; border:1px solid rgba(155,114,255,.35); border-radius:999px; background:rgba(155,114,255,.1); color:var(--text); font-size:.7rem; line-height:1.25; overflow-wrap:anywhere; }
+.go-live-token-remove { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; flex:0 0 18px; padding:0; border:0; border-radius:50%; background:transparent; color:var(--text2); cursor:pointer; font-size:.9rem; }
+.go-live-token-remove:hover { background:rgba(255,255,255,.12); color:var(--text); }
+.go-live-token-suggestions { position:absolute; z-index:80; top:calc(100% + .28rem); left:0; right:0; max-height:230px; overflow-y:auto; padding:.3rem; border:1px solid var(--border2); border-radius:10px; background:var(--surface,#15131d); box-shadow:0 12px 35px rgba(0,0,0,.35); }
+.go-live-token-suggestions[hidden] { display:none !important; }
+.go-live-token-suggestion { display:block; width:100%; padding:.48rem .58rem; border:0; border-radius:7px; background:transparent; color:var(--text); text-align:left; font:inherit; font-size:.74rem; cursor:pointer; }
+.go-live-token-suggestion:hover,.go-live-token-suggestion:focus-visible { outline:0; background:rgba(155,114,255,.16); }
+.go-live-token-suggestion-empty { padding:.5rem .58rem; color:var(--muted); font-size:.7rem; line-height:1.45; }
+@media (max-width:700px) {
+  #videoPage .sib-host-info-panel { padding:.55rem; gap:.45rem; }
+  #videoPage .sib-stats-row { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  #videoPage .sib-stats-row .ss:nth-child(n+4) { display:flex !important; }
+  #videoPage .sib-stats-row .ss.theater-stat-action { justify-content:center; }
+  #videoPage .sib-stats-row .ss.theater-stat-action .action-btn { width:100%; min-width:0; justify-content:center; padding:.28rem .24rem; }
+  #videoPage .sib-stats-row .ss.fol #theaterFollowBtn { width:100%; white-space:nowrap; padding:.3rem .22rem !important; }
+  #videoPage .sib-stats-row .ss.likes #likeBtn { width:100%; padding:.28rem .18rem; }
+}
+@media (prefers-reduced-motion: reduce) { .go-live-token-suggestion { transition:none; } }
