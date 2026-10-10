@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.18">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.19">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -2171,28 +2171,28 @@ body.nest-preview-open{overflow:hidden}
                 <div class="ss theater-stat-action"><button class="action-btn report-btn" type="button" title="Report stream">Report</button></div>
               </div>
             </div>
-          </div>
-        </div>
-        <!-- Editable summary -->
-        <div class="editable-block" style="margin-top:.5rem">
-          <div class="sib-summary">Live jazz set from my home studio. Self-hosted on a $5 VPS - no middlemen, no censorship.</div>
-          <button class="block-pencil owner-only visible" title="Edit description"></button>
-        </div>
-        <div class="profile-bio-links sib-profile-links theater-description-links" id="theaterProfileLinks" aria-label="Host profile links" style="display:none;">
-          <div class="profile-bio-meta theater-host-link-card" id="theaterWebsiteRow" role="link" tabindex="0" style="display:none;" title="Open streamer website">
-            <span class="lbl">Website</span><a id="theaterWebsite" href="#" target="_blank" rel="noopener noreferrer"></a>
-          </div>
-          <div class="profile-bio-meta onchain-profile-meta theater-host-link-card" id="theaterOnchainRow" role="button" tabindex="0" style="display:none;" title="Open Bitcoin donation">
-            <span class="lbl" aria-hidden="true">₿ On Chain</span><a class="val profile-bitcoin-send-btn" id="theaterOnchainBtn" href="#" title="Send Bitcoin to this profile" aria-label="Send Bitcoin to this profile"></a>
-          </div>
-          <div class="profile-bio-meta theater-host-link-card" id="theaterLud16Row" role="button" tabindex="0" style="display:none;" title="Open Lightning donation">
-            <span class="lbl">⚡ Lightning</span><button class="val profile-lightning-donation-btn" id="theaterLud16" type="button" onclick="theaterLightningDonation()" title="Donate Lightning to this streamer" aria-label="Donate Lightning to this streamer"></button>
-          </div>
-        </div>
-        <div class="sib-tags-reactions-row">
-          <div class="sib-hashtags" id="theaterHashtags" aria-label="Stream hashtags" hidden></div>
-          <div class="stream-reactions-row">
-            <div class="stream-emoji-list" id="streamEmojiList"></div>
+            <!-- Keep all streamer details, links and reactions inside the same panel as the actions. -->
+            <div class="editable-block theater-panel-description" style="margin-top:.5rem">
+              <div class="sib-summary">Live jazz set from my home studio. Self-hosted on a $5 VPS - no middlemen, no censorship.</div>
+              <button class="block-pencil owner-only visible" title="Edit description"></button>
+            </div>
+            <div class="profile-bio-links sib-profile-links theater-description-links" id="theaterProfileLinks" aria-label="Host profile links" style="display:none;">
+              <div class="profile-bio-meta theater-host-link-card" id="theaterWebsiteRow" role="link" tabindex="0" style="display:none;" title="Open streamer website">
+                <span class="lbl">Website</span><a id="theaterWebsite" href="#" target="_blank" rel="noopener noreferrer"></a>
+              </div>
+              <div class="profile-bio-meta onchain-profile-meta theater-host-link-card" id="theaterOnchainRow" role="button" tabindex="0" style="display:none;" title="Open Bitcoin donation">
+                <span class="lbl" aria-hidden="true">₿ On Chain</span><a class="val profile-bitcoin-send-btn" id="theaterOnchainBtn" href="#" title="Send Bitcoin to this profile" aria-label="Send Bitcoin to this profile"></a>
+              </div>
+              <div class="profile-bio-meta theater-host-link-card" id="theaterLud16Row" role="button" tabindex="0" style="display:none;" title="Open Lightning donation">
+                <span class="lbl">⚡ Lightning</span><button class="val profile-lightning-donation-btn" id="theaterLud16" type="button" onclick="theaterLightningDonation()" title="Donate Lightning to this streamer" aria-label="Donate Lightning to this streamer"></button>
+              </div>
+            </div>
+            <div class="sib-tags-reactions-row">
+              <div class="sib-hashtags" id="theaterHashtags" aria-label="Stream hashtags" hidden></div>
+              <div class="stream-reactions-row">
+                <div class="stream-emoji-list" id="streamEmojiList"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2454,7 +2454,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.8.18" defer></script>
+<script src="./nostrflux-app.js?v=0.8.19" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
