@@ -10324,3 +10324,79 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     max-width: 100%;
   }
 }
+
+
+/* Sifaka 0.8.18: polished theater title and compact streamer identity/actions. */
+#videoPage .sib-title-col { flex: 1 1 auto; width: 100%; min-width: 0; }
+#videoPage .sib-title-col .editable-row {
+  position: relative; display: block; width: 100%; min-width: 0;
+  box-sizing: border-box; overflow: hidden; padding: 0 2.1rem 0 0;
+}
+#videoPage .sib-title-col .editable-row .sib-title {
+  display: block; width: max-content; max-width: none; margin: 0;
+  white-space: nowrap; font-size: clamp(1.08rem, 1.55vw, 1.36rem);
+  line-height: 1.32; letter-spacing: -.015em; color: var(--text);
+  text-shadow: 0 1px 10px rgba(0,0,0,.16); transform: translate3d(0,0,0);
+}
+#videoPage .sib-title-col .editable-row .sib-title.theater-title-overflow {
+  animation: sifaka-theater-title-marquee 17s ease-in-out infinite alternate;
+  will-change: transform;
+}
+#videoPage .sib-title-col .editable-row .edit-pencil {
+  position: absolute; z-index: 2; top: 50%; right: .1rem;
+  transform: translateY(-50%); margin: 0; background: var(--surface);
+}
+@keyframes sifaka-theater-title-marquee {
+  0%, 12% { transform: translate3d(0,0,0); }
+  88%, 100% { transform: translate3d(var(--theater-title-scroll-distance,0px),0,0); }
+}
+
+#videoPage #theaterMainHostCard {
+  position: relative; isolation: isolate; overflow: hidden;
+  background: linear-gradient(135deg,rgba(19,22,32,.92),rgba(12,17,24,.94));
+}
+#videoPage #theaterMainHostCard::before {
+  content: ""; position: absolute; z-index: 0; inset: 0; border-radius: inherit;
+  background-image: var(--theater-profile-banner-image, none);
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  opacity: .3; pointer-events: none;
+}
+#videoPage #theaterMainHostCard > .sib-av,
+#videoPage #theaterMainHostCard > .sib-host-info { position: relative; z-index: 1; }
+
+/* Remove the separate boxed treatment around follow/stats/share/report while
+   preserving every button and its existing event handler. */
+#videoPage .sib-host-info-panel { gap: .38rem .62rem; padding: .48rem .58rem; }
+#videoPage .sib-host-info-panel .sib-stats-links-row {
+  flex: 1 1 100%; min-width: 0; margin-top: 0; gap: .3rem .52rem;
+}
+#videoPage .sib-host-info-panel .sib-stats-row {
+  display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center;
+  justify-content: flex-start; gap: .35rem .55rem; width: 100%;
+  min-width: 0; max-width: 100%; margin: 0; padding: 0; border: 0;
+  border-radius: 0; background: transparent; box-shadow: none;
+  overflow: visible; box-sizing: border-box; grid-template-columns: none;
+}
+#videoPage .sib-host-info-panel .sib-stats-row .ss,
+#videoPage .sib-host-info-panel .sib-stats-row .ss + .ss {
+  display: flex; flex: 0 0 auto; flex-direction: row; align-items: center;
+  justify-content: flex-start; gap: .24rem; min-width: 0; margin: 0;
+  padding: .12rem .18rem; border: 0 !important; border-radius: 6px;
+  background: transparent; text-align: left;
+}
+#videoPage .sib-host-info-panel .sib-stats-row .ss > .btn,
+#videoPage .sib-host-info-panel .sib-stats-row .ss > .action-btn {
+  width: auto; max-width: 100%;
+}
+@media (max-width: 700px) {
+  #videoPage .sib-title-col .editable-row .sib-title { font-size: 1.12rem; }
+  #videoPage .sib-host-info-panel { gap: .32rem .4rem; padding: .4rem .42rem; }
+  #videoPage .sib-host-info-panel .sib-stats-links-row { gap: .22rem .32rem; }
+  #videoPage .sib-host-info-panel .sib-stats-row { gap: .22rem .32rem; }
+  #videoPage .sib-host-info-panel .sib-stats-row .ss { padding: .1rem .12rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #videoPage .sib-title-col .editable-row .sib-title.theater-title-overflow {
+    animation: none; transform: none; will-change: auto;
+  }
+}
