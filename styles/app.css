@@ -10013,3 +10013,67 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
 .profile-post-naddr-stream-card .hosted-by-box {
   max-width: 100%;
 }
+
+
+/* Sifaka 0.8.14 — Go Live audio preview and multi-host theater identities. */
+.go-live-field-help { display:block; margin-top:.32rem; color:var(--muted); font-size:.65rem; line-height:1.45; }
+.go-live-audio-preview {
+  display:grid; grid-template-columns:minmax(110px,.7fr) minmax(0,1.3fr); gap:.85rem;
+  align-items:center; min-height:190px; padding:.75rem; border:1px solid var(--border2);
+  border-radius:12px; background:linear-gradient(135deg,rgba(29,185,84,.1),rgba(139,92,246,.13) 58%,rgba(5,10,18,.96));
+}
+.go-live-audio-preview[hidden] { display:none!important; }
+.go-live-audio-artwork {
+  position:relative; aspect-ratio:1/1; min-width:0; overflow:hidden; display:flex;
+  align-items:center; justify-content:center; border-radius:9px; background:linear-gradient(145deg,#1db954,#136a53 55%,#3c1e72);
+  color:#fff; font-size:3rem; box-shadow:0 9px 26px rgba(0,0,0,.28);
+}
+.go-live-audio-artwork img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.go-live-audio-artwork.is-empty span { display:block; }
+.go-live-audio-details { display:flex; flex-direction:column; gap:.35rem; min-width:0; }
+.go-live-audio-eyebrow { color:#86efac; font:700 .58rem/1.4 'DM Mono',monospace; letter-spacing:.12em; }
+.go-live-audio-details strong { color:var(--text); font-size:.95rem; line-height:1.3; overflow-wrap:anywhere; }
+.go-live-audio-details > span { color:var(--text2); font-size:.7rem; line-height:1.45; overflow-wrap:anywhere; }
+.go-live-audio-details audio { width:100%; min-width:0; height:38px; margin-top:.2rem; }
+.go-live-stream-preview-video[style*="display: none"] { display:none!important; }
+.sib-host-row { justify-content:space-between; }
+.sib-hosts { display:flex; align-items:center; gap:.55rem; flex:1 1 auto; min-width:0; flex-wrap:wrap; }
+.theater-host-card {
+  display:flex; align-items:center; gap:.48rem; min-width:0; max-width:100%; padding:.4rem .58rem .4rem .42rem;
+  border:1px solid rgba(148,163,184,.22); border-radius:11px;
+  background:linear-gradient(135deg,rgba(148,163,184,.09),rgba(255,255,255,.025));
+  box-shadow:inset 0 1px rgba(255,255,255,.025);
+  transition:border-color .18s,background .18s,box-shadow .18s;
+}
+.theater-host-card.is-nip05-valid {
+  border-color:rgba(155,114,255,.82);
+  background:linear-gradient(135deg,rgba(155,114,255,.16),rgba(78,42,150,.13));
+  box-shadow:0 0 10px rgba(155,114,255,.27),0 0 22px rgba(155,114,255,.12),inset 0 0 0 1px rgba(155,114,255,.1);
+}
+.theater-cohost-card { cursor:pointer; }
+.theater-cohost-card:hover { border-color:rgba(155,114,255,.5); }
+.theater-host-card:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.theater-host-card-avatar { display:flex; align-items:center; justify-content:center; flex:0 0 40px; width:40px; height:40px; border-radius:8px; overflow:hidden; background:var(--surface2); border:1px solid rgba(148,163,184,.23); }
+.theater-host-card-avatar img { width:100%; height:100%; display:block; object-fit:cover; }
+.theater-host-card-copy { display:flex; flex-direction:column; gap:.12rem; min-width:0; }
+.theater-host-card-name { color:var(--text); font:700 .76rem/1.25 var(--font-display); overflow-wrap:anywhere; }
+.theater-host-card-identity { color:var(--muted); font:500 .59rem/1.3 'DM Mono',monospace; overflow-wrap:anywhere; }
+.theater-host-card.is-nip05-valid .theater-host-card-identity { color:var(--nip05,var(--purple)); }
+.theater-main-host { flex:0 1 auto; }
+.theater-main-host .sib-av { width:40px; height:40px; border-radius:8px; border:1px solid rgba(148,163,184,.25); }
+.theater-main-host .sib-av:hover { border-radius:8px; }
+.theater-main-host .sib-host-info { flex:0 1 auto; }
+.theater-main-host .sib-name { font-size:.78rem; overflow-wrap:anywhere; }
+.theater-main-host .sib-identity { font-size:.59rem; overflow-wrap:anywhere; }
+.sib-hosted-by { margin-left:auto; flex:0 0 auto; }
+@media (max-width:700px) {
+  #goLiveModal .go-live-audio-preview { grid-template-columns:92px minmax(0,1fr); gap:.65rem; padding:.6rem; min-height:unset; }
+  #goLiveModal .go-live-audio-details strong { font-size:.8rem; }
+  #goLiveModal .go-live-audio-details audio { height:34px; }
+  #videoPage .sib-host-row { align-items:flex-start; flex-wrap:wrap; }
+  #videoPage .sib-hosts { flex-wrap:nowrap; overflow-x:auto; max-width:100%; padding:.1rem 0 .25rem; }
+  #videoPage .theater-host-card { flex:0 0 auto; max-width:84vw; }
+  #videoPage .theater-host-card-name { max-width:44vw; }
+  #videoPage .sib-hosted-by { margin-left:0; }
+}
+@media (prefers-reduced-motion:reduce) { .theater-host-card { transition:none; } }
