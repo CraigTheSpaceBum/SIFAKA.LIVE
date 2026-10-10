@@ -16334,6 +16334,33 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (theaterOnchainRow) theaterOnchainRow.style.display = hasTheaterOnchain ? 'flex' : 'none';
     if (theaterProfileLinks) theaterProfileLinks.style.display = hasTheaterLinks ? 'flex' : 'none';
 
+    const isHostLinkChildClick = (event) => !!(event.target && event.target.closest && event.target.closest('a,button'));
+    const bindHostLinkCard = (row, action, enabled) => {
+      if (!row) return;
+      row.tabIndex = enabled ? 0 : -1;
+      row.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+      row.onclick = (event) => {
+        if (isHostLinkChildClick(event) || !enabled) return;
+        action();
+      };
+      row.onkeydown = (event) => {
+        if (!enabled || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        action();
+      };
+    };
+    bindHostLinkCard(theaterWebsiteRow, () => {
+      if (hasTheaterWebsite) window.open(theaterWebsiteUrl, '_blank', 'noopener,noreferrer');
+    }, hasTheaterWebsite);
+    bindHostLinkCard(theaterOnchainRow, () => {
+      if (theaterOnchainBtn) theaterOnchainBtn.click();
+    }, hasTheaterOnchain);
+    bindHostLinkCard(theaterLud16Row, () => {
+      if (theaterLud16 && theaterLightningAddress) theaterLud16.click();
+    }, !!theaterLightningAddress);
+    if (theaterWebsite) theaterWebsite.title = theaterWebsiteUrl;
+    if (theaterLud16) theaterLud16.title = theaterLightningAddress ? 'Donate to ' + (p.display_name || p.name || 'this streamer') + ' via ' + theaterLightningAddress : 'Lightning donation unavailable';
+
     // Runtime counter ? ticks every second from stream.starts
     clearInterval(state._theaterRuntimeInterval);
     const runtimeEl = qs('#theaterRuntime');
@@ -17413,6 +17440,54 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return pill;
   }
 
+  function _buildNostrPollEventCard(entity) {
+    const card = document.createElement('div');
+    card.className = 'nostr-chat-poll-embed';
+    const status = document.createElement('div');
+    status.className = 'nostr-chat-poll-status';
+    status.textContent = 'Loading shared event…';
+    card.appendChild(status);
+
+    const fallbackToLink = () => {
+      card.innerHTML = '';
+      const link = document.createElement('a');
+      link.className = 'nostr-inline-link nostr-chat-poll-fallback';
+      link.href = 'nostr:' + entity;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Open Nostr event';
+      card.appendChild(link);
+    };
+
+    const render = async () => {
+      const decoded = _decodeNostrEntity(entity);
+      if (!decoded || !decoded.eventId || !['note', 'nevent'].includes(decoded.type)) {
+        fallbackToLink();
+        return;
+      }
+      const event = await _fetchEventById(decoded.eventId);
+      if (!event || Number(event.kind || 0) !== 1068) {
+        fallbackToLink();
+        return;
+      }
+      card.innerHTML = '';
+      card.classList.add('is-poll');
+      const poll = document.createElement('div');
+      poll.className = 'nostr-chat-poll-body';
+      card.appendChild(poll);
+      renderNostrFeedPoll(event, poll);
+      const messageRow = card.closest('.cmsg');
+      if (messageRow) messageRow.classList.add('chat-poll-message');
+    };
+
+    if (window.NostrTools && window.NostrTools.nip19) {
+      render().catch(fallbackToLink);
+    } else {
+      ensureNostrTools().then(render).catch(fallbackToLink);
+    }
+    return card;
+  }
+
   function _buildNeventCard(entity) {
     const card = document.createElement('div');
     card.className = 'nevent-embed-card';
@@ -17509,7 +17584,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     if (entity.startsWith('nevent1') || entity.startsWith('note1')) {
-      if (allowEventEmbeds) {
+      if (opts.chatMessage) {
+        parent.appendChild(_buildNostrPollEventCard(entity));
+      } else if (allowEventEmbeds) {
         parent.appendChild(_buildNeventCard(entity));
       } else {
         const link = document.createElement('a');
@@ -17568,9 +17645,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         _appendInlineNostrMarkup(italic, token.slice(1, -1), opts);
         parent.appendChild(italic);
       } else if (match[5]) {
-        _appendNostrEntityToNode(parent, match[6], match[5], { allowEventEmbeds: false, profilePost: !!opts.profilePost });
+        _appendNostrEntityToNode(parent, match[6], match[5], { allowEventEmbeds: false, profilePost: !!opts.profilePost, chatMessage: !!opts.chatMessage });
       } else if (match[7]) {
-        _appendNostrEntityToNode(parent, match[7], match[7], { allowEventEmbeds: false, profilePost: !!opts.profilePost });
+        _appendNostrEntityToNode(parent, match[7], match[7], { allowEventEmbeds: false, profilePost: !!opts.profilePost, chatMessage: !!opts.chatMessage });
       } else if (match[8]) {
         const cleanUrl = trimUrlTrailingPunctuation(match[8]);
         const href = safeHrefFromUrl(cleanUrl);
@@ -17604,8 +17681,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const rawSource = String(text || '').replace(/\r\n?/g, '\n');
     // Profile posts occasionally contain an explicit Markdown link around an naddr.
     // Turn that linked reference into an entity token so its event can be embedded.
-    const linkedEventSource = opts.profilePost
-      ? rawSource.replace(/\[[^\]]*\]\(nostr\\?:(naddr1[023456789acdefghjklmnpqrstuvwxyz]+)\)/gi, 'nostr:$1')
+    const linkedEventSource = (opts.profilePost || opts.chatMessage)
+      ? rawSource.replace(/\[[^\]]*\]\(nostr\\?:(naddr1[023456789acdefghjklmnpqrstuvwxyz]+|nevent1[023456789acdefghjklmnpqrstuvwxyz]+|note1[023456789acdefghjklmnpqrstuvwxyz]+)\)/gi, 'nostr:$1')
       : rawSource;
     const source = linkedEventSource
       .replace(/\[nostr\\:(naddr1[023456789acdefghjklmnpqrstuvwxyz]+)\]\(nostr\\:\1\)/gi, 'nostr:$1')
@@ -17650,7 +17727,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (standaloneEntity && (standaloneEntity[1].startsWith('nevent1') || standaloneEntity[1].startsWith('note1') || standaloneEntity[1].startsWith('naddr1'))) {
         flushParagraph();
         closeList();
-        _appendNostrEntityToNode(frag, standaloneEntity[1], standaloneEntity[0], { allowEventEmbeds: true, profilePost: !!opts.profilePost });
+        _appendNostrEntityToNode(frag, standaloneEntity[1], standaloneEntity[0], { allowEventEmbeds: true, profilePost: !!opts.profilePost, chatMessage: !!opts.chatMessage });
         return;
       }
 
@@ -18240,7 +18317,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     if (!current) {
       if (list) list.innerHTML = '';
-      if (likeCounter) likeCounter.textContent = '0 likes';
+      if (likeCounter) likeCounter.textContent = '0';
       if (likeBtn) likeBtn.classList.remove('liked');
       return;
     }
@@ -18249,7 +18326,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const likeSet = state.streamReactionPubkeysByKey.get('+') || new Set();
     const isLiked = !!(own && likeSet.has(own));
     const likeTotal = likeSet.size;
-    if (likeCounter) likeCounter.textContent = `${likeTotal} like${likeTotal === 1 ? '' : 's'}`;
+    if (likeCounter) likeCounter.textContent = String(likeTotal);
     if (likeBtn) likeBtn.classList.toggle('liked', isLiked || state.likedStreamAddresses.has(current.address));
 
     if (own && isLiked) state.likedStreamAddresses.add(current.address);
@@ -19107,7 +19184,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           .filter((url) => ['photo', 'video'].includes(classifyMediaUrl(url)))
       ));
       const textWithoutMedia = stripMediaUrlsFromText(rawText, mediaUrls);
-      if (textWithoutMedia) ctext.appendChild(renderNostrContent(textWithoutMedia));
+      if (textWithoutMedia) ctext.appendChild(renderNostrContent(textWithoutMedia, { chatMessage: true }));
       if (mediaUrls.length) {
         renderChatInlineMedia(ctext, mediaUrls, {
           allowVideo: true,
