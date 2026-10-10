@@ -16685,15 +16685,24 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function updateTheaterShareBtn(stream) {
-    const btn = qs('#shareBoostBtn');
-    if (!btn) return;
     const boosted = !!(state.user && stream && state.boostedStreamAddresses.has(stream.address));
-    btn.classList.toggle('boosted', boosted);
-    btn.setAttribute('aria-pressed', boosted ? 'true' : 'false');
-    const label = btn.querySelector('span');
-    if (label) label.textContent = boosted ? 'Boosted' : 'Boost';
-    const sub = btn.querySelector('.sub');
-    if (sub) sub.textContent = boosted ? 'Already boosted' : 'Post to Nostr';
+    const btn = qs('#shareBoostBtn');
+    if (btn) {
+      btn.classList.toggle('boosted', boosted);
+      btn.setAttribute('aria-pressed', boosted ? 'true' : 'false');
+      const label = btn.querySelector('span');
+      if (label) label.textContent = boosted ? 'Boosted' : 'Boost';
+      const sub = btn.querySelector('.sub');
+      if (sub) sub.textContent = boosted ? 'Already boosted' : 'Post to Nostr';
+    }
+
+    // Reflect the current stream's boost state on the visible theater Share button too.
+    const theaterShareBtn = qs('#theaterShareBtn');
+    if (theaterShareBtn) {
+      theaterShareBtn.classList.toggle('boosted', boosted);
+      theaterShareBtn.setAttribute('aria-pressed', boosted ? 'true' : 'false');
+      theaterShareBtn.title = boosted ? 'You have already boosted this stream' : 'Share or boost this stream';
+    }
   }
 
   async function findOwnStreamBoostEventId(stream) {
