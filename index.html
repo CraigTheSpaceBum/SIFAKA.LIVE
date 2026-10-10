@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.13">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.14">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -199,7 +199,29 @@ body.nest-preview-open{overflow:hidden}
                 <div class="fg" id="goLiveEventIdWrap"><label for="goLiveEventId">Event ID</label><input id="goLiveEventId" type="text" value="" readonly placeholder="Will appear after first publish"></div>
                 <div class="fg"><label for="goLiveTitle">Title</label><input id="goLiveTitle" type="text" value="Late Night Nostr Build Session"></div>
                 <div class="fg"><label for="goLiveSummary">Summary</label><textarea id="goLiveSummary">Building a Nostr client from scratch - open Q&amp;A, come hang out!</textarea></div>
-                <div class="fg"><label for="goLiveStreamUrl">Streaming URL (HLS .m3u8 or RTMP)</label><input id="goLiveStreamUrl" type="text" placeholder="https://your-server.com/live/stream.m3u8"></div>
+                <div class="fg">
+                  <label for="goLiveStreamUrl">Streaming URL (HLS, browser-supported video, or audio)</label>
+                  <input id="goLiveStreamUrl" type="text" placeholder="https://your-server.com/live/stream.m3u8 or https://radio.example.com/live.mp3">
+                  <small class="go-live-field-help">Video: HLS (.m3u8), MP4, WebM, MOV and other browser-supported formats. Audio: MP3, MPGA, M4A, OGG, WAV, AAC, FLAC and Opus. RTMP publish URLs must be browser-readable for preview.</small>
+                </div>
+                <div class="fg">
+                  <label for="goLiveMediaType">Stream type</label>
+                  <select id="goLiveMediaType">
+                    <option value="auto" selected>Auto-detect from URL</option>
+                    <option value="video">Video stream</option>
+                    <option value="audio">Audio-only stream</option>
+                  </select>
+                </div>
+                <div class="fg">
+                  <label for="goLiveHashtags">Hashtags</label>
+                  <input id="goLiveHashtags" type="text" placeholder="#bitcoin, #nostr, #music">
+                  <small class="go-live-field-help">Separate hashtags with spaces or commas.</small>
+                </div>
+                <div class="fg">
+                  <label for="goLiveCoHosts">Additional co-hosts</label>
+                  <textarea id="goLiveCoHosts" rows="2" placeholder="One hex pubkey, npub, nprofile, or name@domain per line"></textarea>
+                  <small class="go-live-field-help">Add up to 8 co-hosts. Valid NIP-05 identities are checked and highlighted in theater mode.</small>
+                </div>
                 <div class="fg">
                   <label for="goLiveThumb">Thumbnail Image URL</label>
                   <input id="goLiveThumb" type="text" placeholder="https://your-server.com/thumb.jpg">
@@ -213,6 +235,18 @@ body.nest-preview-open{overflow:hidden}
             <div class="go-live-col go-live-col-preview">
               <div class="go-live-col-title">Stream Preview</div>
               <video id="goLiveStreamPreviewVideo" class="go-live-stream-preview-video" controls autoplay muted playsinline loop></video>
+              <div class="go-live-audio-preview" id="goLiveAudioPreview" hidden>
+                <div class="go-live-audio-artwork" id="goLiveAudioPreviewArtwork">
+                  <img id="goLiveAudioPreviewImage" alt="" hidden>
+                  <span id="goLiveAudioPreviewFallback" aria-hidden="true">♫</span>
+                </div>
+                <div class="go-live-audio-details">
+                  <div class="go-live-audio-eyebrow">PODCAST RADIO PREVIEW</div>
+                  <strong id="goLiveAudioPreviewTitle">Untitled audio stream</strong>
+                  <span id="goLiveAudioPreviewSummary">Audio-only live stream</span>
+                  <audio id="goLiveStreamPreviewAudio" controls preload="none"></audio>
+                </div>
+              </div>
               <div class="go-live-stream-preview-status" id="goLiveStreamPreviewStatus">Enter a streaming URL to preview.</div>
               <div class="go-live-preview-controls">
                 <div class="fg" id="goLiveStartsWrap"><label for="goLiveStarts">Starts (UTC)</label><input id="goLiveStarts" type="datetime-local" value="2026-02-27T20:00"></div>
@@ -2108,10 +2142,14 @@ body.nest-preview-open{overflow:hidden}
         </div>
         <!-- Host row (avatar + name/nip05 + hosted-via pill injected by JS) -->
         <div class="sib-host-row">
-          <div class="sib-av" aria-label="Streamer profile picture"></div>
-          <div class="sib-host-info">
-            <div class="sib-name sib-profile-loading">Loading profile…</div>
-            <div class="sib-identity nip05-text">Loading profile…</div>
+          <div class="sib-hosts" id="theaterHostCards">
+            <div class="theater-host-card theater-main-host" id="theaterMainHostCard">
+              <div class="sib-av" aria-label="Streamer profile picture"></div>
+              <div class="sib-host-info">
+                <div class="sib-name sib-profile-loading">Loading profile…</div>
+                <div class="sib-identity nip05-text">Loading profile…</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2408,7 +2446,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.8.13" defer></script>
+<script src="./nostrflux-app.js?v=0.8.14" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
