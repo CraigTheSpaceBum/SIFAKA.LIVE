@@ -10077,3 +10077,82 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
   #videoPage .sib-hosted-by { margin-left:0; }
 }
 @media (prefers-reduced-motion:reduce) { .theater-host-card { transition:none; } }
+
+
+/* Sifaka 0.8.15: unified theater stats, compact host action cards, aligned tags/reactions. */
+#videoPage .sib-stats-links-row,
+#videoPage .sib-tags-reactions-row {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
+}
+#videoPage .sib-stats-links-row { margin-top: .65rem; }
+#videoPage .sib-stats-row {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch; gap: 0;
+  flex: 1 1 390px; width: auto; min-width: 0; max-width: 100%;
+  margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface2); overflow: hidden; box-sizing: border-box;
+}
+#videoPage .sib-stats-row .ss {
+  display: flex; flex-direction: column; justify-content: center; align-items: center; gap: .13rem;
+  min-width: 0; padding: .48rem .3rem; margin: 0; border: 0; border-radius: 0;
+  background: transparent; text-align: center; line-height: 1.2; overflow-wrap: anywhere;
+}
+#videoPage .sib-stats-row .ss + .ss { border-left: 1px solid var(--border); }
+#videoPage .sib-stats-row .ss .n { min-width: 0; max-width: 100%; font-size: .77rem; line-height: 1.2; white-space: nowrap; }
+#videoPage .sib-stats-row .ss .l { max-width: 100%; font-size: .59rem; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+#videoPage .sib-stats-row .ss.likes .n { color: var(--live); }
+#videoPage .sib-profile-links {
+  flex: 1 1 270px; align-items: stretch; align-content: center; gap: .34rem;
+  min-width: 0; max-width: 100%; margin: 0; padding: 0;
+}
+#videoPage .sib-profile-links .theater-host-link-card {
+  display: flex; flex: 1 1 105px; align-items: center; gap: .3rem; min-width: 0; max-width: 100%;
+  padding: .42rem .5rem; border-radius: 8px; cursor: pointer; box-sizing: border-box;
+  transition: border-color .15s, background .15s;
+}
+#videoPage .sib-profile-links .theater-host-link-card:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface2)); }
+#videoPage .sib-profile-links .theater-host-link-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#videoPage .sib-profile-links .theater-host-link-card .lbl { flex: 0 0 auto; font-size: .59rem; white-space: nowrap; }
+#videoPage .sib-profile-links .theater-host-link-card > a,
+#videoPage .sib-profile-links .theater-host-link-card > button {
+  display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; word-break: normal; font-size: .64rem;
+}
+#videoPage .sib-profile-links .theater-host-link-card > button { border: 0; padding: 0; background: transparent; text-align: left; }
+#videoPage .sib-tags-reactions-row { justify-content: flex-start; gap: .35rem .55rem; margin-top: .52rem; }
+#videoPage .sib-tags-reactions-row .sib-hashtags {
+  display: flex; flex: 0 1 auto; align-items: center; min-width: 0; max-width: 100%; margin: 0;
+}
+#videoPage .sib-tags-reactions-row .sib-hashtags[hidden] { display: none !important; }
+#videoPage .sib-tags-reactions-row .stream-reactions-row {
+  display: flex; flex: 1 1 180px; min-width: 0; max-width: 100%; margin: 0; padding: 0; border: 0;
+}
+#videoPage .sib-tags-reactions-row .stream-emoji-list { min-width: 0; max-width: 100%; }
+
+/* NIP-88 poll event cards in theater chat reuse the interactive profile poll renderer. */
+#videoPage .cmsg.chat-poll-message { align-items: flex-start; min-width: 0; }
+#videoPage .cmsg.chat-poll-message .c-body { flex: 1 1 auto; min-width: 0; max-width: 100%; }
+#videoPage .cmsg.chat-poll-message .c-text { display: block; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+#videoPage .nostr-chat-poll-embed { display: block; width: 100%; max-width: 100%; min-width: 0; margin: .42rem 0 .1rem; box-sizing: border-box; }
+#videoPage .nostr-chat-poll-embed .nostr-feed-composer-poll { width: 100%; max-width: 100%; margin: 0; box-sizing: border-box; }
+#videoPage .nostr-chat-poll-status { color: var(--muted); font-size: .65rem; }
+#videoPage .nostr-chat-poll-fallback { overflow-wrap: anywhere; }
+
+@media (max-width: 700px) {
+  #videoPage .sib-stats-links-row { order: 3; align-items: stretch; gap: .4rem; }
+  #videoPage .sib-stats-row { flex: 1 1 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #videoPage .sib-stats-row .ss:nth-child(n+4) { display: flex !important; border-top: 1px solid var(--border); }
+  #videoPage .sib-stats-row .ss:nth-child(4) { border-left: 0; }
+  #videoPage .sib-stats-row .ss .n { font-size: .78rem; }
+  #videoPage .sib-profile-links { flex: 1 1 100%; }
+  #videoPage .sib-profile-links .theater-host-link-card { flex: 1 1 95px; }
+  #videoPage .sib-tags-reactions-row { order: 5; align-items: flex-start; }
+  #videoPage .sib-tags-reactions-row .stream-reactions-row { flex: 1 1 150px; }
+}
+@media (max-width: 430px) {
+  #videoPage .sib-stats-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #videoPage .sib-profile-links .theater-host-link-card { flex: 1 1 100px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #videoPage .sib-profile-links .theater-host-link-card { transition: none; }
+}
