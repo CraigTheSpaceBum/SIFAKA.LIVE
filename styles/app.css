@@ -9715,3 +9715,7 @@ button.pfs-comments[aria-expanded="true"] {
 @media (prefers-reduced-motion:reduce) {
   .podcast-radio-listen-btn,.podcast-theater-play { transition:none; }
 }
+
+/* 0.8.10.3 Podcast Radio card hashtags replace the Listen & Chat CTA. */
+.podcast-radio-card-hashtags { margin-top: .12rem; gap: .3rem; }
+.podcast-radio-card-hashtags[hidden] { display: none !important; }
