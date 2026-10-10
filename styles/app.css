@@ -10199,3 +10199,128 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
   #videoPage .sib-stats-row .ss.likes #likeBtn { width:100%; padding:.28rem .18rem; }
 }
 @media (prefers-reduced-motion: reduce) { .go-live-token-suggestion { transition:none; } }
+
+
+/* Sifaka 0.8.17: fit theater profile controls and align every stat/action cell. */
+#videoPage .sib-stats-row {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
+}
+#videoPage .sib-stats-row .ss {
+  align-self: stretch;
+  min-width: 0;
+}
+#videoPage .sib-stats-row .ss > .action-btn,
+#videoPage .sib-stats-row .ss > .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  height: 100%;
+  margin: 0;
+  padding: .28rem .18rem;
+  box-sizing: border-box;
+  border-radius: 0;
+  white-space: nowrap;
+}
+#videoPage .sib-stats-row .ss.theater-stat-action {
+  min-width: 0;
+}
+#videoPage .sib-actions-row {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  width: auto;
+  min-width: 0;
+  gap: .45rem;
+  margin: 0;
+}
+#videoPage .sib-actions-row .sib-hosted-by {
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+#videoPage .sib-actions-row .sib-hosted-by:empty {
+  display: none !important;
+}
+#videoPage .theater-profile-followers {
+  display: flex;
+  align-items: baseline;
+  gap: .25rem;
+  margin-top: .12rem;
+  color: var(--muted);
+  font-size: .65rem;
+  line-height: 1.25;
+  min-width: 0;
+}
+#videoPage .theater-profile-followers-count {
+  color: var(--text2);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+#videoPage .theater-profile-followers-label {
+  color: var(--muted);
+}
+#videoPage .theater-description-links {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: flex-start;
+  align-content: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: .34rem;
+}
+#videoPage .theater-description-links .theater-host-link-card {
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  align-self: flex-start;
+}
+#videoPage .theater-description-links .theater-host-link-card > a,
+#videoPage .theater-description-links .theater-host-link-card > button {
+  flex: 0 1 auto;
+  width: auto;
+  max-width: min(22rem, 58vw);
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  #videoPage .sib-actions-row {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    grid-template-columns: none;
+    justify-content: flex-start;
+    margin-top: .35rem;
+  }
+  #videoPage .sib-actions-row .sib-hosted-by {
+    max-width: 100%;
+  }
+  #videoPage .sib-stats-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+  }
+  #videoPage .sib-stats-row .ss:nth-child(n+4) {
+    display: flex !important;
+  }
+  #videoPage .sib-stats-row .ss > .action-btn,
+  #videoPage .sib-stats-row .ss > .btn {
+    width: 100%;
+    padding: .28rem .12rem;
+  }
+  #videoPage .theater-description-links {
+    width: fit-content;
+    max-width: 100%;
+  }
+  #videoPage .theater-description-links .theater-host-link-card {
+    max-width: 100%;
+  }
+}
