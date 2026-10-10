@@ -3499,6 +3499,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       streaming: sanitizeMediaUrl(stream.streaming || ''),
       starts: Number(stream.starts || 0) || null,
       participants: Number(stream.participants || 0) || 0,
+      mediaType: ['audio', 'video'].includes(String(stream.mediaType || '').trim().toLowerCase())
+        ? String(stream.mediaType).trim().toLowerCase()
+        : (classifyMediaUrl(stream.streaming || '') === 'audio' ? 'audio' : ''),
+      coHosts: Array.isArray(stream.coHosts)
+        ? Array.from(new Set(stream.coHosts.map((pubkey) => normalizePubkeyHex(pubkey || '')).filter(Boolean))).slice(0, 8)
+        : [],
       hashtags: Array.isArray(stream.hashtags)
         ? Array.from(new Set(stream.hashtags.map((tag) => String(tag || '').trim().replace(/^#+/, '').slice(0, 48)).filter(Boolean))).slice(0, 12)
         : []
@@ -5202,6 +5208,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const summary = firstTag(tagMap, 'summary') || ev.content || '';
     const image = sanitizeMediaUrl(firstTag(tagMap, 'image') || firstTag(tagMap, 'thumb') || '');
     const streaming = sanitizeMediaUrl(firstTag(tagMap, 'streaming') || firstTag(tagMap, 'url') || '');
+    const taggedMediaType = String(firstTag(tagMap, 'media_type') || '').trim().toLowerCase();
+    const mediaType = ['audio', 'video'].includes(taggedMediaType)
+      ? taggedMediaType
+      : (classifyMediaUrl(streaming) === 'audio' ? 'audio' : '');
     const participants = Number(firstTag(tagMap, 'current_participants') || 0) || 0;
 
     // NIP-53: platforms (zap.stream, shosho, etc.) publish under their own key
@@ -5232,6 +5242,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       seenHashtags.add(key);
       hashtags.push(value);
     });
+    const coHosts = [];
+    const seenCoHosts = new Set();
+    rawTags.forEach((tag) => {
+      if (!Array.isArray(tag) || String(tag[0] || '').toLowerCase() !== 'p') return;
+      const pubkey = normalizePubkeyHex(tag[1] || '');
+      const role = String(tag[3] || tag[2] || '').trim().toLowerCase().replace(/[ _]/g, '-');
+      if (!pubkey || pubkey === hostPubkey || !['co-host', 'cohost', 'co-hosts', 'co-streamer'].includes(role) || seenCoHosts.has(pubkey)) return;
+      seenCoHosts.add(pubkey);
+      coHosts.push(pubkey);
+    });
 
     return {
       id: ev.id,
@@ -5247,8 +5267,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       summary,
       image,
       streaming,
+      mediaType,
       starts,
       participants,
+      coHosts: coHosts.slice(0, 8),
       hashtags: hashtags.slice(0, 12),
       raw: ev
     };
@@ -9475,12 +9497,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return signed;
   }
 
-  function isLikelyPlayableStreamUrl(url) {
+  function isLikelyPlayableStreamUrl(url, mediaType = '') {
     const clean = sanitizeMediaUrl(url || '');
     if (!clean || !/^https?:\/\//i.test(clean)) return false;
+    if (['audio', 'video'].includes(String(mediaType || '').toLowerCase())) return true;
     if (isLikelyHlsStreamUrl(clean)) return true;
     if (isDirectFileVideoUrl(clean)) return true;
-    return classifyMediaUrl(clean) === 'video';
+    return ['audio', 'video'].includes(classifyMediaUrl(clean));
   }
 
   function mergeIncomingStream(existing, incoming) {
@@ -9491,11 +9514,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const incomingUrl = sanitizeMediaUrl((incoming && incoming.streaming) || '');
     if (!incomingUrl) {
       merged.streaming = existingUrl;
-    } else if (!isLikelyPlayableStreamUrl(incomingUrl) && isLikelyPlayableStreamUrl(existingUrl)) {
+    } else if (!isLikelyPlayableStreamUrl(incomingUrl, incoming && incoming.mediaType) && isLikelyPlayableStreamUrl(existingUrl, existing && existing.mediaType)) {
       // Do not downgrade a known-good playable URL to a likely non-playable one.
       merged.streaming = existingUrl;
+      merged.mediaType = String(existing && existing.mediaType || merged.mediaType || '');
     } else {
       merged.streaming = incomingUrl;
+    }
+    if (!String(incoming && incoming.mediaType || '').trim()) {
+      merged.mediaType = String(existing && existing.mediaType || merged.mediaType || '');
     }
 
     if (!sanitizeMediaUrl((incoming && incoming.image) || '')) {
@@ -9650,6 +9677,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       && String(existing.summary || '') === String(incoming.summary || '')
       && Number(existing.participants || 0) === Number(incoming.participants || 0)
       && sanitizeMediaUrl(existing.image || '') === sanitizeMediaUrl(incoming.image || '')
+      && String(existing.mediaType || '') === String(incoming.mediaType || '')
+      && JSON.stringify(existing.coHosts || []) === JSON.stringify(incoming.coHosts || [])
       && JSON.stringify(existing.hashtags || []) === JSON.stringify(incoming.hashtags || []);
 
     let didStore = false;
@@ -9735,6 +9764,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const thumbInput = qs('#goLiveThumb');
     const startsInput = qs('#goLiveStarts');
     const eventIdInput = qs('#goLiveEventId');
+    const hashtagsInput = qs('#goLiveHashtags');
+    const coHostsInput = qs('#goLiveCoHosts');
+    const mediaTypeInput = qs('#goLiveMediaType');
 
     if (dTagInput) dTagInput.value = stream ? (stream.d || '') : '';
     if (titleInput) titleInput.value = stream ? (stream.title || '') : '';
@@ -9743,8 +9775,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (thumbInput) thumbInput.value = stream ? (stream.image || '') : '';
     if (startsInput) startsInput.value = stream && stream.starts ? fromUnixSeconds(stream.starts) : '';
     if (eventIdInput) eventIdInput.value = stream && stream.id ? stream.id : '';
+    if (hashtagsInput) hashtagsInput.value = stream && Array.isArray(stream.hashtags) ? stream.hashtags.map((tag) => '#' + tag).join(', ') : '';
+    if (coHostsInput) coHostsInput.value = stream && Array.isArray(stream.coHosts) ? stream.coHosts.join('\n') : '';
+    if (mediaTypeInput) mediaTypeInput.value = stream && stream.mediaType === 'audio'
+      ? 'audio'
+      : (stream && stream.mediaType === 'video' ? 'video' : 'auto');
     setGoLiveStatusSelection(stream ? stream.status : 'live');
     updateGoLiveThumbPreview();
+    updateGoLiveAudioPreviewDetails();
     scheduleGoLiveStreamPreview(120);
   }
 
@@ -9795,6 +9833,43 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function updateGoLiveAudioPreviewDetails() {
+    const title = qs('#goLiveTitle') && qs('#goLiveTitle').value.trim();
+    const summary = qs('#goLiveSummary') && qs('#goLiveSummary').value.trim();
+    const titleEl = qs('#goLiveAudioPreviewTitle');
+    const summaryEl = qs('#goLiveAudioPreviewSummary');
+    if (titleEl) titleEl.textContent = title || 'Untitled audio stream';
+    if (summaryEl) summaryEl.textContent = summary || 'Audio-only live stream';
+    const artwork = qs('#goLiveAudioPreviewArtwork');
+    const imageEl = qs('#goLiveAudioPreviewImage');
+    const fallback = qs('#goLiveAudioPreviewFallback');
+    if (!artwork || !imageEl || !fallback) return;
+    const thumb = sanitizeMediaUrl((qs('#goLiveThumb') && qs('#goLiveThumb').value) || '');
+    const profile = state.user ? profileFor(state.user.pubkey) : {};
+    const candidates = Array.from(new Set([thumb, sanitizeMediaUrl(profile.picture || '')].filter((url) => url && isLikelyUrl(url))));
+    let candidateIndex = 0;
+    imageEl.onerror = () => {
+      candidateIndex += 1;
+      if (candidateIndex < candidates.length) imageEl.src = candidates[candidateIndex];
+      else {
+        imageEl.hidden = true;
+        fallback.hidden = false;
+        artwork.classList.add('is-empty');
+      }
+    };
+    if (candidates.length) {
+      imageEl.hidden = false;
+      fallback.hidden = true;
+      artwork.classList.remove('is-empty');
+      imageEl.src = candidates[0];
+    } else {
+      imageEl.removeAttribute('src');
+      imageEl.hidden = true;
+      fallback.hidden = false;
+      artwork.classList.add('is-empty');
+    }
+  }
+
   function clearGoLiveStreamPreview() {
     if (state.goLivePreviewTimer) {
       clearTimeout(state.goLivePreviewTimer);
@@ -9806,18 +9881,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     const video = qs('#goLiveStreamPreviewVideo');
     if (video) {
-      try { video.pause(); } catch (_) {}
-      try {
-        video.removeAttribute('src');
-        video.load();
-      } catch (_) {}
+      try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
+      video.style.display = '';
     }
+    const audio = qs('#goLiveStreamPreviewAudio');
+    const audioWrap = qs('#goLiveAudioPreview');
+    if (audio) {
+      try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (_) {}
+    }
+    if (audioWrap) audioWrap.hidden = true;
   }
 
   async function updateGoLiveStreamPreview(token) {
     const video = qs('#goLiveStreamPreviewVideo');
+    const audio = qs('#goLiveStreamPreviewAudio');
+    const audioWrap = qs('#goLiveAudioPreview');
     const status = qs('#goLiveStreamPreviewStatus');
-    if (!video || !status) return;
+    if (!video || !audio || !audioWrap || !status) return;
 
     const modal = qs('#goLiveModal');
     const isModalOpen = !!(modal && modal.classList.contains('open'));
@@ -9836,14 +9916,29 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       status.textContent = 'Enter a streaming URL to preview.';
       return;
     }
-    status.textContent = 'Loading preview...';
+    const requestedType = String((qs('#goLiveMediaType') && qs('#goLiveMediaType').value) || 'auto').toLowerCase();
+    const audioOnly = requestedType === 'audio' || (requestedType !== 'video' && isAudioOnlyStream(raw));
+    const media = audioOnly ? audio : video;
+    if (audioOnly) {
+      video.style.display = 'none';
+      audioWrap.hidden = false;
+      updateGoLiveAudioPreviewDetails();
+      status.textContent = 'Loading audio preview…';
+      audio.src = raw;
+    } else {
+      video.style.display = 'block';
+      audioWrap.hidden = true;
+      status.textContent = 'Loading video preview…';
+    }
 
     try {
-      if (isLikelyHlsStreamUrl(raw) && !video.canPlayType('application/vnd.apple.mpegurl')) {
+      if (isLikelyHlsStreamUrl(raw) && !media.canPlayType('application/vnd.apple.mpegurl')) {
         const Hls = await ensureHlsJs();
         if (token !== state.goLivePreviewToken) return;
         if (!Hls || typeof Hls.isSupported !== 'function' || !Hls.isSupported()) {
-          status.textContent = 'This browser cannot preview this HLS URL.';
+          status.textContent = audioOnly
+            ? 'This browser cannot preview this HLS audio URL.'
+            : 'This browser cannot preview this HLS URL.';
           return;
         }
         const hls = new Hls({
@@ -9854,32 +9949,38 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         });
         state.goLivePreviewHls = hls;
         hls.loadSource(raw);
-        hls.attachMedia(video);
+        hls.attachMedia(media);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           if (token !== state.goLivePreviewToken) return;
-          status.textContent = 'Live preview';
-          video.play().catch(() => {});
+          status.textContent = audioOnly ? 'Audio preview ready' : 'Live preview';
+          media.play().catch(() => {
+            if (audioOnly && token === state.goLivePreviewToken) status.textContent = 'Audio preview ready — press play to listen.';
+          });
         });
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (token !== state.goLivePreviewToken) return;
-          if (data && data.fatal) status.textContent = 'Preview error. Check stream URL.';
+          if (data && data.fatal) status.textContent = 'Preview error. Check the streaming URL and format.';
         });
         return;
       }
 
-      video.src = raw;
-      video.addEventListener('loadedmetadata', () => {
+      media.addEventListener('loadedmetadata', () => {
         if (token !== state.goLivePreviewToken) return;
-        status.textContent = 'Live preview';
+        status.textContent = audioOnly ? 'Audio preview ready' : 'Live preview';
       }, { once: true });
-      video.addEventListener('error', () => {
+      media.addEventListener('error', () => {
         if (token !== state.goLivePreviewToken) return;
-        status.textContent = 'Could not load preview from this URL.';
+        status.textContent = audioOnly
+          ? 'Could not load this audio URL. Check that it is a direct, browser-playable audio stream.'
+          : 'Could not load preview. Try HLS (.m3u8), MP4, WebM, MOV, or another browser-supported video URL.';
       }, { once: true });
-      await video.play().catch(() => {});
+      if (!audioOnly) media.src = raw;
+      await media.play().catch(() => {
+        if (audioOnly && token === state.goLivePreviewToken) status.textContent = 'Audio preview ready — press play to listen.';
+      });
     } catch (_) {
       if (token !== state.goLivePreviewToken) return;
-      status.textContent = 'Could not load preview from this URL.';
+      status.textContent = audioOnly ? 'Could not load audio preview from this URL.' : 'Could not load preview from this URL.';
     }
   }
 
@@ -9914,6 +10015,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const thumb = qs('#goLiveThumb');
     const starts = qs('#goLiveStarts');
     const eventId = qs('#goLiveEventId');
+    const hashtags = qs('#goLiveHashtags');
+    const coHosts = qs('#goLiveCoHosts');
+    const mediaType = qs('#goLiveMediaType');
     if (dtag) dtag.value = generateGoLiveDTag();
     if (title) title.value = '';
     if (summary) summary.value = '';
@@ -9921,8 +10025,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (thumb) thumb.value = '';
     if (starts) starts.value = '';
     if (eventId) eventId.value = '';
+    if (hashtags) hashtags.value = '';
+    if (coHosts) coHosts.value = '';
+    if (mediaType) mediaType.value = 'auto';
     setGoLiveStatusSelection('live');
     updateGoLiveThumbPreview();
+    updateGoLiveAudioPreviewDetails();
     scheduleGoLiveStreamPreview(120);
   }
 
@@ -9935,6 +10043,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       '#goLiveSummary',
       '#goLiveStreamUrl',
       '#goLiveThumb',
+      '#goLiveHashtags',
+      '#goLiveCoHosts',
+      '#goLiveMediaType',
       '#goLiveStarts',
       '#goLiveRelaysToggleBtn'
     ];
@@ -22298,10 +22409,13 @@ function renderProfileFeed(pubkey) {
   }
 
   function isAudioOnlyStream(streamOrUrl) {
-    const url = streamOrUrl && typeof streamOrUrl === 'object'
-      ? String(streamOrUrl.streaming || '')
-      : String(streamOrUrl || '');
-    return classifyMediaUrl(url) === 'audio';
+    if (streamOrUrl && typeof streamOrUrl === 'object') {
+      const selectedType = String(streamOrUrl.mediaType || streamOrUrl.media_type || '').trim().toLowerCase();
+      if (selectedType === 'audio') return true;
+      if (selectedType === 'video') return false;
+      return classifyMediaUrl(String(streamOrUrl.streaming || '')) === 'audio';
+    }
+    return classifyMediaUrl(String(streamOrUrl || '')) === 'audio';
   }
 
   function parseSpotifyPreviewUrl(rawUrl) {
@@ -23937,6 +24051,9 @@ function renderProfileFeed(pubkey) {
     const streamUrlInput = qs('#goLiveStreamUrl');
     const thumbInput = qs('#goLiveThumb');
     const startsInput = qs('#goLiveStarts');
+    const hashtagsInput = qs('#goLiveHashtags');
+    const coHostsInput = qs('#goLiveCoHosts');
+    const mediaTypeInput = qs('#goLiveMediaType');
     const statusEl = qs('#goLiveModal .srow .sc.sl') || qs('.srow .sc.sl');
 
     const preferredAddress = statusOverride
@@ -23951,6 +24068,9 @@ function renderProfileFeed(pubkey) {
     const summaryVal = summaryInput ? summaryInput.value.trim() : '';
     const streamUrlVal = streamUrlInput ? streamUrlInput.value.trim() : '';
     const thumbVal = thumbInput ? thumbInput.value.trim() : '';
+    const hashtagsRaw = hashtagsInput ? hashtagsInput.value : '';
+    const coHostsRaw = coHostsInput ? coHostsInput.value : '';
+    const requestedMediaType = String((mediaTypeInput && mediaTypeInput.value) || 'auto').trim().toLowerCase();
     const startsRaw = startsInput ? startsInput.value : '';
     const startsParsed = toUnixSeconds(startsRaw);
 
@@ -23972,6 +24092,35 @@ function renderProfileFeed(pubkey) {
     const starts = useCurrentFields
       ? ((current && current.starts) || null)
       : (startsInput ? (startsRaw ? startsParsed : null) : ((current && current.starts) || null));
+    const hashtags = useCurrentFields
+      ? (Array.isArray(current && current.hashtags) ? current.hashtags : [])
+      : Array.from(new Set(String(hashtagsRaw || '').split(/[\s,;]+/)
+          .map((tag) => String(tag || '').trim().replace(/^#+/, '').replace(/[^\p{L}\p{N}_-]/gu, '').slice(0, 48))
+          .filter(Boolean)
+          .map((tag) => tag.toLowerCase()))).slice(0, 12);
+    let coHostPubkeys;
+    if (useCurrentFields) {
+      coHostPubkeys = Array.isArray(current && current.coHosts) ? current.coHosts : [];
+    } else {
+      const identityValues = Array.from(new Set(String(coHostsRaw || '').split(/[\n,;]+/)
+        .map((value) => String(value || '').trim())
+        .filter(Boolean))).slice(0, 8);
+      const ownPubkey = normalizePubkeyHex(state.user && state.user.pubkey || '');
+      const resolved = await Promise.all(identityValues.map(async (identity) => {
+        let pubkey = await resolveOnchainRecipientPubkey(identity);
+        if (!pubkey) pubkey = normalizePubkeyHex(await resolveProfileTokenToPubkey(identity));
+        if (!pubkey) {
+          throw new Error('Could not resolve co-host "' + identity + '". Use a valid hex public key, npub, nprofile, or NIP-05 address.');
+        }
+        return pubkey;
+      }));
+      coHostPubkeys = Array.from(new Set(resolved.map((pubkey) => normalizePubkeyHex(pubkey)).filter((pubkey) => pubkey && pubkey !== ownPubkey))).slice(0, 8);
+    }
+    const mediaType = requestedMediaType === 'audio'
+      ? 'audio'
+      : (requestedMediaType === 'video'
+        ? 'video'
+        : (classifyMediaUrl(streamUrl) === 'audio' ? 'audio' : ''));
     const rawStatus = statusOverride || (statusEl ? statusEl.textContent : ((current && current.status) || 'live'));
     const status = normalizeStreamStatus(rawStatus);
 
@@ -23984,8 +24133,11 @@ function renderProfileFeed(pubkey) {
     ];
 
     if (streamUrl) tags.push(['streaming', streamUrl]);
+    if (mediaType) tags.push(['media_type', mediaType]);
     if (thumb) tags.push(['image', thumb]);
     if (starts) tags.push(['starts', `${starts}`]);
+    hashtags.forEach((tag) => tags.push(['t', tag]));
+    coHostPubkeys.forEach((pubkey) => tags.push(['p', pubkey, '', 'co-host']));
     state.relays.forEach((r) => tags.push(['relay', r]));
 
     const ev = await signAndPublish(KIND_LIVE_EVENT, summary, tags);
@@ -24203,8 +24355,17 @@ function renderProfileFeed(pubkey) {
     if (goLiveThumb) {
       goLiveThumb.addEventListener('input', () => {
         updateGoLiveThumbPreview();
+        updateGoLiveAudioPreviewDetails();
       });
     }
+    const goLiveMediaType = qs('#goLiveMediaType');
+    if (goLiveMediaType) {
+      goLiveMediaType.addEventListener('change', () => scheduleGoLiveStreamPreview(0));
+    }
+    ['#goLiveTitle', '#goLiveSummary'].forEach((selector) => {
+      const input = qs(selector);
+      if (input) input.addEventListener('input', updateGoLiveAudioPreviewDetails);
+    });
 
     const nsecLoginInput = qs('#nsecLoginInput');
     if (nsecLoginInput) {
