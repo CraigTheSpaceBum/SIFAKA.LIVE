@@ -10581,3 +10581,79 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
   word-break: keep-all;
   line-height: 1.25;
 }
+
+
+/* Sifaka 0.8.22: let the theater hosting pill size itself to its text.
+   Earlier 0.8.21 nowrap/max-content overrides could overflow the clipped pill. */
+#videoPage .sib-actions-row.hosted-platform-row {
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  grid-template-columns: none;
+  gap: 0;
+}
+#videoPage .sib-actions-row.hosted-platform-row .sib-hosted-by {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-box {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  overflow: hidden;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .28rem;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-label {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-name {
+  display: block;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.3;
+}
+@media (max-width: 700px) {
+  #videoPage .sib-actions-row.hosted-platform-row {
+    order: 6;
+    display: flex !important;
+    justify-content: flex-start;
+    width: max-content;
+    max-width: 100%;
+    margin-top: .35rem;
+    grid-template-columns: none;
+  }
+}
