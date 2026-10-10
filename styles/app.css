@@ -9995,3 +9995,21 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
   .nostr-feed-composer-poll { padding: .7rem; border-radius: 13px; }
   .nostr-feed-poll-option { padding: .72rem; font-size: .76rem; }
 }
+
+
+/* Sifaka 0.8.13: keep linked live-stream previews compact in profile posts. */
+.profile-post-naddr-stream-card {
+  width: 100%;
+  max-width: 340px;
+}
+.profile-post-naddr-stream-card .naddr-stream-thumb-wrap {
+  width: 100%;
+}
+.profile-post-naddr-stream-card .naddr-stream-via {
+  display: flex;
+  align-items: center;
+  margin: .42rem 0 .3rem;
+}
+.profile-post-naddr-stream-card .hosted-by-box {
+  max-width: 100%;
+}
