@@ -24147,6 +24147,11 @@ function renderProfileFeed(pubkey) {
       const qr = qs('#walletProfileOnchainDonationQr');
       const empty = qs('#walletProfileOnchainDonationQrEmpty');
       if (!qr) return;
+      qr.setAttribute('role', 'link');
+      qr.setAttribute('tabindex', '0');
+      qr.setAttribute('aria-label', 'Open the recipient Bitcoin address in a wallet app');
+      qr.title = 'Click to open a Bitcoin wallet app';
+      qr.style.cursor = 'pointer';
       qr.innerHTML = '';
       const value = String(address || '').trim();
       if (!value) {
@@ -25120,6 +25125,18 @@ function renderProfileFeed(pubkey) {
           setTimeout(() => { if (btn) btn.textContent = original; }, 1200);
         }
       } catch (_) {}
+    };
+
+    window.openWalletProfileOnchainDonationWallet = function (event) {
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      const context = state.walletOnchainDonationContext;
+      const address = String(
+        (context && context.active && context.address)
+        || qs('#walletProfileOnchainDonationAddress')?.textContent
+        || ''
+      ).trim();
+      if (!/^(bc1[ac-hj-np-z02-9]{11,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,62})$/i.test(address)) return;
+      window.location.href = 'bitcoin:' + address;
     };
 
     window.copyWalletProfileOnchainDonationAddress = async function () {
@@ -26714,6 +26731,136 @@ window.saveAppSettings = function () {
 
     // ---- Theater Donation ----
     let theaterDonationExternalInvoice = '';
+    let theaterDonationInvoiceExpiresAt = 0;
+    let theaterDonationInvoiceTimer = null;
+    let theaterDonationLightningBaseQrPayload = '';
+
+    function clearTheaterDonationInvoiceTimer() {
+      if (theaterDonationInvoiceTimer) {
+        clearInterval(theaterDonationInvoiceTimer);
+        theaterDonationInvoiceTimer = null;
+      }
+    }
+
+    function getTheaterDonationInvoiceExpiresAt(invoice) {
+      const fallback = Date.now() + (60 * 60 * 1000);
+      try {
+        const clean = String(invoice || '').trim().toLowerCase();
+        const separator = clean.lastIndexOf('1');
+        if (separator < 1 || clean.length < separator + 7) return fallback;
+        const words = Array.from(clean.slice(separator + 1, -6), (character) => BECH32_CHARSET.indexOf(character));
+        if (words.length < 7 || words.some((word) => word < 0)) return fallback;
+        const createdAt = words.slice(0, 7).reduce((value, word) => (value * 32) + word, 0);
+        let expirySeconds = 3600;
+        for (let i = 7; i < words.length;) {
+          if (i + 2 >= words.length) break;
+          const tagType = words[i];
+          const tagLength = (words[i + 1] * 32) + words[i + 2];
+          if (tagLength < 0 || i + 3 + tagLength > words.length) break;
+          if (tagType === BECH32_CHARSET.indexOf('x')) {
+            expirySeconds = words.slice(i + 3, i + 3 + tagLength)
+              .reduce((value, word) => (value * 32) + word, 0);
+          }
+          i += 3 + tagLength;
+        }
+        if (!Number.isFinite(createdAt) || createdAt <= 0 || !Number.isFinite(expirySeconds) || expirySeconds < 1) {
+          return fallback;
+        }
+        const expiryAt = (createdAt + expirySeconds) * 1000;
+        return Number.isFinite(expiryAt) ? expiryAt : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    function renderTheaterLightningQrPayload(payload) {
+      const qr = qs('#theaterDonationLightningQr');
+      if (!qr) return;
+      const value = String(payload || '').trim();
+      qr.innerHTML = '';
+      if (!value) {
+        qr.textContent = 'Lightning address unavailable';
+        return;
+      }
+      if (typeof window.QRCode !== 'function') {
+        qr.textContent = 'QR unavailable';
+        return;
+      }
+      new window.QRCode(qr, {
+        text: value,
+        width: 198,
+        height: 198,
+        correctLevel: window.QRCode.CorrectLevel ? window.QRCode.CorrectLevel.M : 0
+      });
+    }
+
+    function updateTheaterLightningInvoiceCountdown() {
+      const timerEl = qs('#theaterDonationLightningInvoiceTimer');
+      const invoice = String(theaterDonationExternalInvoice || '').trim();
+      if (!timerEl || !invoice || !theaterDonationInvoiceExpiresAt) return;
+      const remaining = Math.ceil((theaterDonationInvoiceExpiresAt - Date.now()) / 1000);
+      if (remaining <= 0) {
+        clearTheaterDonationInvoiceTimer();
+        theaterDonationExternalInvoice = '';
+        theaterDonationInvoiceExpiresAt = 0;
+        const addressEl = qs('#theaterDonationLightningAddress');
+        const qrLabel = qs('#theaterDonationLightningQrLabel');
+        const copyBtn = qs('#theaterDonationLightningCopyBtn');
+        const fallback = qs('#theaterDonationExternalWalletFallback');
+        const externalLink = qs('#theaterDonationExternalWalletLink');
+        const status = qs('#theaterDonationStatus');
+        if (addressEl) addressEl.textContent = theaterDonationContext.lud16 || 'Lightning address unavailable';
+        if (qrLabel) qrLabel.textContent = 'Lightning payment QR';
+        if (copyBtn) copyBtn.textContent = 'Copy address';
+        if (fallback) fallback.hidden = true;
+        if (externalLink) externalLink.href = 'lightning:';
+        if (theaterDonationLightningBaseQrPayload) renderTheaterLightningQrPayload(theaterDonationLightningBaseQrPayload);
+        else {
+          const qr = qs('#theaterDonationLightningQr');
+          if (qr) qr.textContent = 'Invoice expired. Generate a new invoice.';
+        }
+        timerEl.hidden = false;
+        timerEl.textContent = 'Invoice expired — generate a new invoice.';
+        if (status) status.textContent = 'Invoice expired. Generate a new invoice to continue.';
+        return;
+      }
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
+      timerEl.hidden = false;
+      timerEl.textContent = 'Invoice expires in ' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+    }
+
+    function displayTheaterLightningInvoice(invoice) {
+      const cleanInvoice = String(invoice || '').trim();
+      if (!cleanInvoice) throw new Error('The Lightning address did not return an invoice.');
+      clearTheaterDonationInvoiceTimer();
+      theaterDonationExternalInvoice = cleanInvoice;
+      theaterDonationInvoiceExpiresAt = getTheaterDonationInvoiceExpiresAt(cleanInvoice);
+      const addressEl = qs('#theaterDonationLightningAddress');
+      const qrLabel = qs('#theaterDonationLightningQrLabel');
+      const timerEl = qs('#theaterDonationLightningInvoiceTimer');
+      const copyBtn = qs('#theaterDonationLightningCopyBtn');
+      const externalLink = qs('#theaterDonationExternalWalletLink');
+      const fallback = qs('#theaterDonationExternalWalletFallback');
+      const status = qs('#theaterDonationStatus');
+      if (addressEl) {
+        addressEl.textContent = cleanInvoice;
+        addressEl.classList.remove('is-unavailable');
+        addressEl.title = 'Lightning invoice — click the QR code to open a wallet';
+      }
+      if (qrLabel) qrLabel.textContent = 'Lightning invoice QR · click to pay';
+      if (copyBtn) copyBtn.textContent = 'Copy invoice';
+      if (timerEl) {
+        timerEl.hidden = false;
+        timerEl.textContent = '';
+      }
+      if (externalLink) externalLink.href = 'lightning:' + cleanInvoice;
+      if (fallback) fallback.hidden = false;
+      renderTheaterLightningQrPayload(cleanInvoice);
+      if (status) status.textContent = 'Invoice generated. Click the QR code or “Open Lightning wallet” to pay; Sifaka will not send this invoice automatically.';
+      updateTheaterLightningInvoiceCountdown();
+      if (theaterDonationExternalInvoice) theaterDonationInvoiceTimer = setInterval(updateTheaterLightningInvoiceCountdown, 1000);
+    }
 
     let theaterDonationContext = {
       streamAddress: '',
@@ -26892,31 +27039,30 @@ window.saveAppSettings = function () {
         nip05El.hidden = !nip05;
       }
       const lud16 = String(profile.lud16 || theaterDonationContext.lud16 || '').trim();
-      if (lightningEl) {
+      const hasActiveInvoice = !!theaterDonationExternalInvoice && theaterDonationInvoiceExpiresAt > Date.now();
+      if (lightningEl && !hasActiveInvoice) {
         lightningEl.textContent = lud16 || 'Lightning address unavailable';
         lightningEl.classList.toggle('is-unavailable', !lud16);
+        lightningEl.removeAttribute('title');
       }
       const qrEl = qs('#theaterDonationLightningQr');
       if (qrEl) {
-        qrEl.innerHTML = '';
+        if (!hasActiveInvoice) qrEl.innerHTML = '';
         if (lud16) {
           fetchLightningAddressInfo(lud16, 0).then((info) => {
             if (!qrEl || theaterDonationContext.lud16 !== lud16) return;
-            if (typeof window.QRCode !== 'function') {
-              qrEl.textContent = 'QR unavailable';
-              return;
-            }
-            qrEl.innerHTML = '';
-            new window.QRCode(qrEl, {
-              text: String(info.lnurl || info.payUrl || lud16),
-              width: 198,
-              height: 198,
-              correctLevel: window.QRCode.CorrectLevel ? window.QRCode.CorrectLevel.M : 0
-            });
+            const payload = String(info.lnurl || info.payUrl || lud16);
+            theaterDonationLightningBaseQrPayload = payload;
+            if (theaterDonationExternalInvoice && theaterDonationInvoiceExpiresAt > Date.now()) return;
+            renderTheaterLightningQrPayload(payload);
           }).catch(() => {
-            if (qrEl && theaterDonationContext.lud16 === lud16) qrEl.textContent = 'Could not load Lightning QR';
+            if (qrEl && theaterDonationContext.lud16 === lud16 &&
+                !(theaterDonationExternalInvoice && theaterDonationInvoiceExpiresAt > Date.now())) {
+              qrEl.textContent = 'Could not load Lightning QR';
+            }
           });
-        } else {
+        } else if (!hasActiveInvoice) {
+          theaterDonationLightningBaseQrPayload = '';
           qrEl.textContent = 'Lightning address unavailable';
         }
       }
@@ -27243,6 +27389,7 @@ window.saveAppSettings = function () {
       const status = qs('#theaterDonationStatus');
       const loading = qs('#theaterDonationLoading');
       const fallback = qs('#theaterDonationExternalWalletFallback');
+      clearTheaterDonationInvoiceTimer();
       if (btn) {
         btn.disabled = false;
         btn.textContent = 'Send donation (via NWC)';
@@ -27250,13 +27397,25 @@ window.saveAppSettings = function () {
       }
       if (extensionBtn) {
         extensionBtn.disabled = false;
-        extensionBtn.textContent = 'Send donation (via Extension)';
-        extensionBtn.onclick = window.sendTheaterLightningDonationViaExtension;
+        extensionBtn.textContent = 'Generate Invoice';
+        extensionBtn.onclick = window.generateTheaterLightningDonationInvoice;
       }
       if (status) status.textContent = '';
       if (loading) loading.hidden = true;
       if (fallback) fallback.hidden = true;
       theaterDonationExternalInvoice = '';
+      theaterDonationInvoiceExpiresAt = 0;
+      theaterDonationLightningBaseQrPayload = '';
+      const timerEl = qs('#theaterDonationLightningInvoiceTimer');
+      if (timerEl) { timerEl.hidden = true; timerEl.textContent = ''; }
+      const qrLabel = qs('#theaterDonationLightningQrLabel');
+      if (qrLabel) qrLabel.textContent = 'Lightning payment QR';
+      const copyBtn = qs('#theaterDonationLightningCopyBtn');
+      if (copyBtn) copyBtn.textContent = 'Copy address';
+      const qr = qs('#theaterDonationLightningQr');
+      if (qr) qr.innerHTML = '';
+      const addressEl = qs('#theaterDonationLightningAddress');
+      if (addressEl) addressEl.removeAttribute('title');
       const externalLink = qs('#theaterDonationExternalWalletLink');
       if (externalLink) externalLink.href = 'lightning:';
     }
@@ -27695,19 +27854,81 @@ window.saveAppSettings = function () {
       } finally {
         if (loading) loading.hidden = true;
         if (nwcButton) { nwcButton.disabled = false; nwcButton.textContent = 'Send donation (via NWC)'; }
-        if (extensionButton) { extensionButton.disabled = false; extensionButton.textContent = 'Send donation (via Extension)'; }
+        if (extensionButton) { extensionButton.disabled = false; extensionButton.textContent = 'Generate Invoice'; }
       }
     }
+    window.generateTheaterLightningDonationInvoice = async function () {
+      const stream = getTheaterDonationStream();
+      if (!stream) return;
+      const status = qs('#theaterDonationStatus');
+      const nwcButton = qs('#theaterDonationSendBtn');
+      const generateButton = qs('#theaterDonationExtensionSendBtn');
+      const loading = qs('#theaterDonationLoading');
+      const loadingText = qs('#theaterDonationLoadingText');
+      const fallback = qs('#theaterDonationExternalWalletFallback');
+      const profile = getTheaterDonationProfile(stream, theaterDonationContext.hostPubkey || '');
+      const lud16 = String(profile.lud16 || theaterDonationContext.lud16 || '').trim();
+      const amountSats = Math.floor(Number(qs('#theaterDonationAmount')?.value || 0));
+      const zapMessage = String(qs('#theaterDonationZapMessage')?.value || '').trim();
+      if (!lud16) { if (status) status.textContent = 'This streamer does not have a Lightning address.'; return; }
+      if (!Number.isFinite(amountSats) || amountSats < 1) { if (status) status.textContent = 'Enter a valid donation amount in sats.'; return; }
+      if (amountSats > 100000000) { if (status) status.textContent = 'Enter an amount of 100,000,000 sats or less.'; return; }
+      const targetPubkey = normalizePubkeyHex(theaterDonationContext.hostPubkey || stream.hostPubkey || stream.pubkey || '');
+      if (!targetPubkey) { if (status) status.textContent = 'The streamer public key is not available yet.'; return; }
+
+      clearTheaterDonationInvoiceTimer();
+      theaterDonationExternalInvoice = '';
+      theaterDonationInvoiceExpiresAt = 0;
+      if (fallback) fallback.hidden = true;
+      if (status) status.textContent = '';
+      if (loading) loading.hidden = false;
+      if (loadingText) loadingText.textContent = 'Creating the Lightning invoice…';
+      if (nwcButton) nwcButton.disabled = true;
+      if (generateButton) {
+        generateButton.disabled = true;
+        generateButton.textContent = 'Generating…';
+      }
+      try {
+        const generated = await createLightningDonationInvoiceForLud16(
+          lud16, amountSats * 1000, targetPubkey,
+          theaterDonationContext.source === 'profile' ? [] : [
+            ['e', stream.id], ['a', stream.address], ['k', String(KIND_LIVE_EVENT)]
+          ],
+          zapMessage
+        );
+        displayTheaterLightningInvoice(generated && generated.invoice);
+      } catch (err) {
+        console.warn('Lightning invoice generation failed:', err && err.message ? err.message : err);
+        const failureText = err?.message || 'Could not generate a Lightning invoice.';
+        if (status) status.textContent = failureText;
+      } finally {
+        if (loading) loading.hidden = true;
+        if (nwcButton) { nwcButton.disabled = false; nwcButton.textContent = 'Send donation (via NWC)'; }
+        if (generateButton) { generateButton.disabled = false; generateButton.textContent = 'Generate Invoice'; }
+      }
+    };
+
     window.sendTheaterLightningDonation = async function () { return sendTheaterLightningDonationWithMethod('nwc'); };
     window.sendTheaterLightningDonationViaExtension = async function () { return sendTheaterLightningDonationWithMethod('extension'); };
     window.openTheaterLightningExternalWallet = function (event) {
       if (event && typeof event.preventDefault === 'function') event.preventDefault();
-      if (!theaterDonationExternalInvoice) return;
+      if (!theaterDonationExternalInvoice || theaterDonationInvoiceExpiresAt <= Date.now()) return;
       window.location.href = 'lightning:' + theaterDonationExternalInvoice;
+    };
+    window.openTheaterLightningQrWallet = function (event) {
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      const invoiceIsActive = !!theaterDonationExternalInvoice && theaterDonationInvoiceExpiresAt > Date.now();
+      const basePayload = String(theaterDonationLightningBaseQrPayload || '').trim();
+      const address = String(theaterDonationContext.lud16 || '').trim();
+      const payload = invoiceIsActive
+        ? theaterDonationExternalInvoice
+        : (/^lnurl1/i.test(basePayload) ? basePayload : address);
+      if (!payload) return;
+      window.location.href = 'lightning:' + payload;
     };
     window.copyTheaterLightningInvoice = async function () {
       const invoice = String(theaterDonationExternalInvoice || '').trim();
-      if (!invoice) return;
+      if (!invoice || theaterDonationInvoiceExpiresAt <= Date.now()) return;
       try {
         if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
           await navigator.clipboard.writeText(invoice);
@@ -27725,15 +27946,20 @@ window.saveAppSettings = function () {
     };
 
     window.copyTheaterLightningAddress = async function () {
-      const value = String(theaterDonationContext.lud16 || '').trim();
+      const invoiceIsActive = !!theaterDonationExternalInvoice && theaterDonationInvoiceExpiresAt > Date.now();
+      const value = String(invoiceIsActive ? theaterDonationExternalInvoice : theaterDonationContext.lud16 || '').trim();
       if (!value) return;
       try {
         if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
           await navigator.clipboard.writeText(value);
+          const status = qs('#theaterDonationStatus');
+          if (status) status.textContent = invoiceIsActive
+            ? 'Lightning invoice copied. Complete payment in your wallet before it expires.'
+            : 'Lightning address copied.';
           return;
         }
       } catch (_) {}
-      window.prompt('Copy Lightning address:', value);
+      window.prompt(invoiceIsActive ? 'Copy Lightning invoice:' : 'Copy Lightning address:', value);
     };
 
     window.openProfileLightningDonation = async function () {
