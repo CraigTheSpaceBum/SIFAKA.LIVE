@@ -21109,10 +21109,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       button.addEventListener('click', (clickEvent) => {
         clickEvent.preventDefault();
         clickEvent.stopPropagation();
-        if (!state.user) {
-          if (typeof window.openLogin === 'function') window.openLogin();
-          return;
-        }
         if (isClosed() || hasVoted()) return;
         if (multiple) {
           if (selectedIds.has(option.id)) selectedIds.delete(option.id);
