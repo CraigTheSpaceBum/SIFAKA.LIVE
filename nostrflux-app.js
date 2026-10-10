@@ -16351,17 +16351,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function updateTheaterMainHostBanner(pubkey, streamAddress) {
     const key = normalizePubkeyHex(pubkey || '');
     if (!key || state.selectedStreamAddress !== streamAddress || !isVideoPageVisible()) return;
-    const card = qs('#theaterMainHostCard');
-    if (!card) return;
+    const panel = qs('#theaterHostInfoPanel');
+    if (!panel) return;
     const profile = profileFor(key);
     const bannerUrl = sanitizeMediaUrl(profile && profile.banner || '');
     if (bannerUrl && isLikelyUrl(bannerUrl)) {
       const safeBannerUrl = bannerUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-      card.style.setProperty('--theater-profile-banner-image', 'url("' + safeBannerUrl + '")');
-      card.classList.add('has-profile-banner');
+      panel.style.setProperty('--theater-profile-banner-image', 'url("' + safeBannerUrl + '")');
+      panel.classList.add('has-profile-banner');
     } else {
-      card.style.removeProperty('--theater-profile-banner-image');
-      card.classList.remove('has-profile-banner');
+      panel.style.removeProperty('--theater-profile-banner-image');
+      panel.classList.remove('has-profile-banner');
     }
   }
 
