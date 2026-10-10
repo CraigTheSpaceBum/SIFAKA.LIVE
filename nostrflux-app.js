@@ -9756,6 +9756,225 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     updateGoLiveStartsVisibility();
   }
 
+  const GO_LIVE_DEFAULT_HASHTAGS = ['bitcoin', 'nostr', 'lightning', 'music', 'podcast', 'gaming', 'art', 'technology', 'freedom', 'live'];
+
+  function normalizeGoLiveHashtag(value) {
+    const tag = String(value || '').trim().replace(/^#+/, '').replace(/[^\p{L}\p{N}_-]/gu, '').slice(0, 48).toLowerCase();
+    return tag ? '#' + tag : '';
+  }
+
+  function readGoLiveTokens(kind) {
+    const input = qs(kind === 'hashtags' ? '#goLiveHashtags' : '#goLiveCoHosts');
+    if (!input) return [];
+    const pieces = kind === 'hashtags' ? String(input.value || '').split(/[\s,;]+/) : String(input.value || '').split(/[\n,;]+/);
+    const seen = new Set();
+    const values = [];
+    pieces.forEach((piece) => {
+      const value = kind === 'hashtags' ? normalizeGoLiveHashtag(piece) : String(piece || '').trim();
+      const key = value.toLowerCase();
+      if (!value || seen.has(key)) return;
+      seen.add(key);
+      values.push(value);
+    });
+    return values.slice(0, kind === 'hashtags' ? 12 : 8);
+  }
+
+  function writeGoLiveTokens(kind, values) {
+    const input = qs(kind === 'hashtags' ? '#goLiveHashtags' : '#goLiveCoHosts');
+    if (!input) return;
+    const limit = kind === 'hashtags' ? 12 : 8;
+    const seen = new Set();
+    const clean = [];
+    (Array.isArray(values) ? values : []).forEach((item) => {
+      const value = kind === 'hashtags' ? normalizeGoLiveHashtag(item) : String(item || '').trim();
+      const key = value.toLowerCase();
+      if (!value || seen.has(key) || clean.length >= limit) return;
+      seen.add(key);
+      clean.push(value);
+    });
+    input.value = kind === 'hashtags' ? clean.join(', ') : clean.join('\n');
+    renderGoLiveTokenChips(kind);
+  }
+
+  function getGoLiveCoHostTokenLabel(token) {
+    const value = String(token || '').trim();
+    if (!value) return '';
+    try {
+      const ctx = window.__SIFAKA_CONTEXT;
+      const profile = ctx && typeof ctx.getProfileByPubkey === 'function' ? ctx.getProfileByPubkey(value) : null;
+      if (profile) return profile.displayName || profile.name || profile.nip05 || profile.npub || value;
+    } catch (_) {}
+    return value;
+  }
+
+  function renderGoLiveTokenChips(kind) {
+    const holder = qs(kind === 'hashtags' ? '#goLiveHashtagChips' : '#goLiveCoHostChips');
+    if (!holder) return;
+    holder.innerHTML = '';
+    readGoLiveTokens(kind).forEach((value) => {
+      const chip = document.createElement('span');
+      chip.className = 'go-live-token-chip';
+      const label = document.createElement('span');
+      label.textContent = kind === 'hashtags' ? value : getGoLiveCoHostTokenLabel(value);
+      chip.appendChild(label);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'go-live-token-remove';
+      remove.setAttribute('aria-label', 'Remove ' + value);
+      remove.textContent = '×';
+      remove.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const source = qs(kind === 'hashtags' ? '#goLiveHashtags' : '#goLiveCoHosts');
+        if (source && source.disabled) return;
+        writeGoLiveTokens(kind, readGoLiveTokens(kind).filter((item) => item.toLowerCase() !== value.toLowerCase()));
+      });
+      chip.appendChild(remove);
+      holder.appendChild(chip);
+    });
+  }
+
+  function hideGoLiveSuggestions(kind) {
+    const box = qs(kind === 'hashtags' ? '#goLiveHashtagSuggestions' : '#goLiveCoHostSuggestions');
+    if (box) { box.hidden = true; box.innerHTML = ''; }
+  }
+
+  function addGoLiveHashtag(value) {
+    const tag = normalizeGoLiveHashtag(value);
+    if (!tag) return false;
+    const existing = readGoLiveTokens('hashtags');
+    if (!existing.some((item) => item.toLowerCase() === tag.toLowerCase()) && existing.length < 12) writeGoLiveTokens('hashtags', existing.concat(tag));
+    const entry = qs('#goLiveHashtagsEntry');
+    if (entry) entry.value = '';
+    hideGoLiveSuggestions('hashtags');
+    return true;
+  }
+
+  function addGoLiveCoHost(value, profile = null) {
+    const token = String((profile && profile.pubkey) || value || '').trim();
+    if (!token) return false;
+    const existing = readGoLiveTokens('cohosts');
+    if (!existing.some((item) => item.toLowerCase() === token.toLowerCase()) && existing.length < 8) writeGoLiveTokens('cohosts', existing.concat(token));
+    const entry = qs('#goLiveCoHostsEntry');
+    if (entry) entry.value = '';
+    hideGoLiveSuggestions('cohosts');
+    return true;
+  }
+
+  function renderGoLiveSuggestions(kind, entries) {
+    const box = qs(kind === 'hashtags' ? '#goLiveHashtagSuggestions' : '#goLiveCoHostSuggestions');
+    if (!box) return;
+    box.innerHTML = '';
+    const unique = new Set();
+    (entries || []).forEach((entry) => {
+      const value = kind === 'hashtags' ? normalizeGoLiveHashtag(entry.value || entry) : String(entry.pubkey || entry.value || '').trim();
+      if (!value || unique.has(value.toLowerCase())) return;
+      unique.add(value.toLowerCase());
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'go-live-token-suggestion';
+      if (kind === 'hashtags') {
+        button.textContent = value;
+        button.addEventListener('mousedown', (event) => event.preventDefault());
+        button.addEventListener('click', () => addGoLiveHashtag(value));
+      } else {
+        const label = String(entry.displayName || entry.name || entry.nip05 || entry.npub || value).trim();
+        button.textContent = label + (entry.nip05 ? ' · ' + entry.nip05 : '');
+        button.dataset.value = value;
+        button.addEventListener('mousedown', (event) => event.preventDefault());
+        button.addEventListener('click', () => addGoLiveCoHost(value, entry));
+      }
+      box.appendChild(button);
+    });
+    if (!box.childElementCount) {
+      const empty = document.createElement('div');
+      empty.className = 'go-live-token-suggestion-empty';
+      empty.textContent = kind === 'hashtags' ? 'No matching tags. Press Enter to add your hashtag.' : 'No matching profiles. Enter a public key, npub, nprofile, or NIP-05.';
+      box.appendChild(empty);
+    }
+    box.hidden = false;
+  }
+
+  function updateGoLiveHashtagSuggestions(query) {
+    const existing = new Set(readGoLiveTokens('hashtags').map((tag) => tag.slice(1).toLowerCase()));
+    const fromStreams = [];
+    try {
+      (state.streamsByAddress instanceof Map ? Array.from(state.streamsByAddress.values()) : []).forEach((stream) => {
+        (Array.isArray(stream && stream.hashtags) ? stream.hashtags : []).forEach((tag) => fromStreams.push(tag));
+      });
+    } catch (_) {}
+    const q = String(query || '').trim().replace(/^#+/, '').toLowerCase();
+    const values = Array.from(new Set(GO_LIVE_DEFAULT_HASHTAGS.concat(fromStreams)
+      .map((tag) => String(tag || '').trim().replace(/^#+/, '').toLowerCase())
+      .filter((tag) => tag && !existing.has(tag) && (!q || tag.includes(q)))));
+    renderGoLiveSuggestions('hashtags', values.slice(0, 8).map((value) => ({ value })));
+  }
+
+  async function updateGoLiveCoHostSuggestions(query, requestToken) {
+    const q = String(query || '').trim();
+    if (!q) { hideGoLiveSuggestions('cohosts'); return; }
+    let results = [];
+    try {
+      const ctx = window.__SIFAKA_CONTEXT;
+      if (ctx && typeof ctx.searchProfiles === 'function') results = await ctx.searchProfiles(q, 8);
+    } catch (_) {}
+    const input = qs('#goLiveCoHostsEntry');
+    if (!input || Number(input.dataset.suggestionRequest || 0) !== requestToken || input.value.trim() !== q) return;
+    const existing = new Set(readGoLiveTokens('cohosts').map((token) => token.toLowerCase()));
+    const filtered = (Array.isArray(results) ? results : []).filter((profile) => {
+      const key = String(profile && profile.pubkey || '').trim();
+      return key && !existing.has(key.toLowerCase());
+    });
+    renderGoLiveSuggestions('cohosts', filtered);
+  }
+
+  function initGoLiveTokenInputs() {
+    const hashtagsEntry = qs('#goLiveHashtagsEntry');
+    if (hashtagsEntry && hashtagsEntry.dataset.tokenInputReady !== '1') {
+      hashtagsEntry.dataset.tokenInputReady = '1';
+      hashtagsEntry.addEventListener('focus', () => updateGoLiveHashtagSuggestions(hashtagsEntry.value));
+      hashtagsEntry.addEventListener('input', () => updateGoLiveHashtagSuggestions(hashtagsEntry.value));
+      hashtagsEntry.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+          addGoLiveHashtag(hashtagsEntry.value);
+        } else if (event.key === 'Escape') hideGoLiveSuggestions('hashtags');
+      });
+    }
+    const coHostsEntry = qs('#goLiveCoHostsEntry');
+    if (coHostsEntry && coHostsEntry.dataset.tokenInputReady !== '1') {
+      coHostsEntry.dataset.tokenInputReady = '1';
+      coHostsEntry.addEventListener('input', () => {
+        const token = Number(coHostsEntry.dataset.suggestionRequest || 0) + 1;
+        coHostsEntry.dataset.suggestionRequest = String(token);
+        updateGoLiveCoHostSuggestions(coHostsEntry.value, token);
+      });
+      coHostsEntry.addEventListener('focus', () => {
+        const token = Number(coHostsEntry.dataset.suggestionRequest || 0) + 1;
+        coHostsEntry.dataset.suggestionRequest = String(token);
+        updateGoLiveCoHostSuggestions(coHostsEntry.value, token);
+      });
+      coHostsEntry.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+          const first = qs('#goLiveCoHostSuggestions .go-live-token-suggestion[data-value]');
+          if (first && coHostsEntry.value.trim()) addGoLiveCoHost(first.dataset.value);
+          else addGoLiveCoHost(coHostsEntry.value);
+        } else if (event.key === 'Escape') hideGoLiveSuggestions('cohosts');
+      });
+    }
+    document.addEventListener('click', (event) => {
+      if (event.target && event.target.closest && event.target.closest('#goLiveHashtagsField')) return;
+      if (event.target && event.target.closest && event.target.closest('#goLiveCoHostsField')) return;
+      hideGoLiveSuggestions('hashtags');
+      hideGoLiveSuggestions('cohosts');
+    });
+    renderGoLiveTokenChips('hashtags');
+    renderGoLiveTokenChips('cohosts');
+  }
+
   function populateGoLiveFormFromStream(stream) {
     const dTagInput = qs('#goLiveDTag');
     const titleInput = qs('#goLiveTitle');
@@ -9777,6 +9996,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (eventIdInput) eventIdInput.value = stream && stream.id ? stream.id : '';
     if (hashtagsInput) hashtagsInput.value = stream && Array.isArray(stream.hashtags) ? stream.hashtags.map((tag) => '#' + tag).join(', ') : '';
     if (coHostsInput) coHostsInput.value = stream && Array.isArray(stream.coHosts) ? stream.coHosts.join('\n') : '';
+    renderGoLiveTokenChips('hashtags');
+    renderGoLiveTokenChips('cohosts');
     if (mediaTypeInput) mediaTypeInput.value = stream && stream.mediaType === 'audio'
       ? 'audio'
       : (stream && stream.mediaType === 'video' ? 'video' : 'auto');
@@ -10044,7 +10265,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       '#goLiveThumb',
       '#goLiveHashtags',
       '#goLiveCoHosts',
-      '#goLiveMediaType',
+      '#goLiveHashtagsEntry',
+      '#goLiveCoHostsEntry',
       '#goLiveStarts',
       '#goLiveRelaysToggleBtn'
     ];
@@ -13919,7 +14141,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (textEl) {
       textEl.innerHTML = '';
       if (text) {
-        textEl.appendChild(renderNostrContent(text));
+        textEl.appendChild(renderNostrContent(text, { profilePost: true }));
         textEl.style.display = 'block';
       } else {
         textEl.textContent = mediaItems.length ? '' : (isRepost ? 'Repost' : '[empty note]');
@@ -16216,8 +16438,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!sibHostedBy) {
       sibHostedBy = document.createElement('div');
       sibHostedBy.className = 'sib-hosted-by';
-      const hostRow = qs('.sib-host-row');
-      if (hostRow) hostRow.appendChild(sibHostedBy);
+      const hostRow = qs('#theaterHostInfoPanel') || qs('.sib-host-row');
+      const statsRow = hostRow && qs('.sib-stats-links-row', hostRow);
+      if (hostRow) {
+        if (statsRow) hostRow.insertBefore(sibHostedBy, statsRow);
+        else hostRow.appendChild(sibHostedBy);
+      }
       else if (ident && ident.parentNode) ident.parentNode.appendChild(sibHostedBy);
     }
     sibHostedBy.innerHTML = '';
@@ -16855,7 +17081,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     content.innerHTML = '';
     const panel = document.createElement('div');
     panel.className = 'profile-calendar-event';
-    panel.dataset.eventCoordinate = '31923:' + normalizePubkeyHex(event.pubkey || '') + ':' + readTag('d');
+    panel.dataset.eventCoordinate = coordinate;
+    panel.dataset.eventId = calendarEventId;
+    panel.dataset.calendarEventKey = coordinate + ':' + calendarEventId;
 
     if (imageUrl && isLikelyUrl(imageUrl)) {
       const imageLink = document.createElement('a');
@@ -17032,6 +17260,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const rsvpSection = document.createElement('div');
     rsvpSection.className = 'profile-calendar-event-rsvp';
     rsvpSection.dataset.eventCoordinate = coordinate;
+    rsvpSection.dataset.eventId = calendarEventId;
+    rsvpSection.dataset.calendarEventKey = coordinate + ':' + calendarEventId;
     const rsvpHeading = document.createElement('strong'); rsvpHeading.className = 'profile-calendar-event-section-title'; rsvpHeading.textContent = 'Your response';
     rsvpSection.appendChild(rsvpHeading);
     const rsvpStatusLine = document.createElement('div'); rsvpStatusLine.className = 'profile-calendar-event-rsvp-status';
@@ -21854,7 +22084,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             if (articleTitle) { const heading = document.createElement('h3'); heading.className='profile-feed-article-title'; heading.textContent=articleTitle; textEl.appendChild(heading); }
             if (articleSummary) { const summaryEl = document.createElement('p'); summaryEl.className='profile-feed-article-summary'; summaryEl.textContent=articleSummary; textEl.appendChild(summaryEl); }
           }
-          if (text) { textEl.appendChild(renderNostrContent(text)); textEl.style.display='block'; }
+          if (text) { textEl.appendChild(renderNostrContent(text, { profilePost: true })); textEl.style.display='block'; }
           else {
             const emptyLabel = isRepost ? (repostRefId ? 'Repost (original note loading...)' : 'Repost') : '[empty note]';
             textEl.textContent = mediaItems.length ? '' : emptyLabel;
@@ -24530,10 +24760,7 @@ function renderProfileFeed(pubkey) {
         updateGoLiveAudioPreviewDetails();
       });
     }
-    const goLiveMediaType = qs('#goLiveMediaType');
-    if (goLiveMediaType) {
-      goLiveMediaType.addEventListener('change', () => scheduleGoLiveStreamPreview(0));
-    }
+    initGoLiveTokenInputs();
     ['#goLiveTitle', '#goLiveSummary'].forEach((selector) => {
       const input = qs(selector);
       if (input) input.addEventListener('input', updateGoLiveAudioPreviewDetails);
