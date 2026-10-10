@@ -2895,11 +2895,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       } catch (err) {
         console.warn('NIP-57 donation setup unavailable; using ordinary Lightning payment:', err && err.message ? err.message : err);
       }
-      if (zapInvoice) return { invoice: zapInvoice, usedZap: true };
+      if (zapInvoice) return { invoice: zapInvoice, usedZap: true, receiptPubkey: info.receiptPubkey };
     }
     return {
       invoice: await buildLightningInvoiceForLud16(lud16, amountMsats, { lightningInfo: info }),
-      usedZap: false
+      usedZap: false,
+      receiptPubkey: ''
     };
   }
 
@@ -27222,12 +27223,92 @@ window.saveAppSettings = function () {
     let theaterDonationInvoiceExpiresAt = 0;
     let theaterDonationInvoiceTimer = null;
     let theaterDonationLightningBaseQrPayload = '';
+    let theaterDonationInvoiceReceiptSubId = null;
+    let theaterDonationInvoiceReceiptTimer = null;
+    let theaterDonationInvoiceReceiptToken = 0;
 
     function clearTheaterDonationInvoiceTimer() {
       if (theaterDonationInvoiceTimer) {
         clearInterval(theaterDonationInvoiceTimer);
         theaterDonationInvoiceTimer = null;
       }
+    }
+
+    function stopTheaterLightningInvoiceReceiptWatch() {
+      theaterDonationInvoiceReceiptToken += 1;
+      if (theaterDonationInvoiceReceiptTimer) {
+        clearTimeout(theaterDonationInvoiceReceiptTimer);
+        theaterDonationInvoiceReceiptTimer = null;
+      }
+      if (theaterDonationInvoiceReceiptSubId && state.pool) {
+        try { state.pool.unsubscribe(theaterDonationInvoiceReceiptSubId); } catch (_) {}
+      }
+      theaterDonationInvoiceReceiptSubId = null;
+    }
+
+    function completeTheaterExternalLightningInvoice(invoice, details = {}) {
+      const expectedInvoice = String(invoice || '').trim().toLowerCase();
+      if (!expectedInvoice || String(theaterDonationExternalInvoice || '').trim().toLowerCase() !== expectedInvoice) return;
+      if (theaterDonationInvoiceExpiresAt && Date.now() >= theaterDonationInvoiceExpiresAt) return;
+      const expectedContext = String(details.streamAddress || '');
+      if (!expectedContext || theaterDonationContext.streamAddress !== expectedContext) return;
+      const modal = qs('#theaterDonationModal');
+      if (!modal || !modal.classList.contains('open')) return;
+
+      const sats = Math.max(0, Math.floor(Number(details.amountSats || 0)));
+      const hostLabel = String(details.hostLabel || 'the recipient').trim() || 'the recipient';
+      stopTheaterLightningInvoiceReceiptWatch();
+      playTheaterDonationSuccessSound();
+      window.closeTheaterDonation();
+      showTheaterDonationResult(
+        true,
+        'Lightning donation successful',
+        (sats ? formatCount(sats) + ' sats was received by ' : 'A Lightning donation was received by ') +
+          hostLabel + '. Payment was confirmed by a NIP-57 zap receipt.'
+      );
+    }
+
+    function startTheaterLightningInvoiceReceiptWatch(invoice, opts = {}) {
+      stopTheaterLightningInvoiceReceiptWatch();
+      const cleanInvoice = String(invoice || '').trim();
+      const invoiceKey = cleanInvoice.toLowerCase();
+      const expectedPubkey = normalizePubkeyHex(opts.receiptPubkey || '');
+      if (!cleanInvoice || !invoiceKey || !opts.usedZap || !expectedPubkey || !state.pool) return;
+
+      const watcherToken = theaterDonationInvoiceReceiptToken;
+      const expectedContext = String(theaterDonationContext.streamAddress || '');
+      const amountSats = Math.max(0, Math.floor(Number(opts.amountSats || 0)));
+      const hostLabel = String(opts.hostLabel || theaterDonationContext.hostName || '').trim();
+      const expiryAt = Number(theaterDonationInvoiceExpiresAt || 0);
+      if (!expectedContext || !expiryAt || expiryAt <= Date.now()) return;
+
+      try {
+        theaterDonationInvoiceReceiptSubId = state.pool.subscribe(
+          [{ kinds: [KIND_ZAP_RECEIPT], '#bolt11': [invoiceKey], limit: 10 }],
+          {
+            event: (ev) => {
+              if (watcherToken !== theaterDonationInvoiceReceiptToken || !ev || Number(ev.kind || 0) !== KIND_ZAP_RECEIPT) return;
+              if (normalizePubkeyHex(ev.pubkey || '') !== expectedPubkey) return;
+              const receivedInvoice = String(firstTagValue(ev.tags, 'bolt11') || '').trim().toLowerCase();
+              if (!receivedInvoice || receivedInvoice !== invoiceKey) return;
+              completeTheaterExternalLightningInvoice(cleanInvoice, {
+                amountSats,
+                hostLabel,
+                streamAddress: expectedContext
+              });
+            },
+            eose: () => {}
+          }
+        );
+      } catch (err) {
+        console.warn('Could not watch for an external Lightning invoice receipt:', err && err.message ? err.message : err);
+        stopTheaterLightningInvoiceReceiptWatch();
+        return;
+      }
+
+      theaterDonationInvoiceReceiptTimer = setTimeout(() => {
+        if (watcherToken === theaterDonationInvoiceReceiptToken) stopTheaterLightningInvoiceReceiptWatch();
+      }, Math.max(1000, expiryAt - Date.now() + 1500));
     }
 
     function getTheaterDonationInvoiceExpiresAt(invoice) {
@@ -27289,6 +27370,7 @@ window.saveAppSettings = function () {
       const remaining = Math.ceil((theaterDonationInvoiceExpiresAt - Date.now()) / 1000);
       if (remaining <= 0) {
         clearTheaterDonationInvoiceTimer();
+        stopTheaterLightningInvoiceReceiptWatch();
         theaterDonationExternalInvoice = '';
         theaterDonationInvoiceExpiresAt = 0;
         const addressEl = qs('#theaterDonationLightningAddress');
@@ -27318,10 +27400,11 @@ window.saveAppSettings = function () {
       timerEl.textContent = 'Invoice expires in ' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
     }
 
-    function displayTheaterLightningInvoice(invoice) {
+    function displayTheaterLightningInvoice(invoice, options = {}) {
       const cleanInvoice = String(invoice || '').trim();
       if (!cleanInvoice) throw new Error('The Lightning address did not return an invoice.');
       clearTheaterDonationInvoiceTimer();
+      stopTheaterLightningInvoiceReceiptWatch();
       theaterDonationExternalInvoice = cleanInvoice;
       theaterDonationInvoiceExpiresAt = getTheaterDonationInvoiceExpiresAt(cleanInvoice);
       const addressEl = qs('#theaterDonationLightningAddress');
@@ -27347,7 +27430,15 @@ window.saveAppSettings = function () {
       renderTheaterLightningQrPayload(cleanInvoice);
       if (status) status.textContent = '';
       updateTheaterLightningInvoiceCountdown();
-      if (theaterDonationExternalInvoice) theaterDonationInvoiceTimer = setInterval(updateTheaterLightningInvoiceCountdown, 1000);
+      if (theaterDonationExternalInvoice) {
+        theaterDonationInvoiceTimer = setInterval(updateTheaterLightningInvoiceCountdown, 1000);
+        startTheaterLightningInvoiceReceiptWatch(cleanInvoice, {
+          usedZap: !!options.usedZap,
+          receiptPubkey: options.receiptPubkey || '',
+          amountSats: options.amountSats,
+          hostLabel: options.hostLabel
+        });
+      }
     }
 
     let theaterDonationContext = {
@@ -27878,6 +27969,7 @@ window.saveAppSettings = function () {
       const loading = qs('#theaterDonationLoading');
       const fallback = qs('#theaterDonationExternalWalletFallback');
       clearTheaterDonationInvoiceTimer();
+      stopTheaterLightningInvoiceReceiptWatch();
       if (btn) {
         btn.disabled = false;
         btn.textContent = 'Send donation (via NWC)';
@@ -28295,7 +28387,9 @@ window.saveAppSettings = function () {
       if (loading) loading.hidden = false;
       if (loadingText) loadingText.textContent = 'Creating the Lightning donation invoice…';
       if (fallback) fallback.hidden = true;
+      stopTheaterLightningInvoiceReceiptWatch();
       theaterDonationExternalInvoice = '';
+      theaterDonationInvoiceExpiresAt = 0;
       if (nwcButton) nwcButton.disabled = true;
       if (extensionButton) extensionButton.disabled = true;
       if (method === 'nwc' && nwcButton) nwcButton.textContent = 'Preparing NWC donation…';
@@ -28320,20 +28414,29 @@ window.saveAppSettings = function () {
         } else {
           const invoice = String(generated.invoice || '').trim();
           if (!invoice) throw new Error('The Lightning wallet did not return a payment invoice.');
-          theaterDonationExternalInvoice = invoice;
-          const externalLink = qs('#theaterDonationExternalWalletLink');
-          if (externalLink) externalLink.href = 'lightning:' + invoice;
-          if (fallback) fallback.hidden = false;
-          if (loading) loading.hidden = true;
-          if (status) status.textContent = 'Invoice created. Opening your Lightning wallet… If it does not open, use the controls below. Sifaka cannot confirm payment made in another app.';
+          displayTheaterLightningInvoice(invoice, {
+            usedZap: !!generated.usedZap,
+            receiptPubkey: generated.receiptPubkey || '',
+            amountSats,
+            hostLabel: getTheaterDonationHostLabel(stream, profile)
+          });
+          if (status) status.textContent = generated.usedZap && generated.receiptPubkey
+            ? 'Invoice ready. Waiting for the recipient’s Nostr zap receipt to confirm payment.'
+            : 'Invoice ready. Complete payment in your wallet. This Lightning address does not provide a verifiable zap receipt for automatic confirmation.';
           try { window.location.href = 'lightning:' + invoice; } catch (_) {}
           return;
         }
         const walletLabel = method === 'nwc' ? 'Nostr Wallet Connect (NWC)' : 'your Lightning wallet extension';
         const zapLabel = generated.usedZap ? ' NIP-57 zap.' : '';
+        const donationContextKey = String(theaterDonationContext.streamAddress || '');
+        const recipientLabel = getTheaterDonationHostLabel(stream, profile);
+        const successDetail = formatCount(amountSats) + ' sats was sent to ' + recipientLabel + '.';
         if (status) status.textContent = 'Donation sent successfully via ' + walletLabel + '.' + zapLabel;
         playTheaterDonationSuccessSound();
-        showTheaterDonationResult(true, 'Lightning donation successful', formatCount(amountSats) + ' sats was sent to ' + getTheaterDonationHostLabel(stream, profile) + '.');
+        if (donationContextKey && theaterDonationContext.streamAddress === donationContextKey) {
+          window.closeTheaterDonation();
+        }
+        showTheaterDonationResult(true, 'Lightning donation successful', successDetail);
       } catch (err) {
         console.warn('Lightning donation failed:', err && err.message ? err.message : err);
         const failureText = err?.message || (method === 'nwc' ? 'NWC could not complete the donation.' : 'The Lightning wallet extension could not complete the donation.');
@@ -28365,6 +28468,7 @@ window.saveAppSettings = function () {
       if (!targetPubkey) { if (status) status.textContent = 'The streamer public key is not available yet.'; return; }
 
       clearTheaterDonationInvoiceTimer();
+      stopTheaterLightningInvoiceReceiptWatch();
       theaterDonationExternalInvoice = '';
       theaterDonationInvoiceExpiresAt = 0;
       if (fallback) fallback.hidden = true;
@@ -28376,6 +28480,7 @@ window.saveAppSettings = function () {
         generateButton.disabled = true;
         generateButton.textContent = 'Generating…';
       }
+      prepareTheaterDonationAudio();
       try {
         const generated = await createLightningDonationInvoiceForLud16(
           lud16, amountSats * 1000, targetPubkey,
@@ -28384,7 +28489,12 @@ window.saveAppSettings = function () {
           ],
           zapMessage
         );
-        displayTheaterLightningInvoice(generated && generated.invoice);
+        displayTheaterLightningInvoice(generated && generated.invoice, {
+          usedZap: !!(generated && generated.usedZap),
+          receiptPubkey: generated && generated.receiptPubkey || '',
+          amountSats,
+          hostLabel: getTheaterDonationHostLabel(stream, profile)
+        });
       } catch (err) {
         console.warn('Lightning invoice generation failed:', err && err.message ? err.message : err);
         const failureText = err?.message || 'Could not generate a Lightning invoice.';
