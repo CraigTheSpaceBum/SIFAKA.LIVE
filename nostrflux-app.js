@@ -10882,11 +10882,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (opts.render !== false && isVideosPageVisible()) scheduleVideosPageRender(0);
   }
 
-  function buildVideoArchiveCard(stream, idx) {
+  function buildVideoArchiveCard(stream, idx, opts = {}) {
     const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '') || String(stream.hostPubkey || stream.pubkey || '').trim().toLowerCase();
     const profile = profileFor(hostPubkey);
     const card = document.createElement('article');
     card.className = 'video-archive-card';
+    if (opts.mobileReel) card.classList.add('mobile-reel-card');
+    card.dataset.nip71Kind = String(Number(stream.nip71Kind || 0));
     if (hostPubkey) card.dataset.hostPubkey = hostPubkey;
 
     const gradients = ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8'];
@@ -10977,6 +10979,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return card;
   }
 
+  let mobileNostrReelsRenderKey = null;
+  function renderMobileNostrReels(reels) {
+    const grid = qs('#mobileNostrReelsGrid');
+    if (!grid) return;
+    const list = (Array.isArray(reels) ? reels : []).slice(0,14);
+    const key = list.map((entry) => String(entry && (entry.id || entry.address || entry.created_at) || '')).join('|');
+    if (mobileNostrReelsRenderKey === key && grid.childElementCount) return;
+    mobileNostrReelsRenderKey = key;
+    if (state.videoThumbObserver) qsa('.video-archive-thumb-video', grid).forEach((el) => { try { state.videoThumbObserver.unobserve(el); } catch (_) {} });
+    grid.innerHTML = '';
+    if (!list.length) {
+      const empty = document.createElement('div'); empty.className='videos-empty';
+      empty.textContent='No Nostr Reels yet. Reels will appear here as they arrive from relays.';
+      grid.appendChild(empty); return;
+    }
+    ensureProfilesForStreams(list);
+    const fragment = document.createDocumentFragment();
+    list.forEach((stream,index) => fragment.appendChild(buildVideoArchiveCard(stream,index,{mobileReel:true})));
+    grid.appendChild(fragment);
+  }
+
   function renderVideosPage() {
     const grid = qs('#videosGrid');
     const countPill = qs('#videosCountPill');
@@ -10994,6 +11017,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const nip71Videos = buckets.nip71Videos;
     const nip71Reels = buckets.nip71Reels;
     const allVideos = buckets.allVideos;
+    renderMobileNostrReels(nip71Reels);
     const counts = {
       all: allVideos.length,
       'watch-party': watchParty.length,
@@ -19113,6 +19137,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function setUserUi() {
+    const feedComposer = qs('#nostrFeedComposer');
+    if (feedComposer) feedComposer.hidden = !state.user;
     updateTheaterChatComposerVisibility();
     const theaterDonationBtn = qs('#theaterZapBtn');
     if (theaterDonationBtn) {
@@ -24119,6 +24145,11 @@ function renderProfileFeed(pubkey) {
 
     window.showPage = function (p, opts = {}) {
       const routeMode = opts.routeMode || 'push';
+      const feedVideosWorkspace = p === 'feed' || p === 'videos';
+      if (document.body) {
+        document.body.classList.toggle('feed-videos-workspace', feedVideosWorkspace);
+        if (!feedVideosWorkspace) document.body.classList.remove('feed-videos-show-library-mobile');
+      }
       const home = qs('#homePage');
       const video = qs('#videoPage');
       const profile = qs('#profilePage');
@@ -24155,7 +24186,7 @@ function renderProfileFeed(pubkey) {
       if (p === 'videos' && Object.prototype.hasOwnProperty.call(opts, 'videosFilter')) {
         setVideosFilterInternal(opts.videosFilter, { render: false });
       }
-      if (p !== 'videos' && typeof window.closeVideoPostModal === 'function') {
+      if (!feedVideosWorkspace && typeof window.closeVideoPostModal === 'function') {
         window.closeVideoPostModal();
       }
       if (p === 'feed' && routeMode !== 'skip') syncFeedRoute(routeMode);
@@ -24174,9 +24205,9 @@ function renderProfileFeed(pubkey) {
       if (video) video.style.display = 'none';
       if (profile) profile.style.display = 'none';
       if (profileThread) profileThread.style.display = 'none';
-      if (videos) videos.style.display = p === 'videos' ? 'block' : 'none';
+      if (videos) videos.style.display = feedVideosWorkspace ? 'block' : 'none';
       if (podcastRadio) podcastRadio.style.display = p === 'podcastRadio' ? 'block' : 'none';
-      if (feed) feed.style.display = p === 'feed' ? 'block' : 'none';
+      if (feed) feed.style.display = feedVideosWorkspace ? 'block' : 'none';
       if (notifications) notifications.style.display = p === 'notifications' ? 'block' : 'none';
       if (communities) communities.style.display = p === 'communities' ? 'block' : 'none';
       if (messages) messages.style.display = p === 'messages' ? 'block' : 'none';
@@ -24208,7 +24239,7 @@ function renderProfileFeed(pubkey) {
         const streams = heroFeaturedStreams();
         if (streams.length) startHeroCycle();
         renderLiveGrid();
-      } else if (p === 'videos') {
+      } else if (feedVideosWorkspace) {
         ensureHomeLiveSubscription();
         stopHeroCycle();
         stopAllAudio(null);
@@ -24226,7 +24257,7 @@ function renderProfileFeed(pubkey) {
         stopHeroCycle();
         stopAllAudio(null);
       }
-      if (p === 'feed') {
+      if (feedVideosWorkspace) {
         subscribeNostrFeed();
       } else {
         stopNotificationsSubscription();
@@ -24260,6 +24291,7 @@ function renderProfileFeed(pubkey) {
 
     window.showVideoPage = function (opts = {}) {
       const routeMode = opts.routeMode || 'replace';
+      if (document.body) document.body.classList.remove('feed-videos-workspace', 'feed-videos-show-library-mobile');
       if (typeof window.closeVideoPostModal === 'function') window.closeVideoPostModal();
       const home = qs('#homePage');
       const video = qs('#videoPage');
@@ -24312,6 +24344,7 @@ function renderProfileFeed(pubkey) {
 
     window.showProfile = function (name, av, npub, nip05, rawPubkey, opts = {}) {
       const routeMode = opts.routeMode || 'push';
+      if (document.body) document.body.classList.remove('feed-videos-workspace', 'feed-videos-show-library-mobile');
       if (typeof window.closeVideoPostModal === 'function') window.closeVideoPostModal();
       const home = qs('#homePage');
       const video = qs('#videoPage');
@@ -24490,6 +24523,86 @@ function renderProfileFeed(pubkey) {
     window.setNostrFeedFilterFromSelect = function (filterId) {
       setNostrFeedFilterInternal(filterId);
     };
+
+    window.toggleMobileVideoLibrary = function () {
+      if (!document.body) return;
+      const showLibrary = !document.body.classList.contains('feed-videos-show-library-mobile');
+      document.body.classList.toggle('feed-videos-show-library-mobile', showLibrary);
+      if (showLibrary) scheduleVideosPageRender(0);
+      else window.scrollTo(0, 0);
+    };
+
+    window.updateNostrFeedComposerType = function (value) {
+      const type = ['post','article','poll','calendar'].includes(String(value || '')) ? String(value) : 'post';
+      const show = (id, yes) => { const el=qs('#'+id); if(el)el.hidden=!yes; };
+      show('nostrFeedComposerTitleWrap',type==='article'||type==='calendar');
+      show('nostrFeedComposerSummaryWrap',type==='article'||type==='calendar');
+      show('nostrFeedComposerImageWrap',type==='article'||type==='calendar');
+      show('nostrFeedComposerPollFields',type==='poll');
+      show('nostrFeedComposerCalendarFields',type==='calendar');
+      const body=qs('#nostrFeedComposerContent');
+      if(body)body.placeholder=type==='article'?'Write your article in Markdown…':(type==='poll'?'Enter your poll question…':(type==='calendar'?'Describe the event…':'What’s on your mind?'));
+      if(type==='calendar'){
+        const start=qs('#nostrFeedComposerStart'),end=qs('#nostrFeedComposerEnd'),timezone=qs('#nostrFeedComposerTimezone');
+        const asInputTime=(stamp)=>new Date(stamp-new Date(stamp).getTimezoneOffset()*60000).toISOString().slice(0,16);
+        const now=Date.now();if(start&&!start.value)start.value=asInputTime(now+3600000);
+        if(end&&!end.value&&start&&start.value){const ms=new Date(start.value).getTime();if(Number.isFinite(ms))end.value=asInputTime(ms+3600000);}
+        if(timezone&&!timezone.value){try{timezone.value=Intl.DateTimeFormat().resolvedOptions().timeZone||'';}catch(_){}}
+      }
+    };
+
+    window.publishNostrFeedEvent = async function () {
+      if(!state.user){window.openLogin();return;}
+      const type=String(qs('#nostrFeedComposerType')?.value||'post');
+      const contentEl=qs('#nostrFeedComposerContent'),button=qs('#nostrFeedComposerPublishBtn'),status=qs('#nostrFeedComposerStatus');
+      const content=String(contentEl&&contentEl.value||'').trim(),title=String(qs('#nostrFeedComposerTitle')?.value||'').trim();
+      const summary=String(qs('#nostrFeedComposerSummary')?.value||'').trim(),safeLink=(value)=>safeHrefFromUrl(String(value||'').trim());
+      const tags=[];let kind=1;const now=Math.floor(Date.now()/1000);
+      const writeStatus=(message,style)=>{if(status){status.textContent=message;status.classList.toggle('is-error',style==='error');status.classList.toggle('is-success',style==='success');}};
+      const addHashtags=(value)=>{const seen=new Set();String(value||'').replace(/#([a-zA-Z0-9_]{1,40})/g,(match,raw)=>{const tag=String(raw||'').toLowerCase();if(tag&&!seen.has(tag)){seen.add(tag);tags.push(['t',tag]);}return match;});};
+      if(!content){writeStatus(type==='poll'?'Enter a poll question first.':'Write some content before publishing.','error');return;}
+      if(type==='article'){
+        if(!title){writeStatus('Articles need a title.','error');return;}
+        kind=30023;tags.push(['d','article-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8)],['title',title],['published_at',String(now)]);
+        if(summary)tags.push(['summary',summary]);const image=safeLink(qs('#nostrFeedComposerImage')?.value||'');if(image)tags.push(['image',image]);addHashtags(title+'\n'+summary+'\n'+content);
+      }else if(type==='poll'){
+        kind=1068;const options=String(qs('#nostrFeedComposerPollOptions')?.value||'').trim().split(/\r?\n/).map(line=>line.trim()).filter(Boolean).slice(0,8);
+        if(options.length<2){writeStatus('A poll needs at least two options, one per line.','error');return;}
+        const relays=Array.isArray(state.pool&&state.pool.urls)?state.pool.urls.filter(url=>/^wss?:\/\//i.test(String(url||''))).slice(0,8):[];
+        if(!relays.length){writeStatus('Connect to a relay before publishing a poll.','error');return;}
+        options.forEach((label,index)=>tags.push(['option',String(index+1),label.slice(0,240)]));relays.forEach(url=>tags.push(['relay',String(url)]));
+        tags.push(['polltype',String(qs('#nostrFeedComposerPollType')?.value||'singlechoice')]);const expiry=Number(qs('#nostrFeedComposerPollExpiry')?.value||604800);if(expiry>0)tags.push(['endsAt',String(now+Math.floor(expiry))]);addHashtags(content);
+      }else if(type==='calendar'){
+        if(!title){writeStatus('Calendar events need a title.','error');return;}
+        const startValue=String(qs('#nostrFeedComposerStart')?.value||''),endValue=String(qs('#nostrFeedComposerEnd')?.value||'');
+        const startMs=startValue?new Date(startValue).getTime():NaN,endMs=endValue?new Date(endValue).getTime():NaN;
+        if(!Number.isFinite(startMs)){writeStatus('Choose a valid start date and time.','error');return;}
+        if(endValue&&(!Number.isFinite(endMs)||endMs<=startMs)){writeStatus('The end time must be after the start.','error');return;}
+        kind=31923;tags.push(['d','event-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8)],['title',title],['start',String(Math.floor(startMs/1000))]);
+        let timezone=String(qs('#nostrFeedComposerTimezone')?.value||'').trim();if(!timezone){try{timezone=Intl.DateTimeFormat().resolvedOptions().timeZone||'';}catch(_){}}
+        if(timezone)tags.push(['start_tzid',timezone]);if(endValue){tags.push(['end',String(Math.floor(endMs/1000))]);if(timezone)tags.push(['end_tzid',timezone]);}
+        if(summary)tags.push(['summary',summary]);const image=safeLink(qs('#nostrFeedComposerImage')?.value||'');if(image)tags.push(['image',image]);
+        const location=String(qs('#nostrFeedComposerLocation')?.value||'').trim();if(location)tags.push(['location',location]);
+        const geohash=String(qs('#nostrFeedComposerGeohash')?.value||'').trim().toLowerCase();if(/^[0123456789bcdefghjkmnpqrstuvwxyz]{1,12}$/.test(geohash))tags.push(['g',geohash]);
+        const link=safeLink(qs('#nostrFeedComposerLink')?.value||'');if(link)tags.push(['r',link]);
+        const rawPeople=String(qs('#nostrFeedComposerParticipants')?.value||'').trim();
+        if(rawPeople){try{await ensureNostrTools();}catch(_){}const owner=normalizePubkeyHex(state.user.pubkey||''),seen=new Set([owner]);for(const token of rawPeople.split(/[\s,]+/).filter(Boolean).slice(0,60)){
+          let person=normalizePubkeyHex(token);if(!person&&window.NostrTools&&window.NostrTools.nip19){try{const decoded=window.NostrTools.nip19.decode(token);if(decoded&&decoded.type==='npub')person=normalizePubkeyHex(decoded.data||'');else if(decoded&&decoded.type==='nprofile')person=normalizePubkeyHex(decoded.data&&decoded.data.pubkey||'');}catch(_){}}
+          if(person&&!seen.has(person)){seen.add(person);tags.push(['p',person,'','participant']);}
+        }}
+        addHashtags(title+'\n'+summary+'\n'+content);
+      }else addHashtags(content);
+      if(button){button.disabled=true;button.textContent='Publishing…';}writeStatus('Signing and publishing to relays…');
+      try{
+        const signed=await signAndPublish(kind,content,tags);
+        if(signed&&signed.id){state.nostrFeedEventsById.set(signed.id,signed);syncNostrFeedProfileMapFromEvents();if(isFeedPageVisible())scheduleNostrFeedRender();}
+        if(contentEl)contentEl.value='';
+        ['nostrFeedComposerTitle','nostrFeedComposerSummary','nostrFeedComposerImage','nostrFeedComposerPollOptions','nostrFeedComposerParticipants','nostrFeedComposerLocation','nostrFeedComposerGeohash','nostrFeedComposerLink','nostrFeedComposerStart','nostrFeedComposerEnd'].forEach(id=>{const field=qs('#'+id);if(field)field.value='';});
+        writeStatus(kind===30023?'Article published.':(kind===1068?'Poll published.':(kind===31923?'Calendar event published.':'Post published.')),'success');
+      }catch(error){writeStatus(error&&error.message?error.message:'Could not publish this event.','error');}
+      finally{if(button){button.disabled=false;button.textContent='Publish';}}
+    };
+
 
     // Close list filter dropdown when clicking outside
     document.addEventListener('click', (e) => {
