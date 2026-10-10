@@ -16545,7 +16545,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (standaloneEntity && (standaloneEntity[1].startsWith('nevent1') || standaloneEntity[1].startsWith('note1') || standaloneEntity[1].startsWith('naddr1'))) {
         flushParagraph();
         closeList();
-        _appendNostrEntityToNode(frag, standaloneEntity[1], standaloneEntity[0], { allowEventEmbeds: true });
+        _appendNostrEntityToNode(frag, standaloneEntity[1], standaloneEntity[0], { allowEventEmbeds: true, profilePost: !!opts.profilePost });
         return;
       }
 
