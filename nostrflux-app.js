@@ -5463,6 +5463,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return normalized.toLowerCase() === '/videos';
   }
 
+  function isPodcastRadioPath(pathname) {
+    const raw = (pathname || '/').trim();
+    const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
+    return normalized.toLowerCase() === '/podcast-radio';
+  }
+
   function isCommunitiesRootPath(pathname) {
     const raw = (pathname || '/').trim();
     const normalized = raw === '' ? '/' : (raw.replace(/\/+$/, '') || '/');
@@ -6014,6 +6020,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
   }
 
+  function syncPodcastRadioRoute(mode = 'push') {
+    if (!window.history || !window.history.pushState) return;
+    if (isPodcastRadioPath(window.location.pathname)) return;
+    const method = mode === 'replace' ? 'replaceState' : 'pushState';
+    try {
+      window.history[method]({ view: 'podcastRadio' }, '', '/podcast-radio');
+    } catch (_) {}
+  }
+
   function syncCommunitiesRoute(mode = 'push') {
     if (!window.history || !window.history.pushState) return;
     if (isCommunitiesRootPath(window.location.pathname)) return;
@@ -6172,6 +6187,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (window.showPage) window.showPage('videos', { routeMode: 'skip', videosFilter: 'all' });
   }
 
+  function showPodcastRadioFromRoute() {
+    if (window.showPage) window.showPage('podcastRadio', { routeMode: 'skip' });
+  }
+
   function showCommunitiesFromRoute() {
     if (window.showPage) window.showPage('communities', { routeMode: 'skip' });
   }
@@ -6216,6 +6235,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (isVideosPath(window.location.pathname)) {
       showVideosFromRoute();
+      return;
+    }
+    if (isPodcastRadioPath(window.location.pathname)) {
+      showPodcastRadioFromRoute();
       return;
     }
     if (isCommunitiesPath(window.location.pathname)) {
@@ -9661,6 +9684,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     }
     if (didStore) updateGoLiveButtonState();
+    if (didStore && isPodcastRadioPageActive()) renderPodcastRadioGrid();
     if (didStore) pruneRuntimeMemoryCaches();
     return didStore;
   }
@@ -14136,7 +14160,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     // Only show streams that have a browser-playable HTTP(S) URL
     const allStreams = sortedLiveStreams().filter((s) => {
       const url = (s.streaming || '').trim();
-      return url && /^https?:\/\//i.test(url);
+      return url && /^https?:\/\//i.test(url) && !isAudioOnlyStream(s);
     });
     const filterPubkeys = getPubkeysForFilter();
     return filterPubkeys
@@ -14241,6 +14265,417 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
      ========================================================= */
   const HERO_CYCLE_MS = 120000;
 
+  let podcastRadioRenderSignature = '';
+  let podcastRadioRenderPage = 0;
+  let podcastRadioObserver = null;
+
+  function isPodcastRadioPageActive() {
+    const page = qs('#podcastRadioPage');
+    return !!(page && page.style.display === 'block');
+  }
+
+  function getPodcastRadioStreams() {
+    return Array.from(state.streamsByAddress.values())
+      .filter((stream) => normalizeStreamStatus(stream.status) !== 'ended')
+      .filter((stream) => isAudioOnlyStream(stream))
+      .filter((stream) => /^https?:\/\//i.test(String(stream.streaming || '').trim()))
+      .sort((a, b) => {
+        const offlineA = isStreamPlaybackOffline(a && a.address);
+        const offlineB = isStreamPlaybackOffline(b && b.address);
+        if (offlineA !== offlineB) return offlineA ? 1 : -1;
+        const viewers = effectiveParticipants(b) - effectiveParticipants(a);
+        return viewers || Number(b.created_at || 0) - Number(a.created_at || 0);
+      });
+  }
+
+  function buildPodcastRadioCard(stream, index) {
+    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+    const profile = profileFor(hostPubkey);
+    const card = document.createElement('article');
+    card.className = 'stream-card podcast-radio-card';
+    card.dataset.hostPubkey = hostPubkey;
+    card.dataset.streamAddress = String(stream.address || '');
+
+    const thumb = document.createElement('div');
+    thumb.className = 'ct';
+    const inner = document.createElement('div');
+    inner.className = 'ct-inner';
+    thumb.appendChild(inner);
+    const badge = document.createElement('div');
+    badge.className = 'cb-live podcast-radio-card-badge';
+    badge.textContent = '♫ PODCAST RADIO';
+    thumb.appendChild(badge);
+
+    const content = document.createElement('div');
+    content.className = 'ci';
+    const row = document.createElement('div');
+    row.className = 'ci-row';
+    const avatar = document.createElement('div');
+    avatar.className = 'ci-av';
+    const copy = document.createElement('div');
+    copy.className = 'podcast-radio-card-copy';
+    const title = document.createElement('div');
+    title.className = 'ci-title';
+    title.textContent = String(stream.title || 'Untitled audio stream');
+    const host = document.createElement('div');
+    host.className = 'ci-host';
+    host.textContent = profile.display_name || profile.name || shortHex(hostPubkey);
+    copy.appendChild(title);
+    copy.appendChild(host);
+    row.appendChild(avatar);
+    row.appendChild(copy);
+    content.appendChild(row);
+
+    const summary = document.createElement('div');
+    summary.className = 'podcast-radio-card-summary';
+    summary.textContent = String(stream.summary || 'Audio-only stream. Select to listen and open live chat.');
+    content.appendChild(summary);
+    const listen = document.createElement('button');
+    listen.className = 'podcast-radio-listen-btn';
+    listen.type = 'button';
+    listen.textContent = '▶  Listen & open chat';
+    content.appendChild(listen);
+    card.appendChild(thumb);
+    card.appendChild(content);
+
+    const renderIdentity = () => {
+      const fresh = profileFor(hostPubkey);
+      setAvatarEl(avatar, fresh.picture || '', pickAvatar(hostPubkey));
+      const verified = getVerifiedNip05ForPubkey(hostPubkey, fresh.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+      avatar.classList.toggle('nip05-square', !!verified);
+      host.textContent = fresh.display_name || fresh.name || shortHex(hostPubkey);
+    };
+    renderIdentity();
+    renderStreamThumbnail(inner, stream, profile, index);
+    if (hostPubkey && (!profile || (!profile.__hydrated && !profile.picture && !profile.name && !profile.display_name))) {
+      fetchProfileIfNeeded(hostPubkey, { skipNip05: true }).then(() => {
+        if (!document.body.contains(card)) return;
+        renderIdentity();
+        renderStreamThumbnail(inner, stream, profileFor(hostPubkey), index);
+      }).catch(() => {});
+    }
+
+    const open = () => openStream(stream.address);
+    card.addEventListener('click', open);
+    listen.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      open();
+    });
+    return card;
+  }
+
+  function loadMorePodcastRadioStreams() {
+    const grid = qs('#podcastRadioGrid');
+    if (!grid) return;
+    const streams = getPodcastRadioStreams();
+    const start = podcastRadioRenderPage * (state.GRID_PAGE_SIZE || 24);
+    if (start >= streams.length) {
+      if (podcastRadioObserver) { podcastRadioObserver.disconnect(); podcastRadioObserver = null; }
+      const sentinel = qs('#podcastRadioGridSentinel');
+      if (sentinel) sentinel.remove();
+      return;
+    }
+    const batch = streams.slice(start, start + (state.GRID_PAGE_SIZE || 24));
+    batch.forEach((stream, i) => grid.appendChild(buildPodcastRadioCard(stream, start + i)));
+    podcastRadioRenderPage += 1;
+    if (start + batch.length >= streams.length && podcastRadioObserver) {
+      podcastRadioObserver.disconnect();
+      podcastRadioObserver = null;
+      const sentinel = qs('#podcastRadioGridSentinel');
+      if (sentinel) sentinel.remove();
+    }
+  }
+
+  function renderPodcastRadioGrid() {
+    const grid = qs('#podcastRadioGrid');
+    const count = qs('#podcastRadioCountPill');
+    if (!grid) return;
+    const streams = getPodcastRadioStreams();
+    const signature = streams.map((stream) => [
+      stream.address, stream.id, stream.created_at, stream.status, stream.streaming, stream.image,
+      stream.title, stream.summary, stream.participants
+    ].join('|')).join('||');
+    if (signature === podcastRadioRenderSignature
+        && (grid.querySelector('.podcast-radio-card') || grid.querySelector('.podcast-radio-empty'))) return;
+    const restoreScrollY = isPodcastRadioPageActive() ? window.scrollY : null;
+    podcastRadioRenderSignature = signature;
+    podcastRadioRenderPage = 0;
+    if (podcastRadioObserver) { podcastRadioObserver.disconnect(); podcastRadioObserver = null; }
+    grid.innerHTML = '';
+    if (count) count.textContent = streams.length ? streams.length + (streams.length === 1 ? ' audio stream' : ' audio streams') : '';
+    const oldSentinel = qs('#podcastRadioGridSentinel');
+    if (oldSentinel) oldSentinel.remove();
+    if (!streams.length) {
+      grid.innerHTML = '<div class="podcast-radio-empty"><div class="podcast-radio-empty-icon">♫</div><strong>No audio-only streams found</strong><span>MPGA, MP3, M4A, OGG, WAV, FLAC, AAC, and audio MIME URLs appear here when discovered on your connected relays.</span></div>';
+      return;
+    }
+    const batch = streams.slice(0, state.GRID_PAGE_SIZE || 24);
+    batch.forEach((stream, i) => grid.appendChild(buildPodcastRadioCard(stream, i)));
+    podcastRadioRenderPage = 1;
+    if (streams.length > batch.length) {
+      const sentinel = document.createElement('div');
+      sentinel.id = 'podcastRadioGridSentinel';
+      sentinel.className = 'live-grid-sentinel';
+      grid.parentNode.appendChild(sentinel);
+      if ('IntersectionObserver' in window) {
+        podcastRadioObserver = new IntersectionObserver((entries) => {
+          if (!entries[0].isIntersecting || !isPodcastRadioPageActive()) return;
+          loadMorePodcastRadioStreams();
+        }, { rootMargin: '220px' });
+        podcastRadioObserver.observe(sentinel);
+      }
+    }
+    if (restoreScrollY !== null) window.scrollTo(0, restoreScrollY);
+  }
+
+  function clearPodcastMediaSession() {
+    if (!navigator.mediaSession) return;
+    ['play','pause','stop','seekto','seekbackward','seekforward','previoustrack','nexttrack'].forEach((action) => {
+      try { navigator.mediaSession.setActionHandler(action, null); } catch (_) {}
+    });
+    try { navigator.mediaSession.metadata = null; } catch (_) {}
+    try { navigator.mediaSession.playbackState = 'none'; } catch (_) {}
+  }
+
+  function openAdjacentPodcastStream(address, direction) {
+    const streams = getPodcastRadioStreams();
+    if (!streams.length) return;
+    const index = streams.findIndex((stream) => stream.address === address);
+    const nextIndex = index < 0 ? 0 : (index + direction + streams.length) % streams.length;
+    openStream(streams[nextIndex].address);
+  }
+
+  function formatPodcastPlayerTime(seconds) {
+    const value = Math.max(0, Math.floor(Number(seconds) || 0));
+    const minutes = Math.floor(value / 60);
+    return minutes + ':' + String(value % 60).padStart(2, '0');
+  }
+
+  function renderPodcastRadioTheaterPlayer(stream, playerBg, playerUi, address, url) {
+    const hostPubkey = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+    const profile = profileFor(hostPubkey);
+    const artworkUrl = sanitizeMediaUrl(stream.image || '') || sanitizeMediaUrl(profile.picture || '');
+    const wrap = document.createElement('div');
+    wrap.className = 'podcast-theater-player';
+    const artwork = document.createElement('div');
+    artwork.className = 'podcast-theater-artwork';
+    artwork.setAttribute('role', 'img');
+    artwork.setAttribute('aria-label', (stream.title || 'Audio stream') + ' artwork');
+    if (artworkUrl) {
+      const imageEl = document.createElement('img');
+      imageEl.src = artworkUrl;
+      imageEl.alt = '';
+      imageEl.loading = 'eager';
+      imageEl.decoding = 'async';
+      imageEl.onerror = () => {
+        const fallback = sanitizeMediaUrl(profile.picture || '');
+        if (fallback && fallback !== imageEl.src) imageEl.src = fallback;
+        else { imageEl.remove(); artwork.classList.add('podcast-artwork-fallback'); artwork.textContent = '♫'; }
+      };
+      artwork.appendChild(imageEl);
+    } else {
+      artwork.classList.add('podcast-artwork-fallback');
+      artwork.textContent = '♫';
+    }
+
+    const details = document.createElement('div');
+    details.className = 'podcast-theater-details';
+    const podcastHead = document.createElement('div');
+    podcastHead.className = 'podcast-theater-top-row';
+    const eyebrow = document.createElement('div');
+    eyebrow.className = 'podcast-theater-eyebrow';
+    eyebrow.textContent = 'PODCAST RADIO';
+    podcastHead.appendChild(eyebrow);
+    const endButton = qs('#endStreamBtn');
+    const endButtonOriginalParent = endButton ? endButton.parentNode : null;
+    const endButtonOriginalNext = endButton ? endButton.nextSibling : null;
+    if (endButton && endButtonOriginalParent) podcastHead.appendChild(endButton);
+    const title = document.createElement('h2');
+    title.className = 'podcast-theater-title';
+    title.textContent = String(stream.title || 'Untitled audio stream');
+    const artist = document.createElement('div');
+    artist.className = 'podcast-theater-artist';
+    artist.textContent = profile.display_name || profile.name || shortHex(hostPubkey);
+    const subline = document.createElement('div');
+    subline.className = 'podcast-theater-subline';
+    subline.textContent = String(stream.summary || 'Audio-only Nostr stream');
+    const controls = document.createElement('div');
+    controls.className = 'podcast-theater-controls';
+    const play = document.createElement('button');
+    play.className = 'podcast-theater-play';
+    play.type = 'button';
+    play.textContent = '▶';
+    play.setAttribute('aria-label', 'Play audio');
+    const timeRow = document.createElement('div');
+    timeRow.className = 'podcast-theater-time-row';
+    const current = document.createElement('span');
+    current.textContent = '0:00';
+    const progress = document.createElement('input');
+    progress.type = 'range';
+    progress.min = '0';
+    progress.max = '1000';
+    progress.step = '1';
+    progress.value = '0';
+    progress.setAttribute('aria-label', 'Seek audio position');
+    const duration = document.createElement('span');
+    duration.textContent = '0:00';
+    timeRow.appendChild(current);
+    timeRow.appendChild(progress);
+    timeRow.appendChild(duration);
+    const volumeRow = document.createElement('div');
+    volumeRow.className = 'podcast-theater-volume-row';
+    const volumeIcon = document.createElement('span');
+    volumeIcon.textContent = '🔊';
+    volumeIcon.setAttribute('aria-hidden', 'true');
+    const volume = document.createElement('input');
+    volume.type = 'range';
+    volume.min = '0';
+    volume.max = '1';
+    volume.step = '.05';
+    volume.value = '.9';
+    volume.setAttribute('aria-label', 'Audio volume');
+    volumeRow.appendChild(volumeIcon);
+    volumeRow.appendChild(volume);
+    controls.appendChild(play);
+    const seekWrap = document.createElement('div');
+    seekWrap.className = 'podcast-theater-seek';
+    seekWrap.appendChild(timeRow);
+    controls.appendChild(seekWrap);
+    controls.appendChild(volumeRow);
+    const status = document.createElement('div');
+    status.className = 'podcast-theater-status';
+    status.setAttribute('aria-live', 'polite');
+    status.textContent = 'Loading audio…';
+    details.appendChild(podcastHead);
+    details.appendChild(title);
+    details.appendChild(artist);
+    details.appendChild(subline);
+    details.appendChild(controls);
+    details.appendChild(status);
+    wrap.appendChild(artwork);
+    wrap.appendChild(details);
+    playerBg.innerHTML = '';
+    playerBg.classList.add('podcast-theater-mode');
+    playerBg.appendChild(wrap);
+    if (playerUi) playerUi.style.display = 'none';
+
+    const audio = document.createElement('audio');
+    audio.setAttribute('data-podcast-radio-player', '1');
+    audio.preload = 'auto';
+    audio.autoplay = true;
+    audio.volume = 0.9;
+    audio.src = url;
+    audio.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;';
+    audio.setAttribute('aria-label', 'Audio player for ' + String(stream.title || 'Podcast Radio'));
+    playerBg.appendChild(audio);
+
+    const updateProgress = () => {
+      const total = Number(audio.duration || 0);
+      const currentTime = Number(audio.currentTime || 0);
+      current.textContent = formatPodcastPlayerTime(currentTime);
+      duration.textContent = Number.isFinite(total) && total > 0 ? formatPodcastPlayerTime(total) : '0:00';
+      if (!progress.matches(':active') && Number.isFinite(total) && total > 0) {
+        progress.value = String(Math.round((currentTime / total) * 1000));
+      }
+    };
+    const updatePlayButton = (isPlaying) => {
+      play.textContent = isPlaying ? 'Ⅱ' : '▶';
+      play.setAttribute('aria-label', isPlaying ? 'Pause audio' : 'Play audio');
+      if (navigator.mediaSession) {
+        try { navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'; } catch (_) {}
+      }
+    };
+    const tryPlay = async () => {
+      try {
+        await audio.play();
+        status.textContent = '';
+      } catch (_) {
+        status.textContent = 'Tap Play to start audio. Your browser may block automatic playback.';
+      }
+    };
+    play.addEventListener('click', () => {
+      if (audio.paused) tryPlay();
+      else audio.pause();
+    });
+    progress.addEventListener('input', () => {
+      const total = Number(audio.duration || 0);
+      if (Number.isFinite(total) && total > 0) {
+        audio.currentTime = total * (Number(progress.value || 0) / 1000);
+        updateProgress();
+      }
+    });
+    volume.addEventListener('input', () => { audio.volume = Number(volume.value); });
+    audio.addEventListener('loadedmetadata', updateProgress);
+    audio.addEventListener('durationchange', updateProgress);
+    audio.addEventListener('timeupdate', updateProgress);
+    audio.addEventListener('play', () => updatePlayButton(true));
+    audio.addEventListener('pause', () => updatePlayButton(false));
+    audio.addEventListener('playing', () => {
+      status.textContent = '';
+      startViewerPresence(address);
+      markStreamPlaybackOnline(address);
+      if (navigator.mediaSession) {
+        try { navigator.mediaSession.playbackState = 'playing'; } catch (_) {}
+      }
+    });
+    audio.addEventListener('waiting', () => { status.textContent = 'Buffering audio…'; });
+    audio.addEventListener('error', () => {
+      status.textContent = 'Could not play this audio URL. The file may be offline or blocked by the host.';
+      updatePlayButton(false);
+    });
+    audio.addEventListener('ended', () => { updatePlayButton(false); status.textContent = 'Playback finished.'; });
+
+    const mediaSession = navigator.mediaSession;
+    if (mediaSession) {
+      if (typeof window.MediaMetadata === 'function') {
+        try {
+          mediaSession.metadata = new window.MediaMetadata({
+            title: String(stream.title || 'Podcast Radio'),
+            artist: String(profile.display_name || profile.name || shortHex(hostPubkey)),
+            album: 'Sifaka Podcast Radio',
+            artwork: artworkUrl ? [{ src: artworkUrl, sizes: '512x512' }] : []
+          });
+        } catch (_) {}
+      }
+      const handlers = {
+        play: () => tryPlay(),
+        pause: () => audio.pause(),
+        stop: () => audio.pause(),
+        seekto: (details) => {
+          if (Number.isFinite(audio.duration) && details && Number.isFinite(Number(details.seekTime))) {
+            audio.currentTime = Math.max(0, Math.min(audio.duration, Number(details.seekTime)));
+            updateProgress();
+          }
+        },
+        seekbackward: (details) => {
+          if (Number.isFinite(audio.duration)) audio.currentTime = Math.max(0, audio.currentTime - Number(details && details.seekOffset || 10));
+          updateProgress();
+        },
+        seekforward: (details) => {
+          if (Number.isFinite(audio.duration)) audio.currentTime = Math.min(audio.duration, audio.currentTime + Number(details && details.seekOffset || 10));
+          updateProgress();
+        },
+        previoustrack: () => openAdjacentPodcastStream(address, -1),
+        nexttrack: () => openAdjacentPodcastStream(address, 1)
+      };
+      Object.entries(handlers).forEach(([action, handler]) => {
+        try { mediaSession.setActionHandler(action, handler); } catch (_) {}
+      });
+    }
+    state.playbackCleanup = () => {
+      clearPodcastMediaSession();
+      if (endButton && endButtonOriginalParent) {
+        if (endButtonOriginalNext && endButtonOriginalNext.parentNode === endButtonOriginalParent) {
+          endButtonOriginalParent.insertBefore(endButton, endButtonOriginalNext);
+        } else {
+          endButtonOriginalParent.appendChild(endButton);
+        }
+      }
+    };
+    tryPlay();
+  }
+
   function isHomeViewActive() {
     const home = qs('#homePage');
     return !!(home && home.classList.contains('active'));
@@ -14256,7 +14691,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return sortedLiveStreams().filter(
       (s) => {
         const url = (s.streaming || '').trim();
-        return url && /^https?:\/\//i.test(url) && !state.featuredFailed.has(s.address);
+        return url && /^https?:\/\//i.test(url)
+          && !isAudioOnlyStream(s)
+          && !state.featuredFailed.has(s.address);
       }
     );
   }
@@ -14758,12 +15195,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     const playerBg = qs('.player-bg');
     if (playerBg) {
-      playerBg.classList.remove('player-bg-portrait-source');
-      playerBg.querySelectorAll('video').forEach((video) => {
+      playerBg.classList.remove('player-bg-portrait-source', 'podcast-theater-mode');
+      playerBg.querySelectorAll('video,audio[data-podcast-radio-player]').forEach((media) => {
         try {
-          video.pause();
-          video.removeAttribute('src');
-          video.load();
+          media.pause();
+          media.removeAttribute('src');
+          media.load();
         } catch (_) {}
       });
     }
@@ -14929,9 +15366,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const url = sanitizeMediaUrl((stream && stream.streaming || '').trim());
     const status = normalizeStreamStatus(stream && stream.status);
     const existingVideo = playerBg.querySelector('video');
+    const existingAudio = playerBg.querySelector('audio[data-podcast-radio-player]');
+    const audioOnly = isAudioOnlyStream(stream);
     const hasHttpUrl = !!url && /^https?:\/\//i.test(url);
     const sameSource = !!(address && url && state.playbackAddress === address && state.playbackUrl === url);
-    if (sameSource && (existingVideo || state.hlsInstance)) {
+    if (sameSource && ((audioOnly && existingAudio) || (!audioOnly && (existingVideo || state.hlsInstance)))) {
       if (existingVideo) syncTheaterVideoFit(existingVideo, playerBg);
       return;
     }
@@ -14960,6 +15399,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.playbackAddress = address;
     state.playbackUrl = url;
+
+    if (audioOnly) {
+      renderPodcastRadioTheaterPlayer(stream, playerBg, playerUi, address, url);
+      return;
+    }
 
     const video = document.createElement('video');
     video.controls = true;
@@ -15782,7 +16226,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       return;
     }
 
-    const streams = sortedLiveStreams().filter((s) => s.title.toLowerCase().includes(term) || profileFor(s.hostPubkey).name.toLowerCase().includes(term)).slice(0, 5);
+    const streams = sortedLiveStreams()
+      .filter((s) => !isAudioOnlyStream(s)
+        && (s.title.toLowerCase().includes(term) || profileFor(s.hostPubkey).name.toLowerCase().includes(term)))
+      .slice(0, 5);
 
     // Local cache match ? all cached profiles, not just streamers
     const localProfiles = Array.from(state.profilesByPubkey.values()).filter((p) => {
@@ -21312,16 +21759,23 @@ function renderProfileFeed(pubkey) {
     const base = raw.split('#')[0].split('?')[0].toLowerCase();
     const query = raw.split('#')[0].toLowerCase();
 
-    if (/\.(mp4|webm|mov|m4v|mkv|avi|ogv|ogg|3gp|3g2|mpeg|mpg|mpe|ts|mts|m2ts|m3u8|flv)$/.test(base)
+    if (/\.(mp4|webm|mov|m4v|mkv|avi|ogv|3gp|3g2|mpeg|mpg|mpe|ts|mts|m2ts|m3u8|flv)$/.test(base)
       || /(?:^|[?&])(type|mime|content-type|format)=(?:video\/|video%2f)/i.test(query)) return 'video';
 
     if (/\.(jpg|jpeg|jpe|png|gif|webp|avif|apng|bmp|svg|svgz|tif|tiff|heic|heif|jxl|ico)$/.test(base)
       || /(?:^|[?&])(type|mime|content-type|format)=(?:image\/|image%2f)/i.test(query)) return 'photo';
 
-    if (/\.(mp3|m4a|wav|ogg|oga|flac|aac|opus|weba)$/.test(base)
+    if (/\.(mp3|mpga|m4a|wav|ogg|oga|flac|aac|opus|weba)$/.test(base)
       || /(?:^|[?&])(type|mime|content-type|format)=(?:audio\/|audio%2f)/i.test(query)) return 'audio';
 
     return '';
+  }
+
+  function isAudioOnlyStream(streamOrUrl) {
+    const url = streamOrUrl && typeof streamOrUrl === 'object'
+      ? String(streamOrUrl.streaming || '')
+      : String(streamOrUrl || '');
+    return classifyMediaUrl(url) === 'audio';
   }
 
   function parseSpotifyPreviewUrl(rawUrl) {
@@ -23521,9 +23975,13 @@ function renderProfileFeed(pubkey) {
       if (keep !== 'theater') {
         const playerBg = qs('.player-bg');
         if (playerBg) {
-          playerBg.querySelectorAll('video').forEach((v) => {
-            try { v.pause(); v.src = ''; } catch (_) {}
+          playerBg.querySelectorAll('video,audio[data-podcast-radio-player]').forEach((media) => {
+            try { media.pause(); media.removeAttribute('src'); media.load(); } catch (_) {}
           });
+        }
+        if (state.playbackCleanup) {
+          try { state.playbackCleanup(); } catch (_) {}
+          state.playbackCleanup = null;
         }
         if (state.hlsInstance) {
           try { state.hlsInstance.destroy(); } catch (_) {}
@@ -23550,6 +24008,7 @@ function renderProfileFeed(pubkey) {
       const profile = qs('#profilePage');
       const profileThread = qs('#profileCommentThreadPage');
       const videos = qs('#videosPage');
+      const podcastRadio = qs('#podcastRadioPage');
       const feed = qs('#feedPage');
       const notifications = qs('#notificationsPage');
       const communities = qs('#communitiesPage');
@@ -23576,6 +24035,7 @@ function renderProfileFeed(pubkey) {
       }
       if (p === 'home' && routeMode !== 'skip') syncHomeRoute(routeMode);
       if (p === 'videos' && routeMode !== 'skip') syncVideosRoute(routeMode);
+      if (p === 'podcastRadio' && routeMode !== 'skip') syncPodcastRadioRoute(routeMode);
       if (p === 'videos' && Object.prototype.hasOwnProperty.call(opts, 'videosFilter')) {
         setVideosFilterInternal(opts.videosFilter, { render: false });
       }
@@ -23599,6 +24059,7 @@ function renderProfileFeed(pubkey) {
       if (profile) profile.style.display = 'none';
       if (profileThread) profileThread.style.display = 'none';
       if (videos) videos.style.display = p === 'videos' ? 'block' : 'none';
+      if (podcastRadio) podcastRadio.style.display = p === 'podcastRadio' ? 'block' : 'none';
       if (feed) feed.style.display = p === 'feed' ? 'block' : 'none';
       if (notifications) notifications.style.display = p === 'notifications' ? 'block' : 'none';
       if (communities) communities.style.display = p === 'communities' ? 'block' : 'none';
@@ -23636,6 +24097,11 @@ function renderProfileFeed(pubkey) {
         stopHeroCycle();
         stopAllAudio(null);
         scheduleVideosPageRender(0);
+      } else if (p === 'podcastRadio') {
+        ensureHomeLiveSubscription();
+        stopHeroCycle();
+        stopAllAudio(null);
+        renderPodcastRadioGrid();
       } else {
         clearVideosRenderTimer();
         clearVideosChunkRender();
@@ -23701,6 +24167,7 @@ function renderProfileFeed(pubkey) {
       if (video) video.style.display = 'block';
       if (profile) profile.style.display = 'none';
       if (videos) videos.style.display = 'none';
+      if (podcastRadio) podcastRadio.style.display = 'none';
       if (feed) feed.style.display = 'none';
       if (notifications) notifications.style.display = 'none';
       if (communities) communities.style.display = 'none';
@@ -26940,7 +27407,7 @@ window.saveAppSettings = function () {
       const current = state.selectedStreamAddress;
       const thumbClasses = ['t1','t2','t3','t4','t5','t6','t7','t8'];
       const others = sortedLiveStreams()
-        .filter((s) => s.address !== current && s.status === 'live')
+        .filter((s) => s.address !== current && s.status === 'live' && !isAudioOnlyStream(s))
         .slice(0, 6);
       list.innerHTML = '';
       list.className = 'reco-grid';
@@ -29167,7 +29634,7 @@ window.saveAppSettings = function () {
     initEmojiPicker();
     wireEvents();
     document.addEventListener('visibilitychange', () => {
-      if (isHomeViewActive()) ensureHomeLiveSubscription();
+      if (isHomeViewActive() || isPodcastRadioPageActive()) ensureHomeLiveSubscription();
       else stopLiveSubscription();
       if (shouldRunHeroCycle()) {
         if (!state.featuredCycleTimer) startHeroCycle();
