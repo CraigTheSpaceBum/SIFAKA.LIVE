@@ -9550,3 +9550,66 @@ button.pfs-comments[aria-expanded="true"] {
     transition: none;
   }
 }
+
+
+/* Sifaka 0.8.7.2: linked addressable events in profile posts. */
+.profile-feed-event-embed {
+  display: block;
+  margin: .5rem 0;
+  min-width: 0;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255,255,255,.025);
+}
+.profile-feed-event-summary {
+  padding: .5rem .65rem;
+  color: var(--text2);
+  font: 600 .7rem/1.45 var(--font-mono,monospace);
+  overflow-wrap: anywhere;
+  border-left: 2px solid var(--accent);
+  background: rgba(139,92,246,.06);
+}
+.profile-feed-event-content {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-8px);
+  padding: 0 .65rem;
+  pointer-events: none;
+  transition: opacity .25s ease, max-height .34s ease, transform .3s ease, padding .3s ease;
+}
+.profile-feed-item.has-profile-events.comments-hover .profile-feed-event-content,
+.profile-feed-item.has-profile-events.comments-pinned .profile-feed-event-content {
+  max-height: 1800px;
+  opacity: 1;
+  overflow: auto;
+  transform: translateY(0);
+  padding: .65rem;
+  pointer-events: auto;
+}
+.profile-feed-event-author {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+}
+.profile-feed-event-avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.profile-feed-event-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.profile-feed-event-identity { display: flex; flex-direction: column; min-width: 0; gap: .08rem; }
+.profile-feed-event-name { font-size: .75rem; color: var(--text); overflow-wrap: anywhere; }
+.profile-feed-event-meta { color: var(--muted); font-size: .62rem; }
+.profile-feed-event-title { margin: .55rem 0 .3rem; color: var(--text); font-size: .88rem; line-height: 1.35; }
+.profile-feed-event-body { margin-top: .5rem; color: var(--text2); font-size: .78rem; line-height: 1.55; overflow-wrap: anywhere; }
+.profile-feed-event-media { margin-top: .5rem; }
+.profile-feed-event-open { display: inline-block; margin-top: .5rem; color: var(--zap); font-size: .7rem; font-weight: 700; text-decoration: none; }
+.profile-feed-event-open:hover { text-decoration: underline; }
+@media (prefers-reduced-motion: reduce) {
+  .profile-feed-event-content { transition: none; }
+}
