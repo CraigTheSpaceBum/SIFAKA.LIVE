@@ -9613,3 +9613,44 @@ button.pfs-comments[aria-expanded="true"] {
 @media (prefers-reduced-motion: reduce) {
   .profile-feed-event-content { transition: none; }
 }
+
+
+/* Sifaka 0.8.8: optional NIP-52 time-based calendar-event fields. */
+.profile-calendar-event { display:flex; flex-direction:column; gap:.7rem; min-width:0; }
+.profile-calendar-event-image-link { display:block; max-width:100%; overflow:hidden; border-radius:9px; border:1px solid var(--border2); }
+.profile-calendar-event-image { display:block; width:100%; max-height:260px; object-fit:cover; background:var(--surface2); }
+.profile-calendar-event-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:.7rem; }
+.profile-calendar-event-title { margin:0; font-size:1rem; line-height:1.35; color:var(--text); overflow-wrap:anywhere; }
+.profile-calendar-event-kind { flex:0 0 auto; padding:.16rem .38rem; border:1px solid var(--border2); border-radius:6px; color:var(--muted); font:600 .55rem/1.2 var(--font-mono,monospace); white-space:nowrap; }
+.profile-calendar-event-summary { margin:0; font-size:.78rem; line-height:1.5; color:var(--text2); }
+.profile-calendar-event-description { font-size:.78rem; line-height:1.55; color:var(--text2); overflow-wrap:anywhere; }
+.profile-calendar-event-description p { margin:.2rem 0; }
+.profile-calendar-event-section { display:flex; flex-direction:column; gap:.35rem; padding-top:.6rem; border-top:1px solid var(--border); min-width:0; }
+.profile-calendar-event-section-title { color:var(--text); font-size:.72rem; letter-spacing:.015em; }
+.profile-calendar-event-detail { display:flex; align-items:flex-start; gap:.55rem; min-width:0; color:var(--text2); font-size:.72rem; line-height:1.5; }
+.profile-calendar-event-label { flex:0 0 4.2rem; color:var(--muted); }
+.profile-calendar-event-value { min-width:0; overflow-wrap:anywhere; }
+.profile-calendar-event-link { color:var(--zap); font-size:.72rem; line-height:1.5; overflow-wrap:anywhere; text-decoration:none; }
+.profile-calendar-event-link:hover { text-decoration:underline; }
+.profile-calendar-event-person { display:flex; align-items:center; gap:.5rem; min-width:0; }
+.profile-calendar-event-person-avatar { width:30px; height:30px; flex:0 0 30px; border-radius:50%; overflow:hidden; background:var(--surface2); }
+.profile-calendar-event-person-avatar img { display:block; width:100%; height:100%; object-fit:cover; }
+.profile-calendar-event-person-identity { display:flex; flex-direction:column; align-items:flex-start; gap:.08rem; min-width:0; }
+.profile-calendar-event-person-name { max-width:100%; padding:0; border:0; background:none; color:var(--text); font-family:inherit; font-size:.72rem; line-height:1.35; font-weight:600; cursor:pointer; overflow-wrap:anywhere; text-align:left; }
+.profile-calendar-event-person-name:hover { text-decoration:underline; }
+.profile-calendar-event-person-meta,.profile-calendar-event-muted { color:var(--muted); font-size:.62rem; overflow-wrap:anywhere; }
+.profile-calendar-event-participants { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr)); gap:.5rem; }
+.profile-calendar-event-tags { display:flex; flex-wrap:wrap; gap:.3rem; }
+.profile-calendar-event-tag { padding:.14rem .4rem; border:1px solid var(--border2); border-radius:999px; color:var(--text2); font-size:.65rem; }
+.profile-calendar-event-rsvp-buttons { display:flex; flex-wrap:wrap; gap:.38rem; }
+.profile-calendar-event-rsvp-button { min-height:34px; padding:.4rem .65rem; border:1px solid var(--border2); border-radius:8px; background:var(--surface2); color:var(--text2); font-family:inherit; font-size:.68rem; line-height:1.2; font-weight:600; cursor:pointer; }
+.profile-calendar-event-rsvp-button:hover,.profile-calendar-event-rsvp-button.active { border-color:var(--accent); color:var(--text); background:rgba(139,92,246,.12); }
+.profile-calendar-event-rsvp-button:disabled { opacity:.55; cursor:wait; }
+.profile-calendar-event-rsvp-status { font-size:.68rem; color:var(--muted); line-height:1.4; overflow-wrap:anywhere; }
+@media(max-width:520px) {
+  .profile-calendar-event-heading { flex-direction:column; gap:.35rem; }
+  .profile-calendar-event-image { max-height:190px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .profile-feed-item.has-profile-events .profile-feed-event-content { transition:none; }
+}
