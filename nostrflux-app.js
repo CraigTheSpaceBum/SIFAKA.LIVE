@@ -16004,6 +16004,143 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return stream;
   }
 
+  function _buildProfileNaddrEventCard(entity) {
+    const card = document.createElement('article');
+    card.className = 'profile-feed-event-embed';
+
+    const summary = document.createElement('div');
+    summary.className = 'profile-feed-event-summary';
+    summary.textContent = 'Linked Nostr event · hover or click this post to expand';
+
+    const content = document.createElement('div');
+    content.className = 'profile-feed-event-content';
+    content.textContent = 'Loading linked event…';
+    card.appendChild(summary);
+    card.appendChild(content);
+
+    const renderAuthorIdentity = (pubkey, profile, avatar, name) => {
+      setAvatarEl(avatar, profile.picture || '', pickAvatar(pubkey));
+      name.textContent = profile.display_name || profile.name || shortHex(pubkey);
+      avatar.title = 'Open author profile';
+      name.title = 'Open author profile';
+      avatar.style.cursor = 'pointer';
+      name.style.cursor = 'pointer';
+      avatar.onclick = (event) => { event.stopPropagation(); showProfileByPubkey(pubkey); };
+      name.onclick = (event) => { event.stopPropagation(); showProfileByPubkey(pubkey); };
+    };
+
+    const doLoad = async () => {
+      const decoded = _decodeNostrEntity(entity);
+      if (!decoded || decoded.type !== 'naddr' || !decoded.pubkey || !Number(decoded.kind)) {
+        content.textContent = 'Could not parse this event reference.';
+        return;
+      }
+
+      if (Number(decoded.kind) === KIND_LIVE_EVENT) {
+        summary.textContent = 'Linked live stream · hover or click this post to expand';
+        content.innerHTML = '';
+        content.appendChild(_buildNaddrStreamCard(entity));
+        return;
+      }
+
+      const pubkey = normalizePubkeyHex(decoded.pubkey || '');
+      const kind = Number(decoded.kind || 0);
+      const identifier = String(decoded.identifier || '');
+      if (!pubkey || !Number.isInteger(kind) || kind < 0 || kind > 65535) {
+        content.textContent = 'This event reference is invalid.';
+        return;
+      }
+
+      const events = await fetchEventsCached(
+        [{ kinds: [kind], authors: [pubkey], '#d': [identifier], limit: 8 }],
+        {
+          scope: 'profile-naddr-event',
+          cacheKey: 'profile-naddr-event:' + kind + ':' + pubkey + ':' + identifier,
+          timeoutMs: 3200,
+          maxEvents: 12
+        }
+      );
+      const ev = (events || [])
+        .filter((candidate) => candidate
+          && Number(candidate.kind) === kind
+          && normalizePubkeyHex(candidate.pubkey || '') === pubkey
+          && String(firstTagValue(candidate.tags, 'd') || '') === identifier)
+        .sort((left, right) => Number(right.created_at || 0) - Number(left.created_at || 0))[0];
+
+      if (!ev) {
+        summary.textContent = 'Linked Nostr event · hover or click this post to expand';
+        content.textContent = 'Event not found on connected relays.';
+        return;
+      }
+
+      fetchProfileIfNeeded(pubkey, { timeoutMs: 1400 }).catch(() => {});
+      const profile = profileFor(pubkey);
+      const eventTitle = String(firstTagValue(ev.tags, 'title') || firstTagValue(ev.tags, 'name') || '').trim();
+      summary.textContent = (eventTitle || 'Linked Nostr event') + ' · hover or click this post to expand';
+
+      content.innerHTML = '';
+      const head = document.createElement('div');
+      head.className = 'profile-feed-event-author';
+      const avatar = document.createElement('div');
+      avatar.className = 'profile-feed-event-avatar';
+      const identity = document.createElement('div');
+      identity.className = 'profile-feed-event-identity';
+      const name = document.createElement('strong');
+      name.className = 'profile-feed-event-name';
+      const meta = document.createElement('span');
+      meta.className = 'profile-feed-event-meta';
+      meta.textContent = 'Kind ' + kind + ' · ' + formatTimeAgo(ev.created_at) + ' ago';
+      identity.appendChild(name);
+      identity.appendChild(meta);
+      head.appendChild(avatar);
+      head.appendChild(identity);
+      content.appendChild(head);
+      renderAuthorIdentity(pubkey, profile, avatar, name);
+
+      if (eventTitle) {
+        const title = document.createElement('h4');
+        title.className = 'profile-feed-event-title';
+        title.textContent = eventTitle;
+        content.appendChild(title);
+      }
+
+      const mediaUrls = extractMediaUrlsFromEvent(ev);
+      const mediaItems = mediaUrls
+        .map((url) => ({ url, kind: classifyMediaUrl(url) }))
+        .filter((media) => media.kind && isLikelyUrl(media.url));
+      const eventText = stripMediaUrlsFromText(ev.content || '', mediaUrls).split(entity).join('').trim();
+      if (eventText) {
+        const body = document.createElement('div');
+        body.className = 'profile-feed-event-body';
+        body.appendChild(renderNostrContent(eventText));
+        content.appendChild(body);
+      }
+      if (mediaItems.length) {
+        const mediaWrap = document.createElement('div');
+        mediaWrap.className = 'profile-feed-event-media';
+        renderPostMedia(mediaWrap, mediaItems);
+        content.appendChild(mediaWrap);
+      }
+
+      const openLink = document.createElement('a');
+      openLink.className = 'profile-feed-event-open';
+      openLink.href = 'nostr:' + entity;
+      openLink.target = '_blank';
+      openLink.rel = 'noopener noreferrer';
+      openLink.textContent = 'Open event in Nostr';
+      content.appendChild(openLink);
+    };
+
+    if (window.NostrTools && window.NostrTools.nip19) {
+      doLoad().catch(() => { content.textContent = 'Error loading linked event.'; });
+    } else {
+      ensureNostrTools()
+        .then(doLoad)
+        .catch(() => { content.textContent = 'Error loading linked event.'; });
+    }
+    return card;
+  }
+
   function _buildNaddrStreamCard(entity) {
     const card = document.createElement('article');
     card.className = 'naddr-stream-card';
@@ -16282,14 +16419,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     if (entity.startsWith('naddr1')) {
-      parent.appendChild(_buildNaddrStreamCard(entity));
+      parent.appendChild(opts.profilePost
+        ? _buildProfileNaddrEventCard(entity)
+        : _buildNaddrStreamCard(entity));
       return;
     }
 
     parent.appendChild(document.createTextNode(rawToken || `nostr:${entity}`));
   }
 
-  function _appendInlineNostrMarkup(parent, text) {
+  function _appendInlineNostrMarkup(parent, text, opts = {}) {
     if (!parent) return;
     const raw = String(text || '');
     if (!raw) return;
@@ -16311,22 +16450,22 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       } else if (match[2]) {
         const strong = document.createElement('strong');
         strong.className = 'nostr-md-strong';
-        _appendInlineNostrMarkup(strong, token.slice(2, -2));
+        _appendInlineNostrMarkup(strong, token.slice(2, -2), opts);
         parent.appendChild(strong);
       } else if (match[3]) {
         const strike = document.createElement('s');
         strike.className = 'nostr-md-strike';
-        _appendInlineNostrMarkup(strike, token.slice(2, -2));
+        _appendInlineNostrMarkup(strike, token.slice(2, -2), opts);
         parent.appendChild(strike);
       } else if (match[4]) {
         const italic = document.createElement('em');
         italic.className = 'nostr-md-italic';
-        _appendInlineNostrMarkup(italic, token.slice(1, -1));
+        _appendInlineNostrMarkup(italic, token.slice(1, -1), opts);
         parent.appendChild(italic);
       } else if (match[5]) {
-        _appendNostrEntityToNode(parent, match[6], match[5], { allowEventEmbeds: false });
+        _appendNostrEntityToNode(parent, match[6], match[5], { allowEventEmbeds: false, profilePost: !!opts.profilePost });
       } else if (match[7]) {
-        _appendNostrEntityToNode(parent, match[7], match[7], { allowEventEmbeds: false });
+        _appendNostrEntityToNode(parent, match[7], match[7], { allowEventEmbeds: false, profilePost: !!opts.profilePost });
       } else if (match[8]) {
         const cleanUrl = trimUrlTrailingPunctuation(match[8]);
         const href = safeHrefFromUrl(cleanUrl);
@@ -16355,10 +16494,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   // Main content renderer returns a DocumentFragment safe for appending to DOM.
-  function renderNostrContent(text) {
+  function renderNostrContent(text, opts = {}) {
     const frag = document.createDocumentFragment();
-    const source = String(text || '')
-      .replace(/\r\n?/g, '\n')
+    const rawSource = String(text || '').replace(/\r\n?/g, '\n');
+    // Profile posts occasionally contain an explicit Markdown link around an naddr.
+    // Turn that linked reference into an entity token so its event can be embedded.
+    const linkedEventSource = opts.profilePost
+      ? rawSource.replace(/\[[^\]]*\]\(nostr\\?:(naddr1[023456789acdefghjklmnpqrstuvwxyz]+)\)/gi, 'nostr:$1')
+      : rawSource;
+    const source = linkedEventSource
       .replace(/\[nostr\\:(naddr1[023456789acdefghjklmnpqrstuvwxyz]+)\]\(nostr\\:\1\)/gi, 'nostr:$1')
       .replace(/nostr\\:/gi, 'nostr:');
     if (!source.trim()) return frag;
@@ -16374,7 +16518,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       p.className = 'nostr-md-p';
       paragraphLines.forEach((line, idx) => {
         if (idx) p.appendChild(document.createElement('br'));
-        _appendInlineNostrMarkup(p, line);
+        _appendInlineNostrMarkup(p, line, opts);
       });
       frag.appendChild(p);
       paragraphLines = [];
@@ -16412,7 +16556,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const level = heading[1].length;
         const h = document.createElement(`h${level}`);
         h.className = `nostr-md-h${level}`;
-        _appendInlineNostrMarkup(h, heading[2]);
+        _appendInlineNostrMarkup(h, heading[2], opts);
         frag.appendChild(h);
         return;
       }
@@ -16423,7 +16567,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         closeList();
         const blockquote = document.createElement('blockquote');
         blockquote.className = 'nostr-md-blockquote';
-        _appendInlineNostrMarkup(blockquote, quote[1]);
+        _appendInlineNostrMarkup(blockquote, quote[1], opts);
         frag.appendChild(blockquote);
         return;
       }
@@ -16434,7 +16578,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const list = ensureList('ul');
         const li = document.createElement('li');
         li.className = 'nostr-md-li';
-        _appendInlineNostrMarkup(li, ul[1]);
+        _appendInlineNostrMarkup(li, ul[1], opts);
         list.appendChild(li);
         return;
       }
@@ -16445,7 +16589,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const list = ensureList('ol');
         const li = document.createElement('li');
         li.className = 'nostr-md-li';
-        _appendInlineNostrMarkup(li, ol[2]);
+        _appendInlineNostrMarkup(li, ol[2], opts);
         list.appendChild(li);
         return;
       }
@@ -20111,7 +20255,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       if (textEl) {
         textEl.innerHTML = '';
         if (text) {
-          textEl.appendChild(renderNostrContent(text));
+          textEl.appendChild(renderNostrContent(text, { profilePost: true }));
           textEl.style.display = 'block';
         } else {
           const emptyLabel = isRepost
@@ -20121,6 +20265,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           textEl.style.display = !mediaItems.length ? 'block' : 'none';
         }
       }
+      const hasProfileEvents = !!(textEl && textEl.querySelector('.profile-feed-event-embed'));
+      item.classList.toggle('has-profile-events', hasProfileEvents);
 
       const mediaWrap = qs('.profile-feed-media-wrap', item);
       if (mediaWrap) {
@@ -20443,7 +20589,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         syncCommentsDisclosure();
       };
       item.addEventListener('mouseenter', () => {
-        if (comments.length && !item.classList.contains('comments-collapsed-manual')) {
+        if ((comments.length || hasProfileEvents) && !item.classList.contains('comments-collapsed-manual')) {
           item.classList.add('comments-hover');
         }
         syncCommentsDisclosure();
@@ -20458,10 +20604,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         toggleCommentsDisclosure();
       });
       item.addEventListener('click', (event) => {
-        if (!comments.length) return;
+        if (!comments.length && !hasProfileEvents) return;
         const target = event.target;
         if (target && target.closest && target.closest(
-          'button,a,input,textarea,select,[contenteditable="true"],.profile-feed-author,.pf-boost-banner,.profile-feed-comments'
+          'button,a,input,textarea,select,[contenteditable="true"],.profile-feed-author,.pf-boost-banner,.profile-feed-comments,.profile-feed-event-author'
         )) return;
         toggleCommentsDisclosure();
       });
@@ -26857,7 +27003,7 @@ window.saveAppSettings = function () {
       if (externalLink) externalLink.href = 'lightning:' + cleanInvoice;
       if (fallback) fallback.hidden = false;
       renderTheaterLightningQrPayload(cleanInvoice);
-      if (status) status.textContent = 'Invoice generated. Click the QR code or “Open Lightning wallet” to pay; Sifaka will not send this invoice automatically.';
+      if (status) status.textContent = '';
       updateTheaterLightningInvoiceCountdown();
       if (theaterDonationExternalInvoice) theaterDonationInvoiceTimer = setInterval(updateTheaterLightningInvoiceCountdown, 1000);
     }
