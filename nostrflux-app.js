@@ -16028,6 +16028,97 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     container.hidden = container.childElementCount === 0;
   }
 
+  function renderTheaterCoHostCards(stream) {
+    const hostList = qs('#theaterHostCards');
+    if (!hostList) return;
+    qsa('.theater-cohost-card', hostList).forEach((card) => card.remove());
+    const mainHostPubkey = normalizePubkeyHex(stream && (stream.hostPubkey || stream.pubkey) || '');
+    const coHosts = Array.from(new Set((Array.isArray(stream && stream.coHosts) ? stream.coHosts : [])
+      .map((value) => normalizePubkeyHex(value || ''))
+      .filter((value) => value && value !== mainHostPubkey)))
+      .slice(0, 8);
+
+    coHosts.forEach((pubkey) => {
+      const card = document.createElement('div');
+      card.className = 'theater-host-card theater-cohost-card';
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', 'Open co-host profile');
+
+      const avatar = document.createElement('div');
+      avatar.className = 'theater-host-card-avatar';
+      const copy = document.createElement('div');
+      copy.className = 'theater-host-card-copy';
+      const name = document.createElement('strong');
+      name.className = 'theater-host-card-name';
+      const identity = document.createElement('span');
+      identity.className = 'theater-host-card-identity';
+      copy.appendChild(name);
+      copy.appendChild(identity);
+      card.appendChild(avatar);
+      card.appendChild(copy);
+      hostList.appendChild(card);
+
+      const openProfile = (event) => {
+        if (event) event.stopPropagation();
+        showProfileByPubkey(pubkey);
+      };
+      card.addEventListener('click', openProfile);
+      card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openProfile(event);
+      });
+
+      let nip05CheckStarted = false;
+      const updateCard = () => {
+        if (state.selectedStreamAddress !== stream.address || !isVideoPageVisible() || !card.isConnected) return;
+        const profile = profileFor(pubkey);
+        const displayName = profile.display_name || profile.name || shortNpubForDisplay(pubkey) || 'Co-host';
+        setAvatarEl(avatar, profile.picture || '', pickAvatar(pubkey));
+        name.textContent = displayName;
+
+        const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
+        const verifiedNip05 = claimedNip05
+          ? getVerifiedNip05ForPubkey(pubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS })
+          : '';
+        identity.textContent = verifiedNip05 || shortNpubForDisplay(pubkey);
+        identity.title = verifiedNip05 ? 'Verified NIP-05: ' + verifiedNip05 : 'Nostr public key';
+        card.classList.toggle('is-nip05-valid', !!verifiedNip05);
+
+        if (claimedNip05 && !verifiedNip05 && !nip05CheckStarted) {
+          nip05CheckStarted = true;
+          ensureNip05Verification(pubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS })
+            .then(updateCard)
+            .catch(() => {});
+        }
+      };
+
+      updateCard();
+      fetchProfileIfNeeded(pubkey, { timeoutMs: 1800 })
+        .then(updateCard)
+        .catch(() => {});
+    });
+  }
+
+  function updateTheaterMainHostVerification(pubkey, streamAddress) {
+    const key = normalizePubkeyHex(pubkey || '');
+    if (!key || state.selectedStreamAddress !== streamAddress || !isVideoPageVisible()) return;
+
+    const profile = profileFor(key);
+    const claimedNip05 = normalizeNip05Value(profile.nip05 || '');
+    const verifiedNip05 = claimedNip05
+      ? getVerifiedNip05ForPubkey(key, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS })
+      : '';
+    const card = qs('#theaterMainHostCard');
+    const identity = qs('.sib-identity');
+    if (card) card.classList.toggle('is-nip05-valid', !!verifiedNip05);
+    if (identity) {
+      identity.textContent = verifiedNip05 || shortNpubForDisplay(key);
+      identity.title = verifiedNip05 ? 'Verified NIP-05: ' + verifiedNip05 : 'Nostr public key';
+    }
+  }
+
   function renderVideo(stream) {
     const hostPubkey = normalizePubkeyHex(stream.hostPubkey || '') || normalizePubkeyHex(stream.pubkey || '') || '';
     const platformPubkey = normalizePubkeyHex(stream.platformPubkey || '') || '';
@@ -16059,9 +16150,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const claimedNip05 = normalizeNip05Value(p.nip05 || '');
     const verifiedNip05 = getVerifiedNip05ForPubkey(hostPubkey, p.nip05 || '', { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS });
+    const mainHostCard = qs('#theaterMainHostCard');
+    if (mainHostCard) mainHostCard.classList.toggle('is-nip05-valid', !!verifiedNip05);
     if (claimedNip05) {
-      ensureNip05Verification(hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS }).catch(() => {});
+      ensureNip05Verification(hostPubkey, claimedNip05, { maxAgeMs: NIP05_LIVE_UI_MAX_AGE_MS })
+        .then(() => updateTheaterMainHostVerification(hostPubkey, stream.address))
+        .catch(() => {});
     }
+    renderTheaterCoHostCards(stream);
 
     // Host avatar
     const av = qs('.sib-av');
