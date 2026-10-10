@@ -24149,6 +24149,7 @@ function renderProfileFeed(pubkey) {
       const video = qs('#videoPage');
       const profile = qs('#profilePage');
       const videos = qs('#videosPage');
+      const podcastRadio = qs('#podcastRadioPage');
       const feed = qs('#feedPage');
       const notifications = qs('#notificationsPage');
       const communities = qs('#communitiesPage');
