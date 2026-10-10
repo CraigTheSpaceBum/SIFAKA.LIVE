@@ -13552,8 +13552,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function isTopLevelNostrFeedPost(ev) {
     if (!ev) return false;
-    if (ev.kind === 6) return true;
-    if (ev.kind !== 1) return false;
+    const kind = Number(ev.kind || 0);
+    if (kind === 6) return true;
+    if ([1068, 30023, 31923].includes(kind)) return true;
+    if (kind !== 1) return false;
     return allTagValues(ev.tags, 'e').length === 0;
   }
 
@@ -13883,10 +13885,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const now = Math.floor(Date.now() / 1000);
     const filterId = state.nostrFeedFilter;
     const kinds = [1, 6, KIND_DELETION];
+    const structuredKinds = [1068, 30023, 31923];
     let filters = [];
 
     if (filterId === 'global') {
-      filters = [{ kinds, limit: 260, since: now - (60 * 60 * 18) }];
+      filters = [
+        { kinds, limit: 260, since: now - (60 * 60 * 18) },
+        { kinds: structuredKinds, limit: 100, since: now - (60 * 60 * 24 * 90) }
+      ];
     } else {
       const pubkeySet = getListFilterPubkeys(filterId) || new Set();
       const pubkeys = Array.from(pubkeySet)
@@ -13908,6 +13914,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           limit: 110,
           since: now - (60 * 60 * 24 * 10)
         });
+        filters.push({
+          kinds: structuredKinds,
+          authors: chunk,
+          limit: 36,
+          since: now - (60 * 60 * 24 * 90)
+        });
       }
     }
 
@@ -13927,7 +13939,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     state.nostrFeedSubId = state.pool.subscribe(filters, {
       event: (ev) => {
         if (!ev || !ev.id) return;
-        if (ev.kind !== 1 && ev.kind !== 6 && ev.kind !== KIND_DELETION) return;
+        if (![1, 6, KIND_DELETION, 1068, 30023, 31923].includes(Number(ev.kind))) return;
         if (ev.kind === KIND_DELETION) {
           allTagValues(ev.tags, 'e').forEach((id) => {
             if (/^[0-9a-f]{64}$/i.test(id || '')) state.nostrFeedEventsById.delete(id);
@@ -20832,6 +20844,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       const loaded = Array.from(map.values()).filter((ev) => {
         if (!ev || ev.pubkey !== pubkey) return false;
         if (ev.kind === 6) return true;
+        if ([1068, 30023, 31923].includes(Number(ev.kind))) return true;
         return isTopLevelProfilePost(ev, pubkey);
       });
       const oldest = loaded.reduce((min, ev) => Math.min(min, Number(ev.created_at || Infinity)), Infinity);
@@ -20869,6 +20882,49 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     state.profilePageFeedObserver = observer;
     observer.observe(sentinel);
+  }
+
+  function renderNostrFeedPoll(event, container) {
+    if (!event || !container) return;
+    const tags = Array.isArray(event.tags) ? event.tags : [];
+    const options = tags.filter((tag) => Array.isArray(tag) && tag[0] === 'option' && tag[1] && tag[2])
+      .map((tag) => ({ id: String(tag[1]), label: String(tag[2]) })).slice(0, 12);
+    if (!options.length) return;
+    const multiple = String(firstTagValue(tags, 'polltype') || 'singlechoice').toLowerCase() === 'multiplechoice';
+    const form = document.createElement('div'); form.className = 'nostr-feed-composer-poll';
+    const heading = document.createElement('div'); heading.className = 'nostr-feed-composer-poll-title';
+    heading.textContent = multiple ? 'Poll · choose any that apply' : 'Poll · choose one';
+    const choices = document.createElement('div'); choices.className = 'nostr-feed-poll-options';
+    const status = document.createElement('div'); status.className = 'nostr-feed-poll-status';
+    const voteButton = document.createElement('button'); voteButton.type = 'button'; voteButton.className = 'btn btn-ghost'; voteButton.textContent = 'Vote';
+    const groupName = 'nostr-poll-' + String(event.id || '');
+    options.forEach((option) => {
+      const row = document.createElement('label'); row.className = 'nostr-feed-poll-option';
+      const input = document.createElement('input'); input.type = multiple ? 'checkbox' : 'radio'; input.name = groupName; input.value = option.id;
+      const label = document.createElement('span'); label.textContent = option.label;
+      row.appendChild(input); row.appendChild(label); choices.appendChild(row);
+    });
+    voteButton.addEventListener('click', async (clickEvent) => {
+      clickEvent.preventDefault(); clickEvent.stopPropagation();
+      if (!state.user) { if (typeof window.openLogin === 'function') window.openLogin(); return; }
+      const selected = Array.from(choices.querySelectorAll('input:checked')).map((input) => String(input.value || ''));
+      if (!selected.length) { status.textContent = 'Select an option first.'; return; }
+      voteButton.disabled = true; status.textContent = 'Submitting vote…';
+      try {
+        const responseTags = [['e', String(event.id || ''), '', 'root']];
+        selected.forEach((optionId) => responseTags.push(['response', optionId]));
+        if (event.pubkey) responseTags.push(['p', String(event.pubkey)]);
+        tags.filter((tag) => Array.isArray(tag) && tag[0] === 'relay' && tag[1]).slice(0,8)
+          .forEach((tag) => responseTags.push(['relay', String(tag[1])]));
+        await signAndPublish(1018, '', responseTags);
+        status.textContent = 'Vote submitted.'; voteButton.textContent = 'Vote submitted';
+      } catch (error) {
+        status.textContent = error && error.message ? error.message : 'Could not submit your vote.';
+        voteButton.disabled = false;
+      }
+    });
+    form.appendChild(heading); form.appendChild(choices); form.appendChild(status); form.appendChild(voteButton);
+    container.appendChild(form); container.style.display = 'block';
   }
 
   function renderProfileFeedInto(listEl, notes, profile, pubkey, aggregates) {
@@ -21072,31 +21128,52 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         }).catch(() => {});
       }
 
-      const mediaUrls = extractMediaUrlsFromEvent(displayNote);
-      const mediaItems = mediaUrls
-        .map((url) => ({ url, kind: classifyMediaUrl(url) }))
-        .filter((m) => m.kind && isLikelyUrl(m.url));
+      const displayKind = Number(displayNote.kind || 0);
+      const rawMediaUrls = extractMediaUrlsFromEvent(displayNote);
+      const articleImage = displayKind === 30023 ? String(firstTagValue(displayNote.tags, 'image') || '').trim() : '';
+      const mediaUrls = [...new Set([...rawMediaUrls, ...(articleImage ? [articleImage] : [])])];
+      const mediaItems = displayKind === 31923 ? [] : mediaUrls.map((url) => ({ url, kind: classifyMediaUrl(url) }))
+        .filter((entry) => entry.kind && isLikelyUrl(entry.url));
       const text = stripMediaUrlsFromText(displayNote.content || '', mediaUrls);
       const textEl = qs('.profile-feed-text', item);
       if (textEl) {
         textEl.innerHTML = '';
-        if (text) {
-          textEl.appendChild(renderNostrContent(text, { profilePost: true }));
-          textEl.style.display = 'block';
+        if (displayKind === 31923) {
+          const eventCard = document.createElement('article'); eventCard.className = 'profile-feed-event-embed';
+          const eventSummary = document.createElement('div'); eventSummary.className = 'profile-feed-event-summary';
+          const eventContent = document.createElement('div'); eventContent.className = 'profile-feed-event-content'; eventContent.textContent = 'Loading calendar event…';
+          eventCard.appendChild(eventSummary); eventCard.appendChild(eventContent);
+          const renderCalendarCard = () => {
+            if (!eventContent.isConnected) return;
+            const entity = encodeStreamNaddr({ kind:31923, pubkey:normalizePubkeyHex(displayNote.pubkey || ''), d:String(firstTagValue(displayNote.tags, 'd') || '') });
+            if (entity && typeof renderProfileCalendarEvent31923 === 'function') renderProfileCalendarEvent31923(displayNote, entity, eventContent, eventSummary);
+            else { eventSummary.textContent = String(firstTagValue(displayNote.tags, 'title') || 'Calendar event'); eventContent.textContent = text || 'Calendar event details are unavailable.'; }
+          };
+          textEl.appendChild(eventCard); textEl.style.display = 'block';
+          if (window.NostrTools && window.NostrTools.nip19) renderCalendarCard();
+          else ensureNostrTools().then(renderCalendarCard).catch(() => { if (eventContent.isConnected) eventContent.textContent = text || 'Calendar event details are unavailable.'; });
         } else {
-          const emptyLabel = isRepost
-            ? (repostRefId ? 'Repost (original note loading...)' : 'Repost')
-            : '[empty note]';
-          textEl.textContent = mediaItems.length ? '' : emptyLabel;
-          textEl.style.display = !mediaItems.length ? 'block' : 'none';
+          if (displayKind === 30023) {
+            const articleTitle = String(firstTagValue(displayNote.tags, 'title') || '').trim();
+            const articleSummary = String(firstTagValue(displayNote.tags, 'summary') || '').trim();
+            if (articleTitle) { const heading = document.createElement('h3'); heading.className='profile-feed-article-title'; heading.textContent=articleTitle; textEl.appendChild(heading); }
+            if (articleSummary) { const summaryEl = document.createElement('p'); summaryEl.className='profile-feed-article-summary'; summaryEl.textContent=articleSummary; textEl.appendChild(summaryEl); }
+          }
+          if (text) { textEl.appendChild(renderNostrContent(text)); textEl.style.display='block'; }
+          else {
+            const emptyLabel = isRepost ? (repostRefId ? 'Repost (original note loading...)' : 'Repost') : '[empty note]';
+            textEl.textContent = mediaItems.length ? '' : emptyLabel;
+            textEl.style.display = !mediaItems.length ? 'block' : 'none';
+          }
         }
       }
-      const hasProfileEvents = !!(textEl && textEl.querySelector('.profile-feed-event-embed'));
+      const hasProfileEvents = displayKind === 31923 || !!(textEl && textEl.querySelector('.profile-feed-event-embed'));
       item.classList.toggle('has-profile-events', hasProfileEvents);
-
       const mediaWrap = qs('.profile-feed-media-wrap', item);
       if (mediaWrap) {
-        if (mediaItems.length) renderPostMedia(mediaWrap, mediaItems);
+        mediaWrap.innerHTML = '';
+        if (displayKind === 1068) renderNostrFeedPoll(displayNote, mediaWrap);
+        else if (mediaItems.length) renderPostMedia(mediaWrap, mediaItems);
         else mediaWrap.style.display = 'none';
       }
 
@@ -21756,6 +21833,7 @@ function renderProfileFeed(pubkey) {
       .filter((ev) => {
         if (!ev || ev.pubkey !== pubkey) return false;
         if (ev.kind === 6) return true;
+        if ([1068, 30023, 31923].includes(Number(ev.kind))) return true;
         return isTopLevelProfilePost(ev, pubkey);
       })
       .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
@@ -22636,7 +22714,9 @@ function renderProfileFeed(pubkey) {
       .slice(0, Math.max(1, Math.min(PROFILE_FEED_RELAY_COUNT, state.pool.urls.length || 1)))
       .map((item) => item.url);
     const profileSince = isOwnProfile ? 1 : Math.floor(Date.now() / 1000) - 60 * 60 * 24 * PROFILE_FEED_INITIAL_DAYS;
-    const authoredKinds = isOwnProfile ? [1, KIND_COMMENT, 6] : [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT];
+    const authoredKinds = isOwnProfile
+      ? [1, KIND_COMMENT, 6, 1068, 30023, 31923]
+      : [1, KIND_COMMENT, 6, KIND_REACTION, KIND_DELETION, 20, 21, 22, 1063, KIND_ZAP_RECEIPT, 1068, 30023, 31923];
     const authoredLimit = isOwnProfile ? 1000 : 320;
 
     let feedRenderTimer = null;
