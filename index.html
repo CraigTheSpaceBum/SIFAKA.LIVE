@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.24">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.25">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -570,6 +570,17 @@ body.nest-preview-open{overflow:hidden}
         <input id="settingsNip05Input" type="text" placeholder="you@yourdomain.com">
         <div class="smv2-field-hint">Nostr identity verification — host /.well-known/nostr.json on your domain</div>
       </div>
+
+      <section class="nip39-settings-card" aria-labelledby="settingsNip39Heading">
+        <div class="smv2-section-title" id="settingsNip39Heading">NIP-39 External Identities</div>
+        <p class="smv2-field-hint nip39-settings-help">Add an external platform, your identity on it, and the proof ID or HTTPS URL. Sifaka publishes these as <code>i</code> tags in a separate replaceable kind:10011 event. Claims are not marked verified automatically; visitors can open the proof to inspect it. Saving an empty list clears your NIP-39 identities.</p>
+        <div id="settingsNip39Rows" class="nip39-settings-rows"></div>
+        <div class="nip39-settings-actions">
+          <button class="btn btn-ghost" type="button" onclick="addNip39SettingsRow()">+ Add Identity</button>
+          <button class="btn btn-primary" type="button" id="settingsNip39SaveBtn" onclick="saveNip39Identities()">Save NIP-39 Identities</button>
+        </div>
+        <div id="settingsNip39Status" class="nip39-settings-status" aria-live="polite"></div>
+      </section>
 
       <div class="smv2-save-row">
         <button class="btn btn-primary" onclick="saveProfileSettings()">Save Profile →</button>
@@ -2172,6 +2183,7 @@ body.nest-preview-open{overflow:hidden}
               <div class="profile-bio-meta theater-host-link-card" id="theaterLud16Row" role="button" tabindex="0" style="display:none;" title="Open Lightning donation">
                 <span class="lbl">⚡ Lightning</span><button class="val profile-lightning-donation-btn" id="theaterLud16" type="button" onclick="theaterLightningDonation()" title="Donate Lightning to this streamer" aria-label="Donate Lightning to this streamer"></button>
               </div>
+              <div id="theaterNip39Rows" class="nip39-link-fragment" aria-label="NIP-39 external identities"></div>
             </div>
             <div class="sib-tags-reactions-row">
               <div class="sib-hashtags" id="theaterHashtags" aria-label="Stream hashtags" hidden></div>
@@ -2296,6 +2308,7 @@ body.nest-preview-open{overflow:hidden}
                   <div class="profile-bio-meta" id="profWebsiteRow" style="display:none;"><span class="lbl">Website</span><a id="profWebsiteBio" href="#" target="_blank" rel="noopener noreferrer"></a></div>
                   <div class="profile-bio-meta onchain-profile-meta" id="profBitcoinRow" style="display:none;"><span class="lbl" aria-hidden="true">₿ On Chain</span><a class="val profile-bitcoin-send-btn" id="profBitcoinBio" href="#" title="Send Bitcoin to this profile" aria-label="Send Bitcoin to this profile"></a></div>
                   <div class="profile-bio-meta" id="profLud16Row" style="display:none;"><span class="lbl">Lightning</span><button class="val profile-lightning-donation-btn" id="profLud16Bio" type="button" onclick="openProfileLightningDonation()" title="Donate Lightning to this profile" aria-label="Donate Lightning to this profile"></button></div>
+                  <div id="profNip39Rows" class="nip39-link-fragment" aria-label="NIP-39 external identities"></div>
                 </div>
                 <div class="profile-since" id="profNostrSince" style="display:none"></div>
               </div>
@@ -2457,7 +2470,7 @@ body.nest-preview-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.8.22" defer></script>
+<script src="./nostrflux-app.js?v=0.8.25" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 </body>
 </html>
