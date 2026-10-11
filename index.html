@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.22">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.23">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -2154,23 +2154,7 @@ body.nest-preview-open{overflow:hidden}
                 </div>
               </div>
             </div>
-            <div class="sib-stats-links-row">
-              <div class="sib-stats-row" role="group" aria-label="Stream statistics and actions">
-                <div class="ss fol">
-                  <button class="btn btn-follow" id="theaterFollowBtn" type="button" onclick="toggleTheaterFollow()">Follow</button>
-                </div>
-                <div class="ss lv"><span class="n" id="theaterViewers">—</span><span class="l">watching</span></div>
-                <div class="ss"><span class="n" id="theaterRuntime">—</span><span class="l">live</span></div>
-                <div class="ss"><span class="n" id="theaterRelays">—</span><span class="l">relays</span></div>
-                <div class="ss likes">
-                  <button class="action-btn like-btn" id="likeBtn" type="button" aria-label="Like this stream" onclick="toggleLike(event)" onpointerdown="startTheaterLikeHold(event)" onpointerup="endTheaterLikeHold(event)" onpointercancel="endTheaterLikeHold(event)" onpointerleave="endTheaterLikeHold(event)">
-                    &#10084; Like <span class="n" id="streamLikeCounter">0</span>
-                  </button>
-                </div>
-                <div class="ss theater-stat-action"><button class="action-btn share-btn" id="theaterShareBtn" type="button" onclick="shareStream()">Share</button></div>
-                <div class="ss theater-stat-action"><button class="action-btn report-btn" type="button" title="Report stream">Report</button></div>
-              </div>
-            </div>
+
             <!-- Keep all streamer details, links and reactions inside the same panel as the actions. -->
             <div class="editable-block theater-panel-description" style="margin-top:.5rem">
               <div class="sib-summary">Live jazz set from my home studio. Self-hosted on a $5 VPS - no middlemen, no censorship.</div>
@@ -2191,6 +2175,23 @@ body.nest-preview-open{overflow:hidden}
               <div class="sib-hashtags" id="theaterHashtags" aria-label="Stream hashtags" hidden></div>
               <div class="stream-reactions-row">
                 <div class="stream-emoji-list" id="streamEmojiList"></div>
+              </div>
+            </div>
+            <div class="sib-stats-links-row">
+              <div class="sib-stats-row" role="group" aria-label="Stream statistics and actions">
+                <div class="ss fol">
+                  <button class="btn btn-follow" id="theaterFollowBtn" type="button" onclick="toggleTheaterFollow()">Follow</button>
+                </div>
+                <div class="ss lv"><span class="n" id="theaterViewers">—</span><span class="l">watching</span></div>
+                <div class="ss"><span class="n" id="theaterRuntime">—</span><span class="l">live</span></div>
+                <div class="ss"><span class="n" id="theaterRelays">—</span><span class="l">relays</span></div>
+                <div class="ss likes">
+                  <button class="action-btn like-btn" id="likeBtn" type="button" aria-label="Like this stream" onclick="toggleLike(event)" onpointerdown="startTheaterLikeHold(event)" onpointerup="endTheaterLikeHold(event)" onpointercancel="endTheaterLikeHold(event)" onpointerleave="endTheaterLikeHold(event)">
+                    &#10084; Like <span class="n" id="streamLikeCounter">0</span>
+                  </button>
+                </div>
+                <div class="ss theater-stat-action"><button class="action-btn share-btn" id="theaterShareBtn" type="button" onclick="shareStream()">Share</button></div>
+                <div class="ss theater-stat-action"><button class="action-btn report-btn" type="button" title="Report stream">Report</button></div>
               </div>
             </div>
           </div>
