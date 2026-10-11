@@ -10995,3 +10995,90 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     box-shadow: inset 0 0 0 1px rgba(167,139,250,.32), inset 0 0 13px rgba(139,92,246,.18);
   }
 }
+
+
+/* Sifaka 0.8.8: NIP-39 external identity claim cards and settings editor. */
+.nip39-link-fragment { display: contents !important; }
+.nip39-identity-card {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  gap: .32rem;
+}
+.nip39-identity-value {
+  min-width: 0;
+  max-width: 15rem;
+  overflow-wrap: anywhere;
+}
+.nip39-proof-link {
+  flex: 0 0 auto;
+  color: var(--purple, #a78bfa);
+  font-size: .62rem;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nip39-proof-link:hover { text-decoration: underline; color: var(--text); }
+.nip39-proof-value {
+  color: var(--muted);
+  font: 500 .58rem/1.35 'DM Mono', monospace;
+  overflow-wrap: anywhere;
+}
+#videoPage .nip39-identity-card { min-width: 0; max-width: 100%; }
+#videoPage .nip39-identity-card .nip39-identity-value { max-width: min(13rem, 34vw); }
+#videoPage .nip39-identity-card .nip39-proof-link { font-size: .58rem; }
+.nip39-settings-card {
+  margin-top: .8rem;
+  padding: .8rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(155,114,255,.055), rgba(255,255,255,.012));
+}
+.nip39-settings-help { margin: .35rem 0 .75rem; line-height: 1.55; }
+.nip39-settings-rows { display: flex; flex-direction: column; gap: .55rem; }
+.nip39-settings-row {
+  display: grid;
+  grid-template-columns: minmax(100px,.72fr) minmax(130px,1fr) minmax(170px,1.15fr) auto;
+  align-items: end;
+  gap: .55rem;
+  padding: .6rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface2);
+}
+.nip39-settings-field { min-width: 0; }
+.nip39-settings-field label {
+  display: block;
+  margin-bottom: .3rem;
+  color: var(--text2);
+  font-size: .67rem;
+}
+.nip39-settings-field input { width: 100%; min-width: 0; box-sizing: border-box; }
+.nip39-settings-row-actions { display: flex; align-items: center; justify-content: flex-end; }
+.nip39-settings-row-actions .btn { white-space: nowrap; }
+.nip39-settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .65rem;
+}
+.nip39-settings-status {
+  min-height: 1.2em;
+  margin-top: .45rem;
+  color: var(--muted);
+  font-size: .72rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.nip39-settings-status.is-success { color: var(--green, #22c55e); }
+.nip39-settings-status.is-error { color: var(--danger, #f87171); }
+.nip39-settings-status.is-info { color: var(--text2); }
+@media (max-width: 700px) {
+  .nip39-settings-card { padding: .6rem; }
+  .nip39-settings-row { grid-template-columns: minmax(0,1fr); gap: .45rem; }
+  .nip39-settings-row-actions { justify-content: flex-end; }
+  .nip39-settings-row-actions .btn { min-height: 34px; }
+  #videoPage .nip39-identity-card .nip39-identity-value { max-width: 36vw; }
+}
