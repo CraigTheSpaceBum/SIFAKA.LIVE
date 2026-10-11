@@ -166,6 +166,7 @@
   const KIND_DIRECT_MESSAGE = 4;
   const KIND_ZAP_RECEIPT = 9735;
   const KIND_PROFILE_STATUS = 30315;
+  const KIND_NIP39_IDENTITY = 10011;
   const KIND_PEOPLE_LIST = 30000;   // NIP-51 people list
   const KIND_GENERIC_LIST = 30001;  // NIP-51 generic list (bookmark-style)
 
@@ -375,6 +376,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     streamEventIdsByAddress: new Map(),
     nip71VideosByEventId: new Map(),
     profilesByPubkey: new Map(),
+    nip39IdentitiesByPubkey: new Map(),
+    nip39IdentityLoadedAtByPubkey: new Map(),
+    nip39IdentityInflightByPubkey: new Map(),
     profileFetchInflightByPubkey: new Map(),
     profileNotesByPubkey: new Map(),
     profileFeedBackfillExhausted: new Set(),
@@ -4142,6 +4146,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (nwcInput) nwcInput.value = state.settings.nwcConnectionUri || '';
     if (bitcoinAddress) bitcoinAddress.value = state.settings.bitcoinAddress || '';
     populateRelayAddModalForm({ bucketId: 'public_outbox' });
+    populateNip39SettingsRows();
+    const nip39SettingsOwner = normalizePubkeyHex(state.user && state.user.pubkey || '');
+    if (nip39SettingsOwner) {
+      loadNip39IdentityClaims(nip39SettingsOwner).then(() => {
+        const modal = qs('#settingsModal');
+        if (modal && modal.classList.contains('open') && normalizePubkeyHex(state.user && state.user.pubkey || '') === nip39SettingsOwner) {
+          populateNip39SettingsRows();
+        }
+      }).catch(() => {});
+    }
 
     if (up && up.picture) previewSettingsAvatar(up.picture);
     else previewSettingsAvatar('');
@@ -30919,6 +30933,376 @@ window.saveAppSettings = function () {
     setAppBootStatus('Sifaka Live is ready.');
     finishAppBoot(true);
   }
+
+  /* ---- NIP-39 external identities (kind:10011) ---- */
+  let nip39SettingsSavePending = false;
+
+  function parseNip39IdentityEvent(event) {
+    const tags = Array.isArray(event && event.tags) ? event.tags : [];
+    return tags.filter((tag) => Array.isArray(tag) && String(tag[0] || '') === 'i')
+      .map((tag) => {
+        const combined = String(tag[1] || '').trim();
+        const separator = combined.indexOf(':');
+        if (separator <= 0) return null;
+        const platform = combined.slice(0, separator).trim().toLowerCase();
+        const identity = combined.slice(separator + 1).trim();
+        const proof = String(tag[2] || '').trim();
+        if (!/^[a-z0-9._/-]+$/.test(platform) || !identity || !proof) return null;
+        return {
+          platform,
+          identity,
+          proof,
+          extra: tag.slice(3).map((value) => String(value == null ? '' : value))
+        };
+      }).filter(Boolean);
+  }
+
+  function loadNip39IdentityClaims(pubkey, opts = {}) {
+    const key = normalizePubkeyHex(pubkey || '');
+    if (!key || !state.pool) return Promise.resolve([]);
+    const cachedEntry = state.nip39IdentitiesByPubkey.get(key);
+    const lastLoadedAt = Number(state.nip39IdentityLoadedAtByPubkey.get(key) || 0);
+    if (!opts.force && lastLoadedAt && Date.now() - lastLoadedAt < 90000) {
+      return Promise.resolve(cachedEntry && Array.isArray(cachedEntry.claims) ? cachedEntry.claims.slice() : []);
+    }
+    const inflight = state.nip39IdentityInflightByPubkey.get(key);
+    if (inflight) return inflight;
+
+    const request = fetchEventsCached(
+      [{ kinds: [KIND_NIP39_IDENTITY], authors: [key], limit: 20 }],
+      {
+        scope: 'nip39-identities',
+        cacheKey: 'nip39-identities:' + key,
+        force: !!opts.force,
+        ttlMs: 45000,
+        warmMs: 120000,
+        allowStale: false,
+        timeoutMs: 2800,
+        maxEvents: 30
+      }
+    ).then((events) => {
+      const latest = (events || [])
+        .filter((event) => event
+          && Number(event.kind) === KIND_NIP39_IDENTITY
+          && normalizePubkeyHex(event.pubkey || '') === key)
+        .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))[0] || null;
+
+      const claims = latest ? parseNip39IdentityEvent(latest) : [];
+      state.nip39IdentitiesByPubkey.set(key, {
+        claims,
+        created_at: Number(latest && latest.created_at || 0),
+        eventId: String(latest && latest.id || '')
+      });
+      state.nip39IdentityLoadedAtByPubkey.set(key, Date.now());
+      return claims.slice();
+    }).finally(() => {
+      state.nip39IdentityInflightByPubkey.delete(key);
+    });
+    state.nip39IdentityInflightByPubkey.set(key, request);
+    return request;
+  }
+
+  function nip39SafeHttpsUrl(value) {
+    const candidate = String(value || '').trim();
+    if (!candidate) return '';
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password) return '';
+      return parsed.href;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function nip39IdentityUrl(claim) {
+    const platform = String(claim && claim.platform || '').toLowerCase();
+    const identity = String(claim && claim.identity || '').trim();
+    if (!identity) return '';
+    let candidate = '';
+    if (platform === 'github' && /^[a-z0-9-]+$/i.test(identity)) {
+      candidate = 'https://github.com/' + encodeURIComponent(identity);
+    } else if (platform === 'twitter' && /^[a-z0-9_]+$/i.test(identity)) {
+      candidate = 'https://twitter.com/' + encodeURIComponent(identity);
+    } else if (platform === 'mastodon') {
+      const match = identity.match(/^([a-z0-9.-]+)\/@([a-z0-9_][a-z0-9_.-]*)$/i);
+      if (match) candidate = 'https://' + match[1] + '/@' + match[2];
+    } else if (platform === 'bluesky' && /^[a-z0-9.-]+$/i.test(identity)) {
+      candidate = 'https://bsky.app/profile/' + encodeURIComponent(identity);
+    } else if (/^https:\/\//i.test(identity)) {
+      candidate = identity;
+    }
+    return nip39SafeHttpsUrl(candidate);
+  }
+
+  function nip39ProofUrl(claim) {
+    const platform = String(claim && claim.platform || '').toLowerCase();
+    const identity = String(claim && claim.identity || '').trim();
+    const proof = String(claim && claim.proof || '').trim();
+    if (!proof) return '';
+    const direct = nip39SafeHttpsUrl(proof);
+    if (direct) return direct;
+    let candidate = '';
+    if (platform === 'github' && /^[a-z0-9-]+$/i.test(identity) && /^[a-z0-9]+$/i.test(proof)) {
+      candidate = 'https://gist.github.com/' + encodeURIComponent(identity) + '/' + encodeURIComponent(proof);
+    } else if (platform === 'twitter' && /^[a-z0-9_]+$/i.test(identity) && /^[0-9]+$/.test(proof)) {
+      candidate = 'https://twitter.com/' + encodeURIComponent(identity) + '/status/' + encodeURIComponent(proof);
+    } else if (platform === 'mastodon') {
+      const match = identity.match(/^([a-z0-9.-]+)\/@([a-z0-9_][a-z0-9_.-]*)$/i);
+      if (match && /^[a-z0-9_-]+$/i.test(proof)) candidate = 'https://' + match[1] + '/@' + match[2] + '/' + encodeURIComponent(proof);
+    } else if (platform === 'telegram' && /^[0-9]+$/.test(identity) && /^[a-z0-9_./-]+$/i.test(proof) && !proof.includes('..')) {
+      candidate = 'https://t.me/' + proof.split('/').map(encodeURIComponent).join('/');
+    } else if (platform === 'bluesky' && /^[a-z0-9.-]+$/i.test(identity) && /^[a-z0-9]+$/i.test(proof)) {
+      candidate = 'https://bsky.app/profile/' + encodeURIComponent(identity) + '/post/' + encodeURIComponent(proof);
+    } else if (platform === 'discord' && /^[a-z0-9_-]+(?:\/[a-z0-9_-]+){2}$/i.test(proof)) {
+      candidate = 'https://discord.com/channels/' + proof.split('/').map(encodeURIComponent).join('/');
+    }
+    return nip39SafeHttpsUrl(candidate);
+  }
+
+  function nip39PlatformLabel(platform) {
+    const value = String(platform || '').replace(/[._/-]+/g, ' ').trim();
+    return value ? value.charAt(0).toUpperCase() + value.slice(1) : 'External identity';
+  }
+
+  function renderNip39IdentityRows(containerId, pubkey, surface) {
+    const holder = qs('#' + containerId);
+    if (!holder) return;
+    holder.replaceChildren();
+    const key = normalizePubkeyHex(pubkey || '');
+    const entry = key ? state.nip39IdentitiesByPubkey.get(key) : null;
+    const claims = entry && Array.isArray(entry.claims) ? entry.claims : [];
+    claims.forEach((claim) => {
+      const row = document.createElement('div');
+      row.className = 'profile-bio-meta nip39-identity-card' + (surface === 'theater' ? ' theater-host-link-card' : '');
+      row.title = 'NIP-39 external identity claim. Open its proof to inspect the claim; Sifaka does not independently verify external posts.';
+
+      const label = document.createElement('span');
+      label.className = 'lbl';
+      label.textContent = 'NIP-39 · ' + nip39PlatformLabel(claim.platform);
+      row.appendChild(label);
+
+      const identityUrl = nip39IdentityUrl(claim);
+      let identityElement;
+      if (identityUrl) {
+        identityElement = document.createElement('a');
+        identityElement.href = identityUrl;
+        identityElement.target = '_blank';
+        identityElement.rel = 'noopener noreferrer';
+        identityElement.textContent = claim.identity;
+        identityElement.title = 'Open external profile';
+      } else {
+        identityElement = document.createElement('span');
+        identityElement.textContent = claim.identity;
+      }
+      identityElement.className = 'val nip39-identity-value';
+      row.appendChild(identityElement);
+
+      const proofUrl = nip39ProofUrl(claim);
+      if (proofUrl) {
+        const proofLink = document.createElement('a');
+        proofLink.className = 'nip39-proof-link';
+        proofLink.href = proofUrl;
+        proofLink.target = '_blank';
+        proofLink.rel = 'noopener noreferrer';
+        proofLink.textContent = 'Proof ↗';
+        proofLink.title = 'Open the NIP-39 proof. This claim is not automatically verified by Sifaka.';
+        row.appendChild(proofLink);
+      } else if (claim.proof) {
+        const proofText = document.createElement('span');
+        proofText.className = 'nip39-proof-value';
+        proofText.textContent = 'Proof: ' + claim.proof;
+        proofText.title = 'Proof reference supplied by this NIP-39 claim; URL format not recognized by Sifaka.';
+        row.appendChild(proofText);
+      }
+      holder.appendChild(row);
+    });
+
+    if (claims.length && surface === 'profile') {
+      const links = qs('#profBioLinksBottom');
+      if (links) links.style.display = 'flex';
+    } else if (claims.length && surface === 'theater') {
+      const links = qs('#theaterProfileLinks');
+      if (links) links.style.display = 'flex';
+    }
+  }
+
+  function renderNip39ForProfile(pubkey) {
+    renderNip39IdentityRows('profNip39Rows', pubkey, 'profile');
+  }
+
+  function renderNip39ForTheater(pubkey) {
+    renderNip39IdentityRows('theaterNip39Rows', pubkey, 'theater');
+  }
+
+  function addNip39SettingsRow(claim = {}) {
+    const container = qs('#settingsNip39Rows');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'nip39-settings-row';
+    row.dataset.extraValues = JSON.stringify(Array.isArray(claim.extra) ? claim.extra : []);
+
+    const makeField = (labelText, placeholder, fieldName, value) => {
+      const field = document.createElement('div');
+      field.className = 'fg nip39-settings-field';
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      const inputId = 'settingsNip39' + fieldName.charAt(0).toUpperCase() + fieldName.slice(1) + '-' + Math.random().toString(36).slice(2, 9);
+      label.htmlFor = inputId;
+      label.textContent = labelText;
+      input.id = inputId;
+      input.type = 'text';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.maxLength = fieldName === 'proof' ? 1000 : 240;
+      input.placeholder = placeholder;
+      input.value = String(value || '');
+      input.dataset.nip39Field = fieldName;
+      field.append(label, input);
+      row.appendChild(field);
+    };
+    makeField('Platform', 'github, mastodon, bluesky…', 'platform', claim.platform || '');
+    makeField('Identity / username', 'Your external handle', 'identity', claim.identity || '');
+    makeField('Proof ID or HTTPS URL', 'Gist ID, post ID, or proof URL', 'proof', claim.proof || '');
+
+    const actions = document.createElement('div');
+    actions.className = 'nip39-settings-row-actions';
+    const remove = document.createElement('button');
+    remove.className = 'btn btn-ghost';
+    remove.type = 'button';
+    remove.textContent = 'Remove';
+    remove.setAttribute('aria-label', 'Remove NIP-39 identity row');
+    remove.addEventListener('click', () => row.remove());
+    actions.appendChild(remove);
+    row.appendChild(actions);
+    container.appendChild(row);
+  }
+
+  function populateNip39SettingsRows() {
+    const container = qs('#settingsNip39Rows');
+    if (!container) return;
+    container.replaceChildren();
+    const owner = normalizePubkeyHex(state.user && state.user.pubkey || '');
+    const entry = owner ? state.nip39IdentitiesByPubkey.get(owner) : null;
+    const claims = entry && Array.isArray(entry.claims) ? entry.claims : [];
+    if (claims.length) claims.forEach((claim) => addNip39SettingsRow(claim));
+    else addNip39SettingsRow();
+  }
+
+  function setNip39SettingsStatus(message, kind) {
+    const status = qs('#settingsNip39Status');
+    if (!status) return;
+    status.textContent = String(message || '');
+    status.classList.toggle('is-success', kind === 'success');
+    status.classList.toggle('is-error', kind === 'error');
+    status.classList.toggle('is-info', kind === 'info');
+  }
+
+  window.addNip39SettingsRow = function () {
+    addNip39SettingsRow();
+  };
+
+  window.saveNip39Identities = async function () {
+    if (nip39SettingsSavePending) return;
+    if (!state.user) {
+      setNip39SettingsStatus('Sign in to publish NIP-39 identities.', 'error');
+      return;
+    }
+    const owner = normalizePubkeyHex(state.user.pubkey || '');
+    if (!owner) {
+      setNip39SettingsStatus('Could not resolve your Nostr public key.', 'error');
+      return;
+    }
+    const container = qs('#settingsNip39Rows');
+    const saveBtn = qs('#settingsNip39SaveBtn');
+    if (!container) return;
+
+    try {
+      const nextClaims = [];
+      const seen = new Set();
+      qsa('#settingsNip39Rows .nip39-settings-row').forEach((row, index) => {
+        const inputValue = (field) => {
+          const input = row.querySelector('[data-nip39-field="' + field + '"]');
+          return String(input && input.value || '').trim();
+        };
+        const platformInput = inputValue('platform');
+        const identity = inputValue('identity');
+        const proof = inputValue('proof');
+        if (!platformInput && !identity && !proof) return;
+        const platform = platformInput.toLowerCase();
+        if (!/^[a-z0-9._/-]+$/.test(platform)) {
+          throw new Error('Row ' + (index + 1) + ': platform names may use lowercase letters, numbers, dots, underscores, hyphens, and slashes only.');
+        }
+        if (!identity) throw new Error('Row ' + (index + 1) + ': enter the external identity / username.');
+        if (!proof) throw new Error('Row ' + (index + 1) + ': enter a proof ID or HTTPS URL.');
+        if (identity.length > 240 || proof.length > 1000) {
+          throw new Error('Row ' + (index + 1) + ': identity or proof is too long.');
+        }
+        const dedupeKey = platform + ':' + identity.toLowerCase();
+        if (seen.has(dedupeKey)) return;
+        seen.add(dedupeKey);
+        let extra = [];
+        try {
+          extra = JSON.parse(row.dataset.extraValues || '[]');
+          if (!Array.isArray(extra)) extra = [];
+        } catch (_) { extra = []; }
+        nextClaims.push({ platform, identity, proof, extra: extra.map((value) => String(value == null ? '' : value)) });
+      });
+
+      const tags = nextClaims.map((claim) => ['i', claim.platform + ':' + claim.identity, claim.proof].concat(claim.extra || []));
+      nip39SettingsSavePending = true;
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Publishing…'; }
+      setNip39SettingsStatus('Publishing NIP-39 identity event…', 'info');
+      const signedEvent = await signAndPublish(KIND_NIP39_IDENTITY, '', tags);
+      state.nip39IdentitiesByPubkey.set(owner, {
+        claims: nextClaims,
+        created_at: Number(signedEvent.created_at || Math.floor(Date.now() / 1000)),
+        eventId: String(signedEvent.id || '')
+      });
+      state.nip39IdentityLoadedAtByPubkey.set(owner, Date.now());
+      if (normalizePubkeyHex(state.selectedProfilePubkey) === owner) renderNip39ForProfile(owner);
+      const selectedStream = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
+      const selectedHost = selectedStream && normalizePubkeyHex(selectedStream.hostPubkey || selectedStream.pubkey || '');
+      if (selectedHost === owner) renderNip39ForTheater(owner);
+      setNip39SettingsStatus(nextClaims.length
+        ? 'NIP-39 identities published. Open each proof link to check the external claim.'
+        : 'NIP-39 identity list cleared.', 'success');
+    } catch (error) {
+      setNip39SettingsStatus(error && error.message ? error.message : 'Failed to publish NIP-39 identities.', 'error');
+    } finally {
+      nip39SettingsSavePending = false;
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save NIP-39 Identities'; }
+    }
+  };
+
+  const renderProfilePageBeforeNip39 = renderProfilePage;
+  renderProfilePage = function (pubkey) {
+    const result = renderProfilePageBeforeNip39.apply(this, arguments);
+    const key = normalizePubkeyHex(pubkey || '');
+    renderNip39ForProfile(key);
+    if (key) {
+      loadNip39IdentityClaims(key).then(() => {
+        if (normalizePubkeyHex(state.selectedProfilePubkey || '') === key && isProfilePageVisible()) {
+          renderNip39ForProfile(key);
+        }
+      }).catch(() => {});
+    }
+    return result;
+  };
+
+  const renderVideoBeforeNip39 = renderVideo;
+  renderVideo = function (stream) {
+    const result = renderVideoBeforeNip39.apply(this, arguments);
+    const key = normalizePubkeyHex(stream && (stream.hostPubkey || stream.pubkey) || '');
+    renderNip39ForTheater(key);
+    if (key && stream && stream.address) {
+      loadNip39IdentityClaims(key).then(() => {
+        if (state.selectedStreamAddress === stream.address && isVideoPageVisible()) {
+          renderNip39ForTheater(key);
+        }
+      }).catch(() => {});
+    }
+    return result;
+  };
 
   document.addEventListener('DOMContentLoaded', init);
 })();
