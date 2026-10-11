@@ -3,6 +3,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#0a0810"><meta name="mobile-web-app-capable" content="yes">
 <title>Sifaka Chess — 3D Chess on Nostr</title>
 <meta name="description" content="Play 3D chess on Sifaka.Live, connect with your Nostr signer, join the public chess lobby, and post games to Nostr.">
+<link rel="icon" type="image/x-icon" href="../../sifaka.ico">
+<link rel="shortcut icon" type="image/x-icon" href="../../sifaka.ico">
+<link rel="canonical" href="https://sifaka.live/games/chess/">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -88,7 +91,7 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
 .ir{margin-top:12px;max-height:44vh;overflow:auto;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--mut)}.ur{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--glass)}.ur>div{min-width:0;flex:1}.ur b{display:block;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ur small{display:block;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ur .btn{padding:8px 14px}.av2{width:36px;height:36px;border-radius:50%;flex:none;border:1px solid var(--line)}
 header{display:none!important}.vt #snd{padding:7px 12px}@media(max-width:900px){main{padding-top:12px}}
 </style></head><body><div class="bg"></div>
-<header><div class="logo"><div class="mark">♞</div><div class="wm">Nostrmate<small>3D Chess · on Nostr</small></div></div><div style="display:flex;gap:8px"><button class="btn" id="snd" title="Sound">🔊</button><button class="btn pri" id="conn">Connect Nostr</button></div></header>
+<header><div class="logo"><div class="mark">♞</div><div class="wm">Sifaka Chess<small>3D Chess · on Nostr</small></div></div><div style="display:flex;gap:8px"><button class="btn" id="snd" title="Sound">🔊</button><button class="btn pri" id="conn">Connect Nostr</button></div></header>
 <main>
 <div class="stage" id="stage"><a class="sifaka-home-link" href="https://sifaka.live/" aria-label="Return to Sifaka.Live">← Sifaka.Live</a><canvas id="cv"></canvas><div class="b2d" id="b2"><div class="g2" id="g2"></div></div><div class="vt"><button id="v3" class="on">3D</button><button id="v2">2D</button></div><div class="hint" id="hint">Drag to orbit · Pinch or scroll to zoom · Tap to move</div></div>
 <div class="panel">
@@ -340,7 +343,7 @@ for(const v of x){const b=c>>25;c=(c&0x1ffffff)<<5^v;for(let i=0;i<5;i++)if((b>>
 return h+'1'+[...w,...[0,1,2,3,4,5].map(i=>c>>5*(5-i)&31)].map(v=>CH[v]).join('')}
 $('conn').onclick=async()=>{if(!window.nostr)return toast('No NIP-07 signer found — install Alby or nos2x. Playing as guest.');
 try{const pk=await window.nostr.getPublicKey(),np=npub(pk),col='#'+pk.slice(0,6);$('conn').className='btn pill';$('conn').innerHTML=`<span class="dot" style="background:${col};color:${col}"></span>${np.slice(0,10)}…${np.slice(-4)}`;$('me').textContent=np.slice(0,12)+'…';$('meS').textContent='Signed in with Nostr';toast('Connected ⚡')}catch(e){toast('Connection cancelled')}};
-async function post(){const pgn=H.map((x,i)=>(i%2?'':(i/2+1)+'. ')+x.san).join(' '),content=`♞ Playing 3D chess on Nostrmate vs Sifaka Engine (${LV[lv]})\n${over?over.h+' — '+over.p+'\n':''}\n${pgn}\n\n#chess #nostr`;
+async function post(){const pgn=H.map((x,i)=>(i%2?'':(i/2+1)+'. ')+x.san).join(' '),content=`♞ Playing 3D chess on Sifaka Chess vs Sifaka Engine (${LV[lv]})\n${over?over.h+' — '+over.p+'\n':''}\n${pgn}\n\n#chess #nostr`;
 if(!window.nostr){try{await navigator.clipboard.writeText(content)}catch(e){}return toast('No Nostr signer found — game note copied to clipboard')}
 try{const ev=await window.nostr.signEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags:[['t','chess'],['t','nostr']],content});let ok=0;
 await Promise.all(RL.map(u=>new Promise(res=>{try{const w=new WebSocket(u),to=setTimeout(()=>{try{w.close()}catch(e){}res()},4000);w.onopen=()=>w.send(JSON.stringify(['EVENT',ev]));w.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='OK'&&d[2])ok++}catch(_){}clearTimeout(to);w.close();res()};w.onerror=()=>{clearTimeout(to);res()}}catch(e){res()}})));
@@ -378,7 +381,7 @@ $('v3').onclick=()=>mode(false);$('v2').onclick=()=>mode(true);$('sd').onclick=(
 $('g2').onclick=e=>{const s=e.target.closest('.s2');if(s)click(+s.dataset.i)};
 $('fp').onclick=()=>{if(m2d){fl2=!fl2;r2d()}else taz+=Math.PI};
 $('lv').addEventListener('click',()=>{CF.lv=lv;apply()});
-async function post(){const tg=CF.tags.split(/[\s,#]+/).filter(Boolean),pgn=H.map((x,i)=>(i%2?'':(i/2+1)+'. ')+x.san).join(' '),content=`♞ Playing chess on Nostrmate vs Sifaka Engine (${LV[lv]})\n${over?over.h+' — '+over.p+'\n':''}\n${CF.pgn?pgn:''}\n\n${tg.map(t=>'#'+t).join(' ')}`;
+async function post(){const tg=CF.tags.split(/[\s,#]+/).filter(Boolean),pgn=H.map((x,i)=>(i%2?'':(i/2+1)+'. ')+x.san).join(' '),content=`♞ Playing chess on Sifaka Chess vs Sifaka Engine (${LV[lv]})\n${over?over.h+' — '+over.p+'\n':''}\n${CF.pgn?pgn:''}\n\n${tg.map(t=>'#'+t).join(' ')}`;
 if(!window.nostr){try{await navigator.clipboard.writeText(content)}catch(e){}return toast('No Nostr signer found — game note copied to clipboard')}
 try{const ev=await window.nostr.signEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags:tg.map(t=>['t',t]),content});let ok=0;const rl=CF.rel.split(/\s+/).filter(u=>/^wss?:\/\//.test(u));
 await Promise.all(rl.map(u=>new Promise(res=>{try{const w=new WebSocket(u),to=setTimeout(()=>{try{w.close()}catch(e){}res()},4000);w.onopen=()=>w.send(JSON.stringify(['EVENT',ev]));w.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='OK'&&d[2])ok++}catch(_){}clearTimeout(to);w.close();res()};w.onerror=()=>{clearTimeout(to);res()}}catch(e){res()}})));
@@ -447,14 +450,14 @@ $('nw').onclick=$('mn').onclick=()=>{cl.innerHTML='';clrStk();nw()};
 const un0=$('un').onclick;$('un').onclick=()=>{const n=H.length;un0();if(H.length<n){clrStk();cadd('','Move taken back','sys')}};
 function turnGlow(){const a=$('me').closest('.card'),b=$('lvl').closest('.card');if(!a||!b)return;const w=!over&&st.t==='w',k=!over&&st.t==='b';a.dataset.t='YOUR TURN';b.dataset.t='THINKING…';a.classList.toggle('turn',w);b.classList.toggle('turn',k)}
 /* invite to game */
-const SR=['wss://relay.nostr.band','wss://search.nos.today'],INV='https://chess.sifaka.live/',HEX=/^[0-9a-f]{64}$/;
+const SR=['wss://relay.nostr.band','wss://search.nos.today'],INV='https://sifaka.live/games/chess/',HEX=/^[0-9a-f]{64}$/;
 function b32d(s){const d=[...s.slice(5,-6)].map(c=>CH.indexOf(c));if(d.includes(-1))return null;let a=0,n=0;const o=[];for(const v of d){a=(a<<5|v)&0xfff;n+=5;if(n>=8){n-=8;o.push(a>>n&255)}}return o.length===32?o.map(x=>x.toString(16).padStart(2,'0')).join(''):null}
 function nostrSearch(q){return new Promise(res=>{const out=new Map();let n=0;const fin=()=>{if(++n>=SR.length)res([...out.values()])};
 SR.forEach(u=>{let f=0,w;const end=()=>{if(f)return;f=1;clearTimeout(to);try{w.close()}catch(e){}fin()},to=setTimeout(end,6000);
 try{w=new WebSocket(u);w.onopen=()=>w.send(JSON.stringify(['REQ','s'+Math.random().toString(36).slice(2,6),{kinds:[0],search:q,limit:20}]));
 w.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&HEX.test(d[2].pubkey)){const p=JSON.parse(d[2].content);out.set(d[2].pubkey,{pk:d[2].pubkey,name:String(p.display_name||p.displayName||p.name||'').slice(0,60),nip05:String(p.nip05||'').slice(0,60),about:String(p.about||'').slice(0,80)})}else if(d[0]==='EOSE')end()}catch(_){}};w.onerror=end}catch(e){end()}})})}
 function pub(ev){const rl=CF.rel.split(/\s+/).filter(u=>/^wss?:\/\//.test(u));let ok=0;return Promise.all(rl.map(u=>new Promise(res=>{try{const w=new WebSocket(u),to=setTimeout(()=>{try{w.close()}catch(e){}res()},4000);w.onopen=()=>w.send(JSON.stringify(['EVENT',ev]));w.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='OK'&&d[2])ok++}catch(_){}clearTimeout(to);w.close();res()};w.onerror=()=>{clearTimeout(to);res()}}catch(e){res()}}))).then(()=>ok)}
-async function invite(u,btn){const txt='\u265e Chess challenge! Join me for a game on Nostrmate: '+INV;
+async function invite(u,btn){const txt='\u265e Chess challenge! Join me for a game on Sifaka Chess: '+INV;
 if(!window.nostr){try{await navigator.clipboard.writeText(txt)}catch(e){}return toast('No Nostr signer found. Invite text copied, send it to them yourself.')}
 btn.disabled=true;btn.textContent='Sending...';
 try{const t=Math.floor(Date.now()/1000);let ev,dm=false;
