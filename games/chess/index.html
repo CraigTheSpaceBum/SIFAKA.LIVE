@@ -70,7 +70,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:clamp(16px,2.5vw
 .g.b{background-image:linear-gradient(180deg,#4a4458,#1d1826 55%,#0c0910);filter:drop-shadow(0 0 .12cqw rgba(255,240,200,.9)) drop-shadow(0 .5cqw .4cqw rgba(0,0,0,.45))}
 @media(max-width:900px){main{grid-template-columns:minmax(0,1fr)}.stage{height:auto;aspect-ratio:1/1.05;border-radius:20px}.wm{font-size:22px}}
 .g2{width:min(calc(100% - 48px),calc(100vh - 110px),1000px)}
-@media(min-width:901px){.stage{height:clamp(520px,calc(100vh - 48px),980px)}main{padding-top:24px}.g2{width:min(calc(100% - 52px),calc(100vh - 118px),1000px)}}
+@media(min-width:901px){.stage{height:clamp(520px,calc(100vh - 126px),850px)}main{padding-top:84px}.g2{width:min(calc(100% - 52px),calc(100vh - 160px),1000px)}}
 .panel header{padding:0 2px 4px;flex-wrap:wrap}.panel .wm{font-size:22px}.panel .mark{width:34px;height:34px;font-size:19px}
 .duo{display:grid;grid-template-columns:1fr 1fr;gap:12px}.duo .pl{flex-wrap:wrap;gap:8px 10px;padding:12px}.duo .pl>div:nth-child(2){min-width:0;flex:1}.duo .pl b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.duo .sub{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.duo .caps{margin:0;width:100%;text-align:left;min-height:20px}.duo .av{width:36px;height:36px;font-size:20px}
 .moves{height:104px}
@@ -89,9 +89,110 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
 @keyframes tglow{0%,100%{box-shadow:0 0 8px rgba(242,220,160,.35),0 0 0 1px rgba(242,220,160,.5)}50%{box-shadow:0 0 28px rgba(242,220,160,.85),0 0 0 1px rgba(242,220,160,.95)}}
 @media(prefers-reduced-motion:reduce){.duo .card.turn{animation:none;box-shadow:0 0 18px rgba(242,220,160,.7)}}
 .ir{margin-top:12px;max-height:44vh;overflow:auto;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--mut)}.ur{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--glass)}.ur>div{min-width:0;flex:1}.ur b{display:block;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ur small{display:block;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ur .btn{padding:8px 14px}.av2{width:36px;height:36px;border-radius:50%;flex:none;border:1px solid var(--line)}
-header{display:none!important}.vt #snd{padding:7px 12px}@media(max-width:900px){main{padding-top:12px}}
+/* Sifaka site navigation: scoped so the chess renderer and app styles stay isolated. */
+.chess-site-nav{position:fixed;inset:0 0 auto;z-index:500;height:68px;padding:0 clamp(12px,2vw,24px);display:flex!important;align-items:center;gap:.6rem;width:100%;background:rgba(22,26,31,.97);border-bottom:1px solid #384454;backdrop-filter:blur(16px);color:#edf2f7}
+.chess-site-nav [hidden]{display:none!important}
+.chess-site-nav .cs-brand{display:flex;align-items:center;gap:.55rem;flex:0 0 auto;color:#edf2f7;text-decoration:none;padding:.2rem .45rem;border-radius:10px}
+.chess-site-nav .cs-brand:hover{background:#252d37}
+.chess-site-nav .cs-brand img{width:42px;height:42px;object-fit:contain;border-radius:9px}
+.chess-site-nav .cs-brand-copy{display:flex;align-items:center;gap:.38rem;font:800 .8rem/1 'DM Mono',monospace;letter-spacing:.08em}
+.chess-site-nav .cs-brand-copy small{background:#c42121;color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:4px;padding:.18rem .38rem;font-size:.58rem;letter-spacing:.1em}
+.chess-site-nav .cs-search{flex:1;min-width:60px;max-width:520px;position:relative;display:flex;align-items:center;gap:.35rem;height:38px;padding:0 .45rem 0 .75rem;background:#252d37;border:1px solid #384454;border-radius:10px}
+.chess-site-nav .cs-search:focus-within{border-color:#64748b;box-shadow:0 0 0 3px rgba(143,91,255,.12)}
+.chess-site-nav .cs-search-icon{font-size:1.3rem;line-height:1;color:#76879a}
+.chess-site-nav .cs-search input{width:100%;min-width:0;height:100%;background:transparent;border:0;outline:none;color:#edf2f7;font:400 .82rem 'DM Sans',sans-serif}
+.chess-site-nav .cs-search input::placeholder{color:#76879a}
+.chess-site-nav .cs-search button{flex:0 0 auto;border:0;background:transparent;color:#b3c0cf;border-radius:6px;padding:.3rem .45rem;cursor:pointer}
+.chess-site-nav .cs-search button:hover{color:#f7931a;background:rgba(255,255,255,.04)}
+.chess-site-nav .cs-golive{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;padding:.62rem .9rem;border-radius:8px;border:1px solid #445365;color:#b3c0cf;font:700 .8rem 'DM Sans',sans-serif;text-decoration:none;white-space:nowrap}
+.chess-site-nav .cs-golive:hover{border-color:#f7931a;color:#f7931a}
+.chess-site-nav .cs-login{flex:0 0 auto;white-space:nowrap;padding:.7rem 1rem;border-radius:8px;background:#f7931a;color:#111;border:0;font:700 .82rem 'DM Sans',sans-serif;cursor:pointer}
+.chess-site-nav .cs-login:hover{background:#ffb347;box-shadow:0 0 18px rgba(247,147,26,.22)}
+.chess-site-nav .cs-nav-profile{position:relative;flex:0 1 auto;min-width:0}
+.chess-site-nav .cs-profile-trigger{display:flex;align-items:center;gap:.55rem;max-width:290px;min-width:0;padding:.25rem .4rem;border:1px solid transparent;border-radius:999px;background:transparent;color:#edf2f7;text-align:left;cursor:pointer}
+.chess-site-nav .cs-profile-trigger:hover,.chess-site-nav .cs-profile-trigger[aria-expanded="true"]{background:#252d37;border-color:#384454}
+.chess-site-nav .cs-avatar{width:42px;height:42px;flex:0 0 42px;display:grid;place-items:center;overflow:hidden;border:2px solid #445365;border-radius:50%;background:linear-gradient(135deg,#f7931a,#8f5bff);color:#fff;font-size:1rem;font-weight:800;transition:box-shadow .2s,border-radius .2s}
+.chess-site-nav .cs-avatar img{width:100%;height:100%;object-fit:cover}
+.chess-site-nav .cs-avatar.nip05-square{border-radius:8px;border:2px solid rgba(155,114,255,.7);box-shadow:0 0 10px rgba(155,114,255,.55),0 0 22px rgba(155,114,255,.25),inset 0 0 8px rgba(155,114,255,.1);animation:csNip05Pulse 2.8s ease-in-out infinite}
+.chess-site-nav .cs-profile-copy{display:flex;flex-direction:column;gap:3px;min-width:0;max-width:165px}
+.chess-site-nav .cs-profile-copy strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:750 .82rem 'DM Sans',sans-serif}
+.chess-site-nav .cs-profile-copy small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#b3c0cf;font:500 .63rem 'DM Mono',monospace}
+.chess-site-nav .cs-profile-copy small.nip05-valid{color:#c9afff;text-shadow:0 0 12px rgba(155,114,255,.3)}
+.chess-site-nav .cs-profile-copy small .cs-verified-check{display:inline-block;margin-right:.25rem;color:#c7a6ff;font-weight:900}
+.chess-site-nav .cs-profile-caret{color:#76879a;font-size:.7rem}
+.chess-site-nav .cs-profile-menu{position:absolute;right:0;top:calc(100% + 8px);width:min(280px,calc(100vw - 24px));padding:.45rem;border:1px solid #445365;border-radius:12px;background:#1d232b;box-shadow:0 20px 60px rgba(0,0,0,.65);z-index:700}
+.chess-site-nav .cs-menu-npub{padding:.65rem .65rem .55rem;border-bottom:1px solid #384454;margin-bottom:.3rem;color:#b3c0cf;overflow-wrap:anywhere;font:500 .63rem/1.5 'DM Mono',monospace}
+.chess-site-nav .cs-profile-menu button,.chess-site-nav .cs-profile-menu a{display:block;width:100%;padding:.6rem .65rem;border:0;border-radius:7px;background:transparent;color:#b3c0cf;text-align:left;text-decoration:none;font:600 .78rem 'DM Sans',sans-serif;cursor:pointer}
+.chess-site-nav .cs-profile-menu button:hover,.chess-site-nav .cs-profile-menu a:hover{background:#252d37;color:#edf2f7}
+.chess-site-nav .cs-profile-menu #chessSwitchAccount{color:#ff8b96}
+.chess-site-nav .cs-sound{padding:.55rem .65rem;flex:0 0 auto;border-radius:999px}
+@keyframes csNip05Pulse{0%,100%{box-shadow:0 0 7px rgba(155,114,255,.5),0 0 14px rgba(155,114,255,.2)}50%{box-shadow:0 0 12px rgba(155,114,255,.8),0 0 25px rgba(155,114,255,.38)}}
+@media(max-width:900px){
+  .chess-site-nav{height:60px;padding:0 10px;gap:.45rem}
+  .chess-site-nav .cs-brand{gap:.2rem;padding:.15rem}
+  .chess-site-nav .cs-brand img{width:34px;height:34px}
+  .chess-site-nav .cs-brand-copy{font-size:.65rem;gap:.25rem}
+  .chess-site-nav .cs-brand-copy small{font-size:.5rem}
+  .chess-site-nav .cs-search{height:36px;gap:.15rem;padding:0 .25rem 0 .45rem}
+  .chess-site-nav .cs-search input{font-size:16px}
+  .chess-site-nav .cs-search input::placeholder{font-size:12px}
+  .chess-site-nav .cs-search button{display:none}
+  .chess-site-nav .cs-golive{display:none}
+  .chess-site-nav .cs-login{font-size:.7rem;padding:.62rem .65rem}
+  .chess-site-nav .cs-profile-trigger{gap:.3rem;padding:.12rem .2rem;max-width:145px}
+  .chess-site-nav .cs-avatar{width:35px;height:35px;flex-basis:35px}
+  .chess-site-nav .cs-profile-copy{display:flex;max-width:88px}
+  .chess-site-nav .cs-profile-copy strong{font-size:.68rem}
+  .chess-site-nav .cs-profile-copy small{font-size:.52rem}
+  .chess-site-nav .cs-profile-caret{display:none}
+  .chess-site-nav .cs-sound{display:none}
+  main{padding-top:72px!important}
+}
+@media(max-width:430px){
+  .chess-site-nav{gap:.28rem;padding:0 7px}
+  .chess-site-nav .cs-brand-copy{display:none}
+  .chess-site-nav .cs-brand img{width:32px;height:32px}
+  .chess-site-nav .cs-search input::placeholder{content:"Search"}
+  .chess-site-nav .cs-profile-trigger{max-width:132px}
+  .chess-site-nav .cs-profile-copy{max-width:82px}
+  .chess-site-nav .cs-profile-copy strong{font-size:.65rem}
+  .chess-site-nav .cs-profile-copy small{font-size:.49rem}
+  .chess-site-nav .cs-login{padding:.6rem .48rem;font-size:.65rem}
+}
+@media(prefers-reduced-motion:reduce){.chess-site-nav .cs-avatar.nip05-square{animation:none}}
+.vt #snd{padding:7px 12px}
+@media(max-width:900px){main{padding-top:72px!important}}
 </style></head><body><div class="bg"></div>
-<header><div class="logo"><div class="mark">♞</div><div class="wm">Sifaka Chess<small>3D Chess · on Nostr</small></div></div><div style="display:flex;gap:8px"><button class="btn" id="snd" title="Sound">🔊</button><button class="btn pri" id="conn">Connect Nostr</button></div></header>
+<header class="chess-site-nav" id="chessSiteNav" role="banner">
+  <a class="cs-brand" href="https://sifaka.live/" aria-label="Sifaka.Live home">
+    <img src="../../logo.webp" alt="" width="42" height="42" decoding="async">
+    <span class="cs-brand-copy"><strong>SIFAKA</strong><small>LIVE</small></span>
+  </a>
+  <form class="cs-search" id="chessSiteSearch" role="search" autocomplete="off">
+    <span class="cs-search-icon" aria-hidden="true">⌕</span>
+    <input id="chessSiteSearchInput" type="search" placeholder="Search streams, npubs, posts, videos..." aria-label="Search Sifaka.Live">
+    <button type="submit" aria-label="Search">↵</button>
+  </form>
+  <a class="cs-golive" href="https://sifaka.live/" title="Return to Sifaka.Live to browse or go live">Go Live</a>
+  <button class="btn pri cs-login" id="conn" type="button">Login with Nostr</button>
+  <div class="cs-nav-profile" id="chessNavProfile" hidden>
+    <button class="cs-profile-trigger" id="chessProfileTrigger" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Open Nostr profile menu">
+      <span class="cs-avatar" id="chessNavAvatar"><span class="cs-avatar-fallback">S</span></span>
+      <span class="cs-profile-copy">
+        <strong id="chessNavName">Nostr user</strong>
+        <small id="chessNavIdentity">npub</small>
+      </span>
+      <span class="cs-profile-caret" aria-hidden="true">▾</span>
+    </button>
+    <div class="cs-profile-menu" id="chessProfileMenu" hidden>
+      <div class="cs-menu-npub" id="chessMenuNpub"></div>
+      <button type="button" id="chessCopyNpub">Copy npub</button>
+      <a href="https://sifaka.live/">Open Sifaka.Live</a>
+      <button type="button" id="chessSwitchAccount">Disconnect from Chess</button>
+    </div>
+  </div>
+  <button class="btn cs-sound" id="snd" type="button" title="Sound" aria-label="Toggle chess sound">🔊</button>
+</header>
 <main>
 <div class="stage" id="stage"><a class="sifaka-home-link" href="https://sifaka.live/" aria-label="Return to Sifaka.Live">← Sifaka.Live</a><canvas id="cv"></canvas><div class="b2d" id="b2"><div class="g2" id="g2"></div></div><div class="vt"><button id="v3" class="on">3D</button><button id="v2">2D</button></div><div class="hint" id="hint">Drag to orbit · Pinch or scroll to zoom · Tap to move</div></div>
 <div class="panel">
@@ -436,7 +537,7 @@ if(!on){cadd('','Back to engine chat','sys');return}
 const u=CF.rel.split(/\s+/).find(x=>/^wss?:\/\//.test(x));if(!u){lob(false);return}
 try{cws=new WebSocket(u);cws.onopen=()=>{cws.send(JSON.stringify(['REQ','nmchat',{kinds:[20000],'#t':['nostrmate-lobby'],since:Math.floor(Date.now()/1000)-300}]));cadd('','Joined the Nostrmate lobby (public, ephemeral)','sys')};cws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&!seenC.has(d[2].id)){seenC.add(d[2].id);cadd('npub '+d[2].pubkey.slice(0,6),String(d[2].content).slice(0,300))}}catch(_){}};cws.onerror=()=>{if(lobby){cadd('','Lobby relay unreachable from this page','sys');lob(false)}}}catch(e){cadd('','Lobby unavailable','sys');lobby=false}}
 $('cb').onclick=csend;$('ci').addEventListener('keydown',e=>{if(e.key==='Enter')csend()});$('cj').onclick=()=>lob(!lobby);
-{const hd=document.querySelector('header'),pn=document.querySelector('.panel'),mq=matchMedia('(min-width:901px)'),pl=()=>mq.matches?pn.prepend(hd):document.body.insertBefore(hd,document.querySelector('main'));mq.addEventListener('change',pl);pl()}
+/* Keep the shared-style navigation fixed at the document root. */
 /* merged move log + sticky check */
 let stk=null;
 function clrStk(){if(stk){const e=stk;stk=null;e.classList.add('out');setTimeout(()=>e.remove(),400)}}
@@ -479,4 +580,228 @@ $('il').onclick=async()=>{try{await navigator.clipboard.writeText(INV);toast('In
 document.querySelector('.vt').appendChild($('snd'));
 $('meS').textContent='Tap to connect Nostr';{const pc=$('me').closest('.card');pc.style.cursor='pointer';pc.title='Connect your Nostr signer';pc.onclick=()=>{if($('meS').textContent!=='Signed in with Nostr')$('conn').click()}}
 nw();mode(true);requestAnimationFrame(loop);
-</script></body></html>
+</script><script id="sifaka-chess-nav-profile">
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const STORAGE_KEY = 'sifaka_chess_pubkey';
+  const RELAYS = ['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net'];
+  const HEX = /^[0-9a-f]{64}$/i;
+  let activePubkey = '';
+  let profileRequest = 0;
+  let verifiedNip05 = false;
+  let fullNpub = '';
+  const navProfile = $('chessNavProfile');
+  const loginBtn = $('conn');
+  const menu = $('chessProfileMenu');
+  const trigger = $('chessProfileTrigger');
+  const searchInput = $('chessSiteSearchInput');
+
+  function shorten(value, left, right){const s=String(value||'');return s.length>left+right+1?s.slice(0,left)+'…'+s.slice(-right):s;}
+  function validHex(value){return typeof value==='string' && HEX.test(value.trim());}
+  function asNpub(hex){try{return typeof npub==='function'?npub(hex):hex;}catch(_){return hex;}}
+  function fallbackName(pk){return shorten(asNpub(pk),13,7);}
+  function readPublicKey(value){
+    if(typeof value!=='string')return '';
+    const s=value.trim();
+    if(validHex(s))return s.toLowerCase();
+    if(/^npub1[023456789acdefghjklmnpqrstuvwxyz]{20,}$/i.test(s)){
+      try{if(typeof b32d==='function'){const decoded=b32d(s.toLowerCase());if(validHex(decoded))return decoded.toLowerCase();}}catch(_){}
+    }
+    return '';
+  }
+  function findStoredIdentity(){
+    try{
+      const direct=readPublicKey(localStorage.getItem(STORAGE_KEY)||'');
+      if(direct)return direct;
+      // Only inspect storage entries that look like the active session/account,
+      // never generic profile caches that might belong to another person.
+      const identityKey=/(auth|account|identity|current.?user|active.?user|logged.?in|user.?session|session.?user|pubkey|public.?key|npub|nostr.*user|user.*nostr|sifaka.*user)/i;
+      for(const store of [localStorage,sessionStorage]){
+        for(let i=0;i<store.length;i++){
+          const key=store.key(i)||'';
+          if(!identityKey.test(key))continue;
+          const raw=store.getItem(key);
+          if(!raw)continue;
+          const directValue=readPublicKey(raw);
+          if(directValue && identityKey.test(key))return directValue;
+          try{
+            const data=JSON.parse(raw);
+            const directNested=readPublicKey(data);
+            if(directNested)return directNested;
+            if(data && typeof data==='object'){
+              for(const [field,value] of Object.entries(data)){
+                if(/^(pubkey|pubKey|publicKey|public_key|pubkeyHex|npub|activePubkey|activePubKey)$/i.test(field)){
+                  const decoded=readPublicKey(value);
+                  if(decoded)return decoded;
+                }
+              }
+            }
+          }catch(_){}
+        }
+      }
+    }catch(_){}
+    return '';
+  }
+  function setLoggedOut(){
+    activePubkey='';verifiedNip05=false;fullNpub='';
+    navProfile.hidden=true;loginBtn.hidden=false;
+    if(menu)menu.hidden=true;
+    if(trigger)trigger.setAttribute('aria-expanded','false');
+    $('chessNavAvatar').classList.remove('nip05-square');
+    $('chessNavAvatar').innerHTML='<span class="cs-avatar-fallback">S</span>';
+    $('chessNavName').textContent='Nostr user';
+    $('chessNavIdentity').textContent='npub';
+    $('chessNavIdentity').classList.remove('nip05-valid');
+    $('chessMenuNpub').textContent='';
+    $('me').textContent='Guest';$('meS').textContent='Tap to connect Nostr';
+  }
+  function setAvatar(profile, pubkey, verified){
+    const el=$('chessNavAvatar');
+    el.classList.toggle('nip05-square',!!verified);
+    el.replaceChildren();
+    const fallback=document.createElement('span');
+    fallback.className='cs-avatar-fallback';
+    fallback.textContent=String(profile.display_name||profile.displayName||profile.name||'S').trim().slice(0,1).toUpperCase()||'S';
+    const picture=String(profile.picture||'').trim();
+    if(/^https?:\/\//i.test(picture)){
+      const img=document.createElement('img');
+      img.src=picture;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
+      img.addEventListener('error',()=>{el.replaceChildren(fallback)},{once:true});
+      el.appendChild(img);
+    }else el.appendChild(fallback);
+    $('chessNavName').textContent=String(profile.display_name||profile.displayName||profile.name||fallbackName(pubkey)).trim().slice(0,80);
+  }
+  function setHeaderIdentity(pubkey, profile, verified){
+    activePubkey=pubkey;verifiedNip05=!!verified;fullNpub=asNpub(pubkey);
+    navProfile.hidden=false;loginBtn.hidden=true;
+    const avatar=$('chessNavAvatar');avatar.classList.toggle('nip05-square',!!verified);
+    const name=String(profile.display_name||profile.displayName||profile.name||fallbackName(pubkey)).trim().slice(0,80)||fallbackName(pubkey);
+    $('chessNavName').textContent=name;
+    avatar.replaceChildren();
+    const fallback=document.createElement('span');
+    fallback.className='cs-avatar-fallback';fallback.textContent=name.slice(0,1).toUpperCase()||'S';
+    const pic=String(profile.picture||'').trim();
+    if(/^https?:\/\//i.test(pic)){
+      const img=document.createElement('img');img.src=pic;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
+      img.addEventListener('error',()=>{avatar.replaceChildren(fallback)},{once:true});avatar.appendChild(img);
+    }else avatar.appendChild(fallback);
+    const identity=$('chessNavIdentity');identity.classList.toggle('nip05-valid',!!verified);identity.replaceChildren();
+    if(verified){
+      const check=document.createElement('span');check.className='cs-verified-check';check.textContent='✓';check.setAttribute('aria-label','Verified NIP-05');identity.append(check,document.createTextNode(' '+String(profile.nip05).trim()));
+      identity.title='NIP-05 verified for this public key';
+    }else{
+      identity.textContent=shorten(fullNpub,14,8);identity.title=fullNpub;
+    }
+    $('chessMenuNpub').textContent=fullNpub;
+    $('me').textContent=name;$('meS').textContent='Signed in with Nostr';
+  }
+  async function loadProfile(pubkey, token){
+    const cachedKey='sifaka_chess_profile_'+pubkey;
+    let profile={};
+    try{profile=JSON.parse(localStorage.getItem(cachedKey)||'{}')}catch(_){}
+    if(profile && typeof profile==='object' && (profile.name||profile.display_name||profile.picture||profile.nip05)){
+      setHeaderIdentity(pubkey,profile,false);
+    }
+    const latest=await fetchProfileEvent(pubkey);
+    if(token!==profileRequest || pubkey!==activePubkey)return;
+    if(latest){
+      try{profile=JSON.parse(latest.content)||{};}catch(_){profile={};}
+      try{localStorage.setItem(cachedKey,JSON.stringify(profile));}catch(_){}
+    }
+    if(!profile || typeof profile!=='object')profile={};
+    let verified=false;
+    if(profile.nip05)verified=await verifyNip05(profile.nip05,pubkey);
+    if(token!==profileRequest || pubkey!==activePubkey)return;
+    setHeaderIdentity(pubkey,profile,verified);
+  }
+  function fetchProfileEvent(pubkey){
+    return new Promise(resolve=>{
+      let done=0,best=null,settled=false;
+      const finishOne=()=>{done++;if(done>=RELAYS.length&&!settled){settled=true;resolve(best)}};
+      const settleTimer=setTimeout(()=>{if(!settled){settled=true;resolve(best)}},4500);
+      RELAYS.forEach((url,index)=>{
+        let ws,closed=false,sub='sifaka-chess-profile-'+Date.now().toString(36)+'-'+index+'-'+Math.random().toString(36).slice(2,6);
+        const finish=()=>{if(closed)return;closed=true;clearTimeout(timer);try{if(ws&&ws.readyState===1)ws.close()}catch(_){}finishOne();};
+        const timer=setTimeout(finish,3700);
+        try{
+          ws=new WebSocket(url);
+          ws.onopen=()=>{try{ws.send(JSON.stringify(['REQ',sub,{kinds:[0],authors:[pubkey],limit:10}]))}catch(_){finish();}};
+          ws.onmessage=e=>{
+            try{
+              const d=JSON.parse(e.data);
+              if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&d[2].kind===0&&d[2].pubkey===pubkey&&(!best||Number(d[2].created_at)>Number(best.created_at)))best=d[2];
+              if(d[0]==='EOSE'&&d[1]===sub)finish();
+            }catch(_){}
+          };
+          ws.onerror=finish;ws.onclose=finish;
+        }catch(_){finish();}
+      });
+      // Resolve promptly once all relays finish, while retaining a hard timeout for quiet relays.
+      const watchdog=setTimeout(()=>{if(!settled){settled=true;clearTimeout(settleTimer);resolve(best)}},4200);
+      void watchdog;
+    });
+  }
+  async function verifyNip05(value,pubkey){
+    const identifier=String(value||'').trim();
+    const at=identifier.lastIndexOf('@');
+    if(at<0||at===identifier.length-1)return false;
+    const username=(identifier.slice(0,at).trim()||'_');
+    const domain=identifier.slice(at+1).trim().toLowerCase();
+    if(!/^[a-z0-9._-]+$/i.test(username)||!/^[a-z0-9.-]+$/i.test(domain)||domain.includes('..'))return false;
+    try{
+      const url='https://'+domain+'/.well-known/nostr.json?name='+encodeURIComponent(username);
+      const response=await fetch(url,{method:'GET',mode:'cors',credentials:'omit',cache:'no-store'});
+      if(!response.ok)return false;
+      const data=await response.json();
+      const found=data&&data.names&&(data.names[username]||data.names[username.toLowerCase()]);
+      return typeof found==='string'&&found.toLowerCase()===pubkey.toLowerCase();
+    }catch(_){return false;}
+  }
+  function connect(){
+    if(!window.nostr||typeof window.nostr.getPublicKey!=='function'){
+      toast('No Nostr signer detected. Install or enable your NIP-07 signer, then try again.');
+      return;
+    }
+    loginBtn.disabled=true;loginBtn.textContent='Connecting…';
+    Promise.resolve().then(()=>window.nostr.getPublicKey()).then(pubkey=>{
+      const pk=readPublicKey(pubkey);
+      if(!pk)throw new Error('The signer returned an invalid public key.');
+      try{localStorage.setItem(STORAGE_KEY,pk)}catch(_){}
+      profileRequest++;
+      setHeaderIdentity(pk,{},false);
+      return loadProfile(pk,profileRequest);
+    }).catch(err=>{
+      toast(err&&err.message==='The signer returned an invalid public key.'?err.message:'Nostr connection was cancelled or unavailable.');
+      if(!activePubkey)loginBtn.hidden=false;
+    }).finally(()=>{loginBtn.disabled=false;loginBtn.textContent='Login with Nostr';});
+  }
+  loginBtn.onclick=connect;
+  trigger.addEventListener('click',()=>{
+    const open=menu.hidden;menu.hidden=!open;trigger.setAttribute('aria-expanded',String(open));
+  });
+  document.addEventListener('click',e=>{if(!e.target.closest('#chessNavProfile')){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}});
+  $('chessCopyNpub').addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText(fullNpub);toast('npub copied to clipboard')}catch(_){toast('Could not copy npub on this browser')}
+  });
+  $('chessSwitchAccount').addEventListener('click',()=>{
+    try{localStorage.removeItem(STORAGE_KEY)}catch(_){}
+    profileRequest++;setLoggedOut();toast('Disconnected from Chess. Your Sifaka.Live session was not changed.');
+  });
+  $('chessSiteSearch').addEventListener('submit',e=>{
+    e.preventDefault();
+    const q=searchInput.value.trim();if(!q)return;
+    try{sessionStorage.setItem('sifaka_chess_pending_search',q)}catch(_){}
+    window.location.href='https://sifaka.live/?search='+encodeURIComponent(q);
+  });
+  const restored=findStoredIdentity();
+  if(restored){
+    try{localStorage.setItem(STORAGE_KEY,restored)}catch(_){}
+    profileRequest++;setHeaderIdentity(restored,{},false);loadProfile(restored,profileRequest);
+  }else{
+    setLoggedOut();
+  }
+})();
+</script>
+</body></html>

@@ -2538,6 +2538,31 @@ body.sifaka-games-modal-open{overflow:hidden}
 })();
 </script>
 
+<script id="sifaka-chess-search-bridge">
+(function(){
+  function restoreChessSearch(){
+    var params=new URLSearchParams(window.location.search);
+    var query=params.get('search')||'';
+    try{
+      if(!query)query=sessionStorage.getItem('sifaka_chess_pending_search')||'';
+      sessionStorage.removeItem('sifaka_chess_pending_search');
+    }catch(_){}
+    if(!query)return;
+    var input=document.getElementById('siteSearchInput');
+    if(!input)return;
+    input.value=query;
+    if(typeof window.handleSearch==='function'){
+      try{window.handleSearch(input);}catch(_){}
+    }else{
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+    input.focus({preventScroll:true});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',restoreChessSearch,{once:true});
+  else restoreChessSearch();
+})();
+</script>
+
 </body>
 </html>
 
