@@ -139,9 +139,11 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
   .chess-site-nav .cs-search button{display:none}
   .chess-site-nav .cs-golive{display:none}
   .chess-site-nav .cs-login{font-size:.7rem;padding:.62rem .65rem}
-  .chess-site-nav .cs-profile-trigger{gap:.25rem;padding:.12rem .2rem;max-width:126px}
+  .chess-site-nav .cs-profile-trigger{gap:.3rem;padding:.12rem .2rem;max-width:145px}
   .chess-site-nav .cs-avatar{width:35px;height:35px;flex-basis:35px}
-  .chess-site-nav .cs-profile-copy{display:none}
+  .chess-site-nav .cs-profile-copy{display:flex;max-width:88px}
+  .chess-site-nav .cs-profile-copy strong{font-size:.68rem}
+  .chess-site-nav .cs-profile-copy small{font-size:.52rem}
   .chess-site-nav .cs-profile-caret{display:none}
   .chess-site-nav .cs-sound{display:none}
   main{padding-top:72px!important}
@@ -151,7 +153,10 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
   .chess-site-nav .cs-brand-copy{display:none}
   .chess-site-nav .cs-brand img{width:32px;height:32px}
   .chess-site-nav .cs-search input::placeholder{content:"Search"}
-  .chess-site-nav .cs-profile-trigger{max-width:40px}
+  .chess-site-nav .cs-profile-trigger{max-width:132px}
+  .chess-site-nav .cs-profile-copy{max-width:82px}
+  .chess-site-nav .cs-profile-copy strong{font-size:.65rem}
+  .chess-site-nav .cs-profile-copy small{font-size:.49rem}
   .chess-site-nav .cs-login{padding:.6rem .48rem;font-size:.65rem}
 }
 @media(prefers-reduced-motion:reduce){.chess-site-nav .cs-avatar.nip05-square{animation:none}}
@@ -609,25 +614,29 @@ nw();mode(true);requestAnimationFrame(loop);
     try{
       const direct=readPublicKey(localStorage.getItem(STORAGE_KEY)||'');
       if(direct)return direct;
-      // Reuse a public key only when it is stored under a Nostr/account identity field.
-      for(let i=0;i<localStorage.length;i++){
-        const key=localStorage.key(i)||'';
-        if(!/(nostr|sifaka|user|auth|account|identity|profile|pubkey|public.?key|npub)/i.test(key))continue;
-        const raw=localStorage.getItem(key);
-        if(!raw)continue;
-        const directValue=readPublicKey(raw);
-        if(directValue && /(pubkey|public.?key|npub|identity|account)/i.test(key))return directValue;
-        try{
-          const data=JSON.parse(raw);
-          if(data && typeof data==='object'){
-            for(const [field,value] of Object.entries(data)){
-              if(/^(pubkey|pubKey|publicKey|public_key|pubkeyHex|npub|activePubkey|activePubKey)$/i.test(field)){
-                const decoded=readPublicKey(value);
-                if(decoded)return decoded;
+      // Reuse a public key only when stored under a Nostr/account identity field.
+      for(const store of [localStorage,sessionStorage]){
+        for(let i=0;i<store.length;i++){
+          const key=store.key(i)||'';
+          if(!/(nostr|sifaka|user|auth|account|identity|profile|pubkey|public.?key|npub)/i.test(key))continue;
+          const raw=store.getItem(key);
+          if(!raw)continue;
+          const directValue=readPublicKey(raw);
+          if(directValue && /(pubkey|public.?key|npub|identity|account)/i.test(key))return directValue;
+          try{
+            const data=JSON.parse(raw);
+            const directNested=readPublicKey(data);
+            if(directNested && /(nostr|sifaka|user|auth|account|identity|profile|npub|pubkey)/i.test(key))return directNested;
+            if(data && typeof data==='object'){
+              for(const [field,value] of Object.entries(data)){
+                if(/^(pubkey|pubKey|publicKey|public_key|pubkeyHex|npub|activePubkey|activePubKey)$/i.test(field)){
+                  const decoded=readPublicKey(value);
+                  if(decoded)return decoded;
+                }
               }
             }
-          }
-        }catch(_){}
+          }catch(_){}
+        }
       }
     }catch(_){}
     return '';
