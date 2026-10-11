@@ -89,113 +89,281 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
 @keyframes tglow{0%,100%{box-shadow:0 0 8px rgba(242,220,160,.35),0 0 0 1px rgba(242,220,160,.5)}50%{box-shadow:0 0 28px rgba(242,220,160,.85),0 0 0 1px rgba(242,220,160,.95)}}
 @media(prefers-reduced-motion:reduce){.duo .card.turn{animation:none;box-shadow:0 0 18px rgba(242,220,160,.7)}}
 .ir{margin-top:12px;max-height:44vh;overflow:auto;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--mut)}.ur{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--glass)}.ur>div{min-width:0;flex:1}.ur b{display:block;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ur small{display:block;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ur .btn{padding:8px 14px}.av2{width:36px;height:36px;border-radius:50%;flex:none;border:1px solid var(--line)}
-/* Sifaka site navigation: scoped so the chess renderer and app styles stay isolated. */
-.chess-site-nav{position:fixed;inset:0 0 auto;z-index:500;height:68px;padding:0 clamp(12px,2vw,24px);display:flex!important;align-items:center;gap:.6rem;width:100%;background:rgba(22,26,31,.97);border-bottom:1px solid #384454;backdrop-filter:blur(16px);color:#edf2f7}
+/* Shared Sifaka.Live navigation CSS, copied from styles/app.css and scoped to this header. */
+:root{--surface:#1d232b;--surface2:#252d37;--surface3:#2f3945;--border:#384454;--border2:#445365;--accent:#f7931a;--accent-glow:rgba(247,147,26,.24);--live:#ff4f6f;--zap:#f7931a;--zap-dim:rgba(247,147,26,.15);--text:#edf2f7;--text2:#b3c0cf;--muted:#76879a;--green:#16c784;--purple:#8f5bff;--nip05:#8f5bff;--font-display:'DM Sans',sans-serif;}
+/* ======== NAV ======== */
+.chess-site-nav{
+  display:flex;align-items:center;gap:.6rem;
+  height:68px;padding:0 1.25rem;
+  background:rgba(22,26,31,.97);
+  border-bottom:1px solid var(--border);
+  position:fixed;top:0;left:0;right:0;z-index:500;
+  backdrop-filter:blur(16px);
+}
+.chess-site-nav .btn{
+  font-family:var(--font-display);
+  font-weight:700;
+  letter-spacing:.01em;
+}
+
+
+/* Logo with JS-controlled dropdown */
+.chess-site-nav .logo-wrap{position:relative;flex-shrink:0;}
+.chess-site-nav .logo{
+  font-family:'DM Mono',monospace;font-weight:800;font-size:1rem;
+  letter-spacing:.02em;display:flex;align-items:center;gap:.55rem;
+  color:var(--text);cursor:pointer;padding:.3rem .55rem;
+  border-radius:10px;transition:background .15s;user-select:none;
+  background:none;border:none;
+}
+.chess-site-nav .logo:hover{background:var(--surface2);}
+.chess-site-nav .logo.dd-open{background:var(--surface2);}
+.chess-site-nav .logo-bolt{color:var(--zap);}
+.chess-site-nav .logo-text-8bit{
+  font-family:"Press Start 2P","VT323","DM Mono",monospace;
+  font-size:.8rem;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  line-height:1;
+  text-shadow:0 0 0 #000, 1px 1px 0 rgba(0,0,0,.35);
+}
+.chess-site-nav .logo-live-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:#c42121;
+  color:#fff;
+  border:1px solid rgba(255,255,255,.25);
+  border-radius:4px;
+  padding:.18rem .44rem;
+  font-family:"Press Start 2P","VT323","DM Mono",monospace;
+  font-size:.62rem;
+  letter-spacing:.1em;
+  line-height:1;
+  box-shadow:0 0 0 1px rgba(0,0,0,.28) inset;
+}
+
+/* Shared dropdown style */
+.chess-site-nav .nav-dropdown{
+  position:absolute;
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:12px;padding:.5rem;
+  box-shadow:0 20px 60px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.03);
+  opacity:0;pointer-events:none;
+  transform:translateY(-4px);
+  transition:opacity .16s ease, transform .16s ease;
+  z-index:600;
+  min-width:190px;
+}
+.chess-site-nav .nav-dropdown.open{
+  opacity:1;pointer-events:all;transform:translateY(0);
+}
+.chess-site-nav #logoDropdown{ top:calc(100% + 6px); left:0; }
+.chess-site-nav #profileDropdown{ top:calc(100% + 6px); right:0; min-width:210px; }
+
+.chess-site-nav .dd-item{
+  display:flex;align-items:center;gap:.75rem;
+  padding:.58rem .85rem;border-radius:8px;
+  font-size:.83rem;color:var(--text2);cursor:pointer;
+  transition:background .1s;background:none;border:none;width:100%;text-align:left;font-family:var(--font-display);font-weight:650;letter-spacing:.01em;
+}
+.chess-site-nav .dd-item:hover{background:var(--surface2);color:var(--text);}
+.chess-site-nav .ddi{font-size:1rem;width:1.2rem;text-align:center;flex-shrink:0;}
+.chess-site-nav .dd-count{margin-left:auto;font-family:'DM Mono',monospace;font-size:.65rem;color:var(--live);}
+.chess-site-nav .dd-sep{height:1px;background:var(--border);margin:.3rem 0;}
+
+/* Search */
+.chess-site-nav .search-wrap{flex:1;max-width:420px;position:relative;}
+.chess-site-nav .search-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.44rem .85rem .44rem 2.35rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.83rem;outline:none;transition:border-color .18s;}
+.chess-site-nav .search-input:focus{border-color:var(--border2);box-shadow:0 0 0 3px rgba(232,70,10,.1);}
+.chess-site-nav .search-input::placeholder{color:var(--muted);}
+.chess-site-nav .search-icon{position:absolute;left:.75rem;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.85rem;pointer-events:none;}
+.chess-site-nav .search-results{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:.5rem;box-shadow:0 16px 48px rgba(0,0,0,.75);display:none;z-index:600;}
+.chess-site-nav .search-results.open{display:block;}
+.chess-site-nav .sr-label{font-family:'DM Mono',monospace;font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;padding:.2rem .65rem .3rem;display:block;}
+.chess-site-nav .sr-item{display:flex;align-items:center;gap:.65rem;padding:.46rem .65rem;border-radius:7px;cursor:pointer;transition:background .1s;}
+.chess-site-nav .sr-item:hover{background:var(--surface2);}
+.chess-site-nav .sr-av{width:32px;height:32px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0;}
+.chess-site-nav .sr-av.rect{border-radius:5px;}
+.chess-site-nav .sr-av.nip05-square{
+  border-radius:5px;
+  border:1.5px solid rgba(155,114,255,.7);
+  background:rgba(155,114,255,.13);
+  box-shadow:0 0 8px rgba(155,114,255,.55),0 0 18px rgba(155,114,255,.25),inset 0 0 6px rgba(155,114,255,.1);
+  animation:nip05Pulse 2.8s ease-in-out infinite;
+}
+@keyframes nip05Pulse{
+  0%,100%{box-shadow:0 0 6px rgba(155,114,255,.5),0 0 14px rgba(155,114,255,.2);}
+  50%{box-shadow:0 0 12px rgba(155,114,255,.8),0 0 28px rgba(155,114,255,.4);}
+}
+.chess-site-nav .sr-title{font-size:.81rem;font-family:var(--font-display);font-weight:700;letter-spacing:.01em;}
+.chess-site-nav .sr-sub{font-size:.7rem;color:var(--muted);font-family:'DM Mono',monospace;}
+.chess-site-nav .sr-live{margin-left:auto;background:var(--live);color:#fff;font-family:'DM Mono',monospace;font-size:.6rem;padding:.1rem .38rem;border-radius:3px;}
+
+/* Nav right - spacer pushes profile to far right */
+.chess-site-nav .nav-mid{display:flex;align-items:center;gap:.6rem;}
+.chess-site-nav .nav-spacer{flex:1;}
+
+/* Go Live / Live button */
+.chess-site-nav .btn{padding:.42rem 1rem;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all .15s;display:inline-flex;align-items:center;gap:.4rem;line-height:1;white-space:nowrap;}
+.chess-site-nav .btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--text2);}
+.chess-site-nav .btn-ghost:hover{border-color:var(--accent);color:var(--accent);}
+.chess-site-nav .btn-primary{background:var(--accent);color:#fff;}
+.chess-site-nav .btn-primary:hover{background:#ff5520;box-shadow:0 0 20px var(--accent-glow);}
+.chess-site-nav .btn-zap{background:var(--zap);color:#000;font-weight:700;}
+.chess-site-nav .btn-zap:hover{background:#ffca30;}
+.chess-site-nav .btn-follow{background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-weight:600;}
+.chess-site-nav .btn-follow:hover{border-color:var(--accent);color:var(--accent);}
+.chess-site-nav .btn-follow.following-active{
+  border-color:var(--green);
+  color:var(--green);
+  background:rgba(0,212,138,.12);
+  box-shadow:0 0 0 1px rgba(0,212,138,.3),0 0 18px rgba(0,212,138,.26);
+  animation:followGlow 2.4s ease-in-out infinite;
+}
+@keyframes followGlow{
+  0%,100%{box-shadow:0 0 0 1px rgba(0,212,138,.32),0 0 10px rgba(0,212,138,.2);}
+  50%{box-shadow:0 0 0 1px rgba(0,212,138,.48),0 0 18px rgba(0,212,138,.35);}
+}
+.chess-site-nav .btn-live-pulse{background:var(--live);color:#fff;animation:livePulse 2.5s ease infinite;}
+.chess-site-nav .btn-edit-stream-live{border:1px solid rgba(255,59,92,.6);box-shadow:0 0 0 1px rgba(255,59,92,.25),0 0 20px rgba(255,59,92,.22);}
+@keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(255,59,92,.4)}50%{box-shadow:0 0 0 6px rgba(255,59,92,0)}}
+
+/* Profile pill - locked to far right */
+.chess-site-nav .nav-profile{position:relative;flex-shrink:0;}
+.chess-site-nav .nav-user-pill{
+  display:flex;align-items:center;gap:.35rem;
+  padding:.22rem;border-radius:999px;
+  cursor:pointer;transition:background .15s;
+  border:1px solid transparent;user-select:none;
+}
+.chess-site-nav .nav-user-pill:hover{background:var(--surface2);border-color:var(--border);}
+.chess-site-nav .nav-user-pill.dd-open{background:var(--surface2);border-color:var(--border);}
+.chess-site-nav .nav-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--zap));display:flex;align-items:center;justify-content:center;font-size:1.1rem;overflow:hidden;flex-shrink:0;border:2px solid var(--border2);}
+.chess-site-nav .nav-display-name{font-family:var(--font-display);font-size:.82rem;font-weight:700;letter-spacing:.01em;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chess-site-nav .nip05-badge{color:var(--nip05);font-size:.72rem;font-weight:700;opacity:.85;}
+
+.chess-site-nav .nav-logged-in{gap:.45rem;}
+.chess-site-nav .nav-notif-btn{
+  width:40px;height:40px;border-radius:10px;
+  border:1px solid var(--border2);background:var(--surface2);color:var(--text2);
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
+  position:relative;flex-shrink:0;transition:border-color .15s,color .15s,background .15s;
+}
+.chess-site-nav .nav-notif-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(232,70,10,.08);}
+.chess-site-nav .nav-notif-icon{font-size:1rem;line-height:1;}
+.chess-site-nav .nav-notif-count{
+  position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 .25rem;
+  border-radius:999px;background:var(--live);color:#fff;border:1px solid rgba(255,255,255,.3);
+  display:inline-flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-size:.58rem;font-weight:700;
+}
+
+.chess-site-nav .pd-header{padding:.65rem .85rem .75rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.65rem;}
+.chess-site-nav .pd-av-lg{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--zap));display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;border:2px solid var(--border2);}
+.chess-site-nav .pd-name{font-family:var(--font-display);font-weight:700;font-size:.88rem;display:flex;align-items:center;gap:.3rem;}
+.chess-site-nav .pd-sub{font-family:'DM Mono',monospace;font-size:.64rem;color:var(--muted);margin-top:.1rem;}
+.chess-site-nav .pd-item{display:flex;align-items:center;gap:.65rem;padding:.52rem .85rem;border-radius:7px;font-size:.82rem;color:var(--text2);cursor:pointer;transition:background .1s;width:100%;border:none;background:none;text-align:left;font-family:var(--font-display);font-weight:650;letter-spacing:.01em;}
+.chess-site-nav .pd-item:hover{background:var(--surface2);color:var(--text);}
+.chess-site-nav .pd-signout{color:var(--live);}
+.chess-site-nav .pd-signout:hover{background:rgba(255,59,92,.08)!important;}
+
+.chess-site-nav .nav-logged-out{display:flex;align-items:center;gap:.5rem;flex-shrink:0;}
+.chess-site-nav .nav-logged-in{display:none;align-items:center;flex-shrink:0;}
+.chess-site-nav .nav-logged-in.on{display:flex;}
+.chess-site-nav .nav-logged-out.off{display:none;}
+
+
+@media(max-width:700px){
+.chess-site-nav{min-height:56px;height:auto;padding:.45rem .65rem;gap:.45rem;flex-wrap:nowrap}
+.chess-site-nav .logo-wrap{flex-shrink:0}.chess-site-nav .logo{padding:.2rem .35rem}
+.chess-site-nav .logo-text-8bit{display:none}.chess-site-nav .logo-live-pill{font-size:.55rem;padding:.12rem .3rem}
+.chess-site-nav .nav-logo-img{width:30px;height:30px}
+.chess-site-nav .search-wrap{flex:1;min-width:0;max-width:none}
+.chess-site-nav .search-input{width:100%;min-width:0;font-size:.8rem;padding:.55rem .65rem .55rem 2rem}
+.chess-site-nav #goLiveBtn{display:none}.chess-site-nav .nav-spacer{display:none}
+.chess-site-nav .nav-logged-out .btn-primary{padding:.52rem .65rem;font-size:.7rem;white-space:nowrap}
+.chess-site-nav .nav-logged-in{flex-shrink:0}.chess-site-nav .nav-notif-btn{width:36px;height:36px}
+.chess-site-nav .nav-user-pill{width:36px;height:36px}.chess-site-nav .nav-dropdown{max-width:calc(100vw - 1rem)}
+.chess-site-nav .search-results{left:0;right:0;width:auto;max-height:70vh;overflow:auto}
+}
 .chess-site-nav [hidden]{display:none!important}
-.chess-site-nav .cs-brand{display:flex;align-items:center;gap:.55rem;flex:0 0 auto;color:#edf2f7;text-decoration:none;padding:.2rem .45rem;border-radius:10px}
-.chess-site-nav .cs-brand:hover{background:#252d37}
-.chess-site-nav .cs-brand img{width:52px;height:52px;object-fit:contain;border-radius:9px}
-.chess-site-nav .cs-brand-copy{display:flex;align-items:center;gap:.38rem;font:800 .8rem/1 'DM Mono',monospace;letter-spacing:.08em}
-.chess-site-nav .cs-brand-copy small{background:#c42121;color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:4px;padding:.18rem .38rem;font-size:.58rem;letter-spacing:.1em}
-.chess-site-nav .cs-search{flex:1;min-width:60px;max-width:420px;position:relative;display:flex;align-items:center;gap:.35rem;height:38px;padding:0 .45rem 0 .75rem;background:#252d37;border:1px solid #384454;border-radius:10px}
-.chess-site-nav .cs-search:focus-within{border-color:#64748b;box-shadow:0 0 0 3px rgba(143,91,255,.12)}
-.chess-site-nav .cs-search-icon{font-size:1.3rem;line-height:1;color:#76879a}
-.chess-site-nav .cs-search input{width:100%;min-width:0;height:100%;background:transparent;border:0;outline:none;color:#edf2f7;font:400 .82rem 'DM Sans',sans-serif}
-.chess-site-nav .cs-search input::placeholder{color:#76879a}
-.chess-site-nav .cs-search button{flex:0 0 auto;border:0;background:transparent;color:#b3c0cf;border-radius:6px;padding:.3rem .45rem;cursor:pointer}
-.chess-site-nav .cs-search button:hover{color:#f7931a;background:rgba(255,255,255,.04)}
-.chess-site-nav .cs-golive{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;padding:.42rem 1rem;border-radius:8px;border:1px solid #445365;background:transparent;color:#b3c0cf;font:700 .82rem/1 'DM Sans',sans-serif;text-decoration:none;white-space:nowrap;transition:all .15s}
-.chess-site-nav .cs-golive:hover{border-color:#f7931a;color:#f7931a;background:transparent}
-.chess-site-nav .cs-login{flex:0 0 auto;white-space:nowrap;padding:.42rem 1rem;border-radius:8px;background:#f7931a;color:#fff;border:0;font:700 .82rem/1 'DM Sans',sans-serif;letter-spacing:.01em;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;transform:none}
-.chess-site-nav .cs-login:hover{background:#ff5520;box-shadow:0 0 20px rgba(247,147,26,.24);transform:none}
-.chess-site-nav .cs-nav-profile{position:relative;flex:0 1 auto;min-width:0}
-.chess-site-nav .cs-profile-trigger{display:flex;align-items:center;gap:.55rem;max-width:290px;min-width:0;padding:.25rem .4rem;border:1px solid transparent;border-radius:999px;background:transparent;color:#edf2f7;text-align:left;cursor:pointer}
-.chess-site-nav .cs-profile-trigger:hover,.chess-site-nav .cs-profile-trigger[aria-expanded="true"]{background:#252d37;border-color:#384454}
-.chess-site-nav .cs-avatar{width:42px;height:42px;flex:0 0 42px;display:grid;place-items:center;overflow:hidden;border:2px solid #445365;border-radius:50%;background:linear-gradient(135deg,#f7931a,#8f5bff);color:#fff;font-size:1rem;font-weight:800;transition:box-shadow .2s,border-radius .2s}
-.chess-site-nav .cs-avatar img{width:100%;height:100%;object-fit:cover}
-.chess-site-nav .cs-avatar.nip05-square{border-radius:8px;border:2px solid rgba(155,114,255,.7);box-shadow:0 0 10px rgba(155,114,255,.55),0 0 22px rgba(155,114,255,.25),inset 0 0 8px rgba(155,114,255,.1);animation:csNip05Pulse 2.8s ease-in-out infinite}
-.chess-site-nav .cs-profile-copy{display:flex;flex-direction:column;gap:3px;min-width:0;max-width:165px}
-.chess-site-nav .cs-profile-copy strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:750 .82rem 'DM Sans',sans-serif}
-.chess-site-nav .cs-profile-copy small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#b3c0cf;font:500 .63rem 'DM Mono',monospace}
-.chess-site-nav .cs-profile-copy small.nip05-valid{color:#c9afff;text-shadow:0 0 12px rgba(155,114,255,.3)}
-.chess-site-nav .cs-profile-copy small .cs-verified-check{display:inline-block;margin-right:.25rem;color:#c7a6ff;font-weight:900}
-.chess-site-nav .cs-profile-caret{color:#76879a;font-size:.7rem}
-.chess-site-nav .cs-profile-menu{position:absolute;right:0;top:calc(100% + 8px);width:min(280px,calc(100vw - 24px));padding:.45rem;border:1px solid #445365;border-radius:12px;background:#1d232b;box-shadow:0 20px 60px rgba(0,0,0,.65);z-index:700}
-.chess-site-nav .cs-menu-npub{padding:.65rem .65rem .55rem;border-bottom:1px solid #384454;margin-bottom:.3rem;color:#b3c0cf;overflow-wrap:anywhere;font:500 .63rem/1.5 'DM Mono',monospace}
-.chess-site-nav .cs-profile-menu button,.chess-site-nav .cs-profile-menu a{display:block;width:100%;padding:.6rem .65rem;border:0;border-radius:7px;background:transparent;color:#b3c0cf;text-align:left;text-decoration:none;font:600 .78rem 'DM Sans',sans-serif;cursor:pointer}
-.chess-site-nav .cs-profile-menu button:hover,.chess-site-nav .cs-profile-menu a:hover{background:#252d37;color:#edf2f7}
-.chess-site-nav .cs-profile-menu #chessSwitchAccount{color:#ff8b96}
-.chess-site-nav .cs-sound{padding:.55rem .65rem;flex:0 0 auto;border-radius:999px}
-@keyframes csNip05Pulse{0%,100%{box-shadow:0 0 7px rgba(155,114,255,.5),0 0 14px rgba(155,114,255,.2)}50%{box-shadow:0 0 12px rgba(155,114,255,.8),0 0 25px rgba(155,114,255,.38)}}
-@media(max-width:900px){
-  .chess-site-nav{height:56px;padding:.45rem .65rem;gap:.45rem}
-  .chess-site-nav .cs-brand{gap:.2rem;padding:.15rem}
-  .chess-site-nav .cs-brand img{width:30px;height:30px}
-  .chess-site-nav .cs-brand-copy{display:none}
-  .chess-site-nav .cs-brand-copy small{font-size:.5rem}
-  .chess-site-nav .cs-search{height:36px;gap:.15rem;padding:0 .25rem 0 .45rem}
-  .chess-site-nav .cs-search input{font-size:.8rem}
-  .chess-site-nav .cs-search input::placeholder{font-size:12px}
-  .chess-site-nav .cs-search button{display:none}
-  .chess-site-nav .cs-golive{display:none}
-  .chess-site-nav .cs-login{font-size:.7rem;padding:.52rem .65rem}
-  .chess-site-nav .cs-profile-trigger{gap:.3rem;padding:.12rem .2rem;max-width:145px}
-  .chess-site-nav .cs-avatar{width:35px;height:35px;flex-basis:35px}
-  .chess-site-nav .cs-profile-copy{display:flex;max-width:88px}
-  .chess-site-nav .cs-profile-copy strong{font-size:.68rem}
-  .chess-site-nav .cs-profile-copy small{font-size:.52rem}
-  .chess-site-nav .cs-profile-caret{display:none}
-  .chess-site-nav .cs-sound{display:none}
-  main{padding-top:72px!important}
-}
-@media(max-width:430px){
-  .chess-site-nav{gap:.28rem;padding:0 7px}
-  .chess-site-nav .cs-brand-copy{display:none}
-  .chess-site-nav .cs-brand img{width:30px;height:30px}
-  .chess-site-nav .cs-search input::placeholder{content:"Search"}
-  .chess-site-nav .cs-profile-trigger{max-width:132px}
-  .chess-site-nav .cs-profile-copy{max-width:82px}
-  .chess-site-nav .cs-profile-copy strong{font-size:.65rem}
-  .chess-site-nav .cs-profile-copy small{font-size:.49rem}
-  .chess-site-nav .cs-login{padding:.52rem .48rem;font-size:.65rem}
-}
-@media(prefers-reduced-motion:reduce){.chess-site-nav .cs-avatar.nip05-square{animation:none}}
 .vt #snd{padding:7px 12px}
-@media(max-width:900px){main{padding-top:72px!important}}
 </style></head><body><div class="bg"></div>
-<header class="chess-site-nav" id="chessSiteNav" role="banner">
-  <a class="cs-brand" href="/" aria-label="Sifaka.Live home" title="Return to Sifaka.Live">
-    <img src="../../logo.webp" alt="" width="42" height="42" decoding="async">
-    <span class="cs-brand-copy"><strong>SIFAKA</strong><small>LIVE</small></span>
-  </a>
-  <form class="cs-search" id="chessSiteSearch" role="search" autocomplete="off">
-    <span class="cs-search-icon" aria-hidden="true">⌕</span>
-    <input id="chessSiteSearchInput" type="search" placeholder="Search streams, npubs, posts, videos..." aria-label="Search Sifaka.Live">
-    <button type="submit" aria-label="Search">↵</button>
-  </form>
-  <a class="cs-golive" href="/?chessAction=go-live" title="Open Sifaka.Live’s Go Live form">Go Live</a>
-  <button class="btn cs-login" id="chessSiteLoginBtn" type="button">Login with Nostr</button>
-  <div class="cs-nav-profile" id="chessNavProfile" hidden>
-    <button class="cs-profile-trigger" id="chessProfileTrigger" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Open Nostr profile menu">
-      <span class="cs-avatar" id="chessNavAvatar"><span class="cs-avatar-fallback">S</span></span>
-      <span class="cs-profile-copy">
-        <strong id="chessNavName">Nostr user</strong>
-        <small id="chessNavIdentity">npub</small>
-      </span>
-      <span class="cs-profile-caret" aria-hidden="true">▾</span>
+<nav class="chess-site-nav" id="chessSiteNav">
+  <!-- Logo (left) -->
+  <div class="logo-wrap">
+    <button class="logo" id="logoBtn" type="button" aria-haspopup="true" aria-expanded="false">
+      <img src="../../logo.webp" alt="Sifaka" class="nav-logo-img" width="52" height="52" decoding="async">
+      <span class="logo-text-8bit">Sifaka</span>
+      <span class="logo-live-pill">LIVE</span>
     </button>
-    <div class="cs-profile-menu" id="chessProfileMenu" hidden>
-      <div class="cs-menu-npub" id="chessMenuNpub"></div>
-      <button type="button" id="chessCopyNpub">Copy npub</button>
-      <a href="https://sifaka.live/">Open Sifaka.Live</a>
-      <button type="button" id="chessSwitchAccount">Disconnect from Chess</button>
+    <div class="nav-dropdown" id="logoDropdown">
+      <button class="dd-item" data-chess-route="home"><span class="ddi">&#128308;</span>Live Now <span class="dd-count">24</span></button>
+      <button class="dd-item" data-chess-route="podcastRadio"><span class="ddi">&#127925;</span>Podcast Radio</button>
+      <button class="dd-item" data-chess-route="feed"><span class="ddi">&#128225;</span>Feed &amp; Videos</button>
+      <button class="dd-item" id="sifakaGamesMenuBtn" data-chess-route="games"><span class="ddi">&#127918;</span>Games</button>
+      <button class="dd-item" data-chess-route="faq"><span class="ddi">&#10067;</span>FAQ & Help</button>
     </div>
   </div>
-  <button class="btn cs-sound" id="snd" type="button" title="Sound" aria-label="Toggle chess sound">🔊</button>
-</header>
+
+  <!-- Search (grows to fill space) -->
+  <div class="search-wrap">
+    <span class="search-icon"></span>
+    <input id="siteSearchInput" name="siteSearch" class="search-input" type="text" placeholder="Search streams, npubs, posts, videos..." aria-label="Search streams, profiles, posts, and videos" autocomplete="off">
+    <div class="search-results" id="searchResults">
+      <span class="sr-label">Sifaka.Live Search</span>
+      <div class="sr-item" id="chessSearchSubmit" role="button" tabindex="0">
+        <div class="sr-av">⌕</div>
+        <div><div class="sr-title">Search Sifaka.Live</div><div class="sr-sub">Press Enter to view results</div></div>
+      </div>
+    </div>  </div>
+
+  <!-- Go Live / Live button -->
+  <button class="btn btn-ghost" id="goLiveBtn" type="button">Go Live</button>
+
+  <!-- Spacer pushes profile pill to far right -->
+  <div class="nav-spacer"></div>
+
+  <!-- Logged OUT -->
+  <div class="nav-logged-out" id="navLoggedOut">
+    <button class="btn btn-primary" id="chessNavLoginBtn" type="button">Login with Nostr</button>
+  </div>
+
+  <!-- Logged IN - profile pill pinned to far right -->
+  <div class="nav-logged-in" id="navLoggedIn">
+    <button class="nav-notif-btn" id="navNotifBtn" data-chess-route="notifications" title="Notifications" aria-label="Open notifications">
+      <span class="nav-notif-icon">&#128276;</span>
+      <span class="nav-notif-count" id="navNotifCount" style="display:none">0</span>
+    </button>
+    <div class="nav-profile">
+      <div class="nav-user-pill" id="navUserPill" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+        <div class="nav-avatar" id="navAvatar"></div>
+        <span class="nip05-badge" id="navNip05Badge" style="display:none"></span>
+      </div>
+      <div class="nav-dropdown" id="profileDropdown">
+        <div class="pd-header">
+          <div class="pd-av-lg" id="pdAvLg"></div>
+          <div>
+            <div class="pd-name" id="pdName">wavesound <span class="nip05-badge" id="pdBadge" style="display:none"></span></div>
+            <div class="pd-sub" id="pdSub" style="color:var(--nip05)">wave@bitcoin-cats.ca</div>
+          </div>
+        </div>
+        <button class="pd-item" data-chess-route="profile">&#128100; My Profile</button>
+        <button class="pd-item" data-chess-route="messages">&#128172; Messages</button>
+
+        <button class="pd-item" data-chess-route="myStreams">&#128250; My Streams</button>
+        <button class="pd-item" data-chess-route="wallet">&#128155; Wallet</button>
+        <button class="pd-item" data-chess-route="widgets">&#129513; Widgets</button>
+        <button class="pd-item" data-chess-route="settings">&#9881;&#65039; Settings</button>
+        <div class="dd-sep"></div>
+        <button class="pd-item pd-signout" data-chess-route="signout">Sign Out</button>
+      </div>
+    </div>
+  </div>
+</nav>
 <button id="chessGameConnect" type="button" hidden aria-hidden="true" tabindex="-1"></button>
 <main>
-<div class="stage" id="stage"><a class="sifaka-home-link" href="https://sifaka.live/" aria-label="Return to Sifaka.Live">← Sifaka.Live</a><canvas id="cv"></canvas><div class="b2d" id="b2"><div class="g2" id="g2"></div></div><div class="vt"><button id="v3" class="on">3D</button><button id="v2">2D</button></div><div class="hint" id="hint">Drag to orbit · Pinch or scroll to zoom · Tap to move</div></div>
+<div class="stage" id="stage"><a class="sifaka-home-link" href="https://sifaka.live/" aria-label="Return to Sifaka.Live">← Sifaka.Live</a><canvas id="cv"></canvas><div class="b2d" id="b2"><div class="g2" id="g2"></div></div><div class="vt"><button id="v3" class="on">3D</button><button id="v2">2D</button><button class="btn" id="snd" type="button" title="Sound" aria-label="Toggle chess sound">🔊</button></div><div class="hint" id="hint">Drag to orbit · Pinch or scroll to zoom · Tap to move</div></div>
 <div class="panel">
 <div class="duo"><div class="card pl"><div class="av">♔</div><div><b id="me">Guest</b><span class="sub" id="meS">Playing locally</span></div><div class="caps" id="capB"></div></div><div class="card pl"><div class="av">🦧</div><div><b>Sifaka Engine</b><span class="sub" id="lvl">Adept</span></div><div class="caps" id="capT"></div></div></div>
 <div id="stat" hidden></div>
@@ -581,233 +749,73 @@ $('il').onclick=async()=>{try{await navigator.clipboard.writeText(INV);toast('In
 document.querySelector('.vt').appendChild($('snd'));
 $('meS').textContent='Tap to connect Nostr';{const pc=$('me').closest('.card');pc.style.cursor='pointer';pc.title='Connect your Nostr signer';pc.onclick=()=>{if(!chessSignerConnected)$('chessGameConnect').click()}}
 nw();mode(true);requestAnimationFrame(loop);
-</script><script id="sifaka-chess-nav-profile">
-(function(){
-  'use strict';
-  const $ = id => document.getElementById(id);
-  const STORAGE_KEY = 'sifaka_chess_pubkey';
-  const RELAYS = ['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net'];
-  const HEX = /^[0-9a-f]{64}$/i;
-  let activePubkey = '';
-  let profileRequest = 0;
-  let verifiedNip05 = false;
-  let fullNpub = '';
-  const navProfile = $('chessNavProfile');
-  const loginBtn = $('chessSiteLoginBtn');
-  const menu = $('chessProfileMenu');
-  const trigger = $('chessProfileTrigger');
-  const searchInput = $('chessSiteSearchInput');
-
-  function shorten(value, left, right){const s=String(value||'');return s.length>left+right+1?s.slice(0,left)+'…'+s.slice(-right):s;}
-  function validHex(value){return typeof value==='string' && HEX.test(value.trim());}
-  function asNpub(hex){try{return typeof npub==='function'?npub(hex):hex;}catch(_){return hex;}}
-  function fallbackName(pk){return shorten(asNpub(pk),13,7);}
-  function readPublicKey(value){
-    if(typeof value!=='string')return '';
-    const s=value.trim();
-    if(validHex(s))return s.toLowerCase();
-    if(/^npub1[023456789acdefghjklmnpqrstuvwxyz]{20,}$/i.test(s)){
-      try{if(typeof b32d==='function'){const decoded=b32d(s.toLowerCase());if(validHex(decoded))return decoded.toLowerCase();}}catch(_){}
-    }
-    return '';
-  }
-  function findStoredIdentity(){
-    try{
-      const direct=readPublicKey(localStorage.getItem(STORAGE_KEY)||'');
-      if(direct)return direct;
-      // Only inspect storage entries that look like the active session/account,
-      // never generic profile caches that might belong to another person.
-      const identityKey=/(auth|account|identity|current.?user|active.?user|logged.?in|user.?session|session.?user|pubkey|public.?key|npub|nostr.*user|user.*nostr|sifaka.*user)/i;
-      for(const store of [localStorage,sessionStorage]){
-        for(let i=0;i<store.length;i++){
-          const key=store.key(i)||'';
-          if(!identityKey.test(key))continue;
-          const raw=store.getItem(key);
-          if(!raw)continue;
-          const directValue=readPublicKey(raw);
-          if(directValue && identityKey.test(key))return directValue;
-          try{
-            const data=JSON.parse(raw);
-            const directNested=readPublicKey(data);
-            if(directNested)return directNested;
-            if(data && typeof data==='object'){
-              for(const [field,value] of Object.entries(data)){
-                if(/^(pubkey|pubKey|publicKey|public_key|pubkeyHex|npub|activePubkey|activePubKey)$/i.test(field)){
-                  const decoded=readPublicKey(value);
-                  if(decoded)return decoded;
-                }
-              }
-            }
-          }catch(_){}
-        }
-      }
-    }catch(_){}
-    return '';
-  }
-  function setLoggedOut(){
-    activePubkey='';verifiedNip05=false;fullNpub='';
-    navProfile.hidden=true;loginBtn.hidden=false;
-    if(menu)menu.hidden=true;
-    if(trigger)trigger.setAttribute('aria-expanded','false');
-    $('chessNavAvatar').classList.remove('nip05-square');
-    $('chessNavAvatar').innerHTML='<span class="cs-avatar-fallback">S</span>';
-    $('chessNavName').textContent='Nostr user';
-    $('chessNavIdentity').textContent='npub';
-    $('chessNavIdentity').classList.remove('nip05-valid');
-    $('chessMenuNpub').textContent='';
-    $('me').textContent='Guest';$('meS').textContent='Tap to connect Nostr';
-  }
-  function setAvatar(profile, pubkey, verified){
-    const el=$('chessNavAvatar');
-    el.classList.toggle('nip05-square',!!verified);
-    el.replaceChildren();
-    const fallback=document.createElement('span');
-    fallback.className='cs-avatar-fallback';
-    fallback.textContent=String(profile.display_name||profile.displayName||profile.name||'S').trim().slice(0,1).toUpperCase()||'S';
-    const picture=String(profile.picture||'').trim();
-    if(/^https?:\/\//i.test(picture)){
-      const img=document.createElement('img');
-      img.src=picture;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
-      img.addEventListener('error',()=>{el.replaceChildren(fallback)},{once:true});
-      el.appendChild(img);
-    }else el.appendChild(fallback);
-    $('chessNavName').textContent=String(profile.display_name||profile.displayName||profile.name||fallbackName(pubkey)).trim().slice(0,80);
-  }
-  function setHeaderIdentity(pubkey, profile, verified){
-    activePubkey=pubkey;verifiedNip05=!!verified;fullNpub=asNpub(pubkey);
-    navProfile.hidden=false;loginBtn.hidden=true;
-    const avatar=$('chessNavAvatar');avatar.classList.toggle('nip05-square',!!verified);
-    const name=String(profile.display_name||profile.displayName||profile.name||fallbackName(pubkey)).trim().slice(0,80)||fallbackName(pubkey);
-    $('chessNavName').textContent=name;
-    avatar.replaceChildren();
-    const fallback=document.createElement('span');
-    fallback.className='cs-avatar-fallback';fallback.textContent=name.slice(0,1).toUpperCase()||'S';
-    const pic=String(profile.picture||'').trim();
-    if(/^https?:\/\//i.test(pic)){
-      const img=document.createElement('img');img.src=pic;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
-      img.addEventListener('error',()=>{avatar.replaceChildren(fallback)},{once:true});avatar.appendChild(img);
-    }else avatar.appendChild(fallback);
-    const identity=$('chessNavIdentity');identity.classList.toggle('nip05-valid',!!verified);identity.replaceChildren();
-    if(verified){
-      const check=document.createElement('span');check.className='cs-verified-check';check.textContent='✓';check.setAttribute('aria-label','Verified NIP-05');identity.append(check,document.createTextNode(' '+String(profile.nip05).trim()));
-      identity.title='NIP-05 verified for this public key';
-    }else{
-      identity.textContent=shorten(fullNpub,14,8);identity.title=fullNpub;
-    }
-    $('chessMenuNpub').textContent=fullNpub;
-    $('me').textContent=name;$('meS').textContent='Signed in with Nostr';
-  }
-  async function loadProfile(pubkey, token){
-    const cachedKey='sifaka_chess_profile_'+pubkey;
-    let profile={};
-    try{profile=JSON.parse(localStorage.getItem(cachedKey)||'{}')}catch(_){}
-    if(profile && typeof profile==='object' && (profile.name||profile.display_name||profile.picture||profile.nip05)){
-      setHeaderIdentity(pubkey,profile,false);
-    }
-    const latest=await fetchProfileEvent(pubkey);
-    if(token!==profileRequest || pubkey!==activePubkey)return;
-    if(latest){
-      try{profile=JSON.parse(latest.content)||{};}catch(_){profile={};}
-      try{localStorage.setItem(cachedKey,JSON.stringify(profile));}catch(_){}
-    }
-    if(!profile || typeof profile!=='object')profile={};
-    let verified=false;
-    if(profile.nip05)verified=await verifyNip05(profile.nip05,pubkey);
-    if(token!==profileRequest || pubkey!==activePubkey)return;
-    setHeaderIdentity(pubkey,profile,verified);
-  }
-  function fetchProfileEvent(pubkey){
-    return new Promise(resolve=>{
-      let done=0,best=null,settled=false;
-      const finishOne=()=>{done++;if(done>=RELAYS.length&&!settled){settled=true;resolve(best)}};
-      const settleTimer=setTimeout(()=>{if(!settled){settled=true;resolve(best)}},4500);
-      RELAYS.forEach((url,index)=>{
-        let ws,closed=false,sub='sifaka-chess-profile-'+Date.now().toString(36)+'-'+index+'-'+Math.random().toString(36).slice(2,6);
-        const finish=()=>{if(closed)return;closed=true;clearTimeout(timer);try{if(ws&&ws.readyState===1)ws.close()}catch(_){}finishOne();};
-        const timer=setTimeout(finish,3700);
-        try{
-          ws=new WebSocket(url);
-          ws.onopen=()=>{try{ws.send(JSON.stringify(['REQ',sub,{kinds:[0],authors:[pubkey],limit:10}]))}catch(_){finish();}};
-          ws.onmessage=e=>{
-            try{
-              const d=JSON.parse(e.data);
-              if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&d[2].kind===0&&d[2].pubkey===pubkey&&(!best||Number(d[2].created_at)>Number(best.created_at)))best=d[2];
-              if(d[0]==='EOSE'&&d[1]===sub)finish();
-            }catch(_){}
-          };
-          ws.onerror=finish;ws.onclose=finish;
-        }catch(_){finish();}
-      });
-      // Resolve promptly once all relays finish, while retaining a hard timeout for quiet relays.
-      const watchdog=setTimeout(()=>{if(!settled){settled=true;clearTimeout(settleTimer);resolve(best)}},4200);
-      void watchdog;
-    });
-  }
-  async function verifyNip05(value,pubkey){
-    const identifier=String(value||'').trim();
-    const at=identifier.lastIndexOf('@');
-    if(at<0||at===identifier.length-1)return false;
-    const username=(identifier.slice(0,at).trim()||'_');
-    const domain=identifier.slice(at+1).trim().toLowerCase();
-    if(!/^[a-z0-9._-]+$/i.test(username)||!/^[a-z0-9.-]+$/i.test(domain)||domain.includes('..'))return false;
-    try{
-      const url='https://'+domain+'/.well-known/nostr.json?name='+encodeURIComponent(username);
-      const response=await fetch(url,{method:'GET',mode:'cors',credentials:'omit',cache:'no-store'});
-      if(!response.ok)return false;
-      const data=await response.json();
-      const found=data&&data.names&&(data.names[username]||data.names[username.toLowerCase()]);
-      return typeof found==='string'&&found.toLowerCase()===pubkey.toLowerCase();
-    }catch(_){return false;}
-  }
-  function connect(){
-    if(!window.nostr||typeof window.nostr.getPublicKey!=='function'){
-      toast('No Nostr signer detected. Install or enable your NIP-07 signer, then try again.');
-      return;
-    }
-    loginBtn.disabled=true;loginBtn.textContent='Connecting…';
-    Promise.resolve().then(()=>window.nostr.getPublicKey()).then(pubkey=>{
-      const pk=readPublicKey(pubkey);
-      if(!pk)throw new Error('The signer returned an invalid public key.');
-      try{localStorage.setItem(STORAGE_KEY,pk)}catch(_){}
-      profileRequest++;
-      setHeaderIdentity(pk,{},false);
-      return loadProfile(pk,profileRequest);
-    }).catch(err=>{
-      toast(err&&err.message==='The signer returned an invalid public key.'?err.message:'Nostr connection was cancelled or unavailable.');
-      if(!activePubkey)loginBtn.hidden=false;
-    }).finally(()=>{loginBtn.disabled=false;loginBtn.textContent='Login with Nostr';});
-  }
-  window.sifakaChessSetNavIdentity=function(value){
-    const pk=readPublicKey(value);if(!pk)return;
-    try{localStorage.setItem(STORAGE_KEY,pk)}catch(_){}
-    profileRequest++;setHeaderIdentity(pk,{},false);loadProfile(pk,profileRequest);
-  };
-  loginBtn.onclick=()=>{window.location.href='/?chessAction=login';};
-  trigger.addEventListener('click',()=>{
-    const open=menu.hidden;menu.hidden=!open;trigger.setAttribute('aria-expanded',String(open));
-  });
-  document.addEventListener('click',e=>{if(!e.target.closest('#chessNavProfile')){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}});
-  $('chessCopyNpub').addEventListener('click',async()=>{
-    try{await navigator.clipboard.writeText(fullNpub);toast('npub copied to clipboard')}catch(_){toast('Could not copy npub on this browser')}
-  });
-  $('chessSwitchAccount').addEventListener('click',()=>{
-    try{localStorage.removeItem(STORAGE_KEY)}catch(_){}
-    profileRequest++;setLoggedOut();toast('Disconnected from Chess. Your Sifaka.Live session was not changed.');
-  });
-  $('chessSiteSearch').addEventListener('submit',e=>{
-    e.preventDefault();
-    const q=searchInput.value.trim();if(!q)return;
-    try{sessionStorage.setItem('sifaka_chess_pending_search',q)}catch(_){}
-    window.location.href='/?search='+encodeURIComponent(q);
-  });
-  const restored=findStoredIdentity();
-  if(restored){
-    try{localStorage.setItem(STORAGE_KEY,restored)}catch(_){}
-    profileRequest++;setHeaderIdentity(restored,{},false);loadProfile(restored,profileRequest);
-  }else{
-    setLoggedOut();
-  }
-})();
-</script>
+</script><script id="sifaka-chess-nav-profile">(function(){
+'use strict';
+const $=id=>document.getElementById(id),STORE='sifaka_chess_pubkey',RELAYS=['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net'],HEX=/^[0-9a-f]{64}$/i;
+let active='',requestId=0,fullNpub='',verified=false;
+const loggedIn=$('navLoggedIn'),loggedOut=$('navLoggedOut'),login=$('chessNavLoginBtn'),dropdown=$('profileDropdown'),pill=$('navUserPill'),search=$('siteSearchInput'),results=$('searchResults');
+const short=(v,l,r)=>{const s=String(v||'');return s.length>l+r+1?s.slice(0,l)+'…'+s.slice(-r):s;};
+function decode(v){if(typeof v!=='string')return '';v=v.trim();if(HEX.test(v))return v.toLowerCase();if(/^npub1[023456789acdefghjklmnpqrstuvwxyz]{20,}$/i.test(v)){try{if(typeof b32d==='function'){const x=b32d(v.toLowerCase());if(HEX.test(x))return x.toLowerCase();}}catch(_){}}return '';}
+function np(pk){try{return typeof npub==='function'?npub(pk):pk;}catch(_){return pk;}}
+function fallback(pk){return short(np(pk),13,7);}
+function stored(){
+ try{const v=decode(localStorage.getItem(STORE)||'');if(v)return v;const re=/(auth|account|identity|current.?user|active.?user|logged.?in|user.?session|session.?user|pubkey|public.?key|npub|nostr.*user|user.*nostr|sifaka.*user)/i;
+ for(const store of [localStorage,sessionStorage])for(let i=0;i<store.length;i++){const k=store.key(i)||'';if(!re.test(k))continue;const raw=store.getItem(k);if(!raw)continue;const val=decode(raw);if(val)return val;try{const d=JSON.parse(raw),n=decode(d);if(n)return n;if(d&&typeof d==='object')for(const [f,x] of Object.entries(d)){if(/^(pubkey|pubKey|publicKey|public_key|pubkeyHex|npub|activePubkey|activePubKey)$/i.test(f)){const z=decode(x);if(z)return z;}}}catch(_){}}}catch(_){}return '';
+}
+function avatar(el,p,pk,isVerified){
+ el.replaceChildren();el.classList.toggle('nip05-square',!!isVerified);const name=String(p.display_name||p.displayName||p.name||fallback(pk)||'S').trim(),f=document.createElement('span');f.textContent=name.slice(0,1).toUpperCase()||'S';const pic=String(p.picture||'').trim();
+ if(/^https?:\/\//i.test(pic)){const img=document.createElement('img');img.src=pic;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.style.cssText='width:100%;height:100%;object-fit:cover';img.addEventListener('error',()=>el.replaceChildren(f),{once:true});el.appendChild(img);}else el.appendChild(f);
+}
+function closeMenus(){document.querySelectorAll('.chess-site-nav .nav-dropdown').forEach(x=>x.classList.remove('open'));$('logoBtn').classList.remove('dd-open');$('logoBtn').setAttribute('aria-expanded','false');pill.classList.remove('dd-open');pill.setAttribute('aria-expanded','false');}
+function loggedOutState(){
+ active='';fullNpub='';verified=false;loggedIn.classList.remove('on');loggedOut.classList.remove('off');closeMenus();
+ avatar($('navAvatar'),{},'S',false);$('navNip05Badge').style.display='none';$('navNip05Badge').textContent='';
+ avatar($('pdAvLg'),{},'S',false);$('pdName').textContent='Guest';$('pdSub').textContent='Not signed in';$('me').textContent='Guest';$('meS').textContent='Tap to connect Nostr';
+}
+function setIdentity(pk,p,isVerified){
+ active=pk;fullNpub=np(pk);verified=!!isVerified;loggedIn.classList.add('on');loggedOut.classList.add('off');
+ const name=String(p.display_name||p.displayName||p.name||fallback(pk)).trim().slice(0,80)||fallback(pk);
+ avatar($('navAvatar'),{...p,name},pk,verified);const badge=$('navNip05Badge');badge.style.display=verified?'':'none';badge.textContent=verified?'✓':'';badge.title=verified?'NIP-05 verified':'';
+ avatar($('pdAvLg'),{...p,name},pk,false);const pdName=$('pdName');pdName.textContent=name;if(verified){const b=document.createElement('span');b.className='nip05-badge';b.textContent=' ✓';pdName.appendChild(b);}
+ const sub=$('pdSub');sub.textContent=verified?String(p.nip05||''):short(fullNpub,13,9);sub.title=verified?String(p.nip05||''):fullNpub;$('me').textContent=name;$('meS').textContent='Signed in with Nostr';
+}
+function fetchProfile(pk){return new Promise(resolve=>{
+ let done=0,best=null,settled=false;const watchdog=setTimeout(()=>{if(!settled){settled=true;resolve(best);}},4300);
+ RELAYS.forEach((url,i)=>{let ws,closed=false;const sub='sifaka-chess-profile-'+Date.now().toString(36)+'-'+i;
+ const finish=()=>{if(closed)return;closed=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close();}}catch(_){}done++;if(done>=RELAYS.length&&!settled){settled=true;clearTimeout(watchdog);resolve(best);}};
+ const timer=setTimeout(finish,3700);
+ try{ws=new WebSocket(url);ws.onopen=()=>{try{ws.send(JSON.stringify(['REQ',sub,{kinds:[0],authors:[pk],limit:10}]))}catch(_){finish();}};
+ ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&d[2].kind===0&&d[2].pubkey===pk&&(!best||Number(d[2].created_at)>Number(best.created_at)))best=d[2];if(d[0]==='EOSE'&&d[1]===sub)finish();}catch(_){}};
+ ws.onerror=finish;ws.onclose=finish;}catch(_){finish();}
+ });void watchdog;
+});}
+async function verifyNip05(id,pk){
+ id=String(id||'').trim();const at=id.lastIndexOf('@');if(at<0||at===id.length-1)return false;const user=id.slice(0,at).trim()||'_',domain=id.slice(at+1).trim().toLowerCase();
+ if(!/^[a-z0-9._-]+$/i.test(user)||!/^[a-z0-9.-]+$/i.test(domain)||domain.includes('..'))return false;
+ try{const r=await fetch('https://'+domain+'/.well-known/nostr.json?name='+encodeURIComponent(user),{mode:'cors',credentials:'omit',cache:'no-store'});if(!r.ok)return false;const d=await r.json(),k=d&&d.names&&(d.names[user]||d.names[user.toLowerCase()]);return typeof k==='string'&&k.toLowerCase()===pk.toLowerCase();}catch(_){return false;}
+}
+async function load(pk,token){
+ let p={};try{const x=JSON.parse(localStorage.getItem('sifaka_chess_profile_'+pk)||'{}');if(x&&typeof x==='object')p=x;}catch(_){}
+ if(token!==requestId||pk!==active)return;if(p.name||p.display_name||p.picture||p.nip05)setIdentity(pk,p,false);
+ const ev=await fetchProfile(pk);if(token!==requestId||pk!==active)return;
+ if(ev){try{p=JSON.parse(ev.content)||{};}catch(_){p={};}try{localStorage.setItem('sifaka_chess_profile_'+pk,JSON.stringify(p));}catch(_){}}
+ const ok=p.nip05?await verifyNip05(p.nip05,pk):false;if(token!==requestId||pk!==active)return;setIdentity(pk,p,ok);
+}
+window.sifakaChessSetNavIdentity=function(v){const pk=decode(v);if(!pk)return;try{localStorage.setItem(STORE,pk);}catch(_){}requestId++;setIdentity(pk,{},false);load(pk,requestId);};
+function route(action,page){if(action==='signout'){try{localStorage.removeItem(STORE);}catch(_){}}window.location.href='/?chessAction='+encodeURIComponent(action)+(page?'&page='+encodeURIComponent(page):'');}
+function toggle(id,button){const el=$(id),open=!el.classList.contains('open');closeMenus();el.classList.toggle('open',open);button.classList.toggle('dd-open',open);button.setAttribute('aria-expanded',String(open));}
+login.addEventListener('click',()=>{window.location.href='/?chessAction=login';});
+$('goLiveBtn').addEventListener('click',()=>{window.location.href='/?chessAction=go-live';});
+$('logoBtn').addEventListener('click',()=>toggle('logoDropdown',$('logoBtn')));
+pill.addEventListener('click',()=>toggle('profileDropdown',pill));pill.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle('profileDropdown',pill);}});
+document.querySelectorAll('.chess-site-nav [data-chess-route]').forEach(el=>el.addEventListener('click',()=>{const dest=el.getAttribute('data-chess-route')||'home';if(dest==='signout')route('signout');else route('navigate',dest);}));
+document.addEventListener('click',e=>{if(!e.target.closest('.chess-site-nav'))closeMenus();});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenus();});
+function submitSearch(){const q=search.value.trim();if(!q)return;try{sessionStorage.setItem('sifaka_chess_pending_search',q);}catch(_){}window.location.href='/?search='+encodeURIComponent(q);}
+search.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitSearch();}});
+search.addEventListener('input',()=>{const q=search.value.trim();results.classList.toggle('open',!!q);if(q){const t=results.querySelector('.sr-title'),s=results.querySelector('.sr-sub');if(t)t.textContent='Search for “'+q.slice(0,80)+'”';if(s)s.textContent='Press Enter to view results';}});
+$('chessSearchSubmit').addEventListener('click',submitSearch);$('chessSearchSubmit').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();submitSearch();}});
+document.addEventListener('click',e=>{if(!e.target.closest('.chess-site-nav .search-wrap'))results.classList.remove('open');});
+const pk=stored();if(pk){try{localStorage.setItem(STORE,pk);}catch(_){}requestId++;setIdentity(pk,{},false);load(pk,requestId);}else loggedOutState();
+window.addEventListener('storage',()=>{const current=stored();if(current&&current!==active){requestId++;setIdentity(current,{},false);load(current,requestId);}});
+})();</script>
 </body></html>
