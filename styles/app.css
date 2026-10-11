@@ -10887,3 +10887,111 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     box-shadow: 0 0 0 1px rgba(167,139,250,.32), 0 0 13px rgba(139,92,246,.4);
   }
 }
+
+
+/* Sifaka 0.8.24: keep Hosted Via motion inside its pill and align it with host/co-host cards. */
+#videoPage #theaterHostInfoPanel > .theater-hosts-platform-row {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: .5rem .8rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  order: 1 !important;
+}
+#videoPage .theater-hosts-platform-row > .sib-hosts {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto !important;
+  width: auto !important;
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow: visible;
+  padding: 0;
+}
+#videoPage .theater-hosts-platform-row > .sib-actions-row.hosted-platform-row {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 0 0 auto;
+  padding: 0;
+  order: 0 !important;
+}
+#videoPage .theater-hosts-platform-row .hosted-by-box {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden !important;
+  border-color: rgba(167,139,250,.78);
+  animation: sifaka-hosted-via-contained-glow 2.5s ease-in-out infinite;
+  box-shadow: inset 0 0 0 1px rgba(167,139,250,.28), inset 0 0 12px rgba(139,92,246,.16);
+}
+#videoPage .theater-hosts-platform-row .hosted-by-box::before {
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+}
+#videoPage .theater-hosts-platform-row .hosted-by-box > * {
+  position: relative;
+  z-index: 1;
+}
+#videoPage .theater-hosts-platform-row .hosted-by-box:hover {
+  border-color: rgba(196,181,253,.98);
+  box-shadow: inset 0 0 0 1px rgba(196,181,253,.45), inset 0 0 18px rgba(139,92,246,.3);
+}
+@keyframes sifaka-hosted-via-contained-glow {
+  0%, 100% {
+    border-color: rgba(167,139,250,.68);
+    box-shadow: inset 0 0 0 1px rgba(167,139,250,.25), inset 0 0 9px rgba(139,92,246,.14);
+  }
+  50% {
+    border-color: rgba(196,181,253,.98);
+    box-shadow: inset 0 0 0 1px rgba(196,181,253,.48), inset 0 0 17px rgba(139,92,246,.27);
+  }
+}
+@media (max-width: 700px) {
+  #videoPage .theater-hosts-platform-row {
+    gap: .38rem;
+  }
+  #videoPage .theater-hosts-platform-row > .sib-hosts {
+    flex: 1 1 0 !important;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  #videoPage .theater-hosts-platform-row > .sib-hosts::-webkit-scrollbar {
+    display: none;
+  }
+  #videoPage .theater-hosts-platform-row > .sib-hosts .theater-host-card {
+    flex: 0 0 auto;
+  }
+  #videoPage .theater-hosts-platform-row > .sib-actions-row.hosted-platform-row {
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: none;
+  }
+  #videoPage .theater-hosts-platform-row .hosted-by-box {
+    padding: .3rem .42rem .3rem .32rem;
+    gap: .34rem;
+  }
+  #videoPage .theater-hosts-platform-row .hosted-by-av {
+    width: 21px;
+    height: 21px;
+    flex-basis: 21px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #videoPage .theater-hosts-platform-row .hosted-by-box {
+    animation: none;
+    box-shadow: inset 0 0 0 1px rgba(167,139,250,.32), inset 0 0 13px rgba(139,92,246,.18);
+  }
+}
