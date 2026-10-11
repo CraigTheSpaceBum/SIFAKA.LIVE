@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.23">
+<link rel="stylesheet" href="./styles/app.css?v=0.8.24">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -2134,13 +2134,11 @@ body.nest-preview-open{overflow:hidden}
               <button class="edit-pencil owner-only visible" title="Edit title"></button>
             </div>
           </div>
-          <div class="sib-actions-row hosted-platform-row" aria-label="Hosting platform">
-            <div class="sib-hosted-by" aria-label="Hosting platform"></div>
-          </div>
         </div>
         <!-- Streamer identity and live controls share one information panel. -->
         <div class="sib-host-row">
           <div class="sib-host-info-panel" id="theaterHostInfoPanel">
+            <div class="theater-hosts-platform-row" aria-label="Streamer and co-hosts with hosting platform">
             <div class="sib-hosts" id="theaterHostCards">
               <div class="theater-host-card theater-main-host" id="theaterMainHostCard">
                 <div class="sib-av" aria-label="Streamer profile picture"></div>
@@ -2153,6 +2151,10 @@ body.nest-preview-open{overflow:hidden}
                   </div>
                 </div>
               </div>
+            </div>
+            <div class="sib-actions-row hosted-platform-row" aria-label="Hosting platform">
+              <div class="sib-hosted-by" aria-label="Hosting platform"></div>
+            </div>
             </div>
 
             <!-- Keep all streamer details, links and reactions inside the same panel as the actions. -->
