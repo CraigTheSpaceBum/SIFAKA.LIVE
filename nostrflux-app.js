@@ -16522,6 +16522,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const fallbackText = platName.charAt(0).toUpperCase() || '?';
         const box = document.createElement('div');
         box.className = 'hosted-by-box';
+        if (!sanitizeMediaUrl(plat.picture || '')) box.classList.add('hosted-by-no-picture');
         const avatar = document.createElement('div');
         avatar.className = 'hosted-by-av';
         setAvatarEl(avatar, plat.picture || '', fallbackText);
@@ -17683,6 +17684,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         via.className = 'naddr-stream-via';
         const box = document.createElement('div');
         box.className = 'hosted-by-box';
+        if (!sanitizeMediaUrl(platformProfile.picture || '')) box.classList.add('hosted-by-no-picture');
         const platformAvatar = document.createElement('div');
         platformAvatar.className = 'hosted-by-av';
         setAvatarEl(platformAvatar, platformProfile.picture || '', pickAvatar(platformPubkey));
@@ -20073,6 +20075,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         if (platName && platName !== hostName) {
           const box = document.createElement('div');
           box.className = 'hosted-by-box';
+          if (!sanitizeMediaUrl(plat.picture || '')) box.classList.add('hosted-by-no-picture');
           const avatar = document.createElement('div');
           avatar.className = 'hosted-by-av';
           setAvatarEl(avatar, plat.picture || '', platName.charAt(0).toUpperCase() || '?');
@@ -23806,10 +23809,15 @@ function renderProfileFeed(pubkey) {
 
     const bioToggle = qs('#profBioToggle');
     const isExpanded = !!state.profileBioExpandedByPubkey.get(pubkey);
-    if (bio) bio.classList.toggle('clamped', !isExpanded);
-    const hasLongBio = bioText.length > 280 || (bioText.match(/\n/g) || []).length >= 5;
+    let hasBioOverflow = false;
+    if (bio) {
+      // Measure the real collapsed layout rather than guessing from character count.
+      bio.classList.add('clamped');
+      hasBioOverflow = bio.clientHeight > 0 && bio.scrollHeight > bio.clientHeight + 1;
+      bio.classList.toggle('clamped', !isExpanded);
+    }
     if (bioToggle) {
-      bioToggle.style.display = hasLongBio ? 'inline-flex' : 'none';
+      bioToggle.style.display = hasBioOverflow ? 'inline-flex' : 'none';
       bioToggle.textContent = isExpanded ? 'Show less' : 'Show more';
     }
 
