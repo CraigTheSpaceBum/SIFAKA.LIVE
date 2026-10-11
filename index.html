@@ -2563,6 +2563,33 @@ body.sifaka-games-modal-open{overflow:hidden}
 })();
 </script>
 
+<script id="sifaka-chess-action-bridge">
+(function(){
+  function runRequestedAction(){
+    var params=new URLSearchParams(window.location.search);
+    var action=params.get('chessAction')||'';
+    if(action!=='login'&&action!=='go-live')return;
+    params.delete('chessAction');
+    var next=window.location.pathname+(params.toString()?'?'+params.toString():'')+window.location.hash;
+    try{window.history.replaceState({},'',next);}catch(_){}
+    var run=function(){
+      if(action==='login'){
+        if(typeof window.openLogin==='function'){window.openLogin();return;}
+        var login=document.querySelector('.nav-logged-out .btn-primary');
+        if(login){login.click();return;}
+      }else{
+        if(typeof window.openGoLive==='function'){window.openGoLive();return;}
+        var goLive=document.getElementById('goLiveBtn');
+        if(goLive)goLive.click();
+      }
+    };
+    run();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',runRequestedAction,{once:true});
+  else setTimeout(runRequestedAction,0);
+})();
+</script>
+
 </body>
 </html>
 
