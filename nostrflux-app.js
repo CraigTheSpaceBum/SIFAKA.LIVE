@@ -4151,7 +4151,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (nip39SettingsOwner) {
       loadNip39IdentityClaims(nip39SettingsOwner).then(() => {
         const modal = qs('#settingsModal');
-        if (modal && modal.classList.contains('open') && normalizePubkeyHex(state.user && state.user.pubkey || '') === nip39SettingsOwner) {
+        const settingsRows = qs('#settingsNip39Rows');
+        if (modal && modal.classList.contains('open')
+          && normalizePubkeyHex(state.user && state.user.pubkey || '') === nip39SettingsOwner
+          && settingsRows && settingsRows.dataset.dirty !== 'true') {
           populateNip39SettingsRows();
         }
       }).catch(() => {});
@@ -31157,6 +31160,10 @@ window.saveAppSettings = function () {
       input.placeholder = placeholder;
       input.value = String(value || '');
       input.dataset.nip39Field = fieldName;
+      input.addEventListener('input', () => {
+        const editor = qs('#settingsNip39Rows');
+        if (editor) editor.dataset.dirty = 'true';
+      });
       field.append(label, input);
       row.appendChild(field);
     };
@@ -31171,7 +31178,11 @@ window.saveAppSettings = function () {
     remove.type = 'button';
     remove.textContent = 'Remove';
     remove.setAttribute('aria-label', 'Remove NIP-39 identity row');
-    remove.addEventListener('click', () => row.remove());
+    remove.addEventListener('click', () => {
+      const editor = qs('#settingsNip39Rows');
+      if (editor) editor.dataset.dirty = 'true';
+      row.remove();
+    });
     actions.appendChild(remove);
     row.appendChild(actions);
     container.appendChild(row);
@@ -31181,6 +31192,7 @@ window.saveAppSettings = function () {
     const container = qs('#settingsNip39Rows');
     if (!container) return;
     container.replaceChildren();
+    container.dataset.dirty = 'false';
     const owner = normalizePubkeyHex(state.user && state.user.pubkey || '');
     const entry = owner ? state.nip39IdentitiesByPubkey.get(owner) : null;
     const claims = entry && Array.isArray(entry.claims) ? entry.claims : [];
@@ -31259,6 +31271,7 @@ window.saveAppSettings = function () {
         eventId: String(signedEvent.id || '')
       });
       state.nip39IdentityLoadedAtByPubkey.set(owner, Date.now());
+      if (container) container.dataset.dirty = 'false';
       if (normalizePubkeyHex(state.selectedProfilePubkey) === owner) renderNip39ForProfile(owner);
       const selectedStream = state.selectedStreamAddress && state.streamsByAddress.get(state.selectedStreamAddress);
       const selectedHost = selectedStream && normalizePubkeyHex(selectedStream.hostPubkey || selectedStream.pubkey || '');
