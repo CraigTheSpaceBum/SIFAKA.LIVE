@@ -614,19 +614,21 @@ nw();mode(true);requestAnimationFrame(loop);
     try{
       const direct=readPublicKey(localStorage.getItem(STORAGE_KEY)||'');
       if(direct)return direct;
-      // Reuse a public key only when stored under a Nostr/account identity field.
+      // Only inspect storage entries that look like the active session/account,
+      // never generic profile caches that might belong to another person.
+      const identityKey=/(auth|account|identity|current.?user|active.?user|logged.?in|user.?session|session.?user|pubkey|public.?key|npub|nostr.*user|user.*nostr|sifaka.*user)/i;
       for(const store of [localStorage,sessionStorage]){
         for(let i=0;i<store.length;i++){
           const key=store.key(i)||'';
-          if(!/(nostr|sifaka|user|auth|account|identity|profile|pubkey|public.?key|npub)/i.test(key))continue;
+          if(!identityKey.test(key))continue;
           const raw=store.getItem(key);
           if(!raw)continue;
           const directValue=readPublicKey(raw);
-          if(directValue && /(pubkey|public.?key|npub|identity|account)/i.test(key))return directValue;
+          if(directValue && identityKey.test(key))return directValue;
           try{
             const data=JSON.parse(raw);
             const directNested=readPublicKey(data);
-            if(directNested && /(nostr|sifaka|user|auth|account|identity|profile|npub|pubkey)/i.test(key))return directNested;
+            if(directNested)return directNested;
             if(data && typeof data==='object'){
               for(const [field,value] of Object.entries(data)){
                 if(/^(pubkey|pubKey|publicKey|public_key|pubkeyHex|npub|activePubkey|activePubKey)$/i.test(field)){
