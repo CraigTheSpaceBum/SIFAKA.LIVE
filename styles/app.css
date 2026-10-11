@@ -10742,3 +10742,148 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     font-size: clamp(.62rem, 2.2vw, .76rem);
   }
 }
+
+
+/* Sifaka 0.8.23: repair Theater Hosted Via glow, avatar fallback, header alignment, and action order. */
+#videoPage .sib-top-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: .75rem;
+}
+#videoPage .sib-title-col {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+#videoPage .sib-title-col .editable-row {
+  min-width: 0;
+}
+#videoPage .sib-title-col .sib-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#videoPage .sib-top-row > .sib-actions-row.hosted-platform-row {
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  min-width: 0;
+  margin: 0 0 0 auto;
+  order: 0 !important;
+}
+#videoPage .sib-actions-row.hosted-platform-row .sib-hosted-by {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  min-width: 0;
+  overflow: visible;
+  border-color: rgba(167,139,250,.78);
+  animation: sifaka-hosted-via-glow 2.5s ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgba(167,139,250,.28), 0 0 12px rgba(139,92,246,.38), 0 0 24px rgba(139,92,246,.18);
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-box:hover {
+  border-color: rgba(196,181,253,.98);
+  box-shadow: 0 0 0 1px rgba(196,181,253,.45), 0 0 18px rgba(139,92,246,.68), 0 0 34px rgba(139,92,246,.3);
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  gap: .14rem;
+  white-space: nowrap;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-label,
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-name {
+  display: block;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-av:not(:has(img)),
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-av:has(.hosted-by-av-fallback),
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-av:empty {
+  display: none !important;
+}
+#videoPage #theaterHostInfoPanel > .sib-hosts { order: 1 !important; }
+#videoPage #theaterHostInfoPanel > .theater-panel-description { order: 2 !important; }
+#videoPage #theaterHostInfoPanel > .theater-description-links { order: 3 !important; }
+#videoPage #theaterHostInfoPanel > .sib-tags-reactions-row {
+  order: 4 !important;
+}
+#videoPage #theaterHostInfoPanel > .sib-stats-links-row {
+  order: 5 !important;
+  margin-top: .1rem;
+}
+@keyframes sifaka-hosted-via-glow {
+  0%, 100% {
+    border-color: rgba(167,139,250,.68);
+    box-shadow: 0 0 0 1px rgba(167,139,250,.25), 0 0 10px rgba(139,92,246,.34), 0 0 22px rgba(139,92,246,.14);
+  }
+  50% {
+    border-color: rgba(196,181,253,.98);
+    box-shadow: 0 0 0 1px rgba(196,181,253,.48), 0 0 19px rgba(139,92,246,.72), 0 0 36px rgba(139,92,246,.28);
+  }
+}
+@media (max-width: 700px) {
+  #videoPage .sib-top-row {
+    gap: .38rem;
+  }
+  #videoPage .sib-title-col {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+  #videoPage .sib-title-col .sib-title {
+    font-size: .9rem;
+    line-height: 1.25;
+  }
+  #videoPage .sib-top-row > .sib-actions-row.hosted-platform-row {
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: none;
+    margin-left: auto;
+  }
+  #videoPage .sib-actions-row.hosted-platform-row .hosted-by-box {
+    padding: .3rem .42rem .3rem .32rem;
+    gap: .34rem;
+  }
+  #videoPage .sib-actions-row.hosted-platform-row .hosted-by-av {
+    width: 21px;
+    height: 21px;
+    flex-basis: 21px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #videoPage .sib-actions-row.hosted-platform-row .hosted-by-box {
+    animation: none;
+    box-shadow: 0 0 0 1px rgba(167,139,250,.32), 0 0 13px rgba(139,92,246,.4);
+  }
+}
