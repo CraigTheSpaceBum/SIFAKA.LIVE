@@ -2938,6 +2938,9 @@ nav .btn{
   cursor:pointer;transition:border-color .18s,box-shadow .18s;
 }
 .hosted-by-box:hover{border-color:rgba(155,114,255,.65);box-shadow:0 0 16px rgba(155,114,255,.28);}
+.hosted-by-box.hosted-by-no-picture {
+  padding: .46rem .76rem .46rem .62rem;
+}
 .hosted-by-box::before{
   content:'';position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(90deg,transparent,rgba(155,114,255,.06),transparent);
