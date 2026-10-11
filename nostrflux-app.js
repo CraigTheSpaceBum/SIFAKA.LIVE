@@ -30971,8 +30971,15 @@ window.saveAppSettings = function () {
     const inflight = state.nip39IdentityInflightByPubkey.get(key);
     if (inflight) return inflight;
 
+    // Current NIP-39 clients use kind:10011; older clients placed the same
+    // "i" tags on kind:0 metadata events. Query both so other people's existing
+    // profiles remain visible. A kind:10011 event, even one with no valid tags,
+    // takes precedence because an empty replaceable event clears the identity list.
     const request = fetchEventsCached(
-      [{ kinds: [KIND_NIP39_IDENTITY], authors: [key], limit: 20 }],
+      [
+        { kinds: [KIND_NIP39_IDENTITY], authors: [key], limit: 20 },
+        { kinds: [KIND_PROFILE], authors: [key], limit: 4 }
+      ],
       {
         scope: 'nip39-identities',
         cacheKey: 'nip39-identities:' + key,
@@ -30980,21 +30987,30 @@ window.saveAppSettings = function () {
         ttlMs: 45000,
         warmMs: 120000,
         allowStale: false,
-        timeoutMs: 2800,
-        maxEvents: 30
+        timeoutMs: 4500,
+        waitForAllRelays: true,
+        maxEvents: 40
       }
     ).then((events) => {
-      const latest = (events || [])
-        .filter((event) => event
-          && Number(event.kind) === KIND_NIP39_IDENTITY
-          && normalizePubkeyHex(event.pubkey || '') === key)
+      const matching = (events || []).filter((event) => event
+        && normalizePubkeyHex(event.pubkey || '') === key);
+      const latest = matching
+        .filter((event) => Number(event.kind) === KIND_NIP39_IDENTITY)
+        .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))[0] || null;
+      const legacyProfile = matching
+        .filter((event) => Number(event.kind) === KIND_PROFILE
+          && Array.isArray(event.tags)
+          && event.tags.some((tag) => Array.isArray(tag) && tag[0] === 'i'))
         .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))[0] || null;
 
-      const claims = latest ? parseNip39IdentityEvent(latest) : [];
+      // Do not resurrect stale kind:0 claims after an explicit kind:10011 clear.
+      const claimEvent = latest || legacyProfile;
+      const claims = claimEvent ? parseNip39IdentityEvent(claimEvent) : [];
       state.nip39IdentitiesByPubkey.set(key, {
         claims,
-        created_at: Number(latest && latest.created_at || 0),
-        eventId: String(latest && latest.id || '')
+        created_at: Number(claimEvent && claimEvent.created_at || 0),
+        eventId: String(claimEvent && claimEvent.id || ''),
+        sourceKind: claimEvent ? Number(claimEvent.kind) : null
       });
       state.nip39IdentityLoadedAtByPubkey.set(key, Date.now());
       return claims.slice();
