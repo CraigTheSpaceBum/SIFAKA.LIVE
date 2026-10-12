@@ -802,7 +802,71 @@ const navBar=$('chessSiteNav');
 function syncChessContentOffset(){if(!navBar)return;const h=Math.ceil(navBar.getBoundingClientRect().height);if(h>0)document.documentElement.style.setProperty('--chess-site-nav-height',h+'px');}
 syncChessContentOffset();
 if(navBar){if(typeof ResizeObserver!=='undefined')new ResizeObserver(syncChessContentOffset).observe(navBar);window.addEventListener('resize',syncChessContentOffset,{passive:true});}
+const loginOverlay=$('chessLoginOverlay'),loginFrame=$('chessLoginFrame'),loginClose=$('chessLoginClose');
+let loginPopupToken=0,loginPopupObserver=null;
+function closeChessLoginPopup(syncUser=true){
+ if(syncUser){
+  try{
+   const user=loginFrame.contentWindow&&loginFrame.contentWindow.__SIFAKA_CONTEXT&&loginFrame.contentWindow.__SIFAKA_CONTEXT.getUser();
+   if(user&&user.pubkey){
+    if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(user.pubkey);
+    if(typeof window.sifakaChessMarkConnected==='function')window.sifakaChessMarkConnected();
+   }
+  }catch(_){}
+ }
+ loginPopupToken++;
+ if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}
+ loginOverlay.hidden=true;
+ loginFrame.onload=null;
+ try{loginFrame.src='about:blank';}catch(_){}
+}
+function openChessLoginPopup(){
+ if(!loginOverlay||!loginFrame)return;
+ loginPopupToken++;const token=loginPopupToken;
+ if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}
+ loginOverlay.hidden=false;
+ loginFrame.onload=function(){
+  if(token!==loginPopupToken||loginOverlay.hidden)return;
+  let doc,win;
+  try{doc=loginFrame.contentDocument;win=loginFrame.contentWindow;}catch(_){closeChessLoginPopup(false);toast('Could not open the sign-in window.');return;}
+  if(!doc||!doc.head||!doc.body){closeChessLoginPopup(false);toast('Could not open the sign-in window.');return;}
+  let isolate=doc.getElementById('chessLoginIsolateStyle');
+  if(!isolate){
+   isolate=doc.createElement('style');isolate.id='chessLoginIsolateStyle';
+   isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:flex!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}#loginModal .login-modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+   doc.head.appendChild(isolate);
+  }
+  function awaitLoginApi(attempt){
+   if(token!==loginPopupToken||loginOverlay.hidden)return;
+   try{
+    doc=loginFrame.contentDocument;win=loginFrame.contentWindow;
+    const modal=doc&&doc.getElementById('loginModal');
+    if(modal&&typeof win.openLogin==='function'&&win.__SIFAKA_CONTEXT&&typeof win.__SIFAKA_CONTEXT.getUser==='function'){
+     const Observer=win.MutationObserver;
+     if(Observer){
+      loginPopupObserver=new Observer(()=>{
+       if(!modal.classList.contains('open'))closeChessLoginPopup(true);
+      });
+      loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']});
+     }
+     if(!modal.classList.contains('open'))win.openLogin();
+     if(!modal.classList.contains('open'))closeChessLoginPopup(false);
+     return;
+    }
+   }catch(_){}
+   if(attempt<200){window.setTimeout(()=>awaitLoginApi(attempt+1),50);return;}
+   closeChessLoginPopup(false);toast('Sign-in did not load. Please refresh and try again.');
+  }
+  awaitLoginApi(0);
+ };
+ loginFrame.src='/?chessLoginPopup=1';
+}
+window.openChessLoginPopup=openChessLoginPopup;
+if(loginClose)loginClose.addEventListener('click',()=>closeChessLoginPopup(true));
+if(loginOverlay)loginOverlay.addEventListener('click',e=>{if(e.target===loginOverlay)closeChessLoginPopup(true);});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&loginOverlay&&!loginOverlay.hidden)closeChessLoginPopup(true);});
 const short=(v,l,r)=>{const s=String(v||'');return s.length>l+r+1?s.slice(0,l)+'…'+s.slice(-r):s;};
+window.sifakaChessMarkConnected=function(){try{chessSignerConnected=true;}catch(_){};};
 function decode(v){if(typeof v!=='string')return '';v=v.trim();if(HEX.test(v))return v.toLowerCase();if(/^npub1[023456789acdefghjklmnpqrstuvwxyz]{20,}$/i.test(v)){try{if(typeof b32d==='function'){const x=b32d(v.toLowerCase());if(HEX.test(x))return x.toLowerCase();}}catch(_){}}return '';}
 function np(pk){try{return typeof npub==='function'?npub(pk):pk;}catch(_){return pk;}}
 function fallback(pk){return short(np(pk),13,7);}
@@ -857,7 +921,7 @@ async function load(pk,token){
 window.sifakaChessSetNavIdentity=function(v){const pk=decode(v);if(!pk)return;try{localStorage.setItem(STORE,pk);}catch(_){}requestId++;setIdentity(pk,{},false);load(pk,requestId);};
 function route(action,page){if(action==='signout'){try{localStorage.removeItem(STORE);}catch(_){}}window.location.href='/?chessAction='+encodeURIComponent(action)+(page?'&page='+encodeURIComponent(page):'');}
 function toggle(id,button){const el=$(id),open=!el.classList.contains('open');closeMenus();el.classList.toggle('open',open);button.classList.toggle('dd-open',open);button.setAttribute('aria-expanded',String(open));}
-login.addEventListener('click',()=>{window.location.href='/?chessAction=login';});
+login.addEventListener('click',()=>openChessLoginPopup());
 $('goLiveBtn').addEventListener('click',()=>{window.location.href='/?chessAction=go-live';});
 $('logoBtn').addEventListener('click',()=>toggle('logoDropdown',$('logoBtn')));
 pill.addEventListener('click',()=>toggle('profileDropdown',pill));pill.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle('profileDropdown',pill);}});
