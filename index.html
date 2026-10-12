@@ -2566,6 +2566,8 @@ body.sifaka-games-modal-open{overflow:hidden}
 <script id="sifaka-chess-action-bridge">
 (function(){
  function actionIsReady(a,page){
+  // The main bundle registers these globals from init(), which may run after this inline bridge.
+  if(!window.__SIFAKA_CONTEXT)return false;
   if(a==='login')return typeof window.openLogin==='function';
   if(a==='go-live')return typeof window.openGoLive==='function';
   if(a==='signout')return typeof window.signOut==='function';
