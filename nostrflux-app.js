@@ -9518,11 +9518,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function isHostedVideoPageUrl(url) {
     const clean = sanitizeMediaUrl(url || '');
     if (!clean || !/^https?:\/\//i.test(clean)) return false;
+    const authorityMatch = clean.match(/^https?:\/\/([^/?#]+)/i);
+    if (!authorityMatch) return false;
+    const authority = authorityMatch[1].slice(authorityMatch[1].lastIndexOf('@') + 1);
     let host = '';
-    try {
-      host = String(new URL(clean).hostname || '').toLowerCase().replace(/\.$/, '');
-    } catch (_) {
-      return false;
+    if (authority.startsWith('[')) {
+      const hostEnd = authority.indexOf(']');
+      host = hostEnd > 0 ? authority.slice(1, hostEnd).toLowerCase() : '';
+    } else {
+      host = authority.split(':')[0].toLowerCase().replace(/\.$/, '');
     }
     if (!host) return false;
     const nonDirectVideoPageHosts = [
