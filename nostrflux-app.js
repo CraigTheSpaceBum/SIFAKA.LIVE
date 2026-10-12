@@ -9530,7 +9530,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     if (!host) return false;
     const nonDirectVideoPageHosts = [
-      'youtube.com', 'youtube-nocookie.com', 'youtu.be', 'youtube.googleapis.com', 'youtubei.googleapis.com', 'googlevideo.com', 'ytimg.com',
+      'youtube.com', 'youtube-nocookie.com', 'youtu.be', 'youtube.googleapis.com', 'youtubei.googleapis.com',
       'twitch.tv', 'vimeo.com', 'dailymotion.com', 'dai.ly', 'tiktok.com',
       'instagram.com', 'facebook.com', 'fb.watch', 'kick.com', 'rumble.com',
       'streamable.com', 'x.com', 'twitter.com', 'odysee.com', 'bitchute.com'
