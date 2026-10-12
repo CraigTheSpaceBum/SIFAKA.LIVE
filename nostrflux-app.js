@@ -15308,8 +15308,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
     const ovEl = qs('#heroPlayOv');
     if (ovEl) ovEl.style.display = '';
-    const audioBtn = qs('#heroAudioBtn');
-    if (audioBtn) { audioBtn.hidden = true; audioBtn.onclick = null; audioBtn.onpointerdown = null; }
     if (state.heroHlsInstance) {
       try { state.heroHlsInstance.destroy(); } catch (_) {}
       state.heroHlsInstance = null;
@@ -15346,8 +15344,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const video = document.createElement('video');
-    // Try audible autoplay first; if rejected by browser policy, fall back to muted playback.
-    // A dedicated button lets the viewer enable audio with a direct user gesture.
+    // Sifaka 0.9.11: try audible autoplay first. If browser policy blocks it, start muted and
+    // retry audio after the first real user interaction (without an overlay button).
     video.muted = false;
     video.defaultMuted = false;
     video.volume = 0.8;
@@ -15362,14 +15360,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     let heroMediaRecoveries = 0;
 
     let heroAudioRetryTimers = [];
-    const audioBtn = qs('#heroAudioBtn');
-    const updateHeroAudioButton = () => {
-      if (!audioBtn) return;
-      const muted = !!video.muted;
-      audioBtn.textContent = muted ? 'Enable audio' : 'Mute audio';
-      audioBtn.setAttribute('aria-label', muted ? 'Enable preview audio' : 'Mute preview audio');
-      audioBtn.setAttribute('aria-pressed', muted ? 'false' : 'true');
-    };
+    // Remember early user input so audio can be unlocked as soon as the first preview is playable.
+    let heroUserInteracted = false;
     const clearHeroAudioRetries = () => {
       heroAudioRetryTimers.forEach((id) => clearTimeout(id));
       heroAudioRetryTimers = [];
@@ -15377,9 +15369,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const tryHeroAudio = async (fromUserGesture = false) => {
       if (token !== state.heroPlaybackToken || !document.body.contains(video)) return false;
       const hasUserActivation = !!(navigator.userActivation && navigator.userActivation.hasBeenActive);
-      if (!hasUserActivation && !fromUserGesture) return false;
+      if (!hasUserActivation && !fromUserGesture && !heroUserInteracted) return false;
       if (!video.muted) {
-        updateHeroAudioButton();
         return true;
       }
       video.muted = false;
@@ -15389,13 +15380,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         await video.play();
         if (!video.muted) {
           clearHeroAudioRetries();
-          updateHeroAudioButton();
           return true;
         }
       } catch (_) {}
       video.muted = true;
       video.defaultMuted = true;
-      updateHeroAudioButton();
       return false;
     };
     const startHeroPlayback = async () => {
@@ -15403,22 +15392,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       video.muted = false;
       video.defaultMuted = false;
       video.volume = 0.8;
-      updateHeroAudioButton();
       try {
         await video.play();
-        updateHeroAudioButton();
         return true;
       } catch (_) {}
       if (token !== state.heroPlaybackToken || !document.body.contains(video)) return false;
       video.muted = true;
       video.defaultMuted = true;
-      updateHeroAudioButton();
       try {
         await video.play();
-        updateHeroAudioButton();
         return !video.paused;
       } catch (_) {
-        updateHeroAudioButton();
         return false;
       }
     };
@@ -15433,36 +15417,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
     const onHeroPlayable = () => {
       if (token !== state.heroPlaybackToken) return;
-      updateHeroAudioButton();
       setActiveHeroViewerAddress(stream.address);
       startViewerPresence(stream.address);
       markStreamPlaybackOnline(stream.address);
       if (ovEl) ovEl.style.display = 'none';
 
-      if (navigator.userActivation && navigator.userActivation.hasBeenActive) {
+      if ((navigator.userActivation && navigator.userActivation.hasBeenActive) || heroUserInteracted) {
         scheduleHeroAudioRetries();
       }
     };
     video.addEventListener('canplay', onHeroPlayable);
     video.addEventListener('playing', onHeroPlayable);
-    if (audioBtn) {
-      audioBtn.hidden = false;
-      audioBtn.onpointerdown = (event) => event.stopPropagation();
-      audioBtn.onclick = async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (video.muted) {
-          await tryHeroAudio(true);
-        } else {
-          video.muted = true;
-          video.defaultMuted = true;
-          updateHeroAudioButton();
-          try { await video.play(); } catch (_) {}
-        }
-        updateHeroAudioButton();
-      };
-      updateHeroAudioButton();
-    }
 
     // A click/tap anywhere after autoplay begins should immediately retry audio.
     const unlockHeroAudio = (event) => {
@@ -15475,7 +15440,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         try { video.play().catch(() => {}); } catch (_) {}
       }
       if (!video.muted) return;
-      const fromUserGesture = !!(event && ['pointerdown', 'keydown', 'touchstart'].includes(event.type));
+      const fromUserGesture = !!(event && event.isTrusted && ['pointerdown', 'keydown', 'touchstart'].includes(event.type));
+      if (fromUserGesture) heroUserInteracted = true;
       tryHeroAudio(fromUserGesture).catch(() => {});
     };
     document.addEventListener('pointerdown', unlockHeroAudio, { passive: true });
@@ -15499,7 +15465,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     });
 
     playerEl.appendChild(video);
-    if (audioBtn) audioBtn.hidden = false;
 
     if (isHls) {
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
