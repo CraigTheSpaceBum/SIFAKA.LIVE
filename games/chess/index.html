@@ -291,24 +291,9 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
 
 /* Keep all chess content below the actual fixed site-nav height at every breakpoint. */
 main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
-/* Chess signed-in identity is shown beside the same site avatar. */
-.chess-site-nav .chess-nav-user-copy{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;max-width:125px;text-align:left;line-height:1.2}
-.chess-site-nav .chess-nav-user-copy strong{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font:700 .76rem/1.2 'DM Sans',sans-serif}
-.chess-site-nav .chess-nav-user-copy small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font:500 .58rem/1.2 'DM Mono',monospace}
-.chess-site-nav .chess-nav-user-copy small.nip05-valid{color:#c9afff;text-shadow:0 0 10px rgba(155,114,255,.32)}
-.chess-site-nav #navUserPill{width:auto;height:auto;max-width:none;gap:.4rem;padding:.22rem .4rem}
-@media(max-width:700px){
-  .chess-site-nav #navUserPill{width:auto;height:auto;max-width:155px;padding:.2rem .3rem;gap:.3rem}
-  .chess-site-nav #navAvatar{width:32px;height:32px;flex:0 0 32px}
-  .chess-site-nav .chess-nav-user-copy{max-width:85px}
-  .chess-site-nav .chess-nav-user-copy strong{font-size:.66rem}
-  .chess-site-nav .chess-nav-user-copy small{font-size:.5rem}
-}
-@media(max-width:370px){
-  .chess-site-nav #navUserPill{max-width:125px}
-  .chess-site-nav .chess-nav-user-copy{max-width:64px}
-}
-
+/* The Chess profile pill intentionally uses the shared site avatar and NIP-05 badge layout. */
+.chess-site-nav .nav-avatar.nip05-square{border-radius:8px;border:2px solid rgba(155,114,255,.7);box-shadow:0 0 10px rgba(155,114,255,.55),0 0 22px rgba(155,114,255,.25),inset 0 0 8px rgba(155,114,255,.1);animation:nip05Pulse 2.8s ease-in-out infinite}
+.chess-site-nav .pd-av-lg.nip05-square{border-radius:8px;border:2px solid rgba(155,114,255,.7);box-shadow:0 0 10px rgba(155,114,255,.55),0 0 22px rgba(155,114,255,.25);animation:nip05Pulse 2.8s ease-in-out infinite}
 /* Nostr identity for the human player card */
 .duo .pl .av.nip05-square{border:1.5px solid rgba(155,114,255,.75);box-shadow:0 0 8px rgba(155,114,255,.55),0 0 18px rgba(155,114,255,.25);}
 .duo .pl .sub.nip05-valid{color:#c9afff;text-shadow:0 0 8px rgba(155,114,255,.32);}
@@ -378,10 +363,6 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
       <div class="nav-user-pill" id="navUserPill" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
         <div class="nav-avatar" id="navAvatar"></div>
         <span class="nip05-badge" id="navNip05Badge" style="display:none"></span>
-        <span class="chess-nav-user-copy" id="chessNavUserCopy" hidden>
-          <strong id="chessNavDisplayName"></strong>
-          <small id="chessNavDisplayId"></small>
-        </span>
       </div>
       <div class="nav-dropdown" id="profileDropdown">
         <div class="pd-header">
@@ -404,7 +385,7 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
     </div>
   </div>
 </nav>
-<div class="chess-login-overlay" id="chessLoginOverlay" hidden><iframe class="chess-login-frame" id="chessLoginFrame" title="Sifaka.Live sign-in" src="about:blank" allow="clipboard-read; clipboard-write"></iframe><button class="chess-login-close" id="chessLoginClose" type="button" aria-label="Close sign-in window">×</button></div>
+<div class="chess-login-overlay" id="chessLoginOverlay" hidden><iframe class="chess-login-frame" id="chessLoginFrame" title="Sifaka.Live sign-in" src="about:blank" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" allow="clipboard-read; clipboard-write"></iframe><button class="chess-login-close" id="chessLoginClose" type="button" aria-label="Close sign-in window">×</button></div>
 <button id="chessGameConnect" type="button" hidden aria-hidden="true" tabindex="-1"></button>
 <main>
 <div class="chess-board-column"><div class="stage" id="stage"><canvas id="cv"></canvas><div class="b2d" id="b2"><div class="g2" id="g2"></div></div><div class="hint" id="hint">Drag to orbit · Pinch or scroll to zoom · Tap to move</div></div><div class="vt" id="chessViewControls"><button id="v3" class="on">3D</button><button id="v2">2D</button><button class="btn" id="snd" type="button" title="Sound" aria-label="Toggle chess sound">🔊</button></div></div>
@@ -793,7 +774,7 @@ $('il').onclick=async()=>{try{await navigator.clipboard.writeText(INV);toast('In
 document.querySelector('.vt').appendChild($('snd'));
 $('meS').textContent='Tap to connect Nostr';{const pc=$('me').closest('.card');pc.style.cursor='pointer';pc.title='Connect your Nostr signer';pc.onclick=()=>{if(!chessSignerConnected)$('chessGameConnect').click()}}
 nw();mode(true);requestAnimationFrame(loop);
-</script><script id="sifaka-chess-nav-profile">(function(){
+</script><!-- Sifaka Chess 0.9.8: shared profile styling and safe in-page auth/modals. --><script id="sifaka-chess-nav-profile">(function(){
 'use strict';
 const $=id=>document.getElementById(id),STORE='sifaka_chess_pubkey',RELAYS=['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net'],HEX=/^[0-9a-f]{64}$/i;
 let active='',requestId=0,fullNpub='',verified=false;
@@ -803,7 +784,7 @@ function syncChessContentOffset(){if(!navBar)return;const h=Math.ceil(navBar.get
 syncChessContentOffset();
 if(navBar){if(typeof ResizeObserver!=='undefined')new ResizeObserver(syncChessContentOffset).observe(navBar);window.addEventListener('resize',syncChessContentOffset,{passive:true});}
 const loginOverlay=$('chessLoginOverlay'),loginFrame=$('chessLoginFrame'),loginClose=$('chessLoginClose');
-let loginPopupToken=0,loginPopupObserver=null;
+let loginPopupToken=0,loginPopupObserver=null,activeChessPopup='login';
 function closeChessLoginPopup(syncUser=true){
  if(syncUser){
   try{
@@ -820,49 +801,65 @@ function closeChessLoginPopup(syncUser=true){
  loginFrame.onload=null;
  try{loginFrame.src='about:blank';}catch(_){}
 }
-function openChessLoginPopup(){
- if(!loginOverlay||!loginFrame)return;
+function openChessSitePopup(kind='login'){
+ if(!loginOverlay||!loginFrame||!loginOverlay.hidden)return;
+ activeChessPopup=kind==='go-live'?'go-live':'login';
+ const popupKind=activeChessPopup;
+ const modalId=popupKind==='go-live'?'goLiveModal':'loginModal';
+ const actionName=popupKind==='go-live'?'openGoLive':'openLogin';
  loginPopupToken++;const token=loginPopupToken;
  if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}
  loginOverlay.hidden=false;
  loginFrame.onload=function(){
   if(token!==loginPopupToken||loginOverlay.hidden)return;
   let doc,win;
-  try{doc=loginFrame.contentDocument;win=loginFrame.contentWindow;}catch(_){closeChessLoginPopup(false);toast('Could not open the sign-in window.');return;}
-  if(!doc||!doc.head||!doc.body){closeChessLoginPopup(false);toast('Could not open the sign-in window.');return;}
+  try{doc=loginFrame.contentDocument;win=loginFrame.contentWindow;}catch(_){closeChessLoginPopup(false);toast('Could not open the Sifaka popup.');return;}
+  if(!doc||!doc.head||!doc.body){closeChessLoginPopup(false);toast('Could not open the Sifaka popup.');return;}
   let isolate=doc.getElementById('chessLoginIsolateStyle');
-  if(!isolate){
-   isolate=doc.createElement('style');isolate.id='chessLoginIsolateStyle';
-   isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:flex!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}#loginModal .login-modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
-   doc.head.appendChild(isolate);
+  if(!isolate){isolate=doc.createElement('style');isolate.id='chessLoginIsolateStyle';doc.head.appendChild(isolate);}
+  function setIsolate(targetId){
+   isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#'+targetId+'){display:none!important;visibility:hidden!important}body>#'+targetId+'{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#'+targetId+'.open{display:flex!important}#'+targetId+' .login-modal,#'+targetId+' .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
   }
-  function awaitLoginApi(attempt){
+  setIsolate(modalId);
+  function watchModal(modal){
+   if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}
+   const Observer=win.MutationObserver;
+   if(Observer){loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open'))closeChessLoginPopup(true);});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']});}
+  }
+  function awaitPopupApi(attempt){
    if(token!==loginPopupToken||loginOverlay.hidden)return;
    try{
     doc=loginFrame.contentDocument;win=loginFrame.contentWindow;
-    const modal=doc&&doc.getElementById('loginModal');
     if(win&&!win.nostr&&window.nostr&&typeof window.nostr.getPublicKey==='function'){try{Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr});}catch(_){}}
-    if(modal&&typeof win.openLogin==='function'&&win.__SIFAKA_CONTEXT&&typeof win.__SIFAKA_CONTEXT.getUser==='function'){
-     const Observer=win.MutationObserver;
-     if(Observer){
-      loginPopupObserver=new Observer(()=>{
-       if(!modal.classList.contains('open'))closeChessLoginPopup(true);
-      });
-      loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']});
+    const modal=doc&&doc.getElementById(modalId);
+    if(modal&&typeof win[actionName]==='function'){
+     watchModal(modal);
+     if(!modal.classList.contains('open'))win[actionName]();
+     if(!modal.classList.contains('open')){
+      // If Go Live requires authentication, switch to the site's login modal in this same overlay.
+      const loginModal=doc.getElementById('loginModal');
+      if(popupKind==='go-live'&&loginModal&&loginModal.classList.contains('open')){
+       setIsolate('loginModal');
+       watchModal(loginModal);
+      }else{
+       closeChessLoginPopup(false);
+       toast(popupKind==='go-live'?'Could not open the Go Live window.':'Could not open the sign-in window.');
+      }
      }
-     if(!modal.classList.contains('open'))win.openLogin();
-     if(!modal.classList.contains('open'))closeChessLoginPopup(false);
      return;
     }
    }catch(_){}
-   if(attempt<200){window.setTimeout(()=>awaitLoginApi(attempt+1),50);return;}
-   closeChessLoginPopup(false);toast('Sign-in did not load. Please refresh and try again.');
+   if(attempt<200){window.setTimeout(()=>awaitPopupApi(attempt+1),50);return;}
+   closeChessLoginPopup(false);toast(popupKind==='go-live'?'Go Live did not load. Please try again.':'Sign-in did not load. Please refresh and try again.');
   }
-  awaitLoginApi(0);
+  awaitPopupApi(0);
  };
  loginFrame.src='/?chessLoginPopup=1';
 }
+function openChessLoginPopup(){openChessSitePopup('login');}
+function openChessGoLivePopup(){openChessSitePopup('go-live');}
 window.openChessLoginPopup=openChessLoginPopup;
+window.openChessGoLivePopup=openChessGoLivePopup;
 if(loginClose)loginClose.addEventListener('click',()=>closeChessLoginPopup(true));
 if(loginOverlay)loginOverlay.addEventListener('click',e=>{if(e.target===loginOverlay)closeChessLoginPopup(true);});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&loginOverlay&&!loginOverlay.hidden)closeChessLoginPopup(true);});
@@ -881,18 +878,15 @@ function avatar(el,p,pk,isVerified){
 }
 function closeMenus(){document.querySelectorAll('.chess-site-nav .nav-dropdown').forEach(x=>x.classList.remove('open'));$('logoBtn').classList.remove('dd-open');$('logoBtn').setAttribute('aria-expanded','false');pill.classList.remove('dd-open');pill.setAttribute('aria-expanded','false');}
 function loggedOutState(){
- active='';fullNpub='';verified=false;loggedIn.classList.remove('on');loggedOut.classList.remove('off');closeMenus();
+ active='';fullNpub='';verified=false;chessSignerConnected=false;loggedIn.classList.remove('on');loggedOut.classList.remove('off');closeMenus();
  avatar($('navAvatar'),{},'S',false);$('navNip05Badge').style.display='none';$('navNip05Badge').textContent='';
- $('chessNavUserCopy').hidden=true;$('chessNavDisplayName').textContent='';$('chessNavDisplayId').textContent='';$('chessNavDisplayId').classList.remove('nip05-valid');
  avatar($('pdAvLg'),{},'S',false);$('pdName').textContent='Guest';$('pdSub').textContent='Not signed in';$('me').textContent='Guest';avatar($('meAvatar'),{},'',false);$('meAvatar').replaceChildren(document.createTextNode('♔'));$('meS').textContent='Tap to connect Nostr';$('meS').title='';$('meS').classList.remove('nip05-valid');
 }
 function setIdentity(pk,p,isVerified){
- active=pk;fullNpub=np(pk);verified=!!isVerified;loggedIn.classList.add('on');loggedOut.classList.add('off');
+ active=pk;fullNpub=np(pk);verified=!!isVerified;chessSignerConnected=true;loggedIn.classList.add('on');loggedOut.classList.add('off');
  const name=String(p.display_name||p.displayName||p.name||fallback(pk)).trim().slice(0,80)||fallback(pk);
  avatar($('navAvatar'),{...p,name},pk,verified);const badge=$('navNip05Badge');badge.style.display=verified?'':'none';badge.textContent=verified?'✓':'';badge.title=verified?'NIP-05 verified':'';
- $('chessNavUserCopy').hidden=false;$('chessNavDisplayName').textContent=name;
- const navId=$('chessNavDisplayId');navId.textContent=verified&&p.nip05?String(p.nip05):short(fullNpub,13,7);navId.title=verified&&p.nip05?String(p.nip05):fullNpub;navId.classList.toggle('nip05-valid',!!(verified&&p.nip05));
- avatar($('pdAvLg'),{...p,name},pk,false);const pdName=$('pdName');pdName.textContent=name;if(verified){const b=document.createElement('span');b.className='nip05-badge';b.textContent=' ✓';pdName.appendChild(b);}
+ avatar($('pdAvLg'),{...p,name},pk,verified);const pdName=$('pdName');pdName.textContent=name;if(verified){const b=document.createElement('span');b.className='nip05-badge';b.textContent=' ✓';pdName.appendChild(b);}
  const sub=$('pdSub');sub.textContent=verified?String(p.nip05||''):short(fullNpub,13,9);sub.title=verified?String(p.nip05||''):fullNpub;
  const me=$('me');me.replaceChildren(document.createTextNode(name));if(verified&&p.nip05){const check=document.createElement('span');check.className='chess-player-nip05-check';check.textContent='✓';check.title='NIP-05 verified';me.appendChild(check);}
  avatar($('meAvatar'),{...p,name},pk,verified);const meSub=$('meS'),hasVerifiedNip05=!!(verified&&p.nip05);meSub.textContent=hasVerifiedNip05?String(p.nip05):short(fullNpub,13,7);meSub.title=hasVerifiedNip05?'NIP-05 verified: '+String(p.nip05):'Nostr public key: '+fullNpub;meSub.classList.toggle('nip05-valid',hasVerifiedNip05);
@@ -923,7 +917,7 @@ window.sifakaChessSetNavIdentity=function(v,profile){const pk=decode(v);if(!pk)r
 function route(action,page){if(action==='signout'){try{localStorage.removeItem(STORE);}catch(_){}}window.location.href='/?chessAction='+encodeURIComponent(action)+(page?'&page='+encodeURIComponent(page):'');}
 function toggle(id,button){const el=$(id),open=!el.classList.contains('open');closeMenus();el.classList.toggle('open',open);button.classList.toggle('dd-open',open);button.setAttribute('aria-expanded',String(open));}
 login.addEventListener('click',()=>openChessLoginPopup());
-$('goLiveBtn').addEventListener('click',()=>{window.location.href='/?chessAction=go-live';});
+$('goLiveBtn').addEventListener('click',()=>openChessGoLivePopup());
 $('logoBtn').addEventListener('click',()=>toggle('logoDropdown',$('logoBtn')));
 pill.addEventListener('click',()=>toggle('profileDropdown',pill));pill.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle('profileDropdown',pill);}});
 document.querySelectorAll('.chess-site-nav [data-chess-route]').forEach(el=>el.addEventListener('click',()=>{const dest=el.getAttribute('data-chess-route')||'home';if(dest==='signout')route('signout');else route('navigate',dest);}));
