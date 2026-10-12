@@ -1,7 +1,55 @@
-/* Sifaka Live theme compatibility layer.
-   Every available theme is a dark palette; app-wide and page-specific surfaces
-   use the shared theme variables defined in styles/app.css. */
+/* Theme variables are registered so the daily midnight palette change can
+   interpolate smoothly between colors instead of swapping abruptly. */
+@property --bg { syntax: "<color>"; inherits: true; initial-value: #161a1f; }
+@property --surface { syntax: "<color>"; inherits: true; initial-value: #1d232b; }
+@property --surface2 { syntax: "<color>"; inherits: true; initial-value: #252d37; }
+@property --surface3 { syntax: "<color>"; inherits: true; initial-value: #2f3945; }
+@property --border { syntax: "<color>"; inherits: true; initial-value: #384454; }
+@property --border2 { syntax: "<color>"; inherits: true; initial-value: #445365; }
+@property --accent { syntax: "<color>"; inherits: true; initial-value: #f7931a; }
+@property --accent-glow { syntax: "<color>"; inherits: true; initial-value: rgba(247,147,26,.24); }
+@property --live { syntax: "<color>"; inherits: true; initial-value: #ff4f6f; }
+@property --zap { syntax: "<color>"; inherits: true; initial-value: #f7931a; }
+@property --zap-dim { syntax: "<color>"; inherits: true; initial-value: rgba(247,147,26,.15); }
+@property --text { syntax: "<color>"; inherits: true; initial-value: #edf2f7; }
+@property --text2 { syntax: "<color>"; inherits: true; initial-value: #b3c0cf; }
+@property --muted { syntax: "<color>"; inherits: true; initial-value: #76879a; }
+@property --green { syntax: "<color>"; inherits: true; initial-value: #16c784; }
+@property --purple { syntax: "<color>"; inherits: true; initial-value: #8f5bff; }
+@property --nip05 { syntax: "<color>"; inherits: true; initial-value: #8f5bff; }
+@property --danger { syntax: "<color>"; inherits: true; initial-value: #f87171; }
+
 :root { color-scheme: dark; }
+
+html[data-theme-transitioning] {
+  transition:
+    --bg 1900ms ease-in-out,
+    --surface 1900ms ease-in-out,
+    --surface2 1900ms ease-in-out,
+    --surface3 1900ms ease-in-out,
+    --border 1900ms ease-in-out,
+    --border2 1900ms ease-in-out,
+    --accent 1900ms ease-in-out,
+    --accent-glow 1900ms ease-in-out,
+    --live 1900ms ease-in-out,
+    --zap 1900ms ease-in-out,
+    --zap-dim 1900ms ease-in-out,
+    --text 1900ms ease-in-out,
+    --text2 1900ms ease-in-out,
+    --muted 1900ms ease-in-out,
+    --green 1900ms ease-in-out,
+    --purple 1900ms ease-in-out,
+    --nip05 1900ms ease-in-out,
+    --danger 1900ms ease-in-out;
+}
+
+html[data-theme-transitioning] *,
+html[data-theme-transitioning] *::before,
+html[data-theme-transitioning] *::after {
+  transition-property: background-color, color, border-color, outline-color, box-shadow, text-shadow, fill, stroke;
+  transition-duration: 1900ms;
+  transition-timing-function: ease-in-out;
+}
 
 html, body {
   transition: background-color .2s ease, color .2s ease;
@@ -9,6 +57,7 @@ html, body {
 
 @media (prefers-reduced-motion: reduce) {
   html, body { scroll-behavior: auto; }
+  html[data-theme-transitioning] { transition: none !important; }
   *, *::before, *::after {
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
