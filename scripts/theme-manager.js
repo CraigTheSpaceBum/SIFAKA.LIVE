@@ -39,7 +39,7 @@
   window.setSifakaTheme = applyTheme;
   window.previewSifakaTheme = function (theme) { return applyTheme(theme, false); };
 
-  const WEEKDAY_THEMES = ["amethyst", "cyberpunk", "ocean", "forest", "violet", "ruby", "sunset"];
+  const WEEKDAY_THEMES = ["lavender", "slate", "ocean", "forest", "violet", "ruby", "sunset"];
   const TRANSITION_MS = 1900;
   let rolloverTimer = null;
   let transitionTimer = null;
