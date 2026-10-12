@@ -9514,9 +9514,34 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return signed;
   }
 
+  // Sifaka 0.9.9: browser playback cannot open hosted watch pages as direct media.
+  function isHostedVideoPageUrl(url) {
+    const clean = sanitizeMediaUrl(url || '');
+    if (!clean || !/^https?:\/\//i.test(clean)) return false;
+    const authorityMatch = clean.match(/^https?:\/\/([^/?#]+)/i);
+    if (!authorityMatch) return false;
+    const authority = authorityMatch[1].slice(authorityMatch[1].lastIndexOf('@') + 1);
+    let host = '';
+    if (authority.startsWith('[')) {
+      const hostEnd = authority.indexOf(']');
+      host = hostEnd > 0 ? authority.slice(1, hostEnd).toLowerCase() : '';
+    } else {
+      host = authority.split(':')[0].toLowerCase().replace(/\.$/, '');
+    }
+    if (!host) return false;
+    const nonDirectVideoPageHosts = [
+      'youtube.com', 'youtube-nocookie.com', 'youtu.be', 'youtube.googleapis.com', 'youtubei.googleapis.com',
+      'twitch.tv', 'vimeo.com', 'dailymotion.com', 'dai.ly', 'tiktok.com',
+      'instagram.com', 'facebook.com', 'fb.watch', 'kick.com', 'rumble.com',
+      'streamable.com', 'x.com', 'twitter.com', 'odysee.com', 'bitchute.com'
+    ];
+    return nonDirectVideoPageHosts.some((domain) => host === domain || host.endsWith('.' + domain));
+  }
+
   function isLikelyPlayableStreamUrl(url, mediaType = '') {
     const clean = sanitizeMediaUrl(url || '');
     if (!clean || !/^https?:\/\//i.test(clean)) return false;
+    if (isHostedVideoPageUrl(clean)) return false;
     if (['audio', 'video'].includes(String(mediaType || '').toLowerCase())) return true;
     if (isLikelyHlsStreamUrl(clean)) return true;
     if (isDirectFileVideoUrl(clean)) return true;
@@ -14544,8 +14569,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function getFilteredStreams() {
     // Only show streams that have a browser-playable HTTP(S) URL
     const allStreams = sortedLiveStreams().filter((s) => {
-      const url = (s.streaming || '').trim();
-      return url && /^https?:\/\//i.test(url) && !isAudioOnlyStream(s);
+      const url = sanitizeMediaUrl((s && s.streaming) || '');
+      return url && /^https?:\/\//i.test(url)
+        && isLikelyPlayableStreamUrl(url, s && s.mediaType)
+        && !isAudioOnlyStream(s);
     });
     const filterPubkeys = getPubkeysForFilter();
     return filterPubkeys
@@ -14663,7 +14690,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const eligibleStreams = Array.from(state.streamsByAddress.values())
       .filter((stream) => normalizeStreamStatus(stream.status) !== 'ended')
       .filter((stream) => isAudioOnlyStream(stream))
-      .filter((stream) => /^https?:\/\//i.test(String(stream.streaming || '').trim()));
+      .filter((stream) => {
+        const url = sanitizeMediaUrl((stream && stream.streaming) || '');
+        return /^https?:\/\//i.test(url) && isLikelyPlayableStreamUrl(url, stream && stream.mediaType);
+      });
 
     // A single publisher can publish multiple NIP-53 events that point to the
     // same audio URL. Show only that publisher's newest event for each URL.
@@ -15111,8 +15141,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function heroFeaturedStreams() {
     return sortedLiveStreams().filter(
       (s) => {
-        const url = (s.streaming || '').trim();
+        const url = sanitizeMediaUrl((s && s.streaming) || '');
         return url && /^https?:\/\//i.test(url)
+          && isLikelyPlayableStreamUrl(url, s && s.mediaType)
           && !isAudioOnlyStream(s)
           && !state.featuredFailed.has(s.address);
       }
@@ -16834,7 +16865,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const streams = sortedLiveStreams()
-      .filter((s) => !isAudioOnlyStream(s)
+      .filter((s) => isLikelyPlayableStreamUrl(s && s.streaming, s && s.mediaType)
+        && !isAudioOnlyStream(s)
         && (s.title.toLowerCase().includes(term) || profileFor(s.hostPubkey).name.toLowerCase().includes(term)))
       .slice(0, 5);
 
@@ -28666,7 +28698,9 @@ window.saveAppSettings = function () {
       const current = state.selectedStreamAddress;
       const thumbClasses = ['t1','t2','t3','t4','t5','t6','t7','t8'];
       const others = sortedLiveStreams()
-        .filter((s) => s.address !== current && s.status === 'live' && !isAudioOnlyStream(s))
+        .filter((s) => s.address !== current && s.status === 'live'
+          && isLikelyPlayableStreamUrl(s && s.streaming, s && s.mediaType)
+          && !isAudioOnlyStream(s))
         .slice(0, 6);
       list.innerHTML = '';
       list.className = 'reco-grid';
