@@ -809,7 +809,7 @@ function closeChessLoginPopup(syncUser=true){
   try{
    const user=loginFrame.contentWindow&&loginFrame.contentWindow.__SIFAKA_CONTEXT&&loginFrame.contentWindow.__SIFAKA_CONTEXT.getUser();
    if(user&&user.pubkey){
-    if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(user.pubkey);
+    if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(user.pubkey,user.profile);
     if(typeof window.sifakaChessMarkConnected==='function')window.sifakaChessMarkConnected();
    }
   }catch(_){}
@@ -841,6 +841,7 @@ function openChessLoginPopup(){
    try{
     doc=loginFrame.contentDocument;win=loginFrame.contentWindow;
     const modal=doc&&doc.getElementById('loginModal');
+    if(win&&!win.nostr&&window.nostr&&typeof window.nostr.getPublicKey==='function'){try{Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr});}catch(_){}}
     if(modal&&typeof win.openLogin==='function'&&win.__SIFAKA_CONTEXT&&typeof win.__SIFAKA_CONTEXT.getUser==='function'){
      const Observer=win.MutationObserver;
      if(Observer){
@@ -918,7 +919,7 @@ async function load(pk,token){
  if(ev){try{p=JSON.parse(ev.content)||{};}catch(_){p={};}try{localStorage.setItem('sifaka_chess_profile_'+pk,JSON.stringify(p));}catch(_){}}
  const ok=p.nip05?await verifyNip05(p.nip05,pk):false;if(token!==requestId||pk!==active)return;setIdentity(pk,p,ok);
 }
-window.sifakaChessSetNavIdentity=function(v){const pk=decode(v);if(!pk)return;try{localStorage.setItem(STORE,pk);}catch(_){}requestId++;setIdentity(pk,{},false);load(pk,requestId);};
+window.sifakaChessSetNavIdentity=function(v,profile){const pk=decode(v);if(!pk)return;let p=profile&&typeof profile==='object'?profile:{};try{localStorage.setItem(STORE,pk);if(p.name||p.display_name||p.picture||p.nip05)localStorage.setItem('sifaka_chess_profile_'+pk,JSON.stringify(p));}catch(_){}requestId++;setIdentity(pk,p,false);load(pk,requestId);};
 function route(action,page){if(action==='signout'){try{localStorage.removeItem(STORE);}catch(_){}}window.location.href='/?chessAction='+encodeURIComponent(action)+(page?'&page='+encodeURIComponent(page):'');}
 function toggle(id,button){const el=$(id),open=!el.classList.contains('open');closeMenus();el.classList.toggle('open',open);button.classList.toggle('dd-open',open);button.setAttribute('aria-expanded',String(open));}
 login.addEventListener('click',()=>openChessLoginPopup());
