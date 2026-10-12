@@ -14594,19 +14594,70 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const renderSignature = state.activeListFilter + '::' + streams.map((stream) => [stream.address, stream.id, stream.status, stream.streaming, stream.image, stream.title, stream.summary, stream.participants, isStreamPlaybackOffline(stream.address)].join('|')).join('||');
     if (grid.querySelector('.stream-card') && state.liveGridRenderSignature === renderSignature) return;
+
+    // Relay updates can arrive while a viewer is deep in the Live Now list.
+    // Rebuilding the grid without preserving its loaded pages and viewport makes
+    // the browser jump upward and silently resets infinite scroll.
+    const previousRenderSignature = String(state.liveGridRenderSignature || '');
+    const sameFilter = previousRenderSignature.startsWith(String(state.activeListFilter || '') + '::');
+    const previousCards = Array.from(grid.querySelectorAll('.stream-card'));
+    const preserveGridPosition = sameFilter && previousCards.length > 0;
+    const previousCardCount = previousCards.length;
+    const previousPageCount = Math.max(1, Number(state.liveGridPage) || 1);
+    const previousScrollY = Number(window.scrollY || window.pageYOffset || 0);
+    let anchorAddress = '';
+    let anchorTop = 0;
+    if (preserveGridPosition) {
+      const anchor = previousCards.find((card) => {
+        const rect = card.getBoundingClientRect();
+        return rect.bottom > 72 && rect.top < window.innerHeight;
+      });
+      if (anchor) {
+        anchorAddress = String(anchor.dataset.streamAddress || '');
+        anchorTop = anchor.getBoundingClientRect().top;
+      }
+    }
+
+    const restoreGridPosition = () => {
+      if (!preserveGridPosition) return;
+      window.requestAnimationFrame(() => {
+        if (!isHomeViewActive() || !grid.isConnected) return;
+        if (anchorAddress) {
+          const anchor = Array.from(grid.querySelectorAll('.stream-card'))
+            .find((card) => String(card.dataset.streamAddress || '') === anchorAddress);
+          if (anchor) {
+            const delta = anchor.getBoundingClientRect().top - anchorTop;
+            if (Math.abs(delta) > 1) {
+              const nextY = Math.max(0, Number(window.scrollY || window.pageYOffset || 0) + delta);
+              try { window.scrollTo({ left: Number(window.scrollX || 0), top: nextY, behavior: 'instant' }); }
+              catch (_) { window.scrollTo(0, nextY); }
+            }
+            return;
+          }
+        }
+        const currentY = Number(window.scrollY || window.pageYOffset || 0);
+        if (Math.abs(currentY - previousScrollY) > 1) {
+          try { window.scrollTo({ left: Number(window.scrollX || 0), top: previousScrollY, behavior: 'instant' }); }
+          catch (_) { window.scrollTo(0, previousScrollY); }
+        }
+      });
+    };
+
     state.liveGridRenderSignature = renderSignature;
 
     // Update count pill
     const pill = qs('#liveCountPill');
     if (pill) pill.textContent = streams.length ? `${streams.length} live` : '';
 
-    // Reset page counter and disconnect old observer
+    // Reset page counter and disconnect old observer. Restore the previous
+    // number of loaded cards below if this is a refresh of the same filter.
     state.liveGridPage = 0;
     if (state.liveGridObserver) { state.liveGridObserver.disconnect(); state.liveGridObserver = null; }
 
     // Loading state
     if (allStreams.length === 0) {
       grid.innerHTML = '<div class="live-grid-loading"><div class="lf-spinner"></div>Syncing streams from relays...</div>';
+      restoreGridPosition();
       return;
     }
 
@@ -14621,19 +14672,27 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
           if (sv) return `"${sv.name}"`;
           return 'this filter';
         })();
-        grid.innerHTML = `<div class="following-empty" style="grid-column:1/-1"><div class="following-empty-icon">&#x1F4E1;</div><div class="following-empty-title">No live streams in ${filterName}</div><div class="following-empty-sub">Nobody in this list is streaming right now.</div></div>`;
+      grid.innerHTML = `<div class="following-empty" style="grid-column:1/-1"><div class="following-empty-icon">&#x1F4E1;</div><div class="following-empty-title">No live streams in ${filterName}</div><div class="following-empty-sub">Nobody in this list is streaming right now.</div></div>`;
+      restoreGridPosition();
       return;
     }
 
-    // Render first page
-    grid.innerHTML = '';
-    const firstBatch = streams.slice(0, state.GRID_PAGE_SIZE);
-    firstBatch.forEach((s, i) => grid.appendChild(buildStreamCard(s, i)));
-    state.liveGridPage = 1;
+    // On background updates, re-render every page the viewer had already loaded.
+    // Filter changes intentionally start from the first page as before.
+    const pageSize = Math.max(1, Number(state.GRID_PAGE_SIZE) || 20);
+    const wantedCount = preserveGridPosition
+      ? Math.max(pageSize, previousCardCount, previousPageCount * pageSize)
+      : pageSize;
+    const firstBatch = streams.slice(0, wantedCount);
+    const fragment = document.createDocumentFragment();
+    firstBatch.forEach((s, i) => fragment.appendChild(buildStreamCard(s, i)));
+    grid.replaceChildren(fragment);
+    state.liveGridPage = Math.max(1, Math.ceil(firstBatch.length / pageSize));
 
     // If all loaded, show end marker
-    if (streams.length <= state.GRID_PAGE_SIZE) {
+    if (streams.length <= firstBatch.length) {
       grid.insertAdjacentHTML('beforeend', `<div class="live-grid-end">&#8212; ${streams.length} streams loaded &#8212;</div>`);
+      restoreGridPosition();
       return;
     }
 
@@ -14645,6 +14704,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }, { rootMargin: '200px' });
       state.liveGridObserver.observe(sentinel);
     }
+    restoreGridPosition();
   }
 
   function loadMoreStreams() {
