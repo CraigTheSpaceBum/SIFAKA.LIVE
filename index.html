@@ -14,7 +14,7 @@
     // Use the visitor's local calendar day so the daily theme is visible
     // from the first paint, without flashing a previously saved theme.
     var today = new Date();
-    var weekdayThemes = ["amethyst", "cyberpunk", "ocean", "forest", "violet", "ruby", "sunset"];
+    var weekdayThemes = ["lavender", "slate", "ocean", "forest", "violet", "ruby", "sunset"];
     var theme = weekdayThemes[today.getDay()];
     if (today.getMonth() === 9 && today.getDate() === 31) theme = "halloween";
     else if (today.getMonth() === 11 && today.getDate() === 25) theme = "christmas";
@@ -2492,7 +2492,7 @@ body.sifaka-games-modal-open{overflow:hidden}
 </div>
 
 <!-- ========= SCRIPTS ========= -->
-<script src="./scripts/theme-manager.js?v=0.9.6" defer></script>
+<script src="./scripts/theme-manager.js?v=0.9.7" defer></script>
 <script src="./scripts/theater-view.js?v=4ea8fcf" defer></script>
 <script src="./scripts/profile-view.js?v=4ea8fcf" defer></script>
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
