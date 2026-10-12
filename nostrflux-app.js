@@ -14603,6 +14603,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const previousCards = Array.from(grid.querySelectorAll('.stream-card'));
     const preserveGridPosition = sameFilter && previousCards.length > 0;
     const previousCardCount = previousCards.length;
+    const previousPageCount = Math.max(1, Number(state.liveGridPage) || 1);
     const previousScrollY = Number(window.scrollY || window.pageYOffset || 0);
     let anchorAddress = '';
     let anchorTop = 0;
@@ -14680,7 +14681,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     // Filter changes intentionally start from the first page as before.
     const pageSize = Math.max(1, Number(state.GRID_PAGE_SIZE) || 20);
     const wantedCount = preserveGridPosition
-      ? Math.max(pageSize, previousCardCount)
+      ? Math.max(pageSize, previousCardCount, previousPageCount * pageSize)
       : pageSize;
     const firstBatch = streams.slice(0, wantedCount);
     const fragment = document.createDocumentFragment();
