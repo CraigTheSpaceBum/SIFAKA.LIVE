@@ -288,6 +288,27 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
 }
 .chess-site-nav [hidden]{display:none!important}
 .vt #snd{padding:7px 12px}
+
+/* Keep the fixed site navbar from covering the top of the chess play area. */
+main{padding-top:84px!important}
+@media(max-width:700px){main{padding-top:72px!important}}
+/* Chess signed-in identity is shown beside the same site avatar. */
+.chess-site-nav .chess-nav-user-copy{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;max-width:125px;text-align:left;line-height:1.2}
+.chess-site-nav .chess-nav-user-copy strong{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font:700 .76rem/1.2 'DM Sans',sans-serif}
+.chess-site-nav .chess-nav-user-copy small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font:500 .58rem/1.2 'DM Mono',monospace}
+.chess-site-nav .chess-nav-user-copy small.nip05-valid{color:#c9afff;text-shadow:0 0 10px rgba(155,114,255,.32)}
+.chess-site-nav #navUserPill{width:auto;height:auto;max-width:none;gap:.4rem;padding:.22rem .4rem}
+@media(max-width:700px){
+  .chess-site-nav #navUserPill{width:auto;height:auto;max-width:155px;padding:.2rem .3rem;gap:.3rem}
+  .chess-site-nav #navAvatar{width:32px;height:32px;flex:0 0 32px}
+  .chess-site-nav .chess-nav-user-copy{max-width:85px}
+  .chess-site-nav .chess-nav-user-copy strong{font-size:.66rem}
+  .chess-site-nav .chess-nav-user-copy small{font-size:.5rem}
+}
+@media(max-width:370px){
+  .chess-site-nav #navUserPill{max-width:125px}
+  .chess-site-nav .chess-nav-user-copy{max-width:64px}
+}
 </style></head><body><div class="bg"></div>
 <nav class="chess-site-nav" id="chessSiteNav">
   <!-- Logo (left) -->
@@ -339,6 +360,10 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
       <div class="nav-user-pill" id="navUserPill" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
         <div class="nav-avatar" id="navAvatar"></div>
         <span class="nip05-badge" id="navNip05Badge" style="display:none"></span>
+        <span class="chess-nav-user-copy" id="chessNavUserCopy" hidden>
+          <strong id="chessNavDisplayName"></strong>
+          <small id="chessNavDisplayId"></small>
+        </span>
       </div>
       <div class="nav-dropdown" id="profileDropdown">
         <div class="pd-header">
@@ -770,12 +795,15 @@ function closeMenus(){document.querySelectorAll('.chess-site-nav .nav-dropdown')
 function loggedOutState(){
  active='';fullNpub='';verified=false;loggedIn.classList.remove('on');loggedOut.classList.remove('off');closeMenus();
  avatar($('navAvatar'),{},'S',false);$('navNip05Badge').style.display='none';$('navNip05Badge').textContent='';
+ $('chessNavUserCopy').hidden=true;$('chessNavDisplayName').textContent='';$('chessNavDisplayId').textContent='';$('chessNavDisplayId').classList.remove('nip05-valid');
  avatar($('pdAvLg'),{},'S',false);$('pdName').textContent='Guest';$('pdSub').textContent='Not signed in';$('me').textContent='Guest';$('meS').textContent='Tap to connect Nostr';
 }
 function setIdentity(pk,p,isVerified){
  active=pk;fullNpub=np(pk);verified=!!isVerified;loggedIn.classList.add('on');loggedOut.classList.add('off');
  const name=String(p.display_name||p.displayName||p.name||fallback(pk)).trim().slice(0,80)||fallback(pk);
  avatar($('navAvatar'),{...p,name},pk,verified);const badge=$('navNip05Badge');badge.style.display=verified?'':'none';badge.textContent=verified?'✓':'';badge.title=verified?'NIP-05 verified':'';
+ $('chessNavUserCopy').hidden=false;$('chessNavDisplayName').textContent=name;
+ const navId=$('chessNavDisplayId');navId.textContent=verified&&p.nip05?String(p.nip05):short(fullNpub,13,7);navId.title=verified&&p.nip05?String(p.nip05):fullNpub;navId.classList.toggle('nip05-valid',!!(verified&&p.nip05));
  avatar($('pdAvLg'),{...p,name},pk,false);const pdName=$('pdName');pdName.textContent=name;if(verified){const b=document.createElement('span');b.className='nip05-badge';b.textContent=' ✓';pdName.appendChild(b);}
  const sub=$('pdSub');sub.textContent=verified?String(p.nip05||''):short(fullNpub,13,9);sub.title=verified?String(p.nip05||''):fullNpub;$('me').textContent=name;$('meS').textContent='Signed in with Nostr';
 }
