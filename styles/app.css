@@ -11085,3 +11085,112 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
   .nip39-settings-row-actions .btn { min-height: 34px; }
   #videoPage .nip39-identity-card .nip39-identity-value { max-width: 36vw; }
 }
+
+
+/* ===== 0.9.2 — mobile Theater Live Chat popup (desktop layout untouched) ===== */
+#videoPage .mobile-chat-launch-wrap { display: none !important; }
+#videoPage .mobile-chat-modal-close { display: none; }
+@media (max-width: 760px) {
+  #videoPage .sib-stats-row .mobile-chat-launch-wrap {
+    display: flex !important;
+    flex: 0 0 auto;
+    align-items: center;
+  }
+  #videoPage .mobile-chat-launch {
+    min-height: 34px;
+    padding: .42rem .65rem;
+    white-space: nowrap;
+  }
+  #videoPage .stream-sidebar:not(.mobile-chat-modal-open) {
+    display: none !important;
+  }
+  body.mobile-theater-chat-modal-open {
+    overflow: hidden !important;
+  }
+  body.mobile-theater-chat-modal-open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(3, 6, 18, .78);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    pointer-events: auto;
+  }
+  body.mobile-theater-chat-modal-open #videoPage {
+    content-visibility: visible !important;
+    contain: none !important;
+  }
+  #videoPage .stream-sidebar.mobile-chat-modal-open {
+    display: flex !important;
+    position: fixed !important;
+    z-index: 10001 !important;
+    inset: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+    width: auto !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    order: initial !important;
+    align-self: stretch;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--purple) 38%, var(--border));
+    border-radius: 18px;
+    background: var(--surface);
+    box-shadow: 0 28px 90px rgba(0, 0, 0, .48), 0 0 36px rgba(139, 92, 246, .12);
+  }
+  #videoPage .stream-sidebar.mobile-chat-modal-open .stabs {
+    display: flex;
+    flex: 0 0 52px;
+    min-height: 52px;
+    max-height: 52px;
+    align-items: center;
+    gap: .5rem;
+    padding: 0 .6rem;
+    background: color-mix(in srgb, var(--surface2) 82%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  #videoPage .stream-sidebar.mobile-chat-modal-open .theater-chat-label {
+    display: block !important;
+    flex: 1 1 auto;
+    padding: .7rem .5rem;
+    border: 0;
+    text-align: left;
+    font-size: .84rem;
+    font-weight: 700;
+    cursor: default;
+  }
+  #videoPage .stream-sidebar.mobile-chat-modal-open .mobile-chat-toggle {
+    display: none !important;
+  }
+  #videoPage .stream-sidebar.mobile-chat-modal-open .mobile-chat-modal-close {
+    display: grid;
+    flex: 0 0 38px;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    margin-left: auto;
+    border: 1px solid var(--border2);
+    border-radius: 11px;
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 1.55rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  #videoPage .stream-sidebar.mobile-chat-modal-open .chat-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  #videoPage .stream-sidebar.mobile-chat-modal-open .chat-bottom {
+    flex: 0 0 auto;
+    padding-bottom: max(.55rem, env(safe-area-inset-bottom));
+  }
+}
