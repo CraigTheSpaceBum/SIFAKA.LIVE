@@ -43,6 +43,14 @@ html[data-theme-transitioning] {
     --danger 1900ms ease-in-out;
 }
 
+html[data-theme-transitioning] *,
+html[data-theme-transitioning] *::before,
+html[data-theme-transitioning] *::after {
+  transition-property: background-color, color, border-color, outline-color, box-shadow, text-shadow, fill, stroke;
+  transition-duration: 1900ms;
+  transition-timing-function: ease-in-out;
+}
+
 html, body {
   transition: background-color .2s ease, color .2s ease;
 }
