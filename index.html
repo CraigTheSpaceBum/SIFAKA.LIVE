@@ -13,12 +13,15 @@
   (function () {
     try {
       var saved = JSON.parse(localStorage.getItem('nostrflux_settings_v1') || '{}');
-      var theme = String(saved.theme || '').toLowerCase();
-      if (theme && theme !== 'dark') document.documentElement.setAttribute('data-theme', theme);
+      var theme = String(saved.theme || '').trim().toLowerCase();
+      var supportedThemes = ["dark","cyberpunk","ocean","arctic","forest","emerald","ruby","crimson","violet","lavender","amethyst","sunset","solar","amber","copper","rose","bubblegum","coffee","slate","mono","terminal","nord","dracula","hacker","toxic","deepsea"];
+      if (supportedThemes.includes(theme) && theme !== 'dark') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.9.3">
+<link rel="stylesheet" href="./styles/app.css?v=0.9.5">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -725,11 +728,7 @@ body.sifaka-games-modal-open{overflow:hidden}
           </div>
           <select id="settingsThemeSelect" aria-label="Choose app theme" onchange="previewSifakaTheme(this.value)">
             <option value="dark">SIFAKA Dark</option>
-            <option value="midnight">Midnight</option>
-            <option value="light">Light</option>
             <option value="cyberpunk">Cyberpunk</option>
-            <option value="synthwave">Synthwave</option>
-            <option value="matrix">Matrix</option>
             <option value="ocean">Ocean</option>
             <option value="arctic">Arctic</option>
             <option value="forest">Forest</option>

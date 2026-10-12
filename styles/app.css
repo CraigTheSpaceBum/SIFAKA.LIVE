@@ -5977,19 +5977,6 @@ footer p{font-size:.72rem;color:var(--muted);}
 
 
 /* Keep the original named themes explicit alongside the expanded theme pack. */
-[data-theme="light"]{
-  --bg:#f4f7fb;--surface:#ffffff;--surface2:#f2f6fb;--surface3:#e8eef6;
-  --border:#d7e0ea;--border2:#c8d4e0;--accent:#d44a0e;--accent-glow:rgba(212,74,14,.2);
-  --live:#d63252;--zap:#c48b10;--zap-dim:rgba(196,139,16,.15);--text:#13202d;--text2:#445668;
-  --muted:#6a7d90;--green:#0a9f6a;--purple:#6b50b7;--nip05:#6b50b7;--danger:#be2e3a;
-}
-[data-theme="midnight"]{
-  --bg:#05070c;--surface:#0a0f16;--surface2:#101725;--surface3:#172032;
-  --border:#1a2b43;--border2:#23395a;--accent:#ff5b18;--accent-glow:rgba(255,91,24,.25);
-  --live:#ff4467;--zap:#ffc53a;--zap-dim:rgba(255,197,58,.16);--text:#e9eef7;--text2:#9fb1c8;
-  --muted:#5d718a;--green:#1ad18c;--purple:#9f7cff;--nip05:#9f7cff;--danger:#ff5460;
-}
-
 /* ===== SIFAKA THEME PACK ===== */
 [data-theme="cyberpunk"]{
   --bg:#090611;--surface:#120b1c;--surface2:#1d1030;--surface3:#2a1743;
@@ -5999,22 +5986,6 @@ footer p{font-size:.72rem;color:var(--muted);}
 }
 [data-theme="cyberpunk"] nav{background:#090611f2;}
 [data-theme="cyberpunk"] .settings-modal-v2::before{background:linear-gradient(90deg,var(--purple),var(--accent),var(--zap));}
-[data-theme="synthwave"]{
-  --bg:#10071b;--surface:#1a0c2b;--surface2:#26113d;--surface3:#351956;
-  --border:#5a2875;--border2:#5a2875;--accent:#ff4fd8;--accent-glow:#ff4fd844;
-  --live:#ff5b7f;--zap:#ff4fd8;--zap-dim:#ff4fd826;--text:#fff0ff;--text2:#fff0ffcc;
-  --muted:#fff0ff88;--green:#38f2ff;--purple:#9d6cff;--nip05:#9d6cff;
-}
-[data-theme="synthwave"] nav{background:#10071bf2;}
-[data-theme="synthwave"] .settings-modal-v2::before{background:linear-gradient(90deg,var(--purple),var(--accent),var(--zap));}
-[data-theme="matrix"]{
-  --bg:#030806;--surface:#06110a;--surface2:#0b1b10;--surface3:#103019;
-  --border:#1c4d28;--border2:#1c4d28;--accent:#00ff66;--accent-glow:#00ff6644;
-  --live:#39ff88;--zap:#00ff66;--zap-dim:#00ff6626;--text:#eaffef;--text2:#eaffefcc;
-  --muted:#eaffef88;--green:#b7ffcb;--purple:#00c853;--nip05:#00c853;
-}
-[data-theme="matrix"] nav{background:#030806f2;}
-[data-theme="matrix"] .settings-modal-v2::before{background:linear-gradient(90deg,var(--purple),var(--accent),var(--zap));}
 [data-theme="ocean"]{
   --bg:#06131c;--surface:#0a1d29;--surface2:#0f2938;--surface3:#163a4c;
   --border:#20526a;--border2:#20526a;--accent:#18b8ff;--accent-glow:#18b8ff44;
@@ -6631,11 +6602,11 @@ footer p{font-size:.72rem;color:var(--muted);}
 @media(max-width:760px){.wallet-address-actions{width:100%}.wallet-address-card .wallet-address-actions{justify-content:stretch}.wallet-address-card .wallet-small-btn{flex:1}}
 
 
-/* ======== WALLET CLEAN UI PASS ======== */
+/* ======== WALLET CLEAN UI PASS — THEME-AWARE ======== */
 #walletPage{
   min-height:calc(100vh - 68px);
   background:
-    radial-gradient(circle at 50% -10%, rgba(247,147,26,.055), transparent 34rem),
+    radial-gradient(circle at 50% -10%, color-mix(in srgb,var(--accent) 5.5%,transparent), transparent 34rem),
     var(--bg);
 }
 #walletPage .wallet-page-wrap{
@@ -6648,9 +6619,9 @@ footer p{font-size:.72rem;color:var(--muted);}
   align-items:center;
   margin-bottom:1rem;
   padding:1.15rem 1.3rem;
-  border:1px solid rgba(255,255,255,.075);
+  border:1px solid color-mix(in srgb,var(--text) 7.5%,transparent);
   border-radius:18px;
-  background:rgba(29,35,43,.72);
+  background:color-mix(in srgb,var(--surface) 72%,var(--bg));
   box-shadow:0 18px 50px rgba(0,0,0,.18);
   overflow:hidden;
 }
@@ -6695,7 +6666,7 @@ footer p{font-size:.72rem;color:var(--muted);}
 #walletPage .wallet-address-card,
 #walletPage .wallet-transactions-card,
 #walletPage .wallet-connect-prompt{
-  border:1px solid rgba(255,255,255,.075);
+  border:1px solid color-mix(in srgb,var(--text) 7.5%,transparent);
   border-radius:18px;
   box-shadow:0 14px 42px rgba(0,0,0,.16);
 }
@@ -6704,8 +6675,8 @@ footer p{font-size:.72rem;color:var(--muted);}
   min-height:0;
   padding:.8rem;
   background:
-    radial-gradient(circle at 90% 20%, rgba(247,210,74,.16), transparent 14rem),
-    linear-gradient(135deg,rgba(37,45,55,.96),rgba(29,35,43,.96));
+    radial-gradient(circle at 90% 20%, color-mix(in srgb,var(--accent) 16%,transparent), transparent 14rem),
+    linear-gradient(135deg,color-mix(in srgb,var(--surface2) 96%,var(--surface)),color-mix(in srgb,var(--surface) 96%,var(--bg)));
   overflow:hidden;
 }
 #walletPage .wallet-balance-card::after{
@@ -6713,7 +6684,7 @@ footer p{font-size:.72rem;color:var(--muted);}
   position:absolute;
   right:1rem;
   bottom:-.55rem;
-  color:rgba(247,210,74,.13);
+  color:color-mix(in srgb,var(--accent) 13%,transparent);
   font:700 4.5rem/1 'DM Mono',monospace;
   pointer-events:none;
 }
@@ -6721,15 +6692,15 @@ footer p{font-size:.72rem;color:var(--muted);}
   position:relative;
   overflow:hidden;
   background:
-    radial-gradient(circle at 90% 20%, rgba(247,147,26,.12), transparent 14rem),
-    rgba(37,45,55,.62);
+    radial-gradient(circle at 90% 20%, color-mix(in srgb,var(--accent) 12%,transparent), transparent 14rem),
+    color-mix(in srgb,var(--surface2) 62%,var(--surface));
 }
 #walletPage .wallet-mainchain-balance::after{
   content:"₿";
   position:absolute;
   right:1rem;
   bottom:-.5rem;
-  color:rgba(247,147,26,.10);
+  color:color-mix(in srgb,var(--accent) 10%,transparent);
   font:700 4.5rem/1 'DM Mono',monospace;
   pointer-events:none;
 }
@@ -6762,39 +6733,39 @@ footer p{font-size:.72rem;color:var(--muted);}
 #walletPage .wallet-quick-btn{
   min-height:36px;
   padding:.5rem .8rem;
-  border:1px solid rgba(255,255,255,.09);
+  border:1px solid color-mix(in srgb,var(--text) 9%,transparent);
   border-radius:9px;
-  background:rgba(12,16,21,.42);
+  background:color-mix(in srgb,var(--bg) 62%,var(--surface));
   color:var(--text2);
   font:650 .68rem var(--font-display);
   transition:background .16s,border-color .16s,color .16s,transform .16s;
 }
 #walletPage .wallet-quick-btn:hover{
   transform:translateY(-1px);
-  border-color:rgba(247,147,26,.34);
-  background:rgba(247,147,26,.08);
+  border-color:color-mix(in srgb,var(--accent) 34%,transparent);
+  background:color-mix(in srgb,var(--accent) 8%,transparent);
   color:var(--text);
 }
 #walletPage .wallet-quick-btn.primary{
   background:var(--accent);
   border-color:var(--accent);
-  color:#111;
+  color:var(--bg);
 }
 #walletPage .wallet-quick-btn.primary:hover{
-  background:#ffad3b;
-  color:#111;
+  background:color-mix(in srgb,var(--accent) 82%,white);
+  color:var(--bg);
 }
 
 #walletPage .wallet-info-card{
   padding:1.2rem;
-  background:rgba(29,35,43,.86);
+  background:color-mix(in srgb,var(--surface) 86%,var(--bg));
 }
 #walletPage .wallet-info-list{
   margin-top:.75rem;
 }
 #walletPage .wallet-info-row{
   padding:.68rem 0;
-  border-bottom:1px solid rgba(255,255,255,.055);
+  border-bottom:1px solid color-mix(in srgb,var(--text) 5.5%,transparent);
 }
 #walletPage .wallet-info-row span{
   font-size:.64rem;
@@ -6808,7 +6779,7 @@ footer p{font-size:.72rem;color:var(--muted);}
   margin-top:.9rem;
   margin-bottom:0;
   padding:1rem 1.05rem 1.05rem;
-  background:rgba(29,35,43,.82);
+  background:color-mix(in srgb,var(--surface) 82%,var(--bg));
 }
 #walletPage .wallet-action-grid{
   grid-template-columns:1fr 1fr;
@@ -6818,20 +6789,20 @@ footer p{font-size:.72rem;color:var(--muted);}
 #walletPage .wallet-action-tile{
   min-height:70px;
   padding:.75rem .85rem;
-  border:1px solid rgba(255,255,255,.07);
+  border:1px solid color-mix(in srgb,var(--text) 7%,transparent);
   border-radius:13px;
-  background:rgba(37,45,55,.68);
+  background:color-mix(in srgb,var(--surface2) 68%,var(--surface));
 }
 #walletPage .wallet-action-tile:hover{
   transform:none;
-  border-color:rgba(247,147,26,.30);
-  background:rgba(247,147,26,.055);
+  border-color:color-mix(in srgb,var(--accent) 30%,transparent);
+  background:color-mix(in srgb,var(--accent) 5.5%,transparent);
 }
 #walletPage .wallet-action-icon{
   width:38px;
   height:38px;
   border-radius:11px;
-  background:rgba(247,147,26,.10);
+  background:color-mix(in srgb,var(--accent) 10%,transparent);
   color:var(--accent);
   font-size:21px;
 }
@@ -6848,12 +6819,12 @@ footer p{font-size:.72rem;color:var(--muted);}
 #walletPage .wallet-transactions-card{
   margin-top:.9rem;
   padding:1.05rem;
-  background:rgba(29,35,43,.82);
+  background:color-mix(in srgb,var(--surface) 82%,var(--bg));
 }
 #walletPage .wallet-mainchain-card{
   background:
-    linear-gradient(135deg,rgba(247,147,26,.045),transparent 45%),
-    rgba(29,35,43,.86);
+    linear-gradient(135deg,color-mix(in srgb,var(--accent) 4.5%,transparent),transparent 45%),
+    color-mix(in srgb,var(--surface) 86%,var(--bg));
 }
 #walletPage .wallet-section-head{
   margin-bottom:.7rem;
@@ -6865,7 +6836,7 @@ footer p{font-size:.72rem;color:var(--muted);}
 #walletPage .wallet-status-chip{
   padding:.22rem .5rem;
   font-size:.55rem;
-  background:rgba(255,255,255,.025);
+  background:color-mix(in srgb,var(--text) 2.5%,transparent);
 }
 #walletPage .wallet-mainchain-grid{
   gap:.65rem;
@@ -6873,8 +6844,8 @@ footer p{font-size:.72rem;color:var(--muted);}
 }
 #walletPage .wallet-mainchain-balance,
 #walletPage .wallet-mainchain-stats>div{
-  border-color:rgba(255,255,255,.06);
-  background:rgba(37,45,55,.62);
+  border-color:color-mix(in srgb,var(--text) 6%,transparent);
+  background:color-mix(in srgb,var(--surface2) 62%,var(--surface));
 }
 #walletPage .wallet-mainchain-balance{
   padding:.8rem;
@@ -6884,15 +6855,15 @@ footer p{font-size:.72rem;color:var(--muted);}
 }
 #walletPage .wallet-mainchain-address-row,
 #walletPage .wallet-address-card{
-  border-color:rgba(255,255,255,.06);
+  border-color:color-mix(in srgb,var(--text) 6%,transparent);
 }
 #walletPage .wallet-mainchain-address-row{
-  background:rgba(37,45,55,.38);
+  background:color-mix(in srgb,var(--surface2) 38%,var(--surface));
 }
 #walletPage .wallet-address-card{
   min-height:74px;
   padding:1rem 1.05rem;
-  background:rgba(29,35,43,.82);
+  background:color-mix(in srgb,var(--surface) 82%,var(--bg));
 }
 #walletPage .wallet-address-value{
   font-size:.73rem;
@@ -6902,14 +6873,14 @@ footer p{font-size:.72rem;color:var(--muted);}
 }
 
 #walletPage .wallet-transactions-list{
-  border-top-color:rgba(255,255,255,.055);
+  border-top-color:color-mix(in srgb,var(--text) 5.5%,transparent);
 }
 #walletPage .wallet-tx-row{
   padding:.72rem .15rem;
-  border-bottom-color:rgba(255,255,255,.055);
+  border-bottom-color:color-mix(in srgb,var(--text) 5.5%,transparent);
 }
 #walletPage .wallet-tx-icon{
-  background:rgba(255,255,255,.045);
+  background:color-mix(in srgb,var(--text) 4.5%,transparent);
 }
 #walletPage .wallet-tx-main strong{
   font-size:.69rem;
@@ -6928,7 +6899,7 @@ footer p{font-size:.72rem;color:var(--muted);}
 #walletPage .wallet-connect-prompt{
   margin-top:.9rem;
   padding:1rem 1.05rem;
-  background:rgba(37,45,55,.55);
+  background:color-mix(in srgb,var(--surface2) 55%,var(--surface));
 }
 #walletPage .wallet-connect-prompt p{
   color:var(--muted);

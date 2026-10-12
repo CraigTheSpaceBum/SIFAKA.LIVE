@@ -1,35 +1,7 @@
-/* Sifaka Live theme compatibility layer. Theme palettes live in app.css. */
+/* Sifaka Live theme compatibility layer.
+   Every available theme is a dark palette; app-wide and page-specific surfaces
+   use the shared theme variables defined in styles/app.css. */
 :root { color-scheme: dark; }
-:root[data-theme="light"] { color-scheme: light; }
-:root[data-theme="dark"],
-:root[data-theme="midnight"],
-:root[data-theme="cyberpunk"],
-:root[data-theme="synthwave"],
-:root[data-theme="matrix"],
-:root[data-theme="ocean"],
-:root[data-theme="arctic"],
-:root[data-theme="forest"],
-:root[data-theme="emerald"],
-:root[data-theme="ruby"],
-:root[data-theme="crimson"],
-:root[data-theme="violet"],
-:root[data-theme="lavender"],
-:root[data-theme="amethyst"],
-:root[data-theme="sunset"],
-:root[data-theme="solar"],
-:root[data-theme="amber"],
-:root[data-theme="copper"],
-:root[data-theme="rose"],
-:root[data-theme="bubblegum"],
-:root[data-theme="coffee"],
-:root[data-theme="slate"],
-:root[data-theme="mono"],
-:root[data-theme="terminal"],
-:root[data-theme="nord"],
-:root[data-theme="dracula"],
-:root[data-theme="hacker"],
-:root[data-theme="toxic"],
-:root[data-theme="deepsea"] { color-scheme: dark; }
 
 html, body {
   transition: background-color .2s ease, color .2s ease;

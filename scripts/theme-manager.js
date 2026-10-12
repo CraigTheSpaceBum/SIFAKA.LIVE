@@ -1,7 +1,7 @@
 (function () {
   const KEY = 'sifaka_theme_v1';
   const root = document.documentElement;
-  const THEMES = ["dark","midnight","light","cyberpunk","synthwave","matrix","ocean","arctic","forest","emerald","ruby","crimson","violet","lavender","amethyst","sunset","solar","amber","copper","rose","bubblegum","coffee","slate","mono","terminal","nord","dracula","hacker","toxic","deepsea"];
+  const THEMES = ["dark","cyberpunk","ocean","arctic","forest","emerald","ruby","crimson","violet","lavender","amethyst","sunset","solar","amber","copper","rose","bubblegum","coffee","slate","mono","terminal","nord","dracula","hacker","toxic","deepsea"];
 
   function normalize(theme) {
     const val = String(theme || '').trim().toLowerCase();
@@ -42,6 +42,10 @@
   document.addEventListener('DOMContentLoaded', () => {
     let saved = 'dark';
     try { saved = localStorage.getItem(KEY) || 'dark'; } catch (_) {}
-    applyTheme(saved, false);
+    const normalized = normalize(saved);
+    applyTheme(normalized, false);
+    if (String(saved || 'dark').trim().toLowerCase() !== normalized) {
+      try { localStorage.setItem(KEY, normalized); } catch (_) {}
+    }
   });
 })();
