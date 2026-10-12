@@ -18969,6 +18969,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const out = [];
     const seen = new Set();
     const builtInReactionEmojis = [
+      // The familiar reactions stay first.,
+'\u2764\uFE0F',
+'\uD83D\uDD25',
+'\uD83D\uDC4F',
+'\u26A1',
+'\uD83D\uDE02',
+'\uD83D\uDE2E',
+'\uD83D\uDE80',
+'\uD83E\uDD18',
       // Faces and expressions
 '\uD83D\uDE00',
 '\uD83D\uDE03',
@@ -18976,7 +18985,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83D\uDE01',
 '\uD83D\uDE06',
 '\uD83D\uDE05',
-'\uD83D\uDE02',
 '\uD83E\uDD23',
 '\uD83E\uDD72',
 '\u263A\uFE0F',
@@ -19048,7 +19056,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\u270C\uFE0F',
 '\uD83E\uDD1E',
 '\uD83E\uDD1F',
-'\uD83E\uDD18',
 '\uD83E\uDD19',
 '\uD83D\uDC48',
 '\uD83D\uDC49',
@@ -19061,7 +19068,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83D\uDC4A',
 '\uD83E\uDD1B',
 '\uD83E\uDD1C',
-'\uD83D\uDC4F',
 '\uD83D\uDE4C',
 '\uD83D\uDC50',
 '\uD83E\uDD32',
@@ -19087,7 +19093,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83D\uDC4F\uD83C\uDFFE',
 '\uD83D\uDC4F\uD83C\uDFFF',
       // Hearts and affection
-'\u2764\uFE0F',
 '\uD83E\uDDE1',
 '\uD83D\uDC9B',
 '\uD83D\uDC9A',
@@ -19109,9 +19114,6 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83E\uDE75',
 '\uD83E\uDE76',
       // Celebration, symbols, and weather
-'\uD83D\uDD25',
-'\u26A1',
-'\uD83D\uDE80',
 '\uD83D\uDCAF',
 '\u2728',
 '\u2B50',
@@ -19357,7 +19359,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         shortcode: meta && meta.shortcode ? meta.shortcode : ''
       });
     });
-    return out.slice(0, 320);
+    return out.slice(0, 500);
   }
 
   async function hydrateOwnStreamReactionState(stream) {
