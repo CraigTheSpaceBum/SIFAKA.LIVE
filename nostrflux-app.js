@@ -20031,8 +20031,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       maxEvents: 8,
       relayUrls: primaryRelayUrls
     }).then((events) => {
-      const latest = latestMatchingProfile(events);
-      if (latest || !fallbackRelayUrls.length) return latest;
+      const primary = latestMatchingProfile(events);
+      const primaryProfile = primary ? parseProfile(primary) : null;
+      // A relay may return an older kind:0 event that has no banner or NIP-05.
+      // Check the remaining configured relays in that case instead of treating
+      // any result from the preferred relays as the complete profile.
+      const primaryNeedsRelayFallback = !primaryProfile
+        || !isLikelyUrl(primaryProfile.banner || '')
+        || !normalizeNip05Value(primaryProfile.nip05 || '');
+      if (!fallbackRelayUrls.length || !primaryNeedsRelayFallback) return primary;
       return fetchEventsCached(profileFilter, {
         scope: 'profile-by-pubkey-fallback',
         cacheKey: `profile-by-pubkey-fallback:${normalizedPubkey}`,
@@ -20043,7 +20050,23 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         timeoutMs: 1800,
         maxEvents: 8,
         relayUrls: fallbackRelayUrls
-      }).then(latestMatchingProfile);
+      }).then((fallbackEvents) => {
+        const fallback = latestMatchingProfile(fallbackEvents);
+        if (!fallback) return primary;
+        if (!primary) return fallback;
+        const primaryCreatedAt = Number(primary.created_at || 0);
+        const fallbackCreatedAt = Number(fallback.created_at || 0);
+        const primaryHasBannerAndNip05 = isLikelyUrl(primaryProfile.banner || '')
+          && !!normalizeNip05Value(primaryProfile.nip05 || '');
+        const fallbackProfile = parseProfile(fallback);
+        const fallbackHasBannerAndNip05 = isLikelyUrl(fallbackProfile.banner || '')
+          && !!normalizeNip05Value(fallbackProfile.nip05 || '');
+        if (fallbackCreatedAt > primaryCreatedAt
+          || (fallbackCreatedAt === primaryCreatedAt && !primaryHasBannerAndNip05 && fallbackHasBannerAndNip05)) {
+          return fallback;
+        }
+        return primary;
+      });
     }).then((latest) => {
       if (!latest) return;
 
@@ -23842,17 +23865,27 @@ function renderProfileFeed(pubkey) {
 
     if (npubEl) npubEl.textContent = formatNpubForDisplay(pubkey);
 
+    // Display the profile's claimed NIP-05 even while verification is pending
+    // or unavailable; only show the purple checkmark when the well-known mapping
+    // has actually been verified against this public key.
+    if (nip05Main) {
+      nip05Main.style.display = claimedNip05 ? 'flex' : 'none';
+      nip05Main.textContent = claimedNip05 ? `NIP-05: ${claimedNip05}` : '';
+      nip05Main.style.color = claimedNip05 && !verifiedNip05 ? 'var(--muted)' : '';
+      nip05Main.title = claimedNip05 && !verifiedNip05
+        ? 'Claimed NIP-05; verification is pending or unavailable'
+        : (verifiedNip05 ? 'NIP-05 verified' : '');
+    }
     if (verifiedNip05) {
-      if (nip05Main) { nip05Main.style.display = 'flex'; nip05Main.textContent = `NIP-05: ${verifiedNip05}`; }
       if (nip05Check) {
         nip05Check.style.display = 'inline';
         nip05Check.textContent = '\u2713';
         nip05Check.title = 'NIP-05 verified';
       }
-    } else {
-      if (nip05Main) nip05Main.style.display = 'none';
-      if (nip05Check) nip05Check.style.display = 'none';
+    } else if (nip05Check) {
+      nip05Check.style.display = 'none';
     }
+    // Keep showing the public key unless the NIP-05 has been verified.
     if (npubEl) npubEl.style.display = verifiedNip05 ? 'none' : 'block';
     setProfileVerificationStyle(verifiedNip05 ? 'verified' : 'none');
     renderProfileKind30315(pubkey);
@@ -23986,8 +24019,9 @@ function renderProfileFeed(pubkey) {
     if (bottomBioLinks) bottomBioLinks.style.display = (websiteVisible || lud16Visible || !!profileBitcoinPubkey) ? 'flex' : 'none';
 
       const bannerImg = qs('#profBannerImg');
-      if (bannerImg && p.banner && isLikelyUrl(p.banner)) {
-        bannerImg.src = p.banner;
+      const bannerUrl = sanitizeMediaUrl(p.banner || '');
+      if (bannerImg && bannerUrl && isLikelyUrl(bannerUrl)) {
+        bannerImg.src = bannerUrl;
         bannerImg.loading = 'eager';
         bannerImg.decoding = 'async';
         bannerImg.fetchPriority = 'high';
