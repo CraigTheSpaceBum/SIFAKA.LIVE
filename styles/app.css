@@ -11142,6 +11142,7 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     box-shadow: 0 28px 90px rgba(0, 0, 0, .48), 0 0 36px rgba(139, 92, 246, .12);
   }
   #videoPage .stream-sidebar.mobile-chat-modal-open .stabs {
+    position: relative;
     display: flex;
     flex: 0 0 52px;
     min-height: 52px;
@@ -11155,7 +11156,7 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
   #videoPage .stream-sidebar.mobile-chat-modal-open .theater-chat-label {
     display: block !important;
     flex: 1 1 auto;
-    padding: .7rem .5rem;
+    padding: .7rem 3.1rem .7rem .5rem;
     border: 0;
     text-align: left;
     font-size: .84rem;
@@ -11166,13 +11167,16 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     display: none !important;
   }
   #videoPage .stream-sidebar.mobile-chat-modal-open .mobile-chat-modal-close {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    z-index: 5;
     display: grid;
-    flex: 0 0 38px;
     place-items: center;
     width: 38px;
     height: 38px;
     padding: 0;
-    margin-left: auto;
+    margin: 0;
     border: 1px solid var(--border2);
     border-radius: 11px;
     background: var(--surface2);
@@ -11182,15 +11186,22 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     cursor: pointer;
   }
   #videoPage .stream-sidebar.mobile-chat-modal-open .chat-scroll {
-    flex: 1 1 auto;
+    flex: 1 1 0%;
+    align-self: stretch;
+    width: 100%;
+    min-width: 0;
     min-height: 0;
     height: auto;
     max-height: none;
+    box-sizing: border-box;
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
   #videoPage .stream-sidebar.mobile-chat-modal-open .chat-bottom {
     flex: 0 0 auto;
+    width: 100%;
+    box-sizing: border-box;
     padding-bottom: max(.55rem, env(safe-area-inset-bottom));
   }
 }
