@@ -2565,31 +2565,56 @@ body.sifaka-games-modal-open{overflow:hidden}
 
 <script id="sifaka-chess-action-bridge">
 (function(){
- function runRequestedAction(){
+ function actionIsReady(a,page){
+  // The main bundle registers these globals from init(), which may run after this inline bridge.
+  if(!window.__SIFAKA_CONTEXT)return false;
+  if(a==='login')return typeof window.openLogin==='function';
+  if(a==='go-live')return typeof window.openGoLive==='function';
+  if(a==='signout')return typeof window.signOut==='function';
+  if(a!=='navigate')return true;
+  var routeGlobal={
+   home:'showPage',podcastRadio:'showPage',feed:'showPage',faq:'showPage',messages:'showPage',
+   notifications:'openNotificationsPage',profile:'openMyProfile',myStreams:'openMyStreams',
+   wallet:'openWallet',widgets:'openWidgets',settings:'openSettings',games:'openSifakaGamesMenu'
+  }[page];
+  return !!routeGlobal&&typeof window[routeGlobal]==='function';
+ }
+ function runRequestedAction(attempt){
   var p=new URLSearchParams(location.search),a=p.get('chessAction')||'',page=p.get('page')||'';
-  if(!a)return;p.delete('chessAction');p.delete('page');
+  if(!a)return;
+  // This inline bridge runs during HTML parsing, before the deferred app bundle has
+  // finished init() and exposed the real site actions. Retry without consuming the
+  // requested route until the required handler actually exists.
+  if(!actionIsReady(a,page)){
+   if((attempt||0)<120){window.setTimeout(function(){runRequestedAction((attempt||0)+1);},25);return;}
+   console.warn('Sifaka chess action bridge: app action was not ready:',a,page);
+   return;
+  }
+  p.delete('chessAction');p.delete('page');
   try{history.replaceState({},'',location.pathname+(p.toString()?'?'+p.toString():'')+location.hash);}catch(_){}
-  if(a==='login'){if(typeof window.openLogin==='function')return window.openLogin();var l=document.querySelector('.nav-logged-out .btn-primary');if(l)l.click();return;}
-  if(a==='go-live'){if(typeof window.openGoLive==='function')return window.openGoLive();var b=document.getElementById('goLiveBtn');if(b)b.click();return;}
-  if(a==='signout'){try{localStorage.removeItem('sifaka_chess_pubkey')}catch(_){}if(typeof window.signOut==='function')window.signOut();return;}
+  if(a==='login'){window.openLogin();return;}
+  if(a==='go-live'){window.openGoLive();return;}
+  if(a==='signout'){try{localStorage.removeItem('sifaka_chess_pubkey')}catch(_){}window.signOut();return;}
   if(a==='navigate'){
    var routes={
-    home:function(){if(typeof window.showPage==='function')window.showPage('home')},
-    podcastRadio:function(){if(typeof window.showPage==='function')window.showPage('podcastRadio')},
-    feed:function(){if(typeof window.showPage==='function')window.showPage('feed')},
-    faq:function(){if(typeof window.showPage==='function')window.showPage('faq')},
-    messages:function(){if(typeof window.showPage==='function')window.showPage('messages')},
-    notifications:function(){if(typeof window.openNotificationsPage==='function')window.openNotificationsPage()},
-    profile:function(){if(typeof window.openMyProfile==='function')window.openMyProfile()},
-    myStreams:function(){if(typeof window.openMyStreams==='function')window.openMyStreams()},
-    wallet:function(){if(typeof window.openWallet==='function')window.openWallet()},
-    widgets:function(){if(typeof window.openWidgets==='function')window.openWidgets()},
-    settings:function(){if(typeof window.openSettings==='function')window.openSettings()},
-    games:function(){if(typeof window.openSifakaGamesMenu==='function')window.openSifakaGamesMenu()}
-   };if(routes[page])routes[page]();
+    home:function(){window.showPage('home')},
+    podcastRadio:function(){window.showPage('podcastRadio')},
+    feed:function(){window.showPage('feed')},
+    faq:function(){window.showPage('faq')},
+    messages:function(){window.showPage('messages')},
+    notifications:function(){window.openNotificationsPage()},
+    profile:function(){window.openMyProfile()},
+    myStreams:function(){window.openMyStreams()},
+    wallet:function(){window.openWallet()},
+    widgets:function(){window.openWidgets()},
+    settings:function(){window.openSettings()},
+    games:function(){window.openSifakaGamesMenu()}
+   };
+   if(routes[page])routes[page]();
   }
  }
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',runRequestedAction,{once:true});else runRequestedAction();
+ function start(){runRequestedAction(0);}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 </script>
 

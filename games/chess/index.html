@@ -640,7 +640,7 @@ function npub(hex){const d=hex.match(/../g).map(x=>parseInt(x,16));let a=0,n=0,w
 const g=[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3],h='npub',x=[...[...h].map(c=>c.charCodeAt()>>5),0,...[...h].map(c=>c.charCodeAt()&31),...w,0,0,0,0,0,0];let c=1;
 for(const v of x){const b=c>>25;c=(c&0x1ffffff)<<5^v;for(let i=0;i<5;i++)if((b>>i)&1)c^=g[i]}c^=1;
 return h+'1'+[...w,...[0,1,2,3,4,5].map(i=>c>>5*(5-i)&31)].map(v=>CH[v]).join('')}
-$('chessGameConnect').onclick=async()=>{if(!window.nostr)return toast('No NIP-07 signer found — install Alby or nos2x. Playing as guest.');
+$('chessGameConnect').onclick=async()=>{if(!window.nostr){window.location.href='/?chessAction=login';return;}
 try{const pk=await window.nostr.getPublicKey(),np=npub(pk),col='#'+pk.slice(0,6);chessSignerConnected=true;if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(pk);$('chessGameConnect').className='btn pill';$('chessGameConnect').innerHTML=`<span class="dot" style="background:${col};color:${col}"></span>${np.slice(0,10)}…${np.slice(-4)}`;toast('Connected ⚡')}catch(e){chessSignerConnected=false;toast('Connection cancelled')}};
 async function post(){const pgn=H.map((x,i)=>(i%2?'':(i/2+1)+'. ')+x.san).join(' '),content=`♞ Playing 3D chess on Sifaka Chess vs Sifaka Engine (${LV[lv]})\n${over?over.h+' — '+over.p+'\n':''}\n${pgn}\n\n#chess #nostr`;
 if(!window.nostr){try{await navigator.clipboard.writeText(content)}catch(e){}return toast('No Nostr signer found — game note copied to clipboard')}
