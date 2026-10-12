@@ -6789,7 +6789,7 @@ footer p{font-size:.72rem;color:var(--muted);}
 #walletPage .wallet-action-tile{
   min-height:70px;
   padding:.75rem .85rem;
-  border:1px solid color-mix(in srgb,var(--text) 7.000000000000001%,transparent);
+  border:1px solid color-mix(in srgb,var(--text) 7%,transparent);
   border-radius:13px;
   background:color-mix(in srgb,var(--surface2) 68%,var(--surface));
 }
@@ -6899,7 +6899,7 @@ footer p{font-size:.72rem;color:var(--muted);}
 #walletPage .wallet-connect-prompt{
   margin-top:.9rem;
   padding:1rem 1.05rem;
-  background:color-mix(in srgb,var(--surface2) 55.00000000000001%,var(--surface));
+  background:color-mix(in srgb,var(--surface2) 55%,var(--surface));
 }
 #walletPage .wallet-connect-prompt p{
   color:var(--muted);
