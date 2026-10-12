@@ -18965,11 +18965,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return meta;
   }
 
-  function defaultReactionPickerOptions() {
-    const out = [];
-    const seen = new Set();
-    const builtInReactionEmojis = [
-      // The familiar reactions stay first.,
+  const REACTION_PICKER_POPULAR_EMOJIS = [
 '\u2764\uFE0F',
 '\uD83D\uDD25',
 '\uD83D\uDC4F',
@@ -18977,8 +18973,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83D\uDE02',
 '\uD83D\uDE2E',
 '\uD83D\uDE80',
-'\uD83E\uDD18',
-      // Faces and expressions
+'\uD83E\uDD18'
+  ];
+
+  function defaultReactionPickerOptions() {
+    const optionsByKey = new Map();
+    const seen = new Set();
+    const builtInReactionEmojiGroups = [
+      { id: 'smileys', label: 'Smileys', emojis: [
 '\uD83D\uDE00',
 '\uD83D\uDE03',
 '\uD83D\uDE04',
@@ -19044,7 +19046,32 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83E\uDEE2',
 '\uD83E\uDEE8',
 '\uD83E\uDD17',
-      // Hands and gestures
+'\uD83E\uDD78',
+'\uD83E\uDEE5',
+'\uD83E\uDD74',
+'\uD83E\uDD75',
+'\uD83E\uDD76',
+'\uD83E\uDD71',
+'\uD83D\uDE35',
+'\uD83D\uDE35\u200D\uD83D\uDCAB',
+'\uD83D\uDE08',
+'\uD83D\uDC79',
+'\uD83D\uDC7A',
+'\uD83D\uDC7F',
+'\uD83D\uDE40',
+'\uD83D\uDE3F',
+'\uD83D\uDE3E',
+'\uD83D\uDE38',
+'\uD83D\uDE39',
+'\uD83D\uDE3B',
+'\uD83D\uDE3C',
+'\uD83D\uDE3D',
+'\uD83D\uDE3A',
+'\uD83E\uDD2D',
+'\uD83E\uDD2B',
+'\uD83E\uDD25'
+      ] },
+      { id: 'people', label: 'People', emojis: [
 '\uD83D\uDC4B',
 '\uD83E\uDD1A',
 '\uD83D\uDD90\uFE0F',
@@ -19092,7 +19119,43 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83D\uDC4F\uD83C\uDFFD',
 '\uD83D\uDC4F\uD83C\uDFFE',
 '\uD83D\uDC4F\uD83C\uDFFF',
-      // Hearts and affection
+'\uD83D\uDC4B\uD83C\uDFFB',
+'\uD83D\uDC4B\uD83C\uDFFC',
+'\uD83D\uDC4B\uD83C\uDFFD',
+'\uD83D\uDC4B\uD83C\uDFFE',
+'\uD83D\uDC4B\uD83C\uDFFF',
+'\uD83D\uDE4C\uD83C\uDFFB',
+'\uD83D\uDE4C\uD83C\uDFFC',
+'\uD83D\uDE4C\uD83C\uDFFD',
+'\uD83D\uDE4C\uD83C\uDFFE',
+'\uD83D\uDE4C\uD83C\uDFFF',
+'\uD83E\uDD1D',
+'\uD83E\uDEC2',
+'\uD83D\uDC85',
+'\uD83D\uDD7A',
+'\uD83D\uDC83',
+'\uD83D\uDC6F',
+'\uD83E\uDDD8',
+'\uD83E\uDDD9',
+'\uD83E\uDDDB',
+'\uD83E\uDDDF',
+'\uD83E\uDDDC',
+'\uD83E\uDDDA',
+'\uD83E\uDDB8',
+'\uD83E\uDDB9',
+'\uD83E\uDDD1\u200D\uD83C\uDFA4',
+'\uD83E\uDDD1\u200D\uD83D\uDCBB',
+'\uD83E\uDDD1\u200D\uD83D\uDE80',
+'\uD83E\uDDD1\u200D\uD83C\uDF73',
+'\uD83E\uDDD1\u200D\uD83C\uDF93',
+'\uD83E\uDDD1\u200D\u2695\uFE0F',
+'\uD83E\uDDD1\u200D\uD83D\uDD2C',
+'\uD83E\uDDD1\u200D\uD83D\uDD27',
+'\uD83E\uDDD1\u200D\uD83D\uDE92',
+'\uD83E\uDDD1\u200D\uD83C\uDFEB',
+'\uD83E\uDDD1\u200D\uD83C\uDF3E'
+      ] },
+      { id: 'hearts', label: 'Hearts', emojis: [
 '\uD83E\uDDE1',
 '\uD83D\uDC9B',
 '\uD83D\uDC9A',
@@ -19113,47 +19176,17 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83E\uDE77',
 '\uD83E\uDE75',
 '\uD83E\uDE76',
-      // Celebration, symbols, and weather
-'\uD83D\uDCAF',
-'\u2728',
-'\u2B50',
-'\uD83C\uDF1F',
-'\uD83D\uDCAB',
-'\uD83C\uDF89',
-'\uD83C\uDF8A',
-'\uD83C\uDF88',
-'\uD83C\uDFC6',
-'\uD83E\uDD47',
-'\uD83E\uDD48',
-'\uD83E\uDD49',
-'\uD83D\uDC8E',
-'\uD83D\uDC51',
-'\uD83D\uDCB0',
-'\uD83E\uDD11',
-'\uD83D\uDCB8',
-'\uD83C\uDF81',
-'\uD83C\uDF08',
-'\u2600\uFE0F',
-'\uD83C\uDF19',
-'\u2601\uFE0F',
-'\u2744\uFE0F',
-'\uD83C\uDF0A',
-'\uD83C\uDF2A\uFE0F',
-'\u2614',
-'\uD83C\uDF0B',
-'\uD83C\uDFAF',
-'\uD83E\uDE84',
-'\uD83E\uDDFF',
-'\u267B\uFE0F',
-'\u2705',
-'\u274C',
-'\u2753',
-'\u2757',
-'\uD83D\uDCAC',
-'\uD83D\uDCA4',
-'\uD83D\uDEE1\uFE0F',
-'\u2699\uFE0F',
-      // Animals and nature
+'\u2763\uFE0F',
+'\uD83D\uDC8C',
+'\uD83E\uDEC0',
+'\uD83D\uDC8B',
+'\uD83D\uDC91',
+'\uD83D\uDC8F',
+'\uD83D\uDC69\u200D\u2764\uFE0F\u200D\uD83D\uDC68',
+'\uD83D\uDC68\u200D\u2764\uFE0F\u200D\uD83D\uDC68',
+'\uD83D\uDC69\u200D\u2764\uFE0F\u200D\uD83D\uDC69'
+      ] },
+      { id: 'animals', label: 'Animals & nature', emojis: [
 '\uD83D\uDC36',
 '\uD83D\uDC31',
 '\uD83D\uDC2D',
@@ -19224,7 +19257,47 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83C\uDF33',
 '\uD83C\uDF41',
 '\uD83C\uDF42',
-      // Food and drinks
+'\uD83C\uDF08',
+'\u2600\uFE0F',
+'\uD83C\uDF19',
+'\u2601\uFE0F',
+'\u2744\uFE0F',
+'\uD83C\uDF0A',
+'\uD83C\uDF2A\uFE0F',
+'\u2614',
+'\uD83C\uDF0B',
+'\uD83E\uDECE',
+'\uD83E\uDECF',
+'\uD83E\uDEBF',
+'\uD83E\uDEBC',
+'\uD83E\uDEB8',
+'\uD83D\uDC2A',
+'\uD83D\uDC2B',
+'\uD83E\uDD99',
+'\uD83E\uDDA5',
+'\uD83E\uDDA6',
+'\uD83E\uDDA8',
+'\uD83E\uDDA1',
+'\uD83E\uDDAB',
+'\uD83E\uDEBA',
+'\uD83E\uDDA3',
+'\uD83E\uDDA4',
+'\uD83E\uDD83',
+'\uD83D\uDC0F',
+'\uD83D\uDC11',
+'\uD83D\uDC10',
+'\uD83D\uDC3E',
+'\uD83D\uDC1A',
+'\uD83E\uDEB7',
+'\uD83E\uDEBB',
+'\uD83E\uDEB4',
+'\uD83E\uDEB9',
+'\uD83C\uDF3E',
+'\uD83C\uDF31',
+'\uD83C\uDF3F',
+'\uD83C\uDF44\u200D\uD83D\uDFEB'
+      ] },
+      { id: 'food', label: 'Food & drink', emojis: [
 '\uD83C\uDF55',
 '\uD83C\uDF54',
 '\uD83C\uDF5F',
@@ -19284,7 +19357,64 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83C\uDF4A',
 '\uD83E\uDED0',
 '\uD83E\uDD5D',
-      // Sports, music, games, and objects
+'\uD83E\uDED2',
+'\uD83E\uDEDA',
+'\uD83E\uDED8',
+'\uD83E\uDEDB',
+'\uD83E\uDED1',
+'\uD83E\uDD6C',
+'\uD83E\uDDC4',
+'\uD83E\uDDC5',
+'\uD83E\uDD6E',
+'\uD83E\uDD63',
+'\uD83E\uDD44',
+'\uD83C\uDF7D\uFE0F',
+'\uD83E\uDD62',
+'\uD83E\uDDC2',
+'\uD83E\uDED9',
+'\uD83E\uDD61',
+'\uD83E\uDD60',
+'\uD83C\uDF58',
+'\uD83C\uDF65',
+'\uD83C\uDF61',
+'\uD83C\uDF62',
+'\uD83C\uDF67',
+'\uD83C\uDF6E',
+'\uD83E\uDD67',
+'\uD83E\uDDC1',
+'\uD83E\uDD5C',
+'\uD83C\uDF30',
+'\uD83E\uDED3',
+'\uD83E\uDED4',
+'\uD83E\uDED5',
+'\uD83E\uDD58',
+'\uD83E\uDED7',
+'\uD83E\uDD64',
+'\uD83E\uDDC3',
+'\uD83E\uDDC9',
+'\uD83C\uDF79'
+      ] },
+      { id: 'activities', label: 'Activities', emojis: [
+'\uD83D\uDCAF',
+'\u2728',
+'\u2B50',
+'\uD83C\uDF1F',
+'\uD83D\uDCAB',
+'\uD83C\uDF89',
+'\uD83C\uDF8A',
+'\uD83C\uDF88',
+'\uD83C\uDFC6',
+'\uD83E\uDD47',
+'\uD83E\uDD48',
+'\uD83E\uDD49',
+'\uD83D\uDC8E',
+'\uD83D\uDC51',
+'\uD83D\uDCB0',
+'\uD83E\uDD11',
+'\uD83D\uDCB8',
+'\uD83C\uDF81',
+'\uD83C\uDFAF',
+'\uD83E\uDE84',
 '\u26BD',
 '\uD83C\uDFC0',
 '\uD83C\uDFC8',
@@ -19301,23 +19431,128 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83C\uDFA7',
 '\uD83C\uDFA4',
 '\uD83C\uDFAC',
-'\uD83D\uDCF8',
-'\uD83D\uDCBB',
-'\uD83D\uDCF1',
+'\uD83C\uDFA8',
+'\uD83C\uDFBB',
+'\uD83E\uDD41',
+'\uD83C\uDFB7',
+'\uD83C\uDFBA',
+'\uD83D\uDEF9',
+'\uD83C\uDFC4',
+'\uD83C\uDFF8',
+'\uD83C\uDFD2',
+'\uD83C\uDFD1',
+'\uD83E\uDD4D',
+'\uD83C\uDFCF',
+'\uD83E\uDE83',
+'\uD83E\uDD4F',
+'\uD83C\uDFA3',
+'\uD83E\uDD3F',
+'\uD83E\uDD4B',
+'\uD83C\uDFCB\uFE0F',
+'\uD83E\uDD3A',
+'\u26F8\uFE0F',
+'\uD83D\uDEFC',
+'\uD83C\uDFC2',
+'\uD83E\uDE82',
+'\uD83E\uDDD7',
+'\uD83C\uDFC7',
+'\uD83C\uDFCA',
+'\uD83D\uDEA3',
+'\uD83E\uDDD8\u200D\u2640\uFE0F',
+'\uD83C\uDFAD',
+'\uD83E\uDE87',
+'\uD83E\uDE88',
+'\uD83C\uDFBC',
+'\uD83E\uDE98',
+'\uD83E\uDDF6',
+'\uD83E\uDDF5',
+'\uD83E\uDEA1',
+'\uD83E\uDDD1\u200D\uD83C\uDFA8',
+'\uD83C\uDFB0',
+'\uD83C\uDFB3',
+'\uD83C\uDFF9',
+'\uD83E\uDD4C',
+'\uD83D\uDEDD',
+'\uD83E\uDD45'
+      ] },
+      { id: 'travel', label: 'Travel & places', emojis: [
 '\uD83D\uDE97',
 '\u2708\uFE0F',
 '\uD83D\uDEB2',
 '\uD83C\uDFCE\uFE0F',
 '\uD83D\uDEF8',
 '\uD83C\uDFC1',
-'\uD83C\uDFA8',
-'\uD83E\uDDF5',
+'\uD83C\uDF0D',
+'\uD83D\uDE82',
+'\uD83D\uDE81',
+'\u26F5',
+'\uD83D\uDEF6',
+'\uD83D\uDEF4',
+'\uD83D\uDEFA',
+'\uD83D\uDE90',
+'\uD83D\uDE9A',
+'\uD83D\uDE9B',
+'\uD83D\uDEFB',
+'\uD83D\uDE94',
+'\uD83D\uDE8D',
+'\uD83D\uDE91',
+'\uD83D\uDE92',
+'\uD83D\uDE93',
+'\uD83D\uDE95',
+'\uD83D\uDE96',
+'\uD83D\uDE98',
+'\uD83D\uDEA1',
+'\uD83D\uDE9F',
+'\uD83D\uDEE4\uFE0F',
+'\uD83D\uDEE3\uFE0F',
+'\uD83D\uDE83',
+'\uD83D\uDE8B',
+'\uD83D\uDE9E',
+'\uD83D\uDE9D',
+'\uD83D\uDE84',
+'\uD83D\uDE85',
+'\uD83D\uDE88',
+'\uD83D\uDE87',
+'\uD83D\uDE89',
+'\uD83D\uDE8A',
+'\uD83D\uDE86',
+'\uD83D\uDEEB',
+'\uD83D\uDEEC',
+'\uD83D\uDEE9\uFE0F',
+'\uD83D\uDEE5\uFE0F',
+'\uD83D\uDEA2',
+'\u26F4\uFE0F',
+'\uD83D\uDEDF',
+'\uD83D\uDEDE',
+'\u26FD',
+'\uD83D\uDDFA\uFE0F',
+'\uD83E\uDDED',
+'\uD83C\uDFD6\uFE0F',
+'\uD83C\uDFDD\uFE0F',
+'\uD83C\uDFD5\uFE0F',
+'\uD83C\uDFDC\uFE0F',
+'\uD83C\uDFD4\uFE0F',
+'\uD83C\uDFDF\uFE0F',
+'\uD83D\uDDFC',
+'\uD83D\uDDFD',
+'\uD83C\uDFF0',
+'\uD83C\uDFEF',
+'\uD83C\uDFDB\uFE0F',
+'\uD83D\uDD4C',
+'\u26EA',
+'\uD83D\uDED5',
+'\uD83D\uDD4D',
+'\u26E9\uFE0F'
+      ] },
+      { id: 'objects', label: 'Objects', emojis: [
+'\uD83D\uDCF8',
+'\uD83D\uDCBB',
+'\uD83D\uDCF1',
 '\uD83D\uDCDA',
 '\uD83D\uDCA1',
 '\uD83D\uDD14',
 '\u23F0',
 '\u231B',
-'\uD83C\uDF0D',
 '\uD83E\uDDE0',
 '\uD83D\uDC40',
 '\uD83D\uDC41\uFE0F',
@@ -19326,29 +19561,227 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83D\uDEE0\uFE0F',
 '\uD83E\uDDEA',
 '\uD83D\uDD2C',
-'\uD83C\uDFBB',
-'\uD83E\uDD41',
-'\uD83C\uDFB7',
-'\uD83C\uDFBA',
-'\uD83D\uDEF9',
-'\uD83C\uDFC4',
-'\uD83D\uDE82',
-'\uD83D\uDE81',
-'\u26F5',
-'\uD83D\uDEF6',
 '\uD83D\uDDFF',
 '\uD83E\uDDF8',
 '\uD83E\uDE85',
-'\uD83E\uDEA9'
+'\uD83E\uDEA9',
+'\uD83E\uDEAB',
+'\uD83D\uDD0B',
+'\uD83D\uDD0C',
+'\uD83D\uDDA5\uFE0F',
+'\uD83D\uDDA8\uFE0F',
+'\uD83D\uDDB1\uFE0F',
+'\u2328\uFE0F',
+'\uD83D\uDD79\uFE0F',
+'\uD83D\uDCC0',
+'\uD83D\uDCBF',
+'\uD83E\uDDFE',
+'\uD83D\uDCDD',
+'\u270F\uFE0F',
+'\uD83D\uDD8A\uFE0F',
+'\uD83D\uDD8D\uFE0F',
+'\uD83D\uDCCC',
+'\uD83D\uDCCE',
+'\u2702\uFE0F',
+'\uD83D\uDD0D',
+'\uD83D\uDD0E',
+'\uD83D\uDD11',
+'\uD83D\uDD12',
+'\uD83D\uDD13',
+'\uD83D\uDD28',
+'\u26CF\uFE0F',
+'\uD83E\uDE93',
+'\uD83E\uDDF0',
+'\uD83E\uDE9B',
+'\uD83D\uDD27',
+'\uD83D\uDD29',
+'\uD83E\uDDF2',
+'\uD83E\uDDEF',
+'\uD83E\uDE9C',
+'\uD83E\uDE91',
+'\uD83D\uDECF\uFE0F',
+'\uD83D\uDECB\uFE0F',
+'\uD83E\uDE9E',
+'\uD83E\uDDF4',
+'\uD83E\uDDFC',
+'\uD83E\uDEA5',
+'\uD83E\uDDF9',
+'\uD83E\uDDFA',
+'\uD83E\uDDFB',
+'\uD83D\uDCE6',
+'\uD83E\uDDF3',
+'\uD83D\uDD26',
+'\uD83D\uDC88',
+'\uD83E\uDEAC',
+'\uD83E\uDEAA',
+'\uD83D\uDECD\uFE0F',
+'\uD83D\uDED2',
+'\uD83C\uDF92',
+'\uD83E\uDDE2',
+'\uD83D\uDC53',
+'\uD83D\uDD76\uFE0F',
+'\uD83E\uDD7D',
+'\uD83E\uDDBA',
+'\uD83E\uDDE5',
+'\uD83D\uDC55',
+'\uD83D\uDC56',
+'\uD83E\uDDE6',
+'\uD83D\uDC5F',
+'\uD83D\uDC5E',
+'\uD83E\uDD7E',
+'\uD83E\uDDE4',
+'\uD83E\uDDE3',
+'\uD83C\uDF93',
+'\uD83D\uDCD4',
+'\uD83D\uDCD3',
+'\uD83D\uDCD2',
+'\uD83D\uDCD5',
+'\uD83D\uDCD7',
+'\uD83D\uDCD8',
+'\uD83D\uDCD9',
+'\uD83D\uDCD6',
+'\uD83D\uDDDE\uFE0F',
+'\uD83D\uDCF0',
+'\uD83D\uDD16',
+'\uD83C\uDFF7\uFE0F',
+'\uD83D\uDDC3\uFE0F',
+'\uD83D\uDDC4\uFE0F',
+'\uD83D\uDDC2\uFE0F',
+'\uD83D\uDCC5',
+'\uD83D\uDDD3\uFE0F',
+'\uD83D\uDCC6',
+'\uD83E\uDDEE',
+'\uD83D\uDCCF',
+'\uD83D\uDCD0',
+'\uD83D\uDDD1\uFE0F',
+'\uD83E\uDEA3'
+      ] },
+      { id: 'symbols', label: 'Symbols', emojis: [
+'\uD83E\uDDFF',
+'\u267B\uFE0F',
+'\u2705',
+'\u274C',
+'\u2753',
+'\u2757',
+'\uD83D\uDCAC',
+'\uD83D\uDCA4',
+'\uD83D\uDEE1\uFE0F',
+'\u2699\uFE0F',
+'\u267E\uFE0F',
+'\u269C\uFE0F',
+'\uD83D\uDD31',
+'\u262E\uFE0F',
+'\u262F\uFE0F',
+'\u271D\uFE0F',
+'\u262A\uFE0F',
+'\uD83D\uDD49\uFE0F',
+'\u2721\uFE0F',
+'\uD83D\uDD2F',
+'\uD83D\uDED0',
+'\u2638\uFE0F',
+'\uD83E\uDEAF',
+'\uD83E\uDDEC',
+'\u269B\uFE0F',
+'\uD83C\uDD97',
+'\uD83C\uDD95',
+'\uD83C\uDD99',
+'\uD83C\uDD92',
+'\uD83C\uDD93',
+'\uD83C\uDD96',
+'\uD83C\uDD98',
+'\uD83C\uDD9A',
+'\uD83C\uDD70\uFE0F',
+'\uD83C\uDD71\uFE0F',
+'\uD83C\uDD8E',
+'\uD83C\uDD7E\uFE0F',
+'\uD83C\uDD7F\uFE0F',
+'\uD83C\uDE33',
+'\uD83C\uDE35',
+'\uD83C\uDE39',
+'\uD83C\uDE32',
+'\uD83C\uDE50',
+'\uD83C\uDE51',
+'\uD83D\uDD34',
+'\uD83D\uDFE0',
+'\uD83D\uDFE1',
+'\uD83D\uDFE2',
+'\uD83D\uDD35',
+'\uD83D\uDFE3',
+'\u26AB',
+'\u26AA',
+'\uD83D\uDFE4',
+'\uD83D\uDFE5',
+'\uD83D\uDFE7',
+'\uD83D\uDFE8',
+'\uD83D\uDFE9',
+'\uD83D\uDFE6',
+'\uD83D\uDFEA',
+'\u2B1B',
+'\u2B1C',
+'\uD83D\uDFEB',
+'\uD83D\uDD36',
+'\uD83D\uDD37',
+'\uD83D\uDD38',
+'\uD83D\uDD39',
+'\uD83D\uDD3A',
+'\uD83D\uDD3B',
+'\uD83D\uDCA0',
+'\uD83D\uDD33',
+'\uD83D\uDD32',
+'\u2795',
+'\u2796',
+'\u2797',
+'\u2716\uFE0F',
+'\u2197\uFE0F',
+'\u2198\uFE0F',
+'\u2199\uFE0F',
+'\u2196\uFE0F',
+'\u2B06\uFE0F',
+'\u2B07\uFE0F',
+'\u2B05\uFE0F',
+'\u27A1\uFE0F',
+'\u2194\uFE0F',
+'\u2195\uFE0F',
+'\uD83D\uDD03',
+'\uD83D\uDD04',
+'\uD83D\uDD19',
+'\uD83D\uDD1A',
+'\uD83D\uDD1B',
+'\uD83D\uDD1C',
+'\uD83D\uDD1D',
+'\uD83D\uDED1',
+'\uD83D\uDEAB',
+'\u26D4',
+'\u26A0\uFE0F',
+'\uD83D\uDEB8',
+'\uD83D\uDD1E'
+      ] }
     ];
 
-    builtInReactionEmojis.forEach((val) => {
+    builtInReactionEmojiGroups.forEach((group) => {
+      group.emojis.forEach((val) => {
+        const meta = reactionMetaFromPicker(val, '');
+        if (!meta || optionsByKey.has(meta.key)) return;
+        optionsByKey.set(meta.key, { ...meta, category: group.id });
+      });
+    });
+
+    const out = [];
+    REACTION_PICKER_POPULAR_EMOJIS.forEach((val) => {
       const meta = reactionMetaFromPicker(val, '');
       if (!meta || seen.has(meta.key)) return;
+      const option = optionsByKey.get(meta.key);
+      if (!option) return;
+      out.push(option);
       seen.add(meta.key);
-      out.push(meta);
     });
-    // Keep custom emoji reactions already seen in the current session available too.
+    optionsByKey.forEach((option, key) => {
+      if (seen.has(key)) return;
+      out.push(option);
+      seen.add(key);
+    });
+
+    // Preserve custom emoji reactions discovered during the current session.
     state.streamReactionMetaByKey.forEach((meta, key) => {
       if (!key || key === '+' || seen.has(key)) return;
       seen.add(key);
@@ -19356,12 +19789,12 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         key,
         label: meta && meta.label ? meta.label : key,
         imageUrl: meta && meta.imageUrl ? meta.imageUrl : '',
-        shortcode: meta && meta.shortcode ? meta.shortcode : ''
+        shortcode: meta && meta.shortcode ? meta.shortcode : '',
+        category: 'custom'
       });
     });
-    return out.slice(0, 500);
+    return out.slice(0, 700);
   }
-
   async function hydrateOwnStreamReactionState(stream) {
     if (!stream || !state.user || !state.pool) return;
     const own = normalizePubkeyHex(state.user.pubkey);
@@ -28912,15 +29345,72 @@ window.saveAppSettings = function () {
       await togglePostReactionByMeta(noteId, notePubkey, profilePubkey, reactionMeta);
     };
 
+    let activeReactionPickerCategory = 'popular';
+    const reactionPickerCategories = [
+      { id: 'all', icon: '☷', label: 'All emoji' },
+      { id: 'popular', icon: '⭐', label: 'Popular' },
+      { id: 'smileys', icon: '😀', label: 'Smileys & emotion' },
+      { id: 'people', icon: '👋', label: 'People & gestures' },
+      { id: 'hearts', icon: '❤️', label: 'Hearts' },
+      { id: 'animals', icon: '🐻', label: 'Animals & nature' },
+      { id: 'food', icon: '🍔', label: 'Food & drink' },
+      { id: 'activities', icon: '⚽', label: 'Activities' },
+      { id: 'travel', icon: '🚗', label: 'Travel & places' },
+      { id: 'objects', icon: '💡', label: 'Objects' },
+      { id: 'symbols', icon: '🔣', label: 'Symbols' },
+      { id: 'custom', icon: '🧩', label: 'Custom emoji' }
+    ];
     const renderReactionPickerGrid = () => {
       const grid = qs('#reactionPickerGrid');
       if (!grid) return;
+      const options = defaultReactionPickerOptions();
+      const tabBar = qs('#reactionPickerTabs');
+      if (tabBar) {
+        tabBar.innerHTML = '';
+        reactionPickerCategories.forEach((category) => {
+          const tab = document.createElement('button');
+          tab.type = 'button';
+          tab.className = 'reaction-picker-tab' + (activeReactionPickerCategory === category.id ? ' is-active' : '');
+          tab.textContent = category.icon;
+          tab.title = category.label;
+          tab.setAttribute('role', 'tab');
+          tab.setAttribute('aria-label', category.label);
+          tab.setAttribute('aria-selected', activeReactionPickerCategory === category.id ? 'true' : 'false');
+          tab.addEventListener('click', () => {
+            if (activeReactionPickerCategory === category.id) return;
+            activeReactionPickerCategory = category.id;
+            renderReactionPickerGrid();
+          });
+          tabBar.appendChild(tab);
+        });
+        tabBar.setAttribute('aria-label', 'Emoji categories');
+      }
+      const popularKeys = new Set(REACTION_PICKER_POPULAR_EMOJIS.map((val) => {
+        const meta = reactionMetaFromPicker(val, '');
+        return meta ? meta.key : '';
+      }));
+      const visibleOptions = options.filter((opt) => {
+        if (activeReactionPickerCategory === 'all') return true;
+        if (activeReactionPickerCategory === 'popular') return popularKeys.has(opt.key);
+        return opt.category === activeReactionPickerCategory;
+      });
       grid.innerHTML = '';
-      defaultReactionPickerOptions().forEach((opt) => {
+      grid.setAttribute('role', 'tabpanel');
+      if (!visibleOptions.length) {
+        const empty = document.createElement('div');
+        empty.className = 'reaction-picker-empty';
+        empty.textContent = activeReactionPickerCategory === 'custom'
+          ? 'Custom emoji reactions will appear here when available.'
+          : 'No emoji in this category yet.';
+        grid.appendChild(empty);
+        return;
+      }
+      visibleOptions.forEach((opt) => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'reaction-opt-btn';
         btn.title = opt.label || opt.key;
+        btn.setAttribute('aria-label', opt.label || opt.key);
         btn.addEventListener('click', async () => {
           const target = state.reactionPickerTarget;
           if (!target) return;
