@@ -18981,6 +18981,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const seen = new Set();
     const builtInReactionEmojiGroups = [
       { id: 'smileys', label: 'Smileys', emojis: [
+'\uD83D\uDE02',
+'\uD83D\uDE2E',
 '\uD83D\uDE00',
 '\uD83D\uDE03',
 '\uD83D\uDE04',
@@ -19072,6 +19074,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83E\uDD25'
       ] },
       { id: 'people', label: 'People', emojis: [
+'\uD83D\uDC4F',
+'\uD83E\uDD18',
 '\uD83D\uDC4B',
 '\uD83E\uDD1A',
 '\uD83D\uDD90\uFE0F',
@@ -19156,6 +19160,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83E\uDDD1\u200D\uD83C\uDF3E'
       ] },
       { id: 'hearts', label: 'Hearts', emojis: [
+'\u2764\uFE0F',
 '\uD83E\uDDE1',
 '\uD83D\uDC9B',
 '\uD83D\uDC9A',
@@ -19395,6 +19400,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83C\uDF79'
       ] },
       { id: 'activities', label: 'Activities', emojis: [
+'\uD83D\uDD25',
 '\uD83D\uDCAF',
 '\u2728',
 '\u2B50',
@@ -19476,6 +19482,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83E\uDD45'
       ] },
       { id: 'travel', label: 'Travel & places', emojis: [
+'\uD83D\uDE80',
 '\uD83D\uDE97',
 '\u2708\uFE0F',
 '\uD83D\uDEB2',
@@ -19657,6 +19664,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 '\uD83E\uDEA3'
       ] },
       { id: 'symbols', label: 'Symbols', emojis: [
+'\u26A1',
 '\uD83E\uDDFF',
 '\u267B\uFE0F',
 '\u2705',
@@ -19793,7 +19801,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         category: 'custom'
       });
     });
-    return out.slice(0, 700);
+    return out.slice(0, 900);
   }
   async function hydrateOwnStreamReactionState(stream) {
     if (!stream || !state.user || !state.pool) return;
