@@ -72,6 +72,8 @@
     if (current !== nextTheme) {
       if (animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         root.setAttribute("data-theme-transitioning", "true");
+        // Force the transition styles to resolve before changing the palette.
+        void root.offsetWidth;
         if (transitionTimer !== null) window.clearTimeout(transitionTimer);
         transitionTimer = window.setTimeout(() => {
           root.removeAttribute("data-theme-transitioning");
