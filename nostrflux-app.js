@@ -19996,7 +19996,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const existing = state.profilesByPubkey.get(normalizedPubkey);
     const forceRefresh = !!opts.force;
-    if (existing && existing.__hydrated && !forceRefresh) return Promise.resolve();
+    const checkProfileFallback = !!opts.checkProfileFallback
+      && normalizePubkeyHex(state.selectedProfilePubkey) === normalizedPubkey;
+    const existingNeedsFallbackLookup = checkProfileFallback && existing
+      && (!isLikelyUrl(existing.banner || '') || !normalizeNip05Value(existing.nip05 || ''));
+    if (existing && existing.__hydrated && !forceRefresh && !existingNeedsFallbackLookup) return Promise.resolve();
 
     // Profile metadata is requested from many surfaces (DMs, chat, videos, feed).
     // Deduplicate concurrent lookups so one person cannot trigger a burst of identical
@@ -20037,14 +20041,16 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       // Check the remaining configured relays in that case instead of treating
       // any result from the preferred relays as the complete profile.
       const primaryNeedsRelayFallback = !primaryProfile
-        || !isLikelyUrl(primaryProfile.banner || '')
-        || !normalizeNip05Value(primaryProfile.nip05 || '');
+        || (checkProfileFallback && (
+          !isLikelyUrl(primaryProfile.banner || '')
+          || !normalizeNip05Value(primaryProfile.nip05 || '')
+        ));
       if (!fallbackRelayUrls.length || !primaryNeedsRelayFallback) return primary;
       return fetchEventsCached(profileFilter, {
         scope: 'profile-by-pubkey-fallback',
         cacheKey: `profile-by-pubkey-fallback:${normalizedPubkey}`,
-        force: true,
-        ttlMs: 0,
+        force: !primary,
+        ttlMs: primary ? 30000 : 0,
         warmMs: 30000,
         allowStale: false,
         timeoutMs: 1800,
@@ -24123,7 +24129,7 @@ function renderProfileFeed(pubkey) {
     state.profileLoadingTimer = setTimeout(() => {
       if (loadToken === state.profileLoadToken && isProfilePageVisible()) setProfilePageLoading(false);
     }, 7000);
-    const profileRequest = fetchProfileIfNeeded(normalizedPubkey, { force: false });
+    const profileRequest = fetchProfileIfNeeded(normalizedPubkey, { force: false, checkProfileFallback: true });
     try { await Promise.race([profileRequest, new Promise((resolve) => setTimeout(resolve, 1250))]); } catch (_) {}
     if (loadToken !== state.profileLoadToken || normalizePubkeyHex(state.selectedProfilePubkey) !== normalizedPubkey) return;
     const p = profileFor(normalizedPubkey);
