@@ -309,6 +309,11 @@ main{padding-top:84px!important}
   .chess-site-nav #navUserPill{max-width:125px}
   .chess-site-nav .chess-nav-user-copy{max-width:64px}
 }
+
+/* Nostr identity for the human player card */
+.duo .pl .av.nip05-square{border:1.5px solid rgba(155,114,255,.75);box-shadow:0 0 8px rgba(155,114,255,.55),0 0 18px rgba(155,114,255,.25);}
+.duo .pl .sub.nip05-valid{color:#c9afff;text-shadow:0 0 8px rgba(155,114,255,.32);}
+.chess-player-nip05-check{display:inline-flex;align-items:center;justify-content:center;margin-left:5px;color:#c9afff;font:800 13px/1 'DM Sans',sans-serif;text-shadow:0 0 8px rgba(155,114,255,.8),0 0 15px rgba(155,114,255,.45);vertical-align:middle;}
 </style></head><body><div class="bg"></div>
 <nav class="chess-site-nav" id="chessSiteNav">
   <!-- Logo (left) -->
@@ -390,7 +395,7 @@ main{padding-top:84px!important}
 <main>
 <div class="stage" id="stage"><a class="sifaka-home-link" href="https://sifaka.live/" aria-label="Return to Sifaka.Live">← Sifaka.Live</a><canvas id="cv"></canvas><div class="b2d" id="b2"><div class="g2" id="g2"></div></div><div class="vt"><button id="v3" class="on">3D</button><button id="v2">2D</button><button class="btn" id="snd" type="button" title="Sound" aria-label="Toggle chess sound">🔊</button></div><div class="hint" id="hint">Drag to orbit · Pinch or scroll to zoom · Tap to move</div></div>
 <div class="panel">
-<div class="duo"><div class="card pl"><div class="av">♔</div><div><b id="me">Guest</b><span class="sub" id="meS">Playing locally</span></div><div class="caps" id="capB"></div></div><div class="card pl"><div class="av">🦧</div><div><b>Sifaka Engine</b><span class="sub" id="lvl">Adept</span></div><div class="caps" id="capT"></div></div></div>
+<div class="duo"><div class="card pl"><div class="av" id="meAvatar">♔</div><div><b id="me">Guest</b><span class="sub" id="meS">Playing locally</span></div><div class="caps" id="capB"></div></div><div class="card pl"><div class="av">🦧</div><div><b>Sifaka Engine</b><span class="sub" id="lvl">Adept</span></div><div class="caps" id="capT"></div></div></div>
 <div id="stat" hidden></div>
 <div id="mv" hidden></div>
 <div class="card chat"><div class="chh">Chat<span><small id="cs">Engine</small> <button class="btn" id="cj">Join lobby</button></span></div><div class="cl" id="cl"></div><div class="cin"><input id="ci" type="text" placeholder="Say something..." maxlength="200"><button class="btn pri" id="cb">Send</button></div></div>
@@ -637,7 +642,7 @@ const g=[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3],h='npub',x=[...
 for(const v of x){const b=c>>25;c=(c&0x1ffffff)<<5^v;for(let i=0;i<5;i++)if((b>>i)&1)c^=g[i]}c^=1;
 return h+'1'+[...w,...[0,1,2,3,4,5].map(i=>c>>5*(5-i)&31)].map(v=>CH[v]).join('')}
 $('chessGameConnect').onclick=async()=>{if(!window.nostr)return toast('No NIP-07 signer found — install Alby or nos2x. Playing as guest.');
-try{const pk=await window.nostr.getPublicKey(),np=npub(pk),col='#'+pk.slice(0,6);chessSignerConnected=true;if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(pk);$('chessGameConnect').className='btn pill';$('chessGameConnect').innerHTML=`<span class="dot" style="background:${col};color:${col}"></span>${np.slice(0,10)}…${np.slice(-4)}`;$('me').textContent=np.slice(0,12)+'…';$('meS').textContent='Signed in with Nostr';toast('Connected ⚡')}catch(e){chessSignerConnected=false;toast('Connection cancelled')}};
+try{const pk=await window.nostr.getPublicKey(),np=npub(pk),col='#'+pk.slice(0,6);chessSignerConnected=true;if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(pk);$('chessGameConnect').className='btn pill';$('chessGameConnect').innerHTML=`<span class="dot" style="background:${col};color:${col}"></span>${np.slice(0,10)}…${np.slice(-4)}`;toast('Connected ⚡')}catch(e){chessSignerConnected=false;toast('Connection cancelled')}};
 async function post(){const pgn=H.map((x,i)=>(i%2?'':(i/2+1)+'. ')+x.san).join(' '),content=`♞ Playing 3D chess on Sifaka Chess vs Sifaka Engine (${LV[lv]})\n${over?over.h+' — '+over.p+'\n':''}\n${pgn}\n\n#chess #nostr`;
 if(!window.nostr){try{await navigator.clipboard.writeText(content)}catch(e){}return toast('No Nostr signer found — game note copied to clipboard')}
 try{const ev=await window.nostr.signEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags:[['t','chess'],['t','nostr']],content});let ok=0;
@@ -796,7 +801,7 @@ function loggedOutState(){
  active='';fullNpub='';verified=false;loggedIn.classList.remove('on');loggedOut.classList.remove('off');closeMenus();
  avatar($('navAvatar'),{},'S',false);$('navNip05Badge').style.display='none';$('navNip05Badge').textContent='';
  $('chessNavUserCopy').hidden=true;$('chessNavDisplayName').textContent='';$('chessNavDisplayId').textContent='';$('chessNavDisplayId').classList.remove('nip05-valid');
- avatar($('pdAvLg'),{},'S',false);$('pdName').textContent='Guest';$('pdSub').textContent='Not signed in';$('me').textContent='Guest';$('meS').textContent='Tap to connect Nostr';
+ avatar($('pdAvLg'),{},'S',false);$('pdName').textContent='Guest';$('pdSub').textContent='Not signed in';$('me').textContent='Guest';avatar($('meAvatar'),{},'',false);$('meAvatar').replaceChildren(document.createTextNode('♔'));$('meS').textContent='Tap to connect Nostr';$('meS').title='';$('meS').classList.remove('nip05-valid');
 }
 function setIdentity(pk,p,isVerified){
  active=pk;fullNpub=np(pk);verified=!!isVerified;loggedIn.classList.add('on');loggedOut.classList.add('off');
@@ -805,7 +810,9 @@ function setIdentity(pk,p,isVerified){
  $('chessNavUserCopy').hidden=false;$('chessNavDisplayName').textContent=name;
  const navId=$('chessNavDisplayId');navId.textContent=verified&&p.nip05?String(p.nip05):short(fullNpub,13,7);navId.title=verified&&p.nip05?String(p.nip05):fullNpub;navId.classList.toggle('nip05-valid',!!(verified&&p.nip05));
  avatar($('pdAvLg'),{...p,name},pk,false);const pdName=$('pdName');pdName.textContent=name;if(verified){const b=document.createElement('span');b.className='nip05-badge';b.textContent=' ✓';pdName.appendChild(b);}
- const sub=$('pdSub');sub.textContent=verified?String(p.nip05||''):short(fullNpub,13,9);sub.title=verified?String(p.nip05||''):fullNpub;$('me').textContent=name;$('meS').textContent='Signed in with Nostr';
+ const sub=$('pdSub');sub.textContent=verified?String(p.nip05||''):short(fullNpub,13,9);sub.title=verified?String(p.nip05||''):fullNpub;
+ const me=$('me');me.replaceChildren(document.createTextNode(name));if(verified&&p.nip05){const check=document.createElement('span');check.className='chess-player-nip05-check';check.textContent='✓';check.title='NIP-05 verified';me.appendChild(check);}
+ avatar($('meAvatar'),{...p,name},pk,verified);const meSub=$('meS'),hasVerifiedNip05=!!(verified&&p.nip05);meSub.textContent=hasVerifiedNip05?String(p.nip05):short(fullNpub,13,7);meSub.title=hasVerifiedNip05?'NIP-05 verified: '+String(p.nip05):'Nostr public key: '+fullNpub;meSub.classList.toggle('nip05-valid',hasVerifiedNip05);
 }
 function fetchProfile(pk){return new Promise(resolve=>{
  let done=0,best=null,settled=false;const watchdog=setTimeout(()=>{if(!settled){settled=true;resolve(best);}},4300);
