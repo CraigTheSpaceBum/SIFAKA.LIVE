@@ -18,7 +18,7 @@
     } catch (_) {}
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.8.26">
+<link rel="stylesheet" href="./styles/app.css?v=0.9.2">
 <link rel="stylesheet" href="./styles/themes.css">
 
 <style id="sifaka-nest-lobby-css">
@@ -2231,6 +2231,7 @@ body.sifaka-games-modal-open{overflow:hidden}
                 <div class="ss"><span class="n" id="theaterRuntime">—</span><span class="l">live</span></div>
                 <div class="ss"><span class="n" id="theaterRelays">—</span><span class="l">relays</span></div>
                 <div class="ss theater-stat-action"><button class="action-btn report-btn" type="button" title="Report stream">Report</button></div>
+                <div class="ss theater-stat-action mobile-chat-launch-wrap"><button class="action-btn mobile-chat-launch" type="button" aria-haspopup="dialog" aria-controls="theaterChatSidebar" aria-expanded="false" onclick="openMobileTheaterChatModal()">Live Chat</button></div>
               </div>
             </div>
           </div>
@@ -2245,10 +2246,11 @@ body.sifaka-games-modal-open{overflow:hidden}
     </div>
 
     <!-- Chat sidebar -->
-    <div class="stream-sidebar">
+    <div class="stream-sidebar" id="theaterChatSidebar">
       <div class="stabs">
         <span class="stab active theater-chat-label" aria-hidden="true">Live Chat</span>
         <button class="stab active mobile-chat-toggle" id="mobileTheaterChatToggle" type="button" aria-expanded="false" aria-controls="chatScroll" onclick="toggleMobileTheaterChat()">Live Chat</button>
+        <button class="mobile-chat-modal-close" type="button" aria-label="Close Live Chat" onclick="closeMobileTheaterChatModal()">×</button>
       </div>
       <div class="chat-scroll" id="chatScroll">
         <div class="cmsg"><div class="c-av" onclick="showProfile('fiatjaf','','npub1zl3...gz4','fiatjaf@nostr.com')"></div><div class="c-body"><div class="c-name-row"><span class="c-name co" onclick="showProfile('fiatjaf','','npub1zl3...gz4','fiatjaf@nostr.com')">fiatjaf</span><span class="c-nip05" title="fiatjaf@nostr.com"></span></div><div class="c-text">incredible session wavesound </div></div><div class="chat-msg-actions"><button class="cma-btn" title="Reply"></button><button class="cma-btn like-cma" title="Like"></button><button class="cma-btn zap-cma" title="Zap"></button><button class="cma-btn" title="Share"></button></div></div>
@@ -2615,6 +2617,59 @@ body.sifaka-games-modal-open{overflow:hidden}
  }
  function start(){runRequestedAction(0);}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+})();
+</script>
+
+<script>
+(function () {
+  'use strict';
+  const isMobileTheater = () => window.matchMedia('(max-width: 760px)').matches;
+  const getSidebar = () => document.getElementById('theaterChatSidebar');
+  const getLauncher = () => document.querySelector('#videoPage .mobile-chat-launch');
+  const getCloseButton = () => document.querySelector('#videoPage .mobile-chat-modal-close');
+
+  window.openMobileTheaterChatModal = function () {
+    if (!isMobileTheater()) return;
+    const sidebar = getSidebar();
+    if (!sidebar) return;
+    sidebar.classList.add('mobile-chat-modal-open');
+    document.body.classList.add('mobile-theater-chat-modal-open');
+    sidebar.setAttribute('role', 'dialog');
+    sidebar.setAttribute('aria-modal', 'true');
+    sidebar.setAttribute('aria-label', 'Live Chat');
+    const launcher = getLauncher();
+    if (launcher) launcher.setAttribute('aria-expanded', 'true');
+    const closeButton = getCloseButton();
+    if (closeButton) closeButton.focus({ preventScroll: true });
+  };
+
+  window.closeMobileTheaterChatModal = function () {
+    const sidebar = getSidebar();
+    const wasOpen = !!sidebar && sidebar.classList.contains('mobile-chat-modal-open');
+    if (sidebar) {
+      sidebar.classList.remove('mobile-chat-modal-open');
+      sidebar.removeAttribute('role');
+      sidebar.removeAttribute('aria-modal');
+      sidebar.removeAttribute('aria-label');
+    }
+    document.body.classList.remove('mobile-theater-chat-modal-open');
+    const launcher = getLauncher();
+    if (launcher) {
+      launcher.setAttribute('aria-expanded', 'false');
+      if (wasOpen && isMobileTheater()) launcher.focus({ preventScroll: true });
+    }
+  };
+
+  document.addEventListener('keydown', function (event) {
+    const sidebar = getSidebar();
+    if (event.key === 'Escape' && sidebar && sidebar.classList.contains('mobile-chat-modal-open')) {
+      window.closeMobileTheaterChatModal();
+    }
+  });
+
+  window.addEventListener('resize', function () {
+    if (!isMobileTheater()) window.closeMobileTheaterChatModal();
+  }, { passive: true });
 })();
 </script>
 
