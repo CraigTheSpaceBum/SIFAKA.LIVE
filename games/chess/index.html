@@ -8,9 +8,9 @@
 <link rel="canonical" href="https://sifaka.live/games/chess/">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../../styles/site-navigation.css?v=0.9.15">
+<link rel="stylesheet" href="../../styles/site-navigation.css?v=0.9.16">
 <style>
-:root{--bg:#0a0810;--ink:#f3ecdd;--mut:#c4bdd3;--gold:#d6b264;--gold2:#f2dca0;--line:rgba(255,255,255,.18);--glass:rgba(255,255,255,.08);color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+:root{--bg:#0a0810;--ink:#f3ecdd;--mut:#c4bdd3;--gold:#d6b264;--gold2:#f2dca0;--line:rgba(255,255,255,.18);--glass:rgba(255,255,255,.08);--surface:#1d232b;--surface2:#252d37;--surface3:#2f3945;--border:#384454;--border2:#445365;--accent:#f7931a;--accent-glow:rgba(247,147,26,.24);--live:#ff4f6f;--zap:#f7931a;--zap-dim:rgba(247,147,26,.15);--text:#edf2f7;--text2:#b3c0cf;--muted:#76879a;--green:#16c784;--purple:#8f5bff;--nip05:#8f5bff;--font-display:'DM Sans',sans-serif;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.5 'DM Sans',system-ui,sans-serif;overflow-x:hidden}
 .bg{position:fixed;inset:0;z-index:-1;background:radial-gradient(60% 50% at 15% 10%,rgba(139,92,246,.22),transparent 70%),radial-gradient(50% 45% at 90% 85%,rgba(214,178,100,.14),transparent 70%)}
@@ -43,6 +43,12 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:clamp(16px,2.5vw
 .modal{text-align:center;padding:40px clamp(26px,6vw,60px);border-radius:26px;background:linear-gradient(160deg,#1d1530,#0e0a18);border:1px solid rgba(214,178,100,.5);box-shadow:0 0 100px rgba(214,178,100,.25)}
 .modal h2{font:600 clamp(40px,9vw,62px)/1 'DM Sans',Georgia,serif;margin:0 0 8px;background:linear-gradient(135deg,var(--gold2),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
 .modal p{color:var(--mut);margin:0 0 24px}.modal .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+#gameSetup{z-index:25}
+#gameSetup .modal{text-align:center;width:min(94vw,520px);max-height:88vh;overflow:auto}
+#gameSetup .setup-kicker{font:700 10px/1.3 'DM Mono',monospace;letter-spacing:.18em;color:var(--gold);margin-bottom:10px}
+#gameSetup .setup-help{color:var(--mut);font-size:14px;line-height:1.55;margin:0 0 20px}
+#gameSetup .chips{justify-content:center}
+#gameSetup [hidden]{display:none!important}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,30px);opacity:0;background:#1d1530;border:1px solid var(--gold);padding:12px 20px;border-radius:14px;font-size:13px;transition:.35s;z-index:30;max-width:90vw;text-align:center}.toast.show{opacity:1;transform:translate(-50%,0)}#snd{border-radius:999px;padding:11px 14px}#notes{position:fixed;top:calc(var(--chess-site-nav-height,68px) + 12px);left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:40;width:min(92vw,420px);pointer-events:none}.note{display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:16px;background:rgba(20,14,34,.94);border:1px solid var(--c,#d6b264);box-shadow:0 12px 40px rgba(0,0,0,.55);backdrop-filter:blur(14px);animation:nin .4s cubic-bezier(.2,1.4,.4,1);transition:.4s}.note.out{opacity:0;transform:translateY(-12px)}.note i{font-style:normal;font-size:24px}.note b{display:block;font:600 18px 'DM Sans',Georgia,serif;color:var(--c,#d6b264)}.note small{color:var(--mut);font-size:12px}@keyframes nin{from{opacity:0;transform:translateY(-18px) scale(.95)}}
 .vt{position:absolute;top:12px;right:12px;display:flex;gap:6px;z-index:5}.vt button{border:1px solid var(--line);background:rgba(20,14,34,.75);color:var(--ink);font:600 12px 'DM Sans';padding:8px 13px;border-radius:999px;cursor:pointer;backdrop-filter:blur(10px)}.vt button.on{background:linear-gradient(135deg,var(--gold2),var(--gold));color:#1a1224;border:0}
 .sifaka-home-link{position:absolute;top:12px;left:12px;z-index:6;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(20,14,34,.8);color:var(--ink);font:600 12px 'DM Sans',sans-serif;text-decoration:none;backdrop-filter:blur(10px);transition:border-color .2s,background .2s}
@@ -93,6 +99,8 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
 /* Keep all chess content below the actual fixed site-nav height at every breakpoint. */
 main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 /* The Chess profile pill intentionally uses the shared site avatar and NIP-05 badge layout. */
+.chess-site-nav #navNip05Badge{display:none!important}
+.chess-site-nav .search-icon::before{content:"⌕";font-size:20px;line-height:1}
 .chess-site-nav .nav-avatar.nip05-square{border-radius:8px;border:2px solid rgba(155,114,255,.7);box-shadow:0 0 10px rgba(155,114,255,.55),0 0 22px rgba(155,114,255,.25),inset 0 0 8px rgba(155,114,255,.1);animation:nip05Pulse 2.8s ease-in-out infinite}
 .chess-site-nav .pd-av-lg.nip05-square{border-radius:8px;border:2px solid rgba(155,114,255,.7);box-shadow:0 0 10px rgba(155,114,255,.55),0 0 22px rgba(155,114,255,.25);animation:nip05Pulse 2.8s ease-in-out infinite}
 /* Nostr identity for the human player card */
@@ -191,20 +199,21 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 <main>
 <div class="chess-board-column"><div class="stage" id="stage"><canvas id="cv"></canvas><div class="b2d" id="b2"><div class="g2" id="g2"></div></div><div class="hint" id="hint">Drag to orbit · Pinch or scroll to zoom · Tap to move</div></div><div class="vt" id="chessViewControls"><button id="v3" class="on">3D</button><button id="v2">2D</button><button class="btn" id="fp" type="button">Flip View</button><button class="btn" id="tp" type="button">Top View</button><button class="btn" id="snd" type="button" title="Sound" aria-label="Toggle chess sound">🔊</button></div></div>
 <div class="panel">
-<div class="duo"><div class="card pl"><div class="av" id="meAvatar">♔</div><div><b id="me">Guest</b><span class="sub" id="meS">Playing locally</span></div><div class="caps" id="capB"></div></div><div class="card pl"><div class="av">🦧</div><div><b>Sifaka Engine</b><span class="sub" id="lvl">Adept</span></div><div class="caps" id="capT"></div></div></div>
+<div class="duo"><div class="card pl"><div class="av" id="meAvatar">♔</div><div><b id="me">Guest</b><span class="sub" id="meS">Playing locally</span></div><div class="caps" id="capB"></div></div><div class="card pl"><div class="av">🦧</div><div><b id="opponentName">Sifaka Engine</b><span class="sub" id="lvl">Adept</span></div><div class="caps" id="capT"></div></div></div>
 <div id="stat" hidden></div>
 <div id="mv" hidden></div>
 <div class="card chat"><div class="chh">Chat<span><small id="cs">Engine</small> <button class="btn" id="cj">Join lobby</button></span></div><div class="cl" id="cl"></div><div class="cin"><input id="ci" type="text" placeholder="Say something..." maxlength="200"><button class="btn pri" id="cb">Send</button></div></div>
 <div class="ctl"><div class="lv" id="lv"><button data-l="1">Novice</button><button data-l="2" class="on">Adept</button><button data-l="3">Master</button></div>
-<button class="btn" id="nw">New game</button><button class="btn" id="un">Undo</button><button class="btn pri w2" id="inv">Invite to game</button><button class="btn w2" id="po">Post to Nostr</button></div>
+<button class="btn" id="nw" type="button">Forfeit</button><button class="btn" id="un">Undo</button><button class="btn pri w2" id="inv">Invite to game</button><button class="btn w2" id="po">Post to Nostr</button></div>
 </div></main>
-<div class="ov" id="ov"><div class="modal"><h2 id="mh"></h2><p id="mp"></p><div class="row"><button class="btn pri" id="mn">Play again</button><button class="btn" id="mpost">Post to Nostr</button></div></div></div>
+<div class="ov" id="ov"><div class="modal"><h2 id="mh"></h2><p id="mp"></p><div class="row"><button class="btn pri" id="mn" type="button">New game</button><button class="btn" id="mpost">Post to Nostr</button></div></div></div>
+<div class="ov show" id="gameSetup" role="dialog" aria-modal="true" aria-labelledby="gameSetupTitle"><div class="modal set"><div class="setup-kicker">SIFAKA CHESS</div><h2 id="gameSetupTitle">Choose your opponent</h2><p id="setupHelp" class="setup-help">Start a game against the engine or play a two-player game on this device.</p><div class="chips" id="setupOpponents"><button class="btn pri" id="chooseEngine" type="button">Engine</button><button class="btn" id="choosePerson" type="button">Person</button></div><div class="chips" id="setupDifficulty" hidden><button class="btn" type="button" data-start-level="1">Novice</button><button class="btn pri" type="button" data-start-level="2">Adept</button><button class="btn" type="button" data-start-level="3">Master</button></div><div class="row" style="margin-top:18px"><button class="btn" id="setupBack" type="button" hidden>Back</button></div></div></div>
 <div class="ov" id="set"><div class="modal set"><h2>Settings</h2><div id="sb"></div><div class="row" style="margin-top:18px"><button class="btn" id="sr">Reset</button><button class="btn pri" id="sd">Done</button></div></div></div><div class="ov" id="inm"><div class="modal set"><h2>Invite to game</h2><p style="margin:0 0 12px">Search Nostr by name, or paste an npub, then send an invite.</p><div class="cin"><input id="iq" type="text" placeholder="Search people or paste npub..." autocomplete="off"><button class="btn pri" id="ig">Search</button></div><div class="ir" id="ir"></div><div class="row" style="margin-top:14px"><button class="btn" id="il">Copy invite link</button><button class="btn" id="ix">Close</button></div></div></div><div id="notes"></div><div class="toast" id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const $=id=>document.getElementById(id),G={k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'},V={p:100,n:320,b:330,r:500,q:900,k:0},F='abcdefgh',LV=['','Novice','Adept','Master'],RL=['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net'];
 const ORT=[[1,0],[-1,0],[0,1],[0,-1]],DG=[[1,1],[1,-1],[-1,1],[-1,-1]],KN=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
-let st,H=[],sel=null,lv=2,over=null,busy=false,chessSignerConnected=false;
+let st,H=[],sel=null,lv=2,over=null,busy=false,chessSignerConnected=false,gameMode='engine',gameActive=false;
 /* ---------- chess engine ---------- */
 function init(){const R=[...'rnbqkbnr'];st={b:R.map(x=>'b'+x).concat(Array(8).fill('bp'),Array(32).fill(null),Array(8).fill('wp'),R.map(x=>'w'+x)),t:'w',c:{wK:1,wQ:1,bK:1,bQ:1},ep:null};H=[];sel=null;over=null;busy=false}
 function att(s,q,by){const b=s.b,r=q>>3,c=q&7,at=(a,e,k)=>a>=0&&a<8&&e>=0&&e<8&&b[a*8+e]===k,d=by==='w'?1:-1;
@@ -418,19 +427,21 @@ cv.addEventListener('wheel',e=>{e.preventDefault();tzm=Math.min(1.4,Math.max(.55
 const ray=new THREE.Raycaster(),mp=new Vector2();
 function pick(e){const r=cv.getBoundingClientRect();mp.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(mp,camera);
 const h=ray.intersectObjects([...tiles,...meshes.filter(Boolean)],true)[0];if(!h)return;let o=h.object;while(o&&o.userData.sq==null)o=o.parent;if(o)click(o.userData.sq)}
-function click(i){if(over||busy||st.t!=='w')return;const m=sel!=null&&legal(st).find(x=>x.f===sel&&x.t===i);if(m)return play(m);const p=st.b[i];sel=p&&p[0]==='w'&&i!==sel?i:null;if(sel!=null)sfx('sel');refresh()}
+function click(i){if(!gameActive||over||busy||(gameMode==='engine'&&st.t!=='w'))return;const m=sel!=null&&legal(st).find(x=>x.f===sel&&x.t===i);if(m)return play(m);const p=st.b[i];sel=p&&p[0]===st.t&&i!==sel?i:null;if(sel!=null)sfx('sel');refresh()}
 /* game flow + panel */
-function play(m){const pre=st,n=mk(st,m);H.push({s:pre,m,san:san(pre,m,n)});st=n;sel=null;animMove(m,pre);
+function play(m){if(!gameActive||over)return;const pre=st,n=mk(st,m);H.push({s:pre,m,san:san(pre,m,n)});st=n;sel=null;animMove(m,pre);
 const ms=legal(st),ck=inChk(st),np=st.b.filter(p=>p&&p[1]!=='k');
-if(!ms.length)over=ck?{h:'Checkmate',p:(st.t==='b'?'You':'Sifaka Engine')+' won the game.'}:{h:'Stalemate',p:'The game is a draw.'};
+if(!ms.length)over=ck?{h:'Checkmate',p:(st.t==='b'?(gameMode==='engine'?'You':'White Player'):(gameMode==='engine'?'Sifaka Engine':'Black Player'))+' won the game.'}:{h:'Stalemate',p:'The game is a draw.'};
 else if(!np.length||(np.length===1&&'nb'.includes(np[0][1])))over={h:'Draw',p:'Insufficient material.'};
-clrStk();fx(m,pre);logMove(m,pre);draw();if(over)setTimeout(()=>{$('mh').textContent=over.h;$('mp').textContent=over.p;$('ov').classList.add('show');sfx(over.h==='Checkmate'?(st.t==='b'?'win':'lose'):'draw')},900);
-else if(st.t==='b'){busy=true;draw();setTimeout(()=>{const a=best();busy=false;if(a)play(a);else draw()},700)}}
+clrStk();fx(m,pre);logMove(m,pre);draw();
+if(over){gameActive=false;$('nw').disabled=true;$('mn').textContent='New game';setTimeout(()=>{$('mh').textContent=over.h;$('mp').textContent=over.p;$('ov').classList.add('show');sfx(over.h==='Checkmate'?(st.t==='b'?'win':'lose'):'draw')},900)}
+else if(gameMode==='engine'&&st.t==='b'){busy=true;draw();setTimeout(()=>{if(!gameActive||over){busy=false;draw();return}const a=best();busy=false;if(a)play(a);else draw()},700)}
+}
 function draw(){refresh();let mh='';H.forEach((x,i)=>{if(!(i%2))mh+=`<span class="n">${i/2+1}.</span>`;mh+=`<span class="${i===H.length-1?'cur':''}">${x.san}</span>`});if(H.length%2)mh+='<span></span>';$('mv').innerHTML=mh;$('mv').scrollTop=1e5;
 const cnt={w:{},b:{}},ini={p:8,n:2,b:2,r:2,q:1};st.b.forEach(p=>{if(p)cnt[p[0]][p[1]]=(cnt[p[0]][p[1]]||0)+1});
 const miss=c=>Object.keys(ini).map(k=>G[k].repeat(Math.max(0,ini[k]-(cnt[c][k]||0)))).reverse().join(''),sc=c=>Object.keys(ini).reduce((a,k)=>a+V[k]/100*(cnt[c][k]||0),0),df=Math.round(sc('w')-sc('b'));
 $('capB').innerHTML=miss('b')+(df>0?`<em>+${df}</em>`:'');$('capT').innerHTML=miss('w')+(df<0?`<em>+${-df}</em>`:'');
-$('stat').innerHTML=over?`${over.h}<small>${over.p}</small>`:busy||st.t==='b'?'Sifaka Engine is thinking…<small>Calculating</small>':inChk(st)?'Check!<small>Protect your king</small>':'Your move<small>You play ivory</small>'}
+$('stat').innerHTML=over?`${over.h}<small>${over.p}</small>`:busy||(gameMode==='engine'&&st.t==='b')?'Sifaka Engine is thinking…<small>Calculating</small>':gameMode==='person'?(st.t==='w'?'White to move<small>Player 1</small>':'Black to move<small>Player 2</small>'):inChk(st)?'Check!<small>Protect your king</small>':'Your move<small>You play ivory</small>'}
 const toast=t=>{const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>e.classList.remove('show'),3800)};
 const CH='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 function npub(hex){const d=hex.match(/../g).map(x=>parseInt(x,16));let a=0,n=0,w=[];for(const v of d){a=(a<<8|v)&0xfff;n+=8;while(n>=5){n-=5;w.push(a>>n&31)}}if(n)w.push(a<<5-n&31);
@@ -445,8 +456,15 @@ try{const ev=await window.nostr.signEvent({kind:1,created_at:Math.floor(Date.now
 await Promise.all(RL.map(u=>new Promise(res=>{try{const w=new WebSocket(u),to=setTimeout(()=>{try{w.close()}catch(e){}res()},4000);w.onopen=()=>w.send(JSON.stringify(['EVENT',ev]));w.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='OK'&&d[2])ok++}catch(_){}clearTimeout(to);w.close();res()};w.onerror=()=>{clearTimeout(to);res()}}catch(e){res()}})));
 if(ok)toast(`Published to ${ok} relay${ok>1?'s':''} ⚡`);else{try{await navigator.clipboard.writeText(JSON.stringify(ev))}catch(e){}toast('Signed! Relays unreachable from this page — signed event copied')}}catch(e){toast('Signing cancelled')}}
 $('po').onclick=$('mpost').onclick=post;
-const nw=()=>{init();$('ov').classList.remove('show');rebuild();draw();note('🦧','New game','You lead the ivory sifakas. Good luck!','#8b5cf6')};$('snd').onclick=()=>{mute=!mute;$('snd').textContent=mute?'🔇':'🔊';if(!mute){ac();sfx('sel')}};['pointerdown','click','touchend'].forEach(t=>addEventListener(t,()=>{try{ac()}catch(e){}}));
-$('nw').onclick=$('mn').onclick=nw;
+const nw=()=>{init();gameActive=true;$('ov').classList.remove('show');$('gameSetup').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=false;rebuild();draw();note('🦧',gameMode==='engine'?'New game':'Two-player game',gameMode==='engine'?'You lead the ivory sifakas. Good luck!':'White moves first. Pass the device between players.','#8b5cf6')};
+function showGameSetup(){gameActive=false;busy=false;$('ov').classList.remove('show');$('nw').disabled=true;$('gameSetup').classList.add('show');$('setupOpponents').hidden=false;$('setupDifficulty').hidden=true;$('setupBack').hidden=true;$('setupHelp').textContent='Start a game against the engine or play a two-player game on this device.';}
+function startSelectedGame(mode,difficulty){gameMode=mode;if(difficulty){lv=+difficulty;CF.lv=lv;}apply();$('opponentName').textContent=mode==='engine'?'Sifaka Engine':'Black Player';$('lvl').textContent=mode==='engine'?LV[lv]:'Two-player';$('lv').style.display=mode==='engine'?'flex':'none';nw();}
+function forfeitGame(){if(!gameActive||over)return;gameActive=false;busy=false;over={h:'Forfeit',p:'You forfeited the game. Start a new game when you are ready.'};$('nw').disabled=true;$('mh').textContent=over.h;$('mp').textContent=over.p;$('mn').textContent='New game';$('ov').classList.add('show');draw();}
+$('chooseEngine').onclick=()=>{$('setupOpponents').hidden=true;$('setupDifficulty').hidden=false;$('setupBack').hidden=false;$('setupHelp').textContent='Choose your engine difficulty.'};
+$('choosePerson').onclick=()=>startSelectedGame('person');
+$('setupDifficulty').addEventListener('click',e=>{const b=e.target.closest('[data-start-level]');if(b)startSelectedGame('engine',b.dataset.startLevel)});
+$('setupBack').onclick=()=>showGameSetup();$('snd').onclick=()=>{mute=!mute;$('snd').textContent=mute?'🔇':'🔊';if(!mute){ac();sfx('sel')}};['pointerdown','click','touchend'].forEach(t=>addEventListener(t,()=>{try{ac()}catch(e){}}));
+$('nw').onclick=forfeitGame;$('mn').onclick=showGameSetup;
 $('fp').onclick=()=>{taz+=Math.PI};
 $('tp').onclick=()=>{topV=!topV;tph=topV?.1:1;$('tp').textContent=topV?'Angled view':'Top view'};
 $('un').onclick=()=>{if(busy||!H.length)return;$('ov').classList.remove('show');over=null;do{st=H.pop().s}while(st.t==='b'&&H.length);sel=null;rebuild();draw()};
@@ -540,11 +558,11 @@ function note(ic,t,s,c,keep){if(window.chatEv)chatEv(ic,t,s);if(!CF.notif)return
 while(n.children.length>3){const f=[...n.children].find(x=>x!==stk)||n.firstChild;if(f===stk)stk=null;f.remove()}
 if(!keep)setTimeout(()=>{e.classList.add('out');setTimeout(()=>e.remove(),400)},3400)}
 const PN={p:'Pawn',n:'Knight',b:'Bishop',r:'Rook',q:'Queen',k:'King'};
-function logMove(m,pre){const p=pre.b[m.f],me=p[0]==='w',who=me?$('me').textContent:'Sifaka Engine',sq=F[m.t&7].toUpperCase()+(8-(m.t>>3)),cp=pre.b[m.t]||(m.ep?pre.b[m.t+(me?8:-8)]:null);
+function logMove(m,pre){const p=pre.b[m.f],me=p[0]==='w',who=me?$('me').textContent:(gameMode==='person'?$('opponentName').textContent:'Sifaka Engine'),sq=F[m.t&7].toUpperCase()+(8-(m.t>>3)),cp=pre.b[m.t]||(m.ep?pre.b[m.t+(me?8:-8)]:null);
 let t=m.cs?'castled '+(m.cs==='K'?'kingside':'queenside'):cp?'captured '+PN[cp[1]]+' on '+sq+' with '+PN[p[1]]:'moved '+PN[p[1]]+' to '+sq;if(m.pr)t+=' and promoted to Queen';cadd(who,t,'mv')}
-$('nw').onclick=$('mn').onclick=()=>{cl.innerHTML='';clrStk();nw()};
+$('nw').onclick=forfeitGame;$('mn').onclick=()=>{cl.innerHTML='';clrStk();showGameSetup()};
 const un0=$('un').onclick;$('un').onclick=()=>{const n=H.length;un0();if(H.length<n){clrStk();cadd('','Move taken back','sys')}};
-function turnGlow(){const a=$('me').closest('.card'),b=$('lvl').closest('.card');if(!a||!b)return;const w=!over&&st.t==='w',k=!over&&st.t==='b';a.dataset.t='YOUR TURN';b.dataset.t='THINKING…';a.classList.toggle('turn',w);b.classList.toggle('turn',k)}
+function turnGlow(){const a=$('me').closest('.card'),b=$('opponentName').closest('.card');if(!a||!b)return;const w=!over&&st.t==='w',k=!over&&st.t==='b';a.dataset.t=gameMode==='person'?'WHITE TO MOVE':'YOUR TURN';b.dataset.t=gameMode==='person'?'BLACK TO MOVE':'THINKING…';a.classList.toggle('turn',w);b.classList.toggle('turn',k)}
 /* invite to game */
 const SR=['wss://relay.nostr.band','wss://search.nos.today'],INV='https://sifaka.live/games/chess/',HEX=/^[0-9a-f]{64}$/;
 function b32d(s){const d=[...s.slice(5,-6)].map(c=>CH.indexOf(c));if(d.includes(-1))return null;let a=0,n=0;const o=[];for(const v of d){a=(a<<5|v)&0xfff;n+=5;if(n>=8){n-=8;o.push(a>>n&255)}}return o.length===32?o.map(x=>x.toString(16).padStart(2,'0')).join(''):null}
@@ -574,7 +592,7 @@ $('ig').onclick=isearch;$('iq').addEventListener('keydown',e=>{if(e.key==='Enter
 $('il').onclick=async()=>{try{await navigator.clipboard.writeText(INV);toast('Invite link copied')}catch(e){toast('Could not copy the link')}};
 document.querySelector('.vt').appendChild($('snd'));
 $('meS').textContent='Tap to connect Nostr';{const pc=$('me').closest('.card');pc.style.cursor='pointer';pc.title='Connect your Nostr signer';pc.onclick=()=>{if(!chessSignerConnected)$('chessGameConnect').click()}}
-nw();mode(true);requestAnimationFrame(loop);
+init();rebuild();draw();mode(true);showGameSetup();requestAnimationFrame(loop);
 </script><!-- Sifaka Chess 0.9.8: shared profile styling and safe in-page auth/modals. --><script id="sifaka-chess-nav-profile">(function(){
 'use strict';
 const $=id=>document.getElementById(id),STORE='sifaka_chess_pubkey',RELAYS=['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net'],HEX=/^[0-9a-f]{64}$/i;
@@ -655,7 +673,7 @@ function openChessSitePopup(kind='login'){
   }
   awaitPopupApi(0);
  };
- loginFrame.src='/?chessLoginPopup=1';
+ loginFrame.src='/?chessLoginPopup=1&chessAction='+encodeURIComponent(popupKind==='go-live'?'go-live':'login');
 }
 function openChessLoginPopup(){openChessSitePopup('login');}
 function openChessGoLivePopup(){openChessSitePopup('go-live');}
