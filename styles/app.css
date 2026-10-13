@@ -11297,7 +11297,8 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
 /* Mobile Theater chat: keep header controls left-aligned while the close control floats over the panel. */
 @media (max-width:760px){
   #videoPage .stream-sidebar.mobile-chat-modal-open .theater-chat-label{
-    padding-right:.5rem!important;
+    display:none!important;
+    padding:0!important;
   }
   #videoPage .stream-sidebar.mobile-chat-modal-open .mobile-chat-modal-close{
     position:absolute;
