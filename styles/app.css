@@ -11310,10 +11310,24 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
 }
 
 
-/* In the open mobile Theater chat, remove the whole Live Chat header strip.
-   The close button is a sibling of .stabs, so it remains floating above chat. */
+/* Mobile Theater popup: fully remove the empty header slot left after hiding
+   its title/toggle. The close button is a sibling and stays over the chat content. */
 @media (max-width:760px){
-  #videoPage .stream-sidebar.mobile-chat-modal-open > .stabs{
+  body.mobile-theater-chat-modal-open #videoPage .stream-sidebar.mobile-chat-modal-open .stabs{
     display:none!important;
+    visibility:hidden!important;
+    height:0!important;
+    min-height:0!important;
+    max-height:0!important;
+    flex:0 0 0!important;
+    margin:0!important;
+    padding:0!important;
+    border:0!important;
+    overflow:hidden!important;
+  }
+  body.mobile-theater-chat-modal-open #videoPage .stream-sidebar.mobile-chat-modal-open .stabs::before,
+  body.mobile-theater-chat-modal-open #videoPage .stream-sidebar.mobile-chat-modal-open .stabs::after{
+    display:none!important;
+    content:none!important;
   }
 }
