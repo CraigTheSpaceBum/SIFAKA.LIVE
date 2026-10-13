@@ -21,7 +21,7 @@
     document.documentElement.setAttribute('data-theme', theme);
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.9.6">
+<link rel="stylesheet" href="./styles/app.css?v=0.9.14">
 <link rel="stylesheet" href="./styles/themes.css?v=0.9.6">
 
 <style id="sifaka-nest-lobby-css">
@@ -1100,6 +1100,7 @@ body.sifaka-games-modal-open{overflow:hidden}
     <button class="mclose" style="position:absolute;top:1rem;right:1rem;" onclick="closeReactionPicker()">x</button>
     <div class="sm-hd"><div class="sm-title">React With Emoji</div></div>
     <div class="share-modal-body">
+      <div class="reaction-picker-tabs" id="reactionPickerTabs" role="tablist" aria-label="Emoji categories"></div>
       <div class="reaction-picker-grid" id="reactionPickerGrid"></div>
       <div class="reaction-custom-row">
         <input id="reactionPickerCode" type="text" placeholder="Emoji or :shortcode:" aria-label="Emoji or shortcode">
@@ -2497,7 +2498,7 @@ body.sifaka-games-modal-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.9.13" defer></script>
+<script src="./nostrflux-app.js?v=0.9.14" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-card-routing-final-20261002" defer></script>
 
 <div id="sifakaGamesOverlay" aria-hidden="true">
