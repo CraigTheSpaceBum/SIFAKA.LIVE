@@ -8,7 +8,7 @@
 <link rel="canonical" href="https://sifaka.live/games/chess/">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../../styles/site-navigation.css?v=0.9.19">
+<link rel="stylesheet" href="../../styles/site-navigation.css?v=0.9.18">
 <style>
 :root{--bg:#0a0810;--ink:#f3ecdd;--mut:#c4bdd3;--gold:#d6b264;--gold2:#f2dca0;--line:rgba(255,255,255,.18);--glass:rgba(255,255,255,.08);--surface:#1d232b;--surface2:#252d37;--surface3:#2f3945;--border:#384454;--border2:#445365;--accent:#f7931a;--accent-glow:rgba(247,147,26,.24);--live:#ff4f6f;--zap:#f7931a;--zap-dim:rgba(247,147,26,.15);--text:#edf2f7;--text2:#b3c0cf;--muted:#76879a;--green:#16c784;--purple:#8f5bff;--nip05:#8f5bff;--font-display:'DM Sans',sans-serif;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -49,7 +49,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:clamp(16px,2.5vw
 #gameSetup .setup-help{color:var(--mut);font-size:14px;line-height:1.55;margin:0 0 20px}
 #gameSetup .chips{justify-content:center}
 #gameSetup [hidden]{display:none!important}
-.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,30px);opacity:0;background:#1d1530;border:1px solid var(--gold);padding:12px 20px;border-radius:14px;font-size:13px;transition:.35s;z-index:30;max-width:90vw;text-align:center}.toast.show{opacity:1;transform:translate(-50%,0)}#snd{border-radius:999px;padding:11px 14px}#notes{position:relative;left:auto;top:auto;transform:none;display:none;flex:0 0 auto;flex-direction:column;gap:8px;z-index:2;width:100%;min-width:0;height:0;overflow:hidden;pointer-events:none;transition:height .36s cubic-bezier(.2,.7,.2,1);will-change:height}#notes.has-notes{display:flex}.note{display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:16px;background:rgba(20,14,34,.94);border:1px solid var(--c,#d6b264);box-shadow:0 12px 40px rgba(0,0,0,.55);backdrop-filter:blur(14px);animation:nin .4s cubic-bezier(.2,1.4,.4,1);transition:.4s}.note.out{opacity:0;transform:translateY(-12px)}.note i{font-style:normal;font-size:24px}.note b{display:block;font:600 18px 'DM Sans',Georgia,serif;color:var(--c,#d6b264)}.note small{color:var(--mut);font-size:12px}@keyframes nin{from{opacity:0;transform:translateY(-18px) scale(.95)}}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,30px);opacity:0;background:#1d1530;border:1px solid var(--gold);padding:12px 20px;border-radius:14px;font-size:13px;transition:.35s;z-index:30;max-width:90vw;text-align:center}.toast.show{opacity:1;transform:translate(-50%,0)}#snd{border-radius:999px;padding:11px 14px}#notes{position:fixed;top:calc(var(--chess-site-nav-height,68px) + 12px);left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:40;width:min(92vw,420px);pointer-events:none}.note{display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:16px;background:rgba(20,14,34,.94);border:1px solid var(--c,#d6b264);box-shadow:0 12px 40px rgba(0,0,0,.55);backdrop-filter:blur(14px);animation:nin .4s cubic-bezier(.2,1.4,.4,1);transition:.4s}.note.out{opacity:0;transform:translateY(-12px)}.note i{font-style:normal;font-size:24px}.note b{display:block;font:600 18px 'DM Sans',Georgia,serif;color:var(--c,#d6b264)}.note small{color:var(--mut);font-size:12px}@keyframes nin{from{opacity:0;transform:translateY(-18px) scale(.95)}}
 .vt{position:absolute;top:12px;right:12px;display:flex;gap:6px;z-index:5}.vt button{border:1px solid var(--line);background:rgba(20,14,34,.75);color:var(--ink);font:600 12px 'DM Sans';padding:8px 13px;border-radius:999px;cursor:pointer;backdrop-filter:blur(10px)}.vt button.on{background:linear-gradient(135deg,var(--gold2),var(--gold));color:#1a1224;border:0}
 .sifaka-home-link{position:absolute;top:12px;left:12px;z-index:6;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(20,14,34,.8);color:var(--ink);font:600 12px 'DM Sans',sans-serif;text-decoration:none;backdrop-filter:blur(10px);transition:border-color .2s,background .2s}
 .sifaka-home-link:hover{border-color:var(--gold);background:rgba(20,14,34,.96)}
@@ -213,13 +213,13 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 <div class="duo"><div class="card pl"><div class="av" id="meAvatar">♔</div><div><b id="me">Guest</b><span class="sub" id="meS">Playing locally</span></div><div class="caps" id="capB"></div></div><div class="card pl"><div class="av">🦧</div><div><b id="opponentName">Sifaka Engine</b><span class="sub" id="lvl">Adept</span></div><div class="caps" id="capT"></div></div></div>
 <div id="stat" hidden></div>
 <div id="mv" hidden></div>
-<div id="notes" aria-live="polite" aria-atomic="false"></div><div class="card chat"><div class="chh">Chat<span><small id="cs">Engine</small> <button class="btn" id="cj">Join lobby</button></span></div><div class="cl" id="cl"></div><div class="cin"><input id="ci" type="text" placeholder="Say something..." maxlength="200"><button class="btn pri" id="cb">Send</button></div><div class="chess-game-actions"><button class="btn" id="nw" type="button" disabled>Forfeit</button></div></div>
+<div class="card chat"><div class="chh">Chat<span><small id="cs">Engine</small> <button class="btn" id="cj">Join lobby</button></span></div><div class="cl" id="cl"></div><div class="cin"><input id="ci" type="text" placeholder="Say something..." maxlength="200"><button class="btn pri" id="cb">Send</button></div><div class="chess-game-actions"><button class="btn" id="nw" type="button" disabled>Forfeit</button></div></div>
 <div class="ctl"><div class="lv" id="lv"><button data-l="1">Novice</button><button data-l="2" class="on">Adept</button><button data-l="3">Master</button></div>
 <button class="btn" id="un">Undo</button><button class="btn pri w2" id="inv">Invite to game</button><button class="btn w2" id="po">Post to Nostr</button></div>
 </div></main>
 <div class="ov" id="ov"><div class="modal"><h2 id="mh"></h2><p id="mp"></p><div class="row"><button class="btn pri" id="mn" type="button">New game</button><button class="btn" id="mpost">Post to Nostr</button></div></div></div>
 <div class="ov show" id="gameSetup" role="dialog" aria-modal="true" aria-labelledby="gameSetupTitle"><div class="modal set"><div class="setup-kicker">SIFAKA CHESS</div><h2 id="gameSetupTitle">Choose your opponent</h2><p id="setupHelp" class="setup-help">Start a game against the engine or play a two-player game on this device.</p><div class="chips" id="setupOpponents"><button class="btn pri" id="chooseEngine" type="button">Engine</button><button class="btn" id="choosePerson" type="button">Person</button></div><div class="chips" id="setupDifficulty" hidden><button class="btn" type="button" data-start-level="1">Novice</button><button class="btn pri" type="button" data-start-level="2">Adept</button><button class="btn" type="button" data-start-level="3">Master</button></div><div class="row" style="margin-top:18px"><button class="btn" id="setupBack" type="button" hidden>Back</button></div></div></div>
-<div class="ov" id="set"><div class="modal set"><h2>Settings</h2><div id="sb"></div><div class="row" style="margin-top:18px"><button class="btn" id="sr">Reset</button><button class="btn pri" id="sd">Done</button></div></div></div><div class="ov" id="inm"><div class="modal set"><h2>Invite to game</h2><p style="margin:0 0 12px">Search Nostr by name, or paste an npub, then send an invite.</p><div class="cin"><input id="iq" type="text" placeholder="Search people or paste npub..." autocomplete="off"><button class="btn pri" id="ig">Search</button></div><div class="ir" id="ir"></div><div class="row" style="margin-top:14px"><button class="btn" id="il">Copy invite link</button><button class="btn" id="ix">Close</button></div></div></div><div class="toast" id="toast"></div>
+<div class="ov" id="set"><div class="modal set"><h2>Settings</h2><div id="sb"></div><div class="row" style="margin-top:18px"><button class="btn" id="sr">Reset</button><button class="btn pri" id="sd">Done</button></div></div></div><div class="ov" id="inm"><div class="modal set"><h2>Invite to game</h2><p style="margin:0 0 12px">Search Nostr by name, or paste an npub, then send an invite.</p><div class="cin"><input id="iq" type="text" placeholder="Search people or paste npub..." autocomplete="off"><button class="btn pri" id="ig">Search</button></div><div class="ir" id="ir"></div><div class="row" style="margin-top:14px"><button class="btn" id="il">Copy invite link</button><button class="btn" id="ix">Close</button></div></div></div><div id="notes"></div><div class="toast" id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const $=id=>document.getElementById(id),G={k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'},V={p:100,n:320,b:330,r:500,q:900,k:0},F='abcdefgh',LV=['','Novice','Adept','Master'],RL=['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net'];
@@ -574,25 +574,11 @@ try{cws=new WebSocket(u);cws.onopen=()=>{cws.send(JSON.stringify(['REQ','nmchat'
 $('cb').onclick=csend;$('ci').addEventListener('keydown',e=>{if(e.key==='Enter')csend()});$('cj').onclick=()=>lob(!lobby);
 /* Keep the shared-style navigation fixed at the document root. */
 /* merged move log + sticky check */
-let stk=null,noteResizeFrame=0,noteCollapseTimer=0;
-function resizeNotes(){
- const n=$('notes');if(!n)return;
- if(noteCollapseTimer){clearTimeout(noteCollapseTimer);noteCollapseTimer=0}
- if(!n.children.length){
-  n.style.height='0px';
-  noteCollapseTimer=setTimeout(()=>{if(!n.children.length){n.classList.remove('has-notes');n.style.height='0px'}noteCollapseTimer=0},380);
-  return;
- }
- n.classList.add('has-notes');
- if(noteResizeFrame)cancelAnimationFrame(noteResizeFrame);
- noteResizeFrame=requestAnimationFrame(()=>{noteResizeFrame=0;if(!n.children.length){resizeNotes();return}n.style.height=n.scrollHeight+'px'});
-}
-function clrStk(){if(stk){const e=stk;stk=null;e.classList.add('out');setTimeout(()=>{e.remove();resizeNotes()},400)}}
+let stk=null;
+function clrStk(){if(stk){const e=stk;stk=null;e.classList.add('out');setTimeout(()=>e.remove(),400)}}
 function note(ic,t,s,c,keep){if(window.chatEv)chatEv(ic,t,s);if(!CF.notif)return;const e=document.createElement('div'),n=$('notes');e.className='note';e.style.setProperty('--c',c||'#d6b264');e.innerHTML=`<i>${ic}</i><div><b>${t}</b><small>${s||''}</small></div>`;if(keep){clrStk();stk=e;n.prepend(e)}else n.appendChild(e);
- while(n.children.length>3){const f=[...n.children].find(x=>x!==stk)||n.firstChild;if(f===stk)stk=null;f.remove()}
- resizeNotes();
- if(!keep)setTimeout(()=>{e.classList.add('out');setTimeout(()=>{e.remove();resizeNotes()},400)},3400)}
-window.addEventListener('resize',()=>{const n=$('notes');if(n&&n.children.length)resizeNotes()},{passive:true});
+while(n.children.length>3){const f=[...n.children].find(x=>x!==stk)||n.firstChild;if(f===stk)stk=null;f.remove()}
+if(!keep)setTimeout(()=>{e.classList.add('out');setTimeout(()=>e.remove(),400)},3400)}
 const PN={p:'Pawn',n:'Knight',b:'Bishop',r:'Rook',q:'Queen',k:'King'};
 function logMove(m,pre){const p=pre.b[m.f],me=p[0]==='w',who=me?$('me').textContent:(gameMode==='person'?$('opponentName').textContent:'Sifaka Engine'),sq=F[m.t&7].toUpperCase()+(8-(m.t>>3)),cp=pre.b[m.t]||(m.ep?pre.b[m.t+(me?8:-8)]:null);
 let t=m.cs?'castled '+(m.cs==='K'?'kingside':'queenside'):cp?'captured '+PN[cp[1]]+' on '+sq+' with '+PN[p[1]]:'moved '+PN[p[1]]+' to '+sq;if(m.pr)t+=' and promoted to Queen';cadd(who,t,'mv')}
@@ -655,7 +641,6 @@ function closeChessLoginPopup(syncUser=true){
  loginPopupToken++;
  if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}
  loginOverlay.hidden=true;
-  loginFrame.style.visibility='hidden';
  loginFrame.onload=null;
  try{loginFrame.src='about:blank';}catch(_){}
  if(pendingPersonStart){
@@ -670,22 +655,27 @@ function closeChessLoginPopup(syncUser=true){
   // A valid, main-site session is reloaded through stored() on the next visit.
  }
 }
-function isolateChessLoginDocument(doc,targetId){
-  if(!doc||!doc.head||!doc.body||!doc.getElementById(targetId))return false;
+function openChessSitePopup(kind='login'){
+ if(!loginOverlay||!loginFrame||!loginOverlay.hidden)return;
+ activeChessPopup=kind==='go-live'?'go-live':'login';
+ const popupKind=activeChessPopup;
+ const modalId=popupKind==='go-live'?'goLiveModal':'loginModal';
+ const actionName=popupKind==='go-live'?'openGoLive':'openLogin';
+ loginPopupToken++;const token=loginPopupToken;
+ if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}
+ loginOverlay.hidden=false;
+ loginFrame.onload=function(){
+  if(token!==loginPopupToken||loginOverlay.hidden)return;
+  let doc,win;
+  try{doc=loginFrame.contentDocument;win=loginFrame.contentWindow;}catch(_){closeChessLoginPopup(false);toast('Could not open the Sifaka popup.');return;}
+  if(!doc||!doc.head||!doc.body){closeChessLoginPopup(false);toast('Could not open the Sifaka popup.');return;}
   let isolate=doc.getElementById('chessLoginIsolateStyle');
   if(!isolate){isolate=doc.createElement('style');isolate.id='chessLoginIsolateStyle';doc.head.appendChild(isolate);}
-  isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#'+targetId+'){display:none!important;visibility:hidden!important}body>#'+targetId+'{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#'+targetId+'.open{display:flex!important}#'+targetId+' .login-modal,#'+targetId+' .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
-  return true;
- }
- function openChessSitePopup(kind='login'){
-  if(!loginOverlay||!loginFrame||!loginOverlay.hidden)return;
-  activeChessPopup=kind==='go-live'?'go-live':'login';
-  const popupKind=activeChessPopup,modalId=popupKind==='go-live'?'goLiveModal':'loginModal',actionName=popupKind==='go-live'?'openGoLive':'openLogin';
-  loginPopupToken++;const token=loginPopupToken;
-  if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}
-  loginOverlay.hidden=false;
-  loginFrame.style.visibility='hidden';
-  function watchModal(modal,win){
+  function setIsolate(targetId){
+   isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#'+targetId+'){display:none!important;visibility:hidden!important}body>#'+targetId+'{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#'+targetId+'.open{display:flex!important}#'+targetId+' .login-modal,#'+targetId+' .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+  }
+  setIsolate(modalId);
+  function watchModal(modal){
    if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}
    const Observer=win.MutationObserver;
    if(Observer){loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open'))closeChessLoginPopup(true);});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']});}
@@ -693,37 +683,33 @@ function isolateChessLoginDocument(doc,targetId){
   function awaitPopupApi(attempt){
    if(token!==loginPopupToken||loginOverlay.hidden)return;
    try{
-    const doc=loginFrame.contentDocument,win=loginFrame.contentWindow;
-    if(!doc||!doc.head||!doc.body)throw new Error('Chess login frame is not ready yet.');
+    doc=loginFrame.contentDocument;win=loginFrame.contentWindow;
     if(win&&!win.nostr&&window.nostr&&typeof window.nostr.getPublicKey==='function'){try{Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr});}catch(_){}}
-    const modal=doc.getElementById(modalId);
-    // Isolate the target modal as soon as it appears, instead of waiting for iframe load.
-    if(modal)isolateChessLoginDocument(doc,modalId);
+    const modal=doc&&doc.getElementById(modalId);
     if(modal&&typeof win[actionName]==='function'){
-     watchModal(modal,win);
+     watchModal(modal);
      if(!modal.classList.contains('open'))win[actionName]();
      if(!modal.classList.contains('open')){
+      // If Go Live requires authentication, switch to the site's login modal in this same overlay.
       const loginModal=doc.getElementById('loginModal');
       if(popupKind==='go-live'&&loginModal&&loginModal.classList.contains('open')){
-       isolateChessLoginDocument(doc,'loginModal');
-       watchModal(loginModal,win);
-       loginFrame.style.visibility='visible';
+       setIsolate('loginModal');
+       watchModal(loginModal);
       }else{
        closeChessLoginPopup(false);
        toast(popupKind==='go-live'?'Could not open the Go Live window.':'Could not open the sign-in window.');
       }
-     }else loginFrame.style.visibility='visible';
+     }
      return;
     }
    }catch(_){}
-   if(attempt<200){window.setTimeout(()=>awaitPopupApi(attempt+1),attempt<20?10:50);return;}
+   if(attempt<200){window.setTimeout(()=>awaitPopupApi(attempt+1),50);return;}
    closeChessLoginPopup(false);toast(popupKind==='go-live'?'Go Live did not load. Please try again.':'Sign-in did not load. Please refresh and try again.');
   }
-  // Avoid routing the iframe itself through the main-page action bridge.
-  loginFrame.onload=null;
-  loginFrame.src='/?chessLoginPopup=1';
   awaitPopupApi(0);
- }
+ };
+ loginFrame.src='/?chessLoginPopup=1&chessAction='+encodeURIComponent(popupKind==='go-live'?'go-live':'login');
+}
 function openChessLoginPopup(){openChessSitePopup('login');}
 function openChessGoLivePopup(){openChessSitePopup('go-live');}
 window.openChessLoginPopup=openChessLoginPopup;
@@ -737,15 +723,24 @@ function decode(v){if(typeof v!=='string')return '';v=v.trim();if(HEX.test(v))re
 function np(pk){try{return typeof npub==='function'?npub(pk):pk;}catch(_){return pk;}}
 function fallback(pk){return short(np(pk),13,7);}
 function stored(){
- // Use the main site's own auth marker. Broad storage scans can mistake unrelated
- // or stale 64-character hex values for a signed-in Nostr identity.
+ // Only trust identity stored by the main Sifaka session. A Chess-only cached pubkey
+ // can survive a sign-out on the main site, so it must never authenticate the navbar.
  try{
-  const raw=localStorage.getItem('nostrflux_auth_session_v1');
-  if(!raw)return '';
-  const session=JSON.parse(raw);
-  if(!['local','remote','nip07'].includes(String(session&&session.authMode||'')))return '';
-  return decode(session&&session.pubkey||'');
- }catch(_){return ''}
+  const re=/(auth|account|identity|current.?user|active.?user|logged.?in|user.?session|session.?user|pubkey|public.?key|npub|nostr.*user|user.*nostr|sifaka.*user)/i;
+  for(const store of [localStorage,sessionStorage])for(let i=0;i<store.length;i++){
+   const k=store.key(i)||'';
+   if(k===STORE||k.startsWith('sifaka_chess_'))continue;
+   if(!re.test(k))continue;
+   const raw=store.getItem(k);if(!raw)continue;
+   const val=decode(raw);if(val)return val;
+   try{const d=JSON.parse(raw),n=decode(d);if(n)return n;
+    if(d&&typeof d==='object')for(const [f,x] of Object.entries(d)){
+     if(/^(pubkey|pubKey|publicKey|public_key|pubkeyHex|npub|activePubkey|activePubKey)$/i.test(f)){const z=decode(x);if(z)return z;}
+    }
+   }catch(_){}
+  }
+ }catch(_){}
+ return '';
 }
 function avatar(el,p,pk,isVerified){
  el.replaceChildren();el.classList.toggle('nip05-square',!!isVerified);const name=String(p.display_name||p.displayName||p.name||fallback(pk)||'S').trim(),f=document.createElement('span');f.textContent=name.slice(0,1).toUpperCase()||'S';const pic=String(p.picture||'').trim();
@@ -805,6 +800,6 @@ search.addEventListener('input',()=>{const q=search.value.trim();results.classLi
 $('chessSearchSubmit').addEventListener('click',submitSearch);$('chessSearchSubmit').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();submitSearch();}});
 document.addEventListener('click',e=>{if(!e.target.closest('.chess-site-nav .search-wrap'))results.classList.remove('open');});
 const pk=stored();if(pk){try{localStorage.setItem(STORE,pk);}catch(_){}requestId++;setIdentity(pk,{},false);load(pk,requestId);}else loggedOutState();
-window.addEventListener('storage',e=>{if(e.key!==null&&e.key!=='nostrflux_auth_session_v1')return;const current=stored();if(current===active)return;requestId++;if(!current){loggedOutState();return;}setIdentity(current,{},false);load(current,requestId);});
+window.addEventListener('storage',()=>{const current=stored();if(current&&current!==active){requestId++;setIdentity(current,{},false);load(current,requestId);}});
 })();</script>
 </body></html>
