@@ -11196,3 +11196,99 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     padding-bottom: max(.55rem, env(safe-area-inset-bottom));
   }
 }
+
+
+/* ======== Keyboard-style emoji reaction picker ======== */
+#reactionPickerModal .settings-modal{
+  width:min(560px,96vw);
+  max-height:88vh;
+}
+#reactionPickerModal .share-modal-body{
+  min-height:0;
+  gap:.5rem;
+}
+.reaction-picker-tabs{
+  display:flex;
+  align-items:center;
+  gap:.28rem;
+  overflow-x:auto;
+  overflow-y:hidden;
+  padding:.12rem .08rem .42rem;
+  margin:0;
+  scrollbar-width:thin;
+  overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;
+}
+.reaction-picker-tab{
+  flex:0 0 38px;
+  width:38px;
+  height:38px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  border:1px solid var(--border2);
+  border-radius:10px;
+  background:var(--surface2);
+  color:var(--text);
+  font-family:inherit;
+  font-size:1.16rem;
+  line-height:1;
+  cursor:pointer;
+  touch-action:manipulation;
+  transition:background .12s ease,border-color .12s ease,transform .12s ease;
+}
+.reaction-picker-tab:hover{border-color:var(--accent);}
+.reaction-picker-tab.is-active{
+  border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 18%,var(--surface2));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 38%,transparent);
+}
+.reaction-picker-tab:focus-visible,.reaction-opt-btn:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
+.reaction-picker-grid{
+  display:grid;
+  grid-template-columns:repeat(8,minmax(0,1fr));
+  gap:.36rem;
+  max-height:min(39vh,360px);
+  min-height:90px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  align-content:start;
+  padding:.12rem .12rem .35rem;
+  scrollbar-width:thin;
+}
+.reaction-picker-grid .reaction-opt-btn{
+  min-width:0;
+  min-height:40px;
+  aspect-ratio:1/1;
+  padding:0;
+  border-radius:10px;
+  font-size:1.3rem;
+  line-height:1;
+  touch-action:manipulation;
+}
+.reaction-picker-grid .reaction-opt-btn img{width:24px;height:24px;}
+.reaction-picker-empty{
+  grid-column:1/-1;
+  padding:1.15rem .75rem;
+  text-align:center;
+  color:var(--text2);
+  font-size:.78rem;
+  border:1px dashed var(--border2);
+  border-radius:10px;
+  background:var(--surface2);
+}
+@media(max-width:680px){
+  #reactionPickerModal .settings-modal{width:min(560px,98vw);max-height:90vh;}
+  #reactionPickerModal .share-modal-body{padding:.7rem .75rem .8rem;}
+  .reaction-picker-tabs{gap:.24rem;padding-bottom:.38rem;}
+  .reaction-picker-tab{flex-basis:36px;width:36px;height:36px;border-radius:9px;}
+  .reaction-picker-grid{grid-template-columns:repeat(7,minmax(0,1fr));max-height:min(42vh,380px);gap:.3rem;}
+  .reaction-picker-grid .reaction-opt-btn{min-height:38px;font-size:1.24rem;}
+}
+@media(max-width:360px){
+  .reaction-picker-grid{grid-template-columns:repeat(6,minmax(0,1fr));}
+}
