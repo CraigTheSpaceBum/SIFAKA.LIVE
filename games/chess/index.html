@@ -8,7 +8,7 @@
 <link rel="canonical" href="https://sifaka.live/games/chess/">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../../styles/site-navigation.css?v=0.9.17">
+<link rel="stylesheet" href="../../styles/site-navigation.css?v=0.9.18">
 <style>
 :root{--bg:#0a0810;--ink:#f3ecdd;--mut:#c4bdd3;--gold:#d6b264;--gold2:#f2dca0;--line:rgba(255,255,255,.18);--glass:rgba(255,255,255,.08);--surface:#1d232b;--surface2:#252d37;--surface3:#2f3945;--border:#384454;--border2:#445365;--accent:#f7931a;--accent-glow:rgba(247,147,26,.24);--live:#ff4f6f;--zap:#f7931a;--zap-dim:rgba(247,147,26,.15);--text:#edf2f7;--text2:#b3c0cf;--muted:#76879a;--green:#16c784;--purple:#8f5bff;--nip05:#8f5bff;--font-display:'DM Sans',sans-serif;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -123,6 +123,15 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 .chess-login-frame{display:block;width:100%;height:100%;border:0;background:transparent}
 .chess-login-close{position:absolute;top:12px;right:14px;z-index:20002;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:rgba(16,12,24,.94);color:#fff;font:700 26px/1 'DM Sans',sans-serif;cursor:pointer;box-shadow:0 5px 20px rgba(0,0,0,.45)}
 .chess-login-close:hover{border-color:var(--gold2);color:var(--gold2)}
+/* Chess desktop layout: let the chat fill the space alongside the board. Keep the mobile chat height responsive and readable. */
+@media(min-width:901px){
+  .panel{min-height:0}
+  .panel>.chat{display:flex;flex:1 1 0%;min-height:0;flex-direction:column}
+  .panel>.chat .cl{flex:1 1 0%;height:auto;min-height:120px;max-height:none}
+}
+.chess-game-actions{display:flex;justify-content:flex-end;align-items:center;flex:0 0 auto;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.chess-game-actions #nw{min-width:104px}
+.chess-game-actions #nw:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
 </style></head><body><div class="bg"></div>
 <nav class="chess-site-nav" id="chessSiteNav">
   <!-- Logo (left) -->
@@ -204,9 +213,9 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 <div class="duo"><div class="card pl"><div class="av" id="meAvatar">♔</div><div><b id="me">Guest</b><span class="sub" id="meS">Playing locally</span></div><div class="caps" id="capB"></div></div><div class="card pl"><div class="av">🦧</div><div><b id="opponentName">Sifaka Engine</b><span class="sub" id="lvl">Adept</span></div><div class="caps" id="capT"></div></div></div>
 <div id="stat" hidden></div>
 <div id="mv" hidden></div>
-<div class="card chat"><div class="chh">Chat<span><small id="cs">Engine</small> <button class="btn" id="cj">Join lobby</button></span></div><div class="cl" id="cl"></div><div class="cin"><input id="ci" type="text" placeholder="Say something..." maxlength="200"><button class="btn pri" id="cb">Send</button></div></div>
+<div class="card chat"><div class="chh">Chat<span><small id="cs">Engine</small> <button class="btn" id="cj">Join lobby</button></span></div><div class="cl" id="cl"></div><div class="cin"><input id="ci" type="text" placeholder="Say something..." maxlength="200"><button class="btn pri" id="cb">Send</button></div><div class="chess-game-actions"><button class="btn" id="nw" type="button" disabled>Forfeit</button></div></div>
 <div class="ctl"><div class="lv" id="lv"><button data-l="1">Novice</button><button data-l="2" class="on">Adept</button><button data-l="3">Master</button></div>
-<button class="btn" id="nw" type="button">Forfeit</button><button class="btn" id="un">Undo</button><button class="btn pri w2" id="inv">Invite to game</button><button class="btn w2" id="po">Post to Nostr</button></div>
+<button class="btn" id="un">Undo</button><button class="btn pri w2" id="inv">Invite to game</button><button class="btn w2" id="po">Post to Nostr</button></div>
 </div></main>
 <div class="ov" id="ov"><div class="modal"><h2 id="mh"></h2><p id="mp"></p><div class="row"><button class="btn pri" id="mn" type="button">New game</button><button class="btn" id="mpost">Post to Nostr</button></div></div></div>
 <div class="ov show" id="gameSetup" role="dialog" aria-modal="true" aria-labelledby="gameSetupTitle"><div class="modal set"><div class="setup-kicker">SIFAKA CHESS</div><h2 id="gameSetupTitle">Choose your opponent</h2><p id="setupHelp" class="setup-help">Start a game against the engine or play a two-player game on this device.</p><div class="chips" id="setupOpponents"><button class="btn pri" id="chooseEngine" type="button">Engine</button><button class="btn" id="choosePerson" type="button">Person</button></div><div class="chips" id="setupDifficulty" hidden><button class="btn" type="button" data-start-level="1">Novice</button><button class="btn pri" type="button" data-start-level="2">Adept</button><button class="btn" type="button" data-start-level="3">Master</button></div><div class="row" style="margin-top:18px"><button class="btn" id="setupBack" type="button" hidden>Back</button></div></div></div>
