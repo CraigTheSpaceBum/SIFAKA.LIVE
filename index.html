@@ -3,6 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script id="sifaka-mobile-initial-scroll-fix">
+(function () {
+  'use strict';
+  try {
+    var navigationEntries = window.performance && typeof window.performance.getEntriesByType === 'function'
+      ? window.performance.getEntriesByType('navigation') : [];
+    var navigationType = navigationEntries && navigationEntries[0] ? navigationEntries[0].type : '';
+    // Keep native back/forward restoration intact; only normalize fresh loads and reloads.
+    if (navigationType === 'back_forward') return;
+
+    function resetInitialMobileScroll() {
+      if (!window.matchMedia || !window.matchMedia('(max-width: 760px)').matches) return;
+      // Preserve explicit in-page anchors.
+      if (window.location.hash) return;
+
+      try { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }
+      catch (_) { window.scrollTo(0, 0); }
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+
+      // Some Sifaka views use their own scrollable page root on mobile.
+      var pageRoots = document.querySelectorAll('.page, #videoPage, #profilePage, #podcastRadioPage, #nestRoomPage');
+      for (var i = 0; i < pageRoots.length; i++) pageRoots[i].scrollTop = 0;
+    }
+
+    resetInitialMobileScroll();
+    window.addEventListener('pageshow', function (event) {
+      if (event.persisted) return;
+      resetInitialMobileScroll();
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(resetInitialMobileScroll);
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(resetInitialMobileScroll);
+        });
+      }
+    }, { once: true });
+  } catch (_) {}
+})();
+</script>
 <title>Sifaka Live</title>
 <link rel="icon" type="image/x-icon" href="./sifaka.ico">
 <link rel="shortcut icon" type="image/x-icon" href="./sifaka.ico">
@@ -21,7 +60,7 @@
     document.documentElement.setAttribute('data-theme', theme);
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.9.23">
+<link rel="stylesheet" href="./styles/app.css?v=0.9.24">
 <link rel="stylesheet" href="./styles/themes.css?v=0.9.6">
 <link rel="stylesheet" href="./styles/site-navigation.css?v=0.9.15">
 

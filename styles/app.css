@@ -11331,3 +11331,70 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     content:none!important;
   }
 }
+
+
+/* 0.9.24 — mobile scroll and modal safety. Keep desktop styling unchanged. */
+@media (max-width: 760px) {
+  /* Tall overlays must remain independently scrollable on short screens. */
+  .modal-ov {
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* The Nostr login modal is a custom .login-modal, not a generic .modal.
+     Let the overlay scroll the full panel so Remote Nostr Login never gets clipped. */
+  #loginModal.modal-ov {
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: max(.35rem, env(safe-area-inset-top));
+    padding-bottom: max(.35rem, env(safe-area-inset-bottom));
+    padding-left: .3rem;
+    padding-right: .3rem;
+  }
+  #loginModal .login-modal {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0 auto;
+    flex: 0 0 auto;
+  }
+  #loginModal .lm-hd {
+    padding: .95rem 2.75rem .75rem .85rem;
+  }
+  #loginModal .lm-body {
+    padding: .2rem .65rem .85rem;
+  }
+  #loginModal .login-col {
+    min-width: 0;
+    padding: .65rem;
+  }
+  #loginModal .lo {
+    align-items: flex-start;
+    gap: .55rem;
+    padding: .7rem;
+  }
+  #loginModal .lo > div:nth-child(2) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  #loginModal .remote-qr-card {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  #loginModal .remote-qr-img {
+    width: min(220px, 100%);
+    height: auto;
+    box-sizing: border-box;
+  }
+  #loginModal .remote-login-actions .btn {
+    min-height: 42px;
+  }
+  #loginModal .lm-close {
+    top: .65rem;
+    right: .65rem;
+    z-index: 2;
+  }
+}
