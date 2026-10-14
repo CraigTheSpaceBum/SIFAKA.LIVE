@@ -14566,14 +14566,67 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     });
   }
 
+  function normalizeLiveNowDuplicateUrl(rawUrl) {
+    const raw = String(rawUrl || '').trim();
+    if (!raw) return '';
+    try {
+      const parsed = new URL(raw);
+      // URL fragments do not change the actual stream source.
+      parsed.hash = '';
+      return parsed.href;
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  function liveNowDuplicateActivityScore(stream) {
+    if (!stream) return -Infinity;
+    const address = String(stream.address || '');
+    const offlinePenalty = isStreamPlaybackOffline(address) ? -1000000000 : 0;
+    const viewers = Math.max(0, Number(effectiveParticipants(stream)) || 0);
+    const recentZaps = state.streamRecentZapsByAddress.get(address) || [];
+    const zapActivity = Math.min(1000, recentZaps.length);
+    const zapTotal = Math.min(1000000, Math.max(0, Number(state.streamZapTotals.get(address) || 0)));
+    // Prefer a stream with signs of current activity, then the freshest update.
+    return offlinePenalty
+      + viewers * 1000000
+      + zapActivity * 1000
+      + zapTotal
+      + Math.max(0, Number(stream.created_at || 0)) / 1000000000000;
+  }
+
+  function dedupeLiveNowStreams(streams) {
+    const bestByDuplicateKey = new Map();
+    (Array.isArray(streams) ? streams : []).forEach((stream, index) => {
+      if (!stream) return;
+      const host = normalizePubkeyHex(stream.hostPubkey || stream.pubkey || '');
+      const title = String(stream.title || '');
+      const url = normalizeLiveNowDuplicateUrl(stream.streaming);
+      // Only suppress true same-host, same-title, same-source duplicates.
+      // Missing identity fields are deliberately left alone to avoid false positives.
+      if (!host || !title.trim() || !url) {
+        bestByDuplicateKey.set('unique:' + String(stream.address || stream.id || index), stream);
+        return;
+      }
+      const key = host + '\u0000' + title + '\u0000' + url;
+      const previous = bestByDuplicateKey.get(key);
+      if (!previous || liveNowDuplicateActivityScore(stream) > liveNowDuplicateActivityScore(previous)) {
+        bestByDuplicateKey.set(key, stream);
+      }
+    });
+    return Array.from(bestByDuplicateKey.values());
+  }
+
   function getFilteredStreams() {
-    // Only show streams that have a browser-playable HTTP(S) URL
-    const allStreams = sortedLiveStreams().filter((s) => {
+    // Only show streams that have a browser-playable HTTP(S) URL.
+    // Collapse only exact duplicate announcements from the same streamer; distinct
+    // titles or distinct URLs remain separate cards.
+    const allStreams = dedupeLiveNowStreams(sortedLiveStreams().filter((s) => {
       const url = sanitizeMediaUrl((s && s.streaming) || '');
-      return url && /^https?:\/\//i.test(url)
+      return (url.toLowerCase().startsWith('http://') || url.toLowerCase().startsWith('https://'))
         && isLikelyPlayableStreamUrl(url, s && s.mediaType)
         && !isAudioOnlyStream(s);
-    });
+    }));
     const filterPubkeys = getPubkeysForFilter();
     return filterPubkeys
       ? allStreams.filter((s) => filterPubkeys.has(s.pubkey) || filterPubkeys.has(s.hostPubkey))
