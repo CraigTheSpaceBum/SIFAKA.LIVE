@@ -146,15 +146,16 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
   main{align-items:stretch}
   .chess-board-column,.panel{height:clamp(420px,calc(100dvh - 250px),760px);min-height:0}
   .panel{overflow:hidden}
-  .panel>.chat{flex:1 1 auto;min-height:150px;max-height:none;overflow:hidden}
-  .panel>.chat .cl{flex:1 1 0%;height:0;min-height:96px;max-height:none;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+  .panel>.chat{flex:1 1 0%;min-height:150px;max-height:100%;overflow:hidden}
+  .panel>.chat .cl{flex:1 1 0%;height:0;min-height:96px;max-height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 }
 @media(max-width:900px){
   .panel{min-height:0}
-  .panel>.chat{min-height:0;overflow:hidden}
-  .panel>.chat .cl{height:200px;min-height:120px;max-height:200px;flex:0 0 200px;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
+  .panel>.chat{display:flex;flex:0 0 auto;flex-direction:column;min-height:0;max-height:none;overflow:hidden}
+  .panel>.chat .cl{height:200px;min-height:200px;max-height:200px;flex:0 0 200px;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
 }
 .cl{overflow-wrap:anywhere;scrollbar-width:thin;scrollbar-color:rgba(155,114,255,.5) rgba(0,0,0,.15)}
+.panel>.chat .cm{flex:0 0 auto;min-width:0;max-width:100%;overflow-wrap:anywhere}
 .cl::-webkit-scrollbar{width:7px}.cl::-webkit-scrollbar-thumb{border-radius:8px;background:rgba(155,114,255,.48)}
 #personGameModal,#openGamesModal{z-index:28}
 .chess-online-modal{width:min(94vw,540px);max-height:88vh;overflow:auto}
