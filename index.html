@@ -2620,7 +2620,11 @@ body.sifaka-games-modal-open{overflow:hidden}
    notifications:'openNotificationsPage',profile:'openMyProfile',myStreams:'openMyStreams',
    wallet:'openWallet',widgets:'openWidgets',settings:'openSettings',games:'openSifakaGamesMenu'
   }[page];
-  return !!routeGlobal&&typeof window[routeGlobal]==='function';
+  if(!routeGlobal||typeof window[routeGlobal]!=='function')return false;
+  // The Wallet view can be selected before its async loader has been registered during cold startup.
+  // Wait for both pieces so the route cannot be consumed before wallet initialization is available.
+  if(a==='navigate'&&page==='wallet')return typeof window.loadWalletPage==='function';
+  return true;
  }
  function runRequestedAction(attempt){
   var p=new URLSearchParams(location.search),a=p.get('chessAction')||'',page=p.get('page')||'';
@@ -2629,7 +2633,7 @@ body.sifaka-games-modal-open{overflow:hidden}
   // finished init() and exposed the real site actions. Retry without consuming the
   // requested route until the required handler actually exists.
   if(!actionIsReady(a,page)){
-   if((attempt||0)<120){window.setTimeout(function(){runRequestedAction((attempt||0)+1);},25);return;}
+   if((attempt||0)<600){window.setTimeout(function(){runRequestedAction((attempt||0)+1);},25);return;}
    console.warn('Sifaka chess action bridge: app action was not ready:',a,page);
    return;
   }
