@@ -484,7 +484,7 @@ function click(i){if(!gameActive||over||busy||(gameMode==='engine'&&st.t!=='w'))
 /* game flow + panel */
 function play(m){if(!gameActive||over)return;const pre=st,n=mk(st,m);H.push({s:pre,m,san:san(pre,m,n)});st=n;sel=null;animMove(m,pre);
 const ms=legal(st),ck=inChk(st),np=st.b.filter(p=>p&&p[1]!=='k');
-if(!ms.length)over=ck?{h:'Checkmate',p:(st.t==='b'?(gameMode==='engine'?'You':'White Player'):(gameMode==='engine'?'Sifaka Engine':'Black Player'))+' won the game.'}:{h:'Stalemate',p:'The game is a draw.'};
+if(!ms.length)over=ck?{h:'Checkmate',p:(gameMode==='online'&&netGame?(netGame.myColor===(st.t==='b'?'w':'b')?'You':'Opponent'):(st.t==='b'?(gameMode==='engine'?'You':'White Player'):(gameMode==='engine'?'Sifaka Engine':'Black Player')))+' won the game.'}:{h:'Stalemate',p:'The game is a draw.'};
 else if(!np.length||(np.length===1&&'nb'.includes(np[0][1])))over={h:'Draw',p:'Insufficient material.'};
 clrStk();fx(m,pre);logMove(m,pre);if(gameMode==='online')publishOnlineSnapshot();draw();
 if(over){gameActive=false;$('nw').disabled=true;$('mn').textContent='New game';setTimeout(()=>{$('mh').textContent=over.h;$('mp').textContent=over.p;$('ov').classList.add('show');sfx(over.h==='Checkmate'?(st.t==='b'?'win':'lose'):'draw')},900)}
@@ -518,7 +518,7 @@ function startSelectedGame(mode,difficulty){
  $('lvl').textContent=mode==='engine'?LV[lv]:'Two-player';
  $('lv').style.display=mode==='engine'?'flex':'none';nw();
 }
-function forfeitGame(){if(!gameActive||over)return;gameActive=false;busy=false;over={h:'Forfeit',p:'You forfeited the game. Start a new game when you are ready.'};$('nw').disabled=true;$('mh').textContent=over.h;$('mp').textContent=over.p;$('mn').textContent='New game';$('ov').classList.add('show');draw();}
+function forfeitGame(){if(!gameActive||over)return;gameActive=false;busy=false;over={h:'Forfeit',p:'You forfeited the game. Start a new game when you are ready.'};if(gameMode==='online')publishOnlineSnapshot();$('nw').disabled=true;$('mh').textContent=over.h;$('mp').textContent=over.p;$('mn').textContent='New game';$('ov').classList.add('show');draw();}
 $('chooseEngine').onclick=()=>{$('setupOpponents').hidden=true;$('setupDifficulty').hidden=false;$('setupBack').hidden=false;$('setupHelp').textContent='Choose your engine difficulty.'};
 $('choosePerson').onclick=()=>openPersonOptions(true);
 $('setupDifficulty').addEventListener('click',e=>{const b=e.target.closest('[data-start-level]');if(b)startSelectedGame('engine',b.dataset.startLevel)});
@@ -617,11 +617,11 @@ function note(ic,t,s,c,keep){if(window.chatEv)chatEv(ic,t,s);if(!CF.notif)return
 while(n.children.length>3){const f=[...n.children].find(x=>x!==stk)||n.firstChild;if(f===stk)stk=null;f.remove()}
 if(!keep)setTimeout(()=>{e.classList.add('out');setTimeout(()=>e.remove(),400)},3400)}
 const PN={p:'Pawn',n:'Knight',b:'Bishop',r:'Rook',q:'Queen',k:'King'};
-function logMove(m,pre){const p=pre.b[m.f],me=p[0]==='w',who=me?$('me').textContent:(gameMode==='person'?$('opponentName').textContent:'Sifaka Engine'),sq=F[m.t&7].toUpperCase()+(8-(m.t>>3)),cp=pre.b[m.t]||(m.ep?pre.b[m.t+(me?8:-8)]:null);
+function logMove(m,pre){const p=pre.b[m.f],me=p[0]==='w',mine=gameMode==='online'&&netGame?me===(netGame.myColor==='w'):me,who=mine?$('me').textContent:((gameMode==='person'||gameMode==='online')?$('opponentName').textContent:'Sifaka Engine'),sq=F[m.t&7].toUpperCase()+(8-(m.t>>3)),cp=pre.b[m.t]||(m.ep?pre.b[m.t+(me?8:-8)]:null);
 let t=m.cs?'castled '+(m.cs==='K'?'kingside':'queenside'):cp?'captured '+PN[cp[1]]+' on '+sq+' with '+PN[p[1]]:'moved '+PN[p[1]]+' to '+sq;if(m.pr)t+=' and promoted to Queen';cadd(who,t,'mv')}
 $('nw').onclick=forfeitGame;$('mn').onclick=()=>{cl.innerHTML='';clrStk();showGameSetup()};
 const un0=$('un').onclick;$('un').onclick=()=>{const n=H.length;un0();if(H.length<n){clrStk();cadd('','Move taken back','sys')}};
-function turnGlow(){const a=$('me').closest('.card'),b=$('opponentName').closest('.card');if(!a||!b)return;const w=!over&&st.t==='w',k=!over&&st.t==='b';a.dataset.t=gameMode==='person'?'WHITE TO MOVE':'YOUR TURN';b.dataset.t=gameMode==='person'?'BLACK TO MOVE':'THINKING…';a.classList.toggle('turn',w);b.classList.toggle('turn',k)}
+function turnGlow(){const a=$('me').closest('.card'),b=$('opponentName').closest('.card');if(!a||!b)return;if(gameMode==='online'&&netGame){const done=!!over;if(!netGame.black&&!done){a.dataset.t='WAITING FOR PLAYER';b.dataset.t='OPEN MATCH';a.classList.remove('turn');b.classList.remove('turn');return}const myTurn=!done&&st.t===netGame.myColor;a.dataset.t=done?'GAME OVER':myTurn?'YOUR TURN':'WAITING…';b.dataset.t=done?'GAME OVER':myTurn?'OPPONENT TO MOVE':'YOUR TURN';a.classList.toggle('turn',myTurn);b.classList.toggle('turn',!done&&!myTurn);return}const w=!over&&st.t==='w',k=!over&&st.t==='b';a.dataset.t=gameMode==='person'?(w?'WHITE TO MOVE':'WAITING…'):'YOUR TURN';b.dataset.t=gameMode==='person'?(k?'BLACK TO MOVE':'WAITING…'):'THINKING…';a.classList.toggle('turn',w);b.classList.toggle('turn',k)}
 
 /* Online chess interoperability: NIP-64 kind:64 PGN snapshots, d game ids, and p player tags. */
 const NOSTR_PUBKEY_HEX=/^[0-9a-f]{64}$/i;
