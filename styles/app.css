@@ -10825,7 +10825,10 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
 #videoPage .sib-actions-row.hosted-platform-row .hosted-by-av:not(:has(img)),
 #videoPage .sib-actions-row.hosted-platform-row .hosted-by-av:has(.hosted-by-av-fallback),
 #videoPage .sib-actions-row.hosted-platform-row .hosted-by-av:empty {
-  display: none !important;
+  visibility: hidden !important;
+}
+#videoPage .sib-actions-row.hosted-platform-row .hosted-by-box.hosted-by-no-picture {
+  padding: .34rem .58rem .34rem .36rem;
 }
 #videoPage #theaterHostInfoPanel > .sib-hosts { order: 1 !important; }
 #videoPage #theaterHostInfoPanel > .theater-panel-description { order: 2 !important; }
