@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#0a0810">
+<meta name="mobile-web-app-capable" content="yes">
 <script>
 (function () {
   // Match the main app's daily palette before first paint to avoid a theme flash.
@@ -11,7 +12,7 @@
   else if (today.getMonth() === 11 && today.getDate() === 25) theme = "christmas";
   document.documentElement.setAttribute("data-theme", theme);
 })();
-</script><meta name="mobile-web-app-capable" content="yes">
+</script>
 <title>Sifaka Chess — 3D Chess on Nostr</title>
 <meta name="description" content="Play 3D chess on Sifaka.Live, connect with your Nostr signer, join the public chess lobby, and post games to Nostr.">
 <link rel="icon" type="image/x-icon" href="../../sifaka.ico">
