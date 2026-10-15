@@ -1,0 +1,142 @@
+/* Daily Sifaka site palettes for the standalone Chess route.
+   Keep the same weekday and holiday colours as the main Sifaka app. */
+@property --ink { syntax: "<color>"; inherits: true; initial-value: #f3ecdd; }
+@property --mut { syntax: "<color>"; inherits: true; initial-value: #c4bdd3; }
+@property --gold { syntax: "<color>"; inherits: true; initial-value: #d6b264; }
+@property --gold2 { syntax: "<color>"; inherits: true; initial-value: #f2dca0; }
+@property --line { syntax: "<color>"; inherits: true; initial-value: rgba(255,255,255,.18); }
+@property --glass { syntax: "<color>"; inherits: true; initial-value: rgba(255,255,255,.08); }
+
+:root[data-theme="lavender"]{
+
+  --bg:#0d0b15;--surface:#171321;--surface2:#211c30;--surface3:#302944;
+  --border:#463b60;--border2:#463b60;--accent:#b69cff;--accent-glow:#b69cff44;
+  --live:#ff7fae;--zap:#b69cff;--zap-dim:#b69cff26;--text:#faf7ff;--text2:#faf7ffcc;
+  --muted:#faf7ff88;--green:#72e8cf;--purple:#8ea0ff;--nip05:#8ea0ff;
+  --ink:var(--text);--mut:var(--text2);--gold:var(--accent);--gold2:var(--purple);
+  --line:var(--border2);--glass:rgba(255,255,255,.08);
+}
+
+:root[data-theme="slate"]{
+
+  --bg:#0a0e13;--surface:#121821;--surface2:#1a222c;--surface3:#25303d;
+  --border:#344252;--border2:#344252;--accent:#8da8c2;--accent-glow:#8da8c244;
+  --live:#ff6f7f;--zap:#8da8c2;--zap-dim:#8da8c226;--text:#edf4fa;--text2:#edf4facc;
+  --muted:#edf4fa88;--green:#66d6b0;--purple:#8f9cff;--nip05:#8f9cff;
+  --ink:var(--text);--mut:var(--text2);--gold:var(--accent);--gold2:var(--purple);
+  --line:var(--border2);--glass:rgba(255,255,255,.08);
+}
+
+:root[data-theme="ocean"]{
+
+  --bg:#06131c;--surface:#0a1d29;--surface2:#0f2938;--surface3:#163a4c;
+  --border:#20526a;--border2:#20526a;--accent:#18b8ff;--accent-glow:#18b8ff44;
+  --live:#ff5874;--zap:#18b8ff;--zap-dim:#18b8ff26;--text:#e9fbff;--text2:#e9fbffcc;
+  --muted:#e9fbff88;--green:#39e6c4;--purple:#5a8cff;--nip05:#5a8cff;
+  --ink:var(--text);--mut:var(--text2);--gold:var(--accent);--gold2:var(--purple);
+  --line:var(--border2);--glass:rgba(255,255,255,.08);
+}
+
+:root[data-theme="forest"]{
+
+  --bg:#08100b;--surface:#0d1910;--surface2:#132319;--surface3:#1b3021;
+  --border:#28472f;--border2:#28472f;--accent:#62d66f;--accent-glow:#62d66f44;
+  --live:#ff6a6a;--zap:#62d66f;--zap-dim:#62d66f26;--text:#effff2;--text2:#effff2cc;
+  --muted:#effff288;--green:#7fe0a0;--purple:#a080ff;--nip05:#a080ff;
+  --ink:var(--text);--mut:var(--text2);--gold:var(--accent);--gold2:var(--purple);
+  --line:var(--border2);--glass:rgba(255,255,255,.08);
+}
+
+:root[data-theme="violet"]{
+
+  --bg:#0b0714;--surface:#140c20;--surface2:#1e1230;--surface3:#2b1943;
+  --border:#402660;--border2:#402660;--accent:#a86cff;--accent-glow:#a86cff44;
+  --live:#ff5f9a;--zap:#a86cff;--zap-dim:#a86cff26;--text:#f7f0ff;--text2:#f7f0ffcc;
+  --muted:#f7f0ff88;--green:#66f5d0;--purple:#7e8cff;--nip05:#7e8cff;
+  --ink:var(--text);--mut:var(--text2);--gold:var(--accent);--gold2:var(--purple);
+  --line:var(--border2);--glass:rgba(255,255,255,.08);
+}
+
+:root[data-theme="ruby"]{
+
+  --bg:#120608;--surface:#1e0b0f;--surface2:#2c1117;--surface3:#3d1820;
+  --border:#5b2530;--border2:#5b2530;--accent:#ff405d;--accent-glow:#ff405d44;
+  --live:#ff8a4c;--zap:#ff405d;--zap-dim:#ff405d26;--text:#fff0f2;--text2:#fff0f2cc;
+  --muted:#fff0f288;--green:#5effb1;--purple:#b57cff;--nip05:#b57cff;
+  --ink:var(--text);--mut:var(--text2);--gold:var(--accent);--gold2:var(--purple);
+  --line:var(--border2);--glass:rgba(255,255,255,.08);
+}
+
+:root[data-theme="sunset"]{
+
+  --bg:#140a07;--surface:#21100b;--surface2:#301710;--surface3:#442219;
+  --border:#633225;--border2:#633225;--accent:#ff8a3d;--accent-glow:#ff8a3d44;
+  --live:#ff526f;--zap:#ff8a3d;--zap-dim:#ff8a3d26;--text:#fff2e8;--text2:#fff2e8cc;
+  --muted:#fff2e888;--green:#7de0a0;--purple:#a879ff;--nip05:#a879ff;
+  --ink:var(--text);--mut:var(--text2);--gold:var(--accent);--gold2:var(--purple);
+  --line:var(--border2);--glass:rgba(255,255,255,.08);
+}
+
+:root[data-theme="halloween"]{
+
+  --bg:#100912;--surface:#1b1020;--surface2:#291630;--surface3:#3a2045;
+  --border:#55305f;--border2:#71407a;--accent:#ff7a18;--accent-glow:#ff7a1844;
+  --live:#ff526e;--zap:#ffb52e;--zap-dim:#ffb52e26;--text:#fff2e8;--text2:#fff2e8cc;
+  --muted:#fff2e888;--green:#a8e66b;--purple:#c078ff;--nip05:#c078ff;--danger:#ff526e;
+  --ink:var(--text);--mut:var(--text2);--gold:var(--accent);--gold2:var(--purple);
+  --line:var(--border2);--glass:rgba(255,255,255,.08);
+}
+
+:root[data-theme="christmas"]{
+
+  --bg:#07110d;--surface:#0e1c15;--surface2:#172b20;--surface3:#23402e;
+  --border:#2e563c;--border2:#42764f;--accent:#e64a5a;--accent-glow:#e64a5a44;
+  --live:#ff5f70;--zap:#f2c14e;--zap-dim:#f2c14e26;--text:#f0fff4;--text2:#f0fff4cc;
+  --muted:#f0fff488;--green:#63d494;--purple:#e5c56b;--nip05:#e5c56b;--danger:#ff5f70;
+  --ink:var(--text);--mut:var(--text2);--gold:var(--accent);--gold2:var(--purple);
+  --line:var(--border2);--glass:rgba(255,255,255,.08);
+}
+
+/* Reuse the changing site accents in chess-specific decorative elements. */
+body { background: var(--bg); color: var(--ink); }
+.bg {
+  background:
+    radial-gradient(60% 50% at 15% 10%, color-mix(in srgb, var(--purple) 25%, transparent), transparent 70%),
+    radial-gradient(50% 45% at 90% 85%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%);
+}
+.mark {
+  color: var(--bg);
+  background: linear-gradient(145deg, var(--gold2), var(--gold) 55%, var(--accent));
+  box-shadow: 0 0 28px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.wm small, .set h3 { color: var(--gold); }
+.btn:hover {
+  border-color: var(--gold);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.btn.pri, .lv button.on {
+  color: var(--bg);
+  background: linear-gradient(135deg, var(--gold2), var(--gold));
+}
+.stage {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: radial-gradient(70% 70% at 50% 40%, color-mix(in srgb, var(--purple) 32%, transparent), color-mix(in srgb, var(--bg) 92%, transparent));
+  box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 80px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.caps { color: var(--gold2); }
+.modal {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--surface2) 88%, transparent), color-mix(in srgb, var(--bg) 92%, transparent));
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 0 100px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.modal h2 { background-image: linear-gradient(135deg, var(--gold2), var(--gold)); }
+.toast { border-color: var(--gold); }
+.g2 {
+  box-shadow: 0 0 0 2px var(--gold2), 0 0 0 13px var(--surface), 0 0 0 15px var(--gold), 0 0 0 17px rgba(0,0,0,.45), 0 30px 90px rgba(0,0,0,.7);
+}
+.s2.lm::before { background: color-mix(in srgb, var(--gold2) 42%, transparent); }
+.s2.sel {
+  box-shadow: inset 0 0 0 3px var(--gold2), inset 0 0 1.6cqw color-mix(in srgb, var(--gold2) 45%, transparent);
+}
+.s2.mv::after { background: var(--gold2); box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 80%, transparent); }
+.s2.cp::after { border-color: var(--gold2); box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 80%, transparent); }
