@@ -1,0 +1,165 @@
+/* Sifaka.Live daily theme polish.
+   Loaded after app/site styles so theme tokens and interactive accents stay in sync.
+   Daily theme scheduling remains in index.html and scripts/theme-manager.js. */
+
+:root[data-theme="lavender"] {
+  --bg:#0d0b15;--surface:#171321;--surface2:#211c30;--surface3:#302944;
+  --border:#3c3553;--border2:#51466f;--accent:#bba2ff;--accent-glow:#bba2ff44;
+  --live:#ff77a6;--zap:#bba2ff;--zap-dim:#bba2ff26;--text:#faf7ff;--text2:#e6dff8cc;
+  --muted:#c9bfdc99;--green:#62dfbe;--purple:#96a8ff;--nip05:#96a8ff;--danger:#ff637e;
+}
+
+:root[data-theme="slate"] {
+  --bg:#0a0e13;--surface:#121821;--surface2:#1a222c;--surface3:#25303d;
+  --border:#303d4c;--border2:#485b70;--accent:#93b1ce;--accent-glow:#93b1ce44;
+  --live:#ff7888;--zap:#93b1ce;--zap-dim:#93b1ce26;--text:#eff5fb;--text2:#d6e0edcc;
+  --muted:#b4c3d499;--green:#75dfbd;--purple:#a5b5ff;--nip05:#a5b5ff;--danger:#ff6679;
+}
+
+:root[data-theme="ocean"] {
+  --bg:#06131c;--surface:#0a1d29;--surface2:#0f2938;--surface3:#163a4c;
+  --border:#1b4a5f;--border2:#286983;--accent:#22c4f2;--accent-glow:#22c4f244;
+  --live:#ff677c;--zap:#22c4f2;--zap-dim:#22c4f226;--text:#eafaff;--text2:#ccecf5cc;
+  --muted:#a5d3e099;--green:#44e2bb;--purple:#7fa5ff;--nip05:#7fa5ff;--danger:#ff5d79;
+}
+
+:root[data-theme="forest"] {
+  --bg:#08100b;--surface:#0d1910;--surface2:#132319;--surface3:#1b3021;
+  --border:#24432f;--border2:#356344;--accent:#73dc86;--accent-glow:#73dc8644;
+  --live:#ff7777;--zap:#73dc86;--zap-dim:#73dc8626;--text:#effff2;--text2:#d4efd9cc;
+  --muted:#abd0b199;--green:#68e7b0;--purple:#b29bff;--nip05:#b29bff;--danger:#ff6671;
+}
+
+:root[data-theme="violet"] {
+  --bg:#0b0714;--surface:#140c20;--surface2:#1e1230;--surface3:#2b1943;
+  --border:#39214f;--border2:#543273;--accent:#b17aff;--accent-glow:#b17aff44;
+  --live:#ff6ba6;--zap:#b17aff;--zap-dim:#b17aff26;--text:#f8f2ff;--text2:#e5d8f7cc;
+  --muted:#c3abd899;--green:#5de0c5;--purple:#889bff;--nip05:#889bff;--danger:#ff5c86;
+}
+
+:root[data-theme="ruby"] {
+  --bg:#120608;--surface:#1e0b0f;--surface2:#2c1117;--surface3:#3d1820;
+  --border:#4c2029;--border2:#6f2d3b;--accent:#ff4f69;--accent-glow:#ff4f6944;
+  --live:#ff9a68;--zap:#ff4f69;--zap-dim:#ff4f6926;--text:#fff0f2;--text2:#f4d8dfcc;
+  --muted:#d8aeb699;--green:#65e5ac;--purple:#c59aff;--nip05:#c59aff;--danger:#ff5268;
+}
+
+:root[data-theme="sunset"] {
+  --bg:#140a07;--surface:#21100b;--surface2:#301710;--surface3:#442219;
+  --border:#512a20;--border2:#74402e;--accent:#ff9850;--accent-glow:#ff985044;
+  --live:#ff5d7b;--zap:#ff9850;--zap-dim:#ff985026;--text:#fff3ea;--text2:#f7dacbcc;
+  --muted:#e4bca599;--green:#83e1a9;--purple:#c090ff;--nip05:#c090ff;--danger:#ff526f;
+}
+
+:root[data-theme="halloween"] {
+  --bg:#080808;--surface:#12100d;--surface2:#20170e;--surface3:#33210f;
+  --border:#63380f;--border2:#a5520b;--accent:#ff7900;--accent-glow:#ff790055;
+  --live:#ff4d57;--zap:#ffb52e;--zap-dim:#ffb52e2b;--text:#fff6eb;--text2:#f5d8bbd9;
+  --muted:#d7b795a6;--green:#a5e76c;--purple:#ff9f36;--nip05:#ffc46b;--danger:#ff4d57;
+}
+
+:root[data-theme="christmas"] {
+  --bg:#06110c;--surface:#0d2015;--surface2:#163321;--surface3:#20442e;
+  --border:#2e6844;--border2:#478558;--accent:#ed4954;--accent-glow:#ed495444;
+  --live:#ff5364;--zap:#ffd166;--zap-dim:#ffd1662b;--text:#f3fff7;--text2:#d3f0dcdd;
+  --muted:#a9d0b5aa;--green:#61dc9b;--purple:#e8c66a;--nip05:#f2d47b;--danger:#ff5364;
+}
+
+/* Keep shared navigation and interactive states aligned with each palette. */
+html[data-theme] nav {
+  background: color-mix(in srgb, var(--bg) 93%, transparent);
+  border-bottom-color: var(--border2);
+}
+html[data-theme] nav .search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+html[data-theme] nav .btn-primary {
+  color: var(--bg);
+}
+html[data-theme] nav .btn-primary:hover {
+  color: var(--bg);
+  background: var(--accent);
+  filter: brightness(1.12);
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+html[data-theme] nav .btn-zap:hover {
+  background: var(--zap);
+  filter: brightness(1.1);
+}
+html[data-theme] nav .nav-notif-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface2));
+}
+html[data-theme] :is(button, a, input, select, textarea):focus-visible {
+  outline-color: var(--accent);
+}
+html[data-theme] .settings-modal-v2::before {
+  background: linear-gradient(90deg, var(--purple), var(--accent), var(--zap));
+}
+
+/* Halloween: true black, pumpkin orange, amber highlights, and drifting embers. */
+html[data-theme="halloween"] body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(255,105,0,.19), transparent 39%),
+    radial-gradient(ellipse at 100% 100%, rgba(255,145,0,.11), transparent 34%),
+    radial-gradient(1.6px 1.6px at 24px 36px, rgba(255,165,65,.72) 52%, transparent 72%),
+    radial-gradient(1.2px 1.2px at 112px 82px, rgba(255,100,0,.55) 52%, transparent 72%);
+  background-size: 150% 150%, 140% 140%, 170px 190px, 260px 230px;
+  background-repeat: no-repeat, no-repeat, repeat, repeat;
+  background-attachment: fixed;
+  animation: sifakaHalloweenAura 18s ease-in-out infinite alternate;
+}
+html[data-theme="halloween"] nav {
+  border-bottom-color: #a5520b;
+  box-shadow: 0 3px 26px rgba(255,105,0,.13);
+}
+html[data-theme="halloween"] .settings-modal-v2::before {
+  background: linear-gradient(90deg, #ff7900, #ffbd39, #ff7900);
+}
+
+/* Christmas: evergreen surfaces, cranberry actions, gold zaps, and falling snow. */
+html[data-theme="christmas"] body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(34,153,78,.12), transparent 40%),
+    radial-gradient(ellipse at 100% 100%, rgba(237,73,84,.10), transparent 36%),
+    radial-gradient(1.9px 1.9px at 24px 35px, rgba(255,255,255,.88) 52%, transparent 72%),
+    radial-gradient(1.3px 1.3px at 112px 82px, rgba(222,241,255,.75) 52%, transparent 72%),
+    radial-gradient(1px 1px at 194px 53px, rgba(255,255,255,.62) 52%, transparent 72%);
+  background-size: 150% 150%, 140% 140%, 180px 200px, 260px 240px, 340px 300px;
+  background-repeat: no-repeat, no-repeat, repeat, repeat, repeat;
+  background-attachment: fixed;
+  animation: sifakaChristmasSnow 20s linear infinite;
+}
+html[data-theme="christmas"] nav {
+  border-bottom-color: #478558;
+  box-shadow: 0 3px 24px rgba(35,165,91,.12), 0 1px 0 rgba(237,73,84,.16);
+}
+html[data-theme="christmas"] .settings-modal-v2::before {
+  background: linear-gradient(90deg, #238b4e, #ed4954, #ffd166, #238b4e);
+}
+
+@keyframes sifakaHalloweenAura {
+  from { background-position: 0% 0%, 100% 100%, 0 0, 40px 0; }
+  to   { background-position: 100% 70%, 10% 20%, 0 190px, 40px 230px; }
+}
+@keyframes sifakaChristmasSnow {
+  from { background-position: 0% 0%, 100% 100%, 0 0, 40px 0, 90px 0; }
+  to   { background-position: 20% 70%, 80% 30%, 0 200px, 40px 240px, 90px 300px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="halloween"] body,
+  html[data-theme="christmas"] body {
+    animation: none;
+  }
+  html[data-theme="halloween"] body {
+    background-position: 0 0, 100% 100%, 0 0, 40px 0;
+  }
+  html[data-theme="christmas"] body {
+    background-position: 0 0, 100% 100%, 0 0, 40px 0, 90px 0;
+  }
+}
