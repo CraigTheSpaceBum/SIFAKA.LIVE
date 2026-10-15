@@ -956,7 +956,7 @@ function loadPublishedNip64Event(eventId,targetRelay){
  const relays=networkRelays(targetRelay),sockets=[];let finished=false,timer=null;
  function finish(ev,relay){
   if(finished)return;finished=true;if(timer)clearTimeout(timer);
-  sockets.forEach(function(ws){try{if(ws.readyState===1)ws.close()}catch(_){}});
+  sockets.forEach(function(ws){try{ws.close()}catch(_){}});
   if(!ev){
    $('openGamesTitle').textContent='Chess record not found';$('openGamesHelp').textContent='The event may not be available on the selected relays, or the relays may be offline.';
    $('openGamesList').replaceChildren();const msg=document.createElement('div');msg.className='chess-online-muted';msg.textContent='Could not find that NIP-64 event. Try the share link again or ask the author for a relay that carries it.';$('openGamesList').appendChild(msg);return;
@@ -969,7 +969,7 @@ function loadPublishedNip64Event(eventId,targetRelay){
  relays.forEach(function(url,i){
   try{
    const ws=new WebSocket(url);sockets.push(ws);const sub='sifaka-chess-event-'+id.slice(0,12)+'-'+i;
-   ws.onopen=function(){try{ws.send(JSON.stringify(['REQ',sub,{kinds:[64],ids:[id],limit:1]}))}catch(_){}};
+   ws.onopen=function(){try{ws.send(JSON.stringify(['REQ',sub,{kinds:[64],ids:[id],limit:1}]))}catch(_){}};
    ws.onmessage=function(e){try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&String(d[2].id||'').toLowerCase()===id)finish(d[2],url)}catch(_){}};
    ws.onerror=function(){};ws.onclose=function(){};
   }catch(_){}
