@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 RAW_BASE="https://raw.githubusercontent.com/CraigTheSpaceBum/SIFAKA.LIVE/sifaka-radio-distribution/sifaka-radio-dist"
 ARCHIVE_NAME="sifaka-radio-pi5-fixed-r3.zip"
-PART_COUNT=12
+PART_COUNT=24
 ARCHIVE_SHA256="6e1630f72b7ce806ca16836445bf2dd45092558a3c4bbb0e16e005e809dbb769"
 
 ensure_tools() {
