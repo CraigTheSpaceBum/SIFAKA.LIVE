@@ -9407,6 +9407,28 @@ body.nest-room-page-open{
   }
 }
 
+/* Donation message images should preserve their full aspect ratio, including square art. */
+#videoPage .chat-scroll .zap-ev .chat-media-wrap{
+  max-width:min(100%,260px);
+}
+#videoPage .chat-scroll .zap-ev .chat-media-item,
+#videoPage .chat-scroll .zap-ev .chat-media-item.single{
+  aspect-ratio:auto;
+  height:auto;
+  max-height:none;
+}
+#videoPage .chat-scroll .zap-ev .chat-media-item.single{
+  width:fit-content;
+  max-width:100%;
+}
+#videoPage .chat-scroll .zap-ev .chat-media-item img{
+  width:auto;
+  height:auto;
+  max-width:100%;
+  max-height:220px;
+  object-fit:contain;
+}
+
 /* Donation chat badges identify the payment rail on compact screens too. */
 #videoPage .chat-scroll .onchain-donation-ev .chat-zap-amount{
   color:#ffe0b2;
