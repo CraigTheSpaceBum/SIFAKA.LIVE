@@ -20286,6 +20286,32 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     };
   }
 
+  // Render donation notes using the same inline-image behavior as regular chat.
+  // Keep media limited to photos here so donation URLs never create an unexpected video/audio player.
+  function renderChatDonationNote(container, rawContent) {
+    if (!container) return;
+    const rawText = String(rawContent || '');
+    if (!rawText) return;
+
+    const imageUrls = Array.from(new Set(
+      extractHttpUrls(rawText)
+        .map((url) => sanitizeMediaUrl(url))
+        .filter((url) => url && classifyMediaUrl(url) === 'photo')
+    ));
+    const textWithoutImages = stripMediaUrlsFromText(rawText, imageUrls);
+    if (textWithoutImages) {
+      container.appendChild(renderNostrContent(textWithoutImages, { chatMessage: true }));
+    }
+    if (imageUrls.length) {
+      renderChatInlineMedia(container, imageUrls, {
+        allowVideo: false,
+        allowAudio: false,
+        maxItems: 4,
+        classPrefix: 'chat'
+      });
+    }
+  }
+
   function renderChatOnchainDonation(ev, opts = {}, parsed = parseOnchainDonationChatEvent(ev)) {
     const sc = qs('#chatScroll');
     if (!sc || !ev || !ev.id || !parsed) return;
@@ -20327,7 +20353,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const textEl = qs('.c-text', row);
-    textEl.appendChild(renderNostrContent(parsed.note || ('Bitcoin transaction: https://mempool.space/tx/' + parsed.txid)));
+    renderChatDonationNote(textEl, parsed.note || ('Bitcoin transaction: https://mempool.space/tx/' + parsed.txid));
 
     insertChatRowChronological(sc, row, eventId, parsed.created_at);
 
@@ -20585,7 +20611,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     }
 
     const textEl = qs('.c-text', row);
-    textEl.appendChild(renderNostrContent(note || 'Sent a zap'));
+    renderChatDonationNote(textEl, note || 'Sent a zap');
 
     insertChatRowChronological(sc, row, eventId, entry.created_at);
 
