@@ -932,8 +932,71 @@ async function ensureInviteGame(){
  }
  return g;
 }
+async function joinPrivateNostrGame(g,button){
+ const restore=function(){if(button&&button.isConnected){button.disabled=false;button.textContent=g.status==='invite'?'Accept private invite':g.black?'Open private game':'Join private game'}};
+ const secret=g.secret||privateSecretFromUrl();
+ if(!secret){toast('This private invitation is missing its secret key. Use the complete invite URL, including #key=...');return}
+ let signer='';try{signer=await getSignerKey()}catch(_){}
+ if(!signer){requireSigner(function(){joinNostrGame(g,button)},true);return}
+ if(signer===g.white){
+  const opened=Object.assign({},g,{myPk:signer,secret:secret,private:true,accepted:g.status!=='open'&&g.status!=='invite'});
+  if(launchOnlineGame(opened,'w',g.content))toast('Opened your private chess game.');
+  return;
+ }
+ if(g.black&&signer!==g.black){toast('This private game is locked to a different Nostr account. Ask the host for an invite for this account.');return}
+ if(g.status==='active'&&g.black===signer){
+  const opened=Object.assign({},g,{myPk:signer,secret:secret,private:true,accepted:true});
+  if(launchOnlineGame(opened,'b',g.content))toast('Reconnected to your private chess game.');
+  return;
+ }
+ if(button){button.disabled=true;button.textContent='Joining private game…'}
+ try{
+  if(!replayNip64Pgn(g.content))throw new Error('The private game state could not be replayed by this chess board.');
+  const body=buildNip64Pgn(g.white,signer,g.relay),joined=Object.assign({},g,{black:signer,private:true,secret:secret,myPk:signer,accepted:true,players:[g.white,signer],status:'active',lastEventTime:Number(g.created_at)||0});
+  const result=await publishPrivateChessEvent(joined,'active',body);
+  if(!result.ack)throw new Error('No relay confirmed your private join. Refresh and retry the same complete invite link.');
+  joined.content=body;joined.created_at=result.created_at;joined.eventId=result.event.id;joined.lastEventTime=result.created_at;joined.lastPlayers=2;joined.lastPlies=pgnPlies(body);joined.lastPublishTime=result.created_at;
+  if(!launchOnlineGame(joined,'b',body))throw new Error('The private join was published, but Sifaka could not open the board.');
+  if(netGame){netGame.accepted=true;netGame.status='active';netGame.lastEventTime=result.created_at;netGame.lastEventId=result.event.id;netGame.lastPlayers=2;netGame.lastPlies=pgnPlies(body);netGame.lastPublishTime=result.created_at}
+  toast('Joined private Sifaka Chess. You are Black.');
+ }catch(err){toast('Could not join the private game: '+String(err&&err.message||'check the private link, signer and relay connection.'))}
+ finally{restore()}
+}
+async function invitePrivateChessPlayer(u,button){
+ const g=netGame,peer=String(u&&u.pk||'').toLowerCase();
+ if(!g||!g.private){toast('Create a private game before sending a private invitation.');return}
+ if(!NOSTR_PUBKEY_HEX.test(peer)){toast('This player does not have a valid Nostr public key.');return}
+ const signer=await getSignerKey();
+ if(!signer||signer!==g.myPk){toast('Reconnect the Nostr account that created this private game.');return}
+ if(g.black&&g.black!==peer){toast('This private game is already locked to another player. Create a new private game to invite someone else.');return}
+ const link=gameLink(g);
+ if(button){button.disabled=true;button.textContent='Preparing private invite…'}
+ try{
+  if(!g.black){
+   const locked=Object.assign({},g,{black:peer,accepted:false});
+   const body=buildNip64Pgn(g.white,peer,g.relay),result=await publishPrivateChessEvent(locked,'invite',body);
+   if(!result.ack)throw new Error('The encrypted invitation state was not accepted by any relay.');
+   g.black=peer;g.accepted=false;g.status='invite';g.content=body;g.lastEventTime=result.created_at;g.lastEventId=result.event.id;g.lastPlies=pgnPlies(body);g.lastPlayers=2;g.lastPublishTime=result.created_at;
+   setNostrOpponent(peer,'Private invitation pending');turnGlow();
+  }
+  let extensionPk='';
+  try{if(window.nostr&&typeof window.nostr.getPublicKey==='function'&&window.nostr.nip04&&typeof window.nostr.nip04.encrypt==='function')extensionPk=String(await window.nostr.getPublicKey()||'').toLowerCase()}catch(_){}
+  if(extensionPk!==signer||!window.nostr||!window.nostr.nip04||typeof window.nostr.nip04.encrypt!=='function'){
+   try{await navigator.clipboard.writeText(link)}catch(_){}
+   if(button){button.disabled=false;button.textContent='Copy private invite link';button.onclick=async function(){try{await navigator.clipboard.writeText(link);toast('Private invite link copied. Send it directly to the invited player.')}catch(_){toast('Select and copy the complete invitation URL from the game-ready dialog.')}}}
+   toast('This game is locked to the selected Nostr account. Your current signer cannot send a compatible encrypted DM, so the private invite link was copied for you to send directly.');
+   return;
+  }
+  const message='You have a private Sifaka Chess invitation. Open this complete link to join: '+link;
+  const dm=await signChessEvent({kind:4,created_at:Math.max(Math.floor(Date.now()/1000),g.lastEventTime+1),tags:[['p',peer]],content:await window.nostr.nip04.encrypt(peer,message)});
+  const ack=await sendToRelays(dm,networkRelays(g.relay));
+  if(ack){if(button){button.textContent='Private invite sent ✓';button.disabled=false}toast('Encrypted private invitation sent. The game is not listed in the public chess lobby.')}
+  else{try{await navigator.clipboard.writeText(link)}catch(_){ }if(button){button.textContent='Copy private invite link';button.disabled=false}toast('No relay confirmed the direct message. The private invite link was copied so you can send it directly.')}
+ }catch(err){if(button){button.disabled=false;button.textContent='Invite'}toast('Could not send the private invite: '+String(err&&err.message||'check the signer and relay connection.'))}
+}
 async function joinNostrGame(g,button){
  if(!g||!g.id||joiningNostrGames.has(g.id))return;
+ if(g.private)return joinPrivateNostrGame(g,button);
  if(!NOSTR_PUBKEY_HEX.test(g.white||'')){toast('This game does not identify its white player, so it cannot be joined safely.');return}
  if(g.open&&g.author&&g.author!==g.white){toast('This open game was not published by its white player. Refresh the lobby and try again.');return}
  if(!g.open&&g.author&&g.author!==g.white&&g.author!==g.black){toast('This game update was not published by either player. Refresh the lobby before joining.');return}
@@ -1009,6 +1072,51 @@ $('openGamesClose').onclick=closeOpenGames;
 $('personGameModal').addEventListener('click',function(e){if(e.target===$('personGameModal'))closePersonOptions()});
 $('openGamesModal').addEventListener('click',function(e){if(e.target===$('openGamesModal'))closeOpenGames()});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){if($('openGamesModal').classList.contains('show'))closeOpenGames();else if($('personGameModal').classList.contains('show'))closePersonOptions();else if($('inm').classList.contains('show'))closeInviteModal()}});
+function openGameVisibilityModal(){$('gameVisibilityModal').classList.add('show')}
+function showCreatedGameModal(g){
+ const current=g||netGame;if(!current)return;
+ $('createdGameUrl').value=gameLink(current);
+ $('createdGameKicker').textContent=current.private?'PRIVATE INVITE LINK':'PUBLIC NOSTR CHESS';
+ $('createdGameTitle').textContent=current.private?'Private game link created':'Public game created';
+ $('createdGameDescription').textContent=current.private?'Copy this complete URL, including #key=… . Without the key, the encrypted game state cannot be opened.':'Copy this complete URL. It includes the unique game ID so another player can open this exact match.';
+ $('createdGamePrivacyNote').textContent=current.private?'Private game content is encrypted and stays out of the public lobby. Anyone holding the complete link can decrypt and join until the game is locked to a specific Nostr account. Keep the link private.':'This match is discoverable in the public lobby. Its moves use standard NIP-64 kind-64 PGN events.';
+ $('createdGameModal').classList.add('show');
+}
+function closeCreatedGameModal(){$('createdGameModal').classList.remove('show')}
+async function copyCreatedGameLink(){
+ const text=$('createdGameUrl').value;if(!text)return;
+ try{await navigator.clipboard.writeText(text);toast('Complete chess invite URL copied.')}
+ catch(_){$('createdGameUrl').focus();$('createdGameUrl').select();toast('Select the highlighted URL and copy it.')}
+}
+async function createPrivateGame(){
+ $('gameVisibilityModal').classList.remove('show');
+ let signer='';try{signer=await getSignerKey()}catch(_){}
+ if(!signer){requireSigner(createPrivateGame,true);return}
+ let secret;try{secret=makePrivateChessSecret()}catch(_){toast('Could not create a secure private-link key in this browser.');return}
+ const relay=preferredGameRelay(),id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),created=Math.floor(Date.now()/1000);
+ const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};
+ let body;
+ try{init();over=null;body=buildNip64Pgn(signer,'?',relay)}
+ finally{st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive}
+ const g={id:id,relay:relay,white:signer,black:'',private:true,secret:secret,accepted:false,status:'open',players:[signer],created_at:created,myPk:signer,content:body};
+ try{
+  const result=await publishPrivateChessEvent(g,'open',body);
+  if(!result.ack)throw new Error('No relay confirmed the encrypted private game. Check your relay settings and try again.');
+  g.created_at=result.created_at;g.eventId=result.event.id;g.lastEventTime=result.created_at;g.lastEventId=result.event.id;g.lastPlies=0;g.lastPlayers=1;g.lastPublishTime=result.created_at;
+  try{history.replaceState({},'',location.pathname+'?game='+encodeURIComponent(id)+'&relay='+encodeURIComponent(relay)+'#key='+encodeURIComponent(secret))}catch(_){location.hash='key='+encodeURIComponent(secret)}
+  if(!launchOnlineGame(g,'w',body))throw new Error('The private game was published, but Sifaka could not open it.');
+  Object.assign(netGame,{private:true,secret:secret,accepted:false,status:'open',lastEventTime:result.created_at,lastEventId:result.event.id,lastPlayers:1,lastPlies:0,lastPublishTime:result.created_at});
+  showCreatedGameModal(netGame);toast('Private encrypted game created. Copy the complete invite link or invite a Nostr player.');
+ }catch(err){toast('Could not create the private game: '+String(err&&err.message||'check your signer and relay connection.'))}
+}
+$('createPublicGameBtn').onclick=function(){$('gameVisibilityModal').classList.remove('show');createOnlineGame()};
+$('createPrivateGameBtn').onclick=createPrivateGame;
+$('gameVisibilityCancel').onclick=function(){$('gameVisibilityModal').classList.remove('show')};
+$('createdGameCopyBtn').onclick=copyCreatedGameLink;
+$('createdGameInviteBtn').onclick=function(){closeCreatedGameModal();openInviteModal()};
+$('createdGameCloseBtn').onclick=closeCreatedGameModal;
+$('gameVisibilityModal').addEventListener('click',function(e){if(e.target===$('gameVisibilityModal'))$('gameVisibilityModal').classList.remove('show')});
+$('createdGameModal').addEventListener('click',function(e){if(e.target===$('createdGameModal'))closeCreatedGameModal()});
 function openPersonOptions(fromSetup){personHubFromSetup=!!fromSetup;$('gameSetup').classList.remove('show');$('personGameModal').classList.add('show')}
 
 /* invite to game */
