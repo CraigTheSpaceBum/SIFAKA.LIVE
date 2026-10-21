@@ -2549,7 +2549,7 @@ body.sifaka-games-modal-open{overflow:hidden}
     <h2 class="sifaka-games-heading" id="sifakaGamesTitle">Games</h2>
     <p class="sifaka-games-intro" id="sifakaGamesIntro">Choose a game to play. More games can be added here as they become available.</p>
     <div class="sifaka-games-list">
-      <a class="sifaka-game-card" href="/games/chess/" onclick="window.sifakaPrepareForChessNavigation&&window.sifakaPrepareForChessNavigation(event)">
+      <a class="sifaka-game-card" href="/games/chess/" onclick="if(window.sifakaPrepareForChessNavigation){event.preventDefault();window.sifakaPrepareForChessNavigation().finally(function(){window.location.assign('/games/chess/')})}">
         <span class="sifaka-game-icon" aria-hidden="true">♞</span>
         <span class="sifaka-game-copy"><strong>Nostr Chess</strong><small>3D chess, a public Nostr lobby, game posts, and player invites.</small></span>
         <span class="sifaka-game-launch">Play Chess →</span>
@@ -2577,16 +2577,30 @@ body.sifaka-games-modal-open{overflow:hidden}
     document.body.classList.remove('sifaka-games-modal-open');
     if(previousFocus && typeof previousFocus.focus==='function') previousFocus.focus();
   };
-  window.sifakaPrepareForChessNavigation=function(){
+  window.sifakaPrepareForChessNavigation=async function(){
     try{
       document.querySelectorAll('video,audio').forEach(function(media){
-        try{media.pause();media.removeAttribute('src');media.querySelectorAll('source').forEach(function(source){source.removeAttribute('src')});media.load()}catch(_){}
+        try{
+          media.pause();
+          media.autoplay=false;
+          if(media.srcObject&&typeof media.srcObject.getTracks==='function'){
+            media.srcObject.getTracks().forEach(function(track){try{track.stop()}catch(_){}});
+            media.srcObject=null;
+          }
+          media.removeAttribute('src');
+          media.querySelectorAll('source').forEach(function(source){source.removeAttribute('src')});
+          media.load();
+        }catch(_){}
       });
       document.querySelectorAll('iframe').forEach(function(frame){
         var src=String(frame.getAttribute('src')||'');
-        if(/youtube\.com\/embed|youtu\.be|zap\.stream|peer\.tube|streamable/i.test(src)){try{frame.src='about:blank'}catch(_){}}
+        if(/youtube\.com\/embed|youtu\.be|zap\.stream|peer\.tube|streamable|hls/i.test(src)){
+          try{frame.src='about:blank'}catch(_){}
+        }
       });
-      if(document.pictureInPictureElement&&document.exitPictureInPicture){var exiting=document.exitPictureInPicture();if(exiting&&exiting.catch)exiting.catch(function(){});}
+      if(document.pictureInPictureElement&&document.exitPictureInPicture){
+        try{await document.exitPictureInPicture()}catch(_){}
+      }
     }catch(_){}
   };
   overlay.addEventListener('click',function(event){if(event.target===overlay) window.closeSifakaGamesMenu();});
