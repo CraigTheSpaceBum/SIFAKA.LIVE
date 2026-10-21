@@ -702,7 +702,7 @@ function eventToChessGame(ev,relayFallback){
  // Kind 64 by itself is a PGN record, not a Sifaka live-match invitation.
  // Only treat events using our live-match marker (or older Sifaka-tagged
  // events) as joinable multiplayer games.
- const legacySifakaMatch=!mode&&/^Sifaka Nostr Chess(?:\s|$)/i.test(alt);
+ const legacySifakaMatch=!mode&&/^(?:Sifaka )?Nostr Chess(?:\s|$)/i.test(alt);
  if(mode!=='sifaka-nostr-open'&&!legacySifakaMatch)return null;
  const taggedPlayers=Array.from(new Set(ev.tags.filter(function(t){return t[0]==='p'&&NOSTR_PUBKEY_HEX.test(t[1]||'')}).map(function(t){return t[1].toLowerCase()})));
  const h=pgnHeaders(ev.content);
