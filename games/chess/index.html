@@ -770,13 +770,18 @@ async function ensureInviteGame(){
  const relay=preferredGameRelay();
  const id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);
  const created=Math.floor(Date.now()/1000);
- // A new invite must always start from the initial chess position, not from
- // the local/previous match's moves or terminal result.
- init();
- over=null;
- pendingNostrGame=null;
+ // Build the invitation PGN from a fresh position without leaving the currently
+ // displayed game half-reset if signing or relay publication later fails.
+ const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};
+ let body;
+ try{
+  init();
+  over=null;
+  body=buildNip64Pgn(signer,'?',relay);
+ }finally{
+  st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive;
+ }
  const g={id:id,relay:relay,white:signer,black:'',players:[signer],created_at:created,myPk:signer};
- const body=buildNip64Pgn(signer,'?',relay);
  const ev=await signChessEvent({kind:64,pubkey:signer,created_at:created,tags:[['d',id],['p',signer],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+id.slice(0,8)+' — awaiting opponent'],['relay',relay]],content:body});
  const ack=await sendToRelays(ev,networkRelays(relay));
  if(!ack)throw new Error('publish');
