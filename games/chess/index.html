@@ -1126,6 +1126,7 @@ $('openGamesClose').onclick=closeOpenGames;
 $('personGameModal').addEventListener('click',function(e){if(e.target===$('personGameModal'))closePersonOptions()});
 $('openGamesModal').addEventListener('click',function(e){if(e.target===$('openGamesModal'))closeOpenGames()});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){if($('openGamesModal').classList.contains('show'))closeOpenGames();else if($('personGameModal').classList.contains('show'))closePersonOptions();else if($('inm').classList.contains('show'))closeInviteModal()}});
+let pendingChessInviteSelection=null;
 function openGameVisibilityModal(){$('gameVisibilityModal').classList.add('show')}
 function showCreatedGameModal(g){
  const current=g||netGame;if(!current)return;
@@ -1163,8 +1164,27 @@ async function createPrivateGame(){
   showCreatedGameModal(netGame);toast('Private encrypted game created. Copy the complete invite link or invite a Nostr player.');
  }catch(err){toast('Could not create the private game: '+String(err&&err.message||'check your signer and relay connection.'))}
 }
-$('createPublicGameBtn').onclick=function(){$('gameVisibilityModal').classList.remove('show');createOnlineGame()};
-$('createPrivateGameBtn').onclick=createPrivateGame;
+async function choosePublicChessGame(){
+ $('gameVisibilityModal').classList.remove('show');
+ const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;
+ const oldId=netGame&&netGame.id;
+ await createOnlineGame();
+ if(pending){
+  if(netGame&&netGame.id!==oldId&&netGame.myColor==='w'&&!netGame.black&&!netGame.private)await invite(pending.user,pending.button);
+  else{if(pending.button){pending.button.disabled=false;pending.button.textContent='Invite'}toast('The public game was not created, so the invitation was not sent.')}
+ }
+}
+async function choosePrivateChessGame(){
+ const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;
+ const oldId=netGame&&netGame.id;
+ await createPrivateGame();
+ if(pending){
+  if(netGame&&netGame.id!==oldId&&netGame.private&&netGame.myColor==='w')await invitePrivateChessPlayer(pending.user,pending.button);
+  else{if(pending.button){pending.button.disabled=false;pending.button.textContent='Invite'}toast('The private game was not created, so the invitation was not sent.')}
+ }
+}
+$('createPublicGameBtn').onclick=choosePublicChessGame;
+$('createPrivateGameBtn').onclick=choosePrivateChessGame;
 $('gameVisibilityCancel').onclick=function(){$('gameVisibilityModal').classList.remove('show')};
 $('createdGameCopyBtn').onclick=copyCreatedGameLink;
 $('createdGameInviteBtn').onclick=function(){closeCreatedGameModal();openInviteModal()};
@@ -1183,6 +1203,11 @@ w.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&HEX.test(d[2].
 function pub(ev,preferredRelays){const source=preferredRelays&&preferredRelays.length?preferredRelays:CF.rel.split(/\s+/).filter(u=>/^wss?:\/\//.test(u));const rl=source.filter((u,i,a)=>/^wss?:\/\//.test(u)&&a.indexOf(u)===i);let ok=0;return Promise.all(rl.map(u=>new Promise(res=>{let w,done=false,timer;const finish=()=>{if(done)return;done=true;clearTimeout(timer);try{if(w)w.close()}catch(_){}res()};timer=setTimeout(finish,5000);try{w=new WebSocket(u);w.onopen=()=>{try{w.send(JSON.stringify(['EVENT',ev]))}catch(_){finish()}};w.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='OK'&&d[1]===ev.id){if(d[2])ok++;finish()}}catch(_){}};w.onerror=finish;w.onclose=finish}catch(_){finish()}}))).then(()=>ok)}
 async function invite(u,btn){
  if(netGame&&netGame.private)return invitePrivateChessPlayer(u,btn);
+ if(!(netGame&&gameMode==='online'&&netGame.myColor==='w'&&!netGame.black&&!netGame.conflicted)){
+  pendingChessInviteSelection={user:u,button:btn};openGameVisibilityModal();
+  if(btn){btn.disabled=false;btn.textContent='Choose visibility';}
+  toast('Choose public or private before creating the match and sending this invitation.');return;
+ }
  let txt='';
  if(!chessSignerAvailable()){
   try{await navigator.clipboard.writeText('Chess challenge! Open Sifaka Chess: '+INV)}catch(_){}
