@@ -558,7 +558,7 @@ try{const ev=await signChessEvent({kind:1,created_at:Math.floor(Date.now()/1000)
 await Promise.all(RL.map(u=>new Promise(res=>{try{const w=new WebSocket(u),to=setTimeout(()=>{try{w.close()}catch(e){}res()},4000);w.onopen=()=>w.send(JSON.stringify(['EVENT',ev]));w.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='OK'&&d[2])ok++}catch(_){}clearTimeout(to);w.close();res()};w.onerror=()=>{clearTimeout(to);res()}}catch(e){res()}})));
 if(ok)toast(`Published to ${ok} relay${ok>1?'s':''} ⚡`);else{try{await navigator.clipboard.writeText(JSON.stringify(ev))}catch(e){}toast('Signed! Relays unreachable from this page — signed event copied')}}catch(e){toast('Signing cancelled')}}
 $('po').onclick=$('mpost').onclick=post;
-const nw=()=>{init();gameActive=true;$('ov').classList.remove('show');$('gameSetup').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=false;rebuild();draw();note('🦧',gameMode==='engine'?'New game':'Two-player game',gameMode==='engine'?'You lead the ivory sifakas. Good luck!':'White moves first. Pass the device between players.','#8b5cf6')};
+const nw=()=>{init();gameActive=true;$('ov').classList.remove('show');$('gameSetup').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=false;$('un').disabled=false;rebuild();draw();note('🦧',gameMode==='engine'?'New game':'Two-player game',gameMode==='engine'?'You lead the ivory sifakas. Good luck!':'White moves first. Pass the device between players.','#8b5cf6')};
 function showGameSetup(){leaveNostrGame();gameActive=false;busy=false;$('ov').classList.remove('show');$('personGameModal').classList.remove('show');$('openGamesModal').classList.remove('show');$('inm').classList.remove('show');$('nw').disabled=true;$('gameSetup').classList.add('show');$('setupOpponents').hidden=false;$('setupDifficulty').hidden=true;$('setupBack').hidden=true;$('setupHelp').textContent='Start a game against the engine or choose Person to play over Nostr.';}
 function startSelectedGame(mode,difficulty){
  if(mode!=='online')leaveNostrGame();
@@ -567,7 +567,21 @@ function startSelectedGame(mode,difficulty){
  $('lvl').textContent=mode==='engine'?LV[lv]:'Two-player';
  $('lv').style.display=mode==='engine'?'flex':'none';nw();if(mode==='person')syncLocalPerspective();
 }
-function forfeitGame(){if(!gameActive||over)return;const wasOnline=gameMode==='online';gameActive=false;busy=false;over={h:'Forfeit',p:'You forfeited the game.'};if(wasOnline)publishOnlineSnapshot(true);$('nw').disabled=true;$('mh').textContent=over.h;$('mp').textContent=over.p;$('mn').textContent='New game';$('ov').classList.add('show');draw();if(wasOnline){leaveNostrGame();$('ov').classList.remove('show');showGameSetup();toast('Game forfeited and closed. Refresh the open-game list to remove it.')}}
+async function forfeitGame(){
+ if(!gameActive||over)return;
+ const wasOnline=gameMode==='online';
+ gameActive=false;busy=false;over={h:'Forfeit',p:'You forfeited the game.'};
+ $('nw').disabled=true;$('mh').textContent=over.h;$('mp').textContent=over.p;$('mn').textContent='New game';$('ov').classList.add('show');draw();
+ if(wasOnline){
+  // Do not close the sockets or clear netGame until the terminal event has
+  // finished publishing; otherwise the queued update is cancelled.
+  const confirmed=await publishOnlineSnapshot(true);
+  leaveNostrGame();
+  $('ov').classList.remove('show');
+  showGameSetup();
+  toast(confirmed?'Forfeit published. Refresh the open-game list to update its status.':'Forfeit was not confirmed by relays. Check the connection before refreshing the lobby.');
+ }
+}
 $('chooseEngine').onclick=()=>{$('setupOpponents').hidden=true;$('setupDifficulty').hidden=false;$('setupBack').hidden=false;$('setupHelp').textContent='Choose your engine difficulty.'};
 $('choosePerson').onclick=()=>openPersonOptions(true);
 $('setupDifficulty').addEventListener('click',e=>{const b=e.target.closest('[data-start-level]');if(b)startSelectedGame('engine',b.dataset.startLevel)});
@@ -726,7 +740,7 @@ async function signChessEvent(event){const pk=await getSignerKey();if(!pk)throw 
 function requireSigner(action,alreadyChecked){const prompt=function(){pendingChessAction=action;if(typeof window.openChessLoginPopup==='function')window.openChessLoginPopup();else toast('Connect to your Sifaka account or a Nostr signer to play online.')};if(alreadyChecked){prompt();return}getSignerKey().then(function(pk){if(pk){Promise.resolve().then(action).catch(function(err){toast('Could not complete the chess action: '+String(err&&err.message||'check your signer and relay connection.'))});return}prompt()}).catch(prompt)}
 window.sifakaChessAfterLogin=function(){const action=pendingChessAction;if(!action)return;pendingChessAction=null;setTimeout(function(){getSignerKey().then(function(pk){if(pk){Promise.resolve().then(action).catch(function(err){toast(err&&err.message?('Could not resume the chess action: '+err.message):'Could not resume the chess action. Please try again.')})}else toast('A Sifaka account or Nostr signer is needed to sign game invitations and moves.')}).catch(function(){toast('Could not reconnect the Nostr signer. Please try again.')})},50)};window.sifakaChessClearPendingAction=function(){pendingChessAction=null}
 function closeOnlineModals(){['personGameModal','openGamesModal','inm'].forEach(function(id){const el=$(id);if(el)el.classList.remove('show')})}
-function launchOnlineGame(g,color,content){closeGameSockets();if(!replayNip64Pgn(content||g.content||'')){toast('This game contains PGN moves that this chess board cannot replay.');return false}netGame={id:g.id,relay:g.relay||preferredGameRelay(),white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),myPk:String(g.myPk||'').toLowerCase(),myColor:color,lastEventTime:Number(g.created_at)||0,lastEventId:g.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(g.players)?g.players.length:(g.black?2:1),lastPublishTime:Number(g.created_at)||0};gameMode='online';gameActive=!over;busy=false;sel=null;$('gameSetup').classList.remove('show');closeOnlineModals();$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('lv').style.display='none';$('opponentName').textContent=netGame.black?(npub(color==='w'?netGame.black:netGame.white).slice(0,15)+'…'):'Waiting for player';$('lvl').textContent='Nostr Chess · '+(color==='w'?'White':'Black');if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);rebuild();draw();turnGlow();subscribeToNostrGame();return true}
+function launchOnlineGame(g,color,content){closeGameSockets();if(!replayNip64Pgn(content||g.content||'')){toast('This game contains PGN moves that this chess board cannot replay.');return false}netGame={id:g.id,relay:g.relay||preferredGameRelay(),white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),myPk:String(g.myPk||'').toLowerCase(),myColor:color,lastEventTime:Number(g.created_at)||0,lastEventId:g.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(g.players)?g.players.length:(g.black?2:1),lastPublishTime:Number(g.created_at)||0};gameMode='online';gameActive=!over;busy=false;sel=null;$('gameSetup').classList.remove('show');closeOnlineModals();$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('un').disabled=true;$('lv').style.display='none';$('opponentName').textContent=netGame.black?(npub(color==='w'?netGame.black:netGame.white).slice(0,15)+'…'):'Waiting for player';$('lvl').textContent='Nostr Chess · '+(color==='w'?'White':'Black');if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);rebuild();draw();turnGlow();subscribeToNostrGame();return true}
 function chessSnapshotIsNewer(g){
  if(!netGame)return false;
  if(g.created_at!==netGame.lastEventTime)return g.created_at>netGame.lastEventTime;
@@ -789,7 +803,49 @@ function subscribeToNostrGame(){
   }catch(_){finish();scheduleReconnect()}
  });
 }
-async function publishOnlineSnapshot(isForfeit=false){const g=netGame;if(!g||!g.black||!g.myPk)return;const signer=await getSignerKey();if(!signer||signer!==g.myPk){toast('Could not confirm the active Chess signer. Reconnect your account before publishing this move.');return}const body=buildNip64Pgn(g.white,g.black),gameId=g.id,relay=g.relay,created=Math.max(Math.floor(Date.now()/1000),g.lastEventTime+1,g.lastPublishTime+1),players=[g.white,g.black];netPublishChain=netPublishChain.then(async function(){if(!netGame||netGame.id!==gameId)return;try{const signed=await signChessEvent({kind:64,pubkey:g.myPk,created_at:created,tags:[['d',gameId],['p',players[0]],['p',players[1]],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+gameId.slice(0,8)],['status',isForfeit?'forfeit':over?'finished':'active'],['relay',relay]],content:body});g.lastPublishTime=created;g.lastEventTime=created;g.lastEventId=signed.id;g.lastPlies=H.length;g.lastPlayers=2;const ack=await sendToRelays(signed,networkRelays(relay));if(!ack)toast('Move could not be confirmed by a relay. Check your relay settings and connection.')}catch(_){toast('Could not publish the move. Check your signer and relay connection.')}}).catch(function(){})}
+async function publishOnlineSnapshot(isForfeit=false){
+ const g=netGame;
+ if(!g||!g.black||!g.myPk)return false;
+ const gameId=g.id,relay=g.relay,players=[g.white,g.black];
+ // Freeze the PGN and terminal status at the moment the action occurs. A quick
+ // forfeit must not rewrite an already queued move snapshot as a forfeit (or vice versa).
+ const body=buildNip64Pgn(g.white,g.black);
+ const status=isForfeit?'forfeit':over?'finished':'active';
+ const job=netPublishChain.then(async function(){
+  if(!netGame||netGame.id!==gameId||netGame.conflicted)return false;
+  try{
+   const signer=await getSignerKey();
+   if(!signer||signer!==g.myPk){
+    toast('Could not confirm the active Chess signer. Reconnect your account before publishing this update.');
+    return false;
+   }
+   const created=Math.max(Math.floor(Date.now()/1000),g.lastEventTime+1,g.lastPublishTime+1);
+   const signed=await signChessEvent({kind:64,pubkey:g.myPk,created_at:created,tags:[['d',gameId],['p',players[0]],['p',players[1]],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+gameId.slice(0,8)],['status',status],['relay',relay]],content:body});
+   // Reserve a strictly increasing timestamp even if a relay acknowledgement is lost.
+   g.lastPublishTime=created;
+   let ack=await sendToRelays(signed,networkRelays(relay));
+   if(!ack){
+    await new Promise(function(resolve){setTimeout(resolve,900)});
+    if(!netGame||netGame.id!==gameId)return false;
+    ack=await sendToRelays(signed,networkRelays(relay));
+   }
+   if(!ack){
+    toast(isForfeit?'Forfeit could not be confirmed by any relay. The game may still appear in the open-game list.':'Move could not be confirmed by any relay after retrying. Check your relay settings and connection.');
+    return false;
+   }
+   g.lastEventTime=Math.max(g.lastEventTime,created);
+   g.lastEventId=signed.id;
+   g.lastPlies=pgnPlies(body);
+   g.lastPlayers=2;
+   return true;
+  }catch(err){
+   toast('Could not publish the game update: '+String(err&&err.message||'check your signer and relay connection.'));
+   return false;
+  }
+ });
+ netPublishChain=job.then(function(){},function(){});
+ return job;
+}
 async function createOnlineGame(){if(onlineCreateBusy)return;onlineCreateBusy=true;const buttons=[['personCreateBtn','Create open game'],['openGamesCreate','Create a game']].map(function(row){const button=$(row[0]);return{button:button,label:row[1]}}).filter(function(x){return !!x.button});buttons.forEach(function(x){x.button.disabled=true;x.button.textContent='Creating…'});try{const signer=await getSignerKey();if(!signer){requireSigner(createOnlineGame,true);return}const relay=preferredGameRelay(),id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),created=Math.floor(Date.now()/1000),g={id:id,relay:relay,white:signer,black:'',players:[signer],created_at:created,myPk:signer};const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};let body;try{init();over=null;body=buildNip64Pgn(signer,'?',relay)}finally{st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive}const ev=await signChessEvent({kind:64,pubkey:signer,created_at:created,tags:[['d',id],['p',signer],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+id.slice(0,8)+' — awaiting opponent'],['relay',relay]],content:body});const ack=await sendToRelays(ev,networkRelays(relay));if(!ack)throw new Error('No configured Nostr relay confirmed the open game. Check your relay settings and try again.');g.eventId=ev.id;if(!launchOnlineGame(g,'w',body))throw new Error('The game was published, but Sifaka could not open its board. Reopen the game from the lobby.');if(netGame){netGame.lastEventTime=created;netGame.lastEventId=ev.id;netGame.lastPlayers=1;pendingNostrGame=g}toast('Sifaka Nostr Chess open game created. Copy the game link or invite another player.')}catch(err){toast('Could not create the open game: '+String(err&&err.message||'check your signer and Nostr relay connection.'))}finally{onlineCreateBusy=false;buttons.forEach(function(x){if(x.button.isConnected){x.button.disabled=false;x.button.textContent=x.label}})}}
 async function ensureInviteGame(){
  const signer=await getSignerKey();
