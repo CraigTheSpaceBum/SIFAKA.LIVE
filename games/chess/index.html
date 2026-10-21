@@ -874,11 +874,11 @@ function subscribeToNostrGame(){
 async function publishOnlineSnapshot(isForfeit=false){
  const g=netGame;
  if(!g||!g.myPk)return false;
- const gameId=g.id,relay=g.relay,players=[g.white,g.black];const publicTags=[['d',gameId],['p',players[0]],['t','sifaka-chess'],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+gameId.slice(0,8)],['status',status],['relay',relay]];if(NOSTR_PUBKEY_HEX.test(players[1]||''))publicTags.splice(2,0,['p',players[1]]);
+ const gameId=g.id,relay=g.relay,players=[g.white,g.black];
  // Freeze the PGN and terminal status at the moment the action occurs. A quick
  // forfeit must not rewrite an already queued move snapshot as a forfeit (or vice versa).
  const body=buildNip64Pgn(g.white,g.black);
- const status=isForfeit?'forfeit':over?'finished':'active';
+ const status=isForfeit?'forfeit':over?'finished':'active';const publicTags=[['d',gameId],['p',players[0]],['t','sifaka-chess'],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+gameId.slice(0,8)],['status',status],['relay',relay]];if(NOSTR_PUBKEY_HEX.test(players[1]||''))publicTags.splice(2,0,['p',players[1]]);
  const job=netPublishChain.then(async function(){
   if(!netGame||netGame.id!==gameId||netGame.conflicted)return false;
   try{
