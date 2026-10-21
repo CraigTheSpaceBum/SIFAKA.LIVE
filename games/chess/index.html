@@ -914,7 +914,7 @@ async function publishOnlineSnapshot(isForfeit=false){
  netPublishChain=job.then(function(){},function(){});
  return job;
 }
-async function createOnlineGame(){if(onlineCreateBusy)return;onlineCreateBusy=true;const buttons=[['personCreateBtn','Create open game'],['openGamesCreate','Create a game']].map(function(row){const button=$(row[0]);return{button:button,label:row[1]}}).filter(function(x){return !!x.button});buttons.forEach(function(x){x.button.disabled=true;x.button.textContent='Creating…'});try{const signer=await getSignerKey();if(!signer){requireSigner(createOnlineGame,true);return}const relay=preferredGameRelay(),id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),created=Math.floor(Date.now()/1000),g={id:id,relay:relay,white:signer,black:'',players:[signer],created_at:created,myPk:signer};const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};let body;try{init();over=null;body=buildNip64Pgn(signer,'?',relay)}finally{st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive}const ev=await signChessEvent({kind:64,pubkey:signer,created_at:created,tags:[['d',id],['p',signer],['t','sifaka-chess'],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+id.slice(0,8)+' — awaiting opponent'],['relay',relay]],content:body});const ack=await sendToRelays(ev,networkRelays(relay));if(!ack)throw new Error('No configured Nostr relay confirmed the open game. Check your relay settings and try again.');g.eventId=ev.id;if(!launchOnlineGame(g,'w',body))throw new Error('The game was published, but Sifaka could not open its board. Reopen the game from the lobby.');if(netGame){netGame.lastEventTime=created;netGame.lastEventId=ev.id;netGame.lastPlayers=1;pendingNostrGame=g}toast('Sifaka Nostr Chess open game created. Copy the complete invite link or invite another player.');showCreatedGameModal(netGame)}catch(err){toast('Could not create the open game: '+String(err&&err.message||'check your signer and Nostr relay connection.'))}finally{onlineCreateBusy=false;buttons.forEach(function(x){if(x.button.isConnected){x.button.disabled=false;x.button.textContent=x.label}})}}
+async function createOnlineGame(){if(onlineCreateBusy)return;onlineCreateBusy=true;const buttons=[['personCreateBtn','Create open game'],['openGamesCreate','Create a game']].map(function(row){const button=$(row[0]);return{button:button,label:row[1]}}).filter(function(x){return !!x.button});buttons.forEach(function(x){x.button.disabled=true;x.button.textContent='Creating…'});try{const signer=await getSignerKey();if(!signer){requireSigner(createOnlineGame,true);return}const relay=preferredGameRelay(),id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),created=Math.floor(Date.now()/1000),g={id:id,relay:relay,white:signer,black:'',players:[signer],created_at:created,myPk:signer};const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};let body;try{init();over=null;body=buildNip64Pgn(signer,'?',relay)}finally{st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive}const ev=await signChessEvent({kind:64,pubkey:signer,created_at:created,tags:[['d',id],['p',signer],['t','sifaka-chess'],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+id.slice(0,8)+' — awaiting opponent'],['relay',relay]],content:body});const ack=await sendToRelays(ev,networkRelays(relay));if(!ack)throw new Error('No configured Nostr relay confirmed the open game. Check your relay settings and try again.');g.eventId=ev.id;if(!launchOnlineGame(g,'w',body))throw new Error('The game was published, but Sifaka could not open its board. Reopen the game from the lobby.');if(netGame){netGame.lastEventTime=created;netGame.lastEventId=ev.id;netGame.lastPlayers=1;pendingNostrGame=g}toast('Sifaka Nostr Chess open game created. Copy the complete invite link or invite another player.');showCreatedGameModal(netGame);if(pendingChessInviteSelection){const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;await invite(pending.user,pending.button)}}catch(err){toast('Could not create the open game: '+String(err&&err.message||'check your signer and Nostr relay connection.'))}finally{onlineCreateBusy=false;buttons.forEach(function(x){if(x.button.isConnected){x.button.disabled=false;x.button.textContent=x.label}})}}
 async function ensureInviteGame(){
  const signer=await getSignerKey();
  if(!signer)throw new Error('signer');
@@ -1161,31 +1161,18 @@ async function createPrivateGame(){
   try{history.replaceState({},'',location.pathname+'?game='+encodeURIComponent(id)+'&relay='+encodeURIComponent(relay)+'#key='+encodeURIComponent(secret))}catch(_){location.hash='key='+encodeURIComponent(secret)}
   if(!launchOnlineGame(g,'w',body))throw new Error('The private game was published, but Sifaka could not open it.');
   Object.assign(netGame,{private:true,secret:secret,accepted:false,status:'open',lastEventTime:result.created_at,lastEventId:result.event.id,lastPlayers:1,lastPlies:0,lastPublishTime:result.created_at});
-  showCreatedGameModal(netGame);toast('Private encrypted game created. Copy the complete invite link or invite a Nostr player.');
+  showCreatedGameModal(netGame);toast('Private encrypted game created. Copy the complete invite link or invite a Nostr player.');if(pendingChessInviteSelection){const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;await invitePrivateChessPlayer(pending.user,pending.button)}
  }catch(err){toast('Could not create the private game: '+String(err&&err.message||'check your signer and relay connection.'))}
 }
-async function choosePublicChessGame(){
- $('gameVisibilityModal').classList.remove('show');
- const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;
- const oldId=netGame&&netGame.id;
- await createOnlineGame();
- if(pending){
-  if(netGame&&netGame.id!==oldId&&netGame.myColor==='w'&&!netGame.black&&!netGame.private)await invite(pending.user,pending.button);
-  else{if(pending.button){pending.button.disabled=false;pending.button.textContent='Invite'}toast('The public game was not created, so the invitation was not sent.')}
- }
-}
-async function choosePrivateChessGame(){
- const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;
- const oldId=netGame&&netGame.id;
- await createPrivateGame();
- if(pending){
-  if(netGame&&netGame.id!==oldId&&netGame.private&&netGame.myColor==='w')await invitePrivateChessPlayer(pending.user,pending.button);
-  else{if(pending.button){pending.button.disabled=false;pending.button.textContent='Invite'}toast('The private game was not created, so the invitation was not sent.')}
- }
-}
+function choosePublicChessGame(){$('gameVisibilityModal').classList.remove('show');createOnlineGame()}
+function choosePrivateChessGame(){createPrivateGame()}
 $('createPublicGameBtn').onclick=choosePublicChessGame;
 $('createPrivateGameBtn').onclick=choosePrivateChessGame;
-$('gameVisibilityCancel').onclick=function(){$('gameVisibilityModal').classList.remove('show')};
+$('gameVisibilityCancel').onclick=function(){
+ $('gameVisibilityModal').classList.remove('show');
+ const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;
+ if(pending&&pending.button&&pending.button.isConnected){pending.button.disabled=false;pending.button.textContent='Invite'}
+};
 $('createdGameCopyBtn').onclick=copyCreatedGameLink;
 $('createdGameInviteBtn').onclick=function(){closeCreatedGameModal();openInviteModal()};
 $('createdGameCloseBtn').onclick=closeCreatedGameModal;
