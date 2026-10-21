@@ -687,7 +687,37 @@ function resultForPgn(){if(!over)return '*';if(over.h==='Checkmate')return st.t=
 function buildNip64Pgn(white,black,relayOverride){const d=new Date(),date=d.getFullYear()+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+String(d.getDate()).padStart(2,'0'),result=resultForPgn();let moves='';H.forEach(function(x,i){if(i%2===0)moves+=(i/2+1)+'. ';moves+=x.san+' '});moves=moves.trim();if(moves)moves+=' '+result;else moves='*';return '[Event "Nostr Chess"]\n[Site "'+String(relayOverride||(netGame&&netGame.relay)||preferredGameRelay()).replace(/"/g,'')+'"]\n[Date "'+date+'"]\n[White "'+String(white||'?').replace(/"/g,'')+'"]\n[Black "'+String(black||'?').replace(/"/g,'')+'"]\n[Result "'+result+'"]\n\n'+moves}
 function resolvePgnMove(token){const clean=String(token||'').replace(/[+#?!]+$/g,'').replace(/0/g,'O');const ms=legal(st);if(clean==='O-O'||clean==='O-O-O')return ms.find(function(m){return m.cs===(clean==='O-O'?'K':'Q')})||null;const q=clean.match(/^([KQRBN])?([a-h]?[1-8]?)(x?)([a-h][1-8])(?:=([QRBN]))?$/);if(!q)return null;const piece=(q[1]||'P').toLowerCase(),dis=q[2]||'',capture=q[3]==='x',dest=q[4],promotion=(q[5]||'Q').toLowerCase(),to=(8-Number(dest[1]))*8+'abcdefgh'.indexOf(dest[0]);return ms.find(function(m){const p=st.b[m.f];if(!p||p[1]!==piece||m.t!==to)return false;if(dis){const f=dis.match(/[a-h]/),r=dis.match(/[1-8]/);if(f&&(m.f&7)!=='abcdefgh'.indexOf(f[0]))return false;if(r&&(8-(m.f>>3))!==Number(r[0]))return false}const cp=!!(st.b[m.t]||m.ep);if(capture!==cp)return false;if(m.pr){m.promote=promotion;if(promotion!=='q'&&promotion!=='r'&&promotion!=='b'&&promotion!=='n')return false}else if(q[5])return false;return true})||null}
 function replayNip64Pgn(content){if(!String(content||'').trim())return false;const h=pgnHeaders(content),tokens=pgnMoveTokens(content);init();for(const token of tokens){const m=resolvePgnMove(token);if(!m)return false;const pre=st,n=mk(st,m);H.push({s:pre,m:m,san:san(pre,m,n)});st=n}over=null;const legalNow=legal(st);if(!legalNow.length&&inChk(st))over={h:'Checkmate',p:'Game ended by checkmate.'};else if(!legalNow.length)over={h:'Draw',p:'Game ended in stalemate.'};else if(h.Result&&h.Result!=='*'){if(h.Result==='1/2-1/2')over={h:'Draw',p:'The game ended in a draw.'};else over={h:'Game over',p:h.Result==='1-0'?'White won the game.':'Black won the game.'}}return true}
-function eventToChessGame(ev,relayFallback){if(!ev||ev.kind!==64||!Array.isArray(ev.tags))return null;const d=ev.tags.find(function(t){return t[0]==='d'&&t[1]});if(!d)return null;const altTag=ev.tags.find(function(t){return t[0]==='alt'&&t[1]});const alt=String(altTag&&altTag[1]||'');const statusTag=ev.tags.find(function(t){return t[0]==='status'&&t[1]});const forfeited=String(statusTag&&statusTag[1]||'')==='forfeit';const externalRecord=ev.tags.some(function(t){return t[0]==='a'&&/^32152:/.test(String(t[1]||''))})||/chess game record/i.test(alt);if(externalRecord)return null;const players=Array.from(new Set(ev.tags.filter(function(t){return t[0]==='p'&&NOSTR_PUBKEY_HEX.test(t[1]||'')}).map(function(t){return t[1].toLowerCase()})));const h=pgnHeaders(ev.content);const white=players[0]||(NOSTR_PUBKEY_HEX.test(h.White||'')?h.White.toLowerCase():'');let black=players[1]||'';if(!black&&NOSTR_PUBKEY_HEX.test(h.Black||''))black=h.Black.toLowerCase();if(!white)return null;const relayTag=ev.tags.find(function(t){return t[0]==='relay'&&t[1]});const modeTag=ev.tags.find(function(t){return t[0]==='mode'&&t[1]});const relay=(relayTag&&relayTag[1])||relayFallback||preferredGameRelay();return{id:d[1],relay:relay,white:white,black:black,players:players,content:String(ev.content||''),created_at:Number(ev.created_at)||0,open:!NOSTR_PUBKEY_HEX.test(black),eventId:String(ev.id||''),author:String(ev.pubkey||'').toLowerCase(),plies:pgnPlies(ev.content),mode:String(modeTag&&modeTag[1]||'sifaka-nostr-open'),forfeited:forfeited}}
+function eventToChessGame(ev,relayFallback){
+ if(!ev||ev.kind!==64||!Array.isArray(ev.tags))return null;
+ const dTag=ev.tags.find(function(t){return t[0]==='d'&&t[1]});
+ if(!dTag)return null;
+ const altTag=ev.tags.find(function(t){return t[0]==='alt'&&t[1]});
+ const alt=String(altTag&&altTag[1]||'');
+ const statusTag=ev.tags.find(function(t){return t[0]==='status'&&t[1]});
+ const forfeited=String(statusTag&&statusTag[1]||'')==='forfeit';
+ const externalRecord=ev.tags.some(function(t){return t[0]==='a'&&/^32152:/.test(String(t[1]||''))})||/chess game record/i.test(alt);
+ if(externalRecord)return null;
+ const modeTag=ev.tags.find(function(t){return t[0]==='mode'&&t[1]});
+ const mode=String(modeTag&&modeTag[1]||'');
+ // Kind 64 by itself is a PGN record, not a Sifaka live-match invitation.
+ // Only treat events using our live-match marker (or older Sifaka-tagged
+ // events) as joinable multiplayer games.
+ const legacySifakaMatch=!mode&&/^Sifaka Nostr Chess(?:\\s|$)/i.test(alt);
+ if(mode!=='sifaka-nostr-open'&&!legacySifakaMatch)return null;
+ const taggedPlayers=Array.from(new Set(ev.tags.filter(function(t){return t[0]==='p'&&NOSTR_PUBKEY_HEX.test(t[1]||'')}).map(function(t){return t[1].toLowerCase()})));
+ const h=pgnHeaders(ev.content);
+ // Sifaka writes player public keys in the PGN roster. Prefer that explicit
+ // White/Black mapping over p-tag order, which is not defined by NIP-64.
+ const headerWhite=NOSTR_PUBKEY_HEX.test(h.White||'')?h.White.toLowerCase():'';
+ const headerBlack=NOSTR_PUBKEY_HEX.test(h.Black||'')?h.Black.toLowerCase():'';
+ const white=headerWhite||taggedPlayers[0]||'';
+ const black=headerBlack||taggedPlayers.find(function(pk){return pk!==white})||'';
+ if(!white)return null;
+ const players=Array.from(new Set([white,black].filter(function(pk){return NOSTR_PUBKEY_HEX.test(pk||'')})));
+ const relayTag=ev.tags.find(function(t){return t[0]==='relay'&&t[1]});
+ const relay=(relayTag&&relayTag[1])||relayFallback||preferredGameRelay();
+ return{id:dTag[1],relay:relay,white:white,black:black,players:players,content:String(ev.content||''),created_at:Number(ev.created_at)||0,open:!NOSTR_PUBKEY_HEX.test(black),eventId:String(ev.id||''),author:String(ev.pubkey||'').toLowerCase(),plies:pgnPlies(ev.content),mode:mode||'sifaka-nostr-open',forfeited:forfeited};
+}
 function gameLink(g){const u=new URL(location.pathname,location.origin);u.searchParams.set('game',g.id);if(g.relay)u.searchParams.set('relay',g.relay);return u.toString()}
 function sendToRelays(ev,relays){return pub(ev,relays||networkRelays(netGame&&netGame.relay))}
 function chessSignerAvailable(){return !!((window.sifakaChessMainSigner&&typeof window.sifakaChessMainSigner.getPublicKey==='function'&&typeof window.sifakaChessMainSigner.signEvent==='function')||(typeof window.sifakaChessConnectLocalSigner==='function')||(window.nostr&&typeof window.nostr.getPublicKey==='function'&&typeof window.nostr.signEvent==='function'))}
