@@ -873,8 +873,8 @@ function subscribeToNostrGame(){
 }
 async function publishOnlineSnapshot(isForfeit=false){
  const g=netGame;
- if(!g||!g.black||!g.myPk)return false;
- const gameId=g.id,relay=g.relay,players=[g.white,g.black];
+ if(!g||!g.myPk)return false;
+ const gameId=g.id,relay=g.relay,players=[g.white,g.black];const publicTags=[['d',gameId],['p',players[0]],['t','sifaka-chess'],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+gameId.slice(0,8)],['status',status],['relay',relay]];if(NOSTR_PUBKEY_HEX.test(players[1]||''))publicTags.splice(2,0,['p',players[1]]);
  // Freeze the PGN and terminal status at the moment the action occurs. A quick
  // forfeit must not rewrite an already queued move snapshot as a forfeit (or vice versa).
  const body=buildNip64Pgn(g.white,g.black);
@@ -888,7 +888,7 @@ async function publishOnlineSnapshot(isForfeit=false){
     return false;
    }
    const created=Math.max(Math.floor(Date.now()/1000),g.lastEventTime+1,g.lastPublishTime+1);
-   const signed=g.private?await signChessEvent({kind:30079,pubkey:g.myPk,created_at:created,tags:[['d',gameId]],content:await encryptPrivateChessPayload(privateChessPayload(g,status,body),g.secret,gameId)}):await signChessEvent({kind:64,pubkey:g.myPk,created_at:created,tags:[['d',gameId],['p',players[0]],['p',players[1]],['t','sifaka-chess'],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+gameId.slice(0,8)],['status',status],['relay',relay]],content:body});
+   const signed=g.private?await signChessEvent({kind:30079,pubkey:g.myPk,created_at:created,tags:[['d',gameId]],content:await encryptPrivateChessPayload(privateChessPayload(g,status,body),g.secret,gameId)}):await signChessEvent({kind:64,pubkey:g.myPk,created_at:created,tags:publicTags,content:body});
    // Reserve a strictly increasing timestamp even if a relay acknowledgement is lost.
    g.lastPublishTime=created;
    let ack=await sendToRelays(signed,networkRelays(relay));
@@ -950,6 +950,7 @@ async function ensureInviteGame(){
  return g;
 }
 async function joinPrivateNostrGame(g,button){
+ if(g.forfeited||g.status==='forfeit'||g.status==='finished'){toast('This private game has already ended. Ask the host for a new invitation.');return}
  const restore=function(){if(button&&button.isConnected){button.disabled=false;button.textContent=g.status==='invite'?'Accept private invite':g.black?'Open private game':'Join private game'}};
  const secret=g.secret||privateSecretFromUrl();
  if(!secret){toast('This private invitation is missing its secret key. Use the complete invite URL, including #key=...');return}
@@ -1013,6 +1014,7 @@ async function invitePrivateChessPlayer(u,button){
 }
 async function joinNostrGame(g,button){
  if(!g||!g.id||joiningNostrGames.has(g.id))return;
+ if(g.forfeited||g.status==='forfeit'||g.status==='finished'){toast('This chess game has already ended. Ask the host for a new invitation.');return}
  if(g.private)return joinPrivateNostrGame(g,button);
  if(!NOSTR_PUBKEY_HEX.test(g.white||'')){toast('This game does not identify its white player, so it cannot be joined safely.');return}
  if(g.open&&g.author&&g.author!==g.white){toast('This open game was not published by its white player. Refresh the lobby and try again.');return}
