@@ -811,7 +811,7 @@ async function invite(u,btn){
  try{
   const g=await ensureInviteGame(),link=gameLink(g),signer=await getSignerKey();
   if(!signer||signer!==g.white)throw new Error('The active signer no longer matches the white player in this game. Reconnect Sifaka and try again.');
-  txt='♞ Chess challenge! Join me for a game on Sifaka Chess.\\nJoin this Nostr Chess match: '+link+'\\nThis match uses NIP-64 (kind:64) PGN game events so compatible Nostr chess clients can follow it.';
+  txt='♞ Chess challenge! Join me for a game on Sifaka Chess.\nJoin this Nostr Chess match: '+link+'\nThis match uses NIP-64 (kind:64) PGN game events so compatible Nostr chess clients can follow it.';
   let ev,dm=false,extensionPk='';
   // NIP-04 ciphertext must be produced by the same identity that signs the event.
   // Sifaka's local signer may differ from window.nostr, so use private DM only when
