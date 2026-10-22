@@ -191,7 +191,7 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 .chess-online-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
 .chess-online-options .btn{min-height:48px}
 .chess-open-game-list{display:flex;flex-direction:column;gap:9px;margin:14px 0 4px;max-height:min(42vh,360px);overflow-y:auto;overscroll-behavior:contain;text-align:left}
-.chess-open-game{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.04);min-width:0}
+.chess-open-game{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.04);min-width:0}.chess-game-view-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.chess-game-view-tabs .btn{flex:1;min-width:90px}.chess-game-view-tabs .btn[aria-pressed=true]{border-color:var(--purple);background:rgba(139,92,246,.18)}.chess-game-status{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;padding:3px 7px;font-size:10px;font-weight:800;letter-spacing:.04em;margin-top:4px;color:var(--ink);width:max-content}.chess-game-status.open{color:#eab308;border-color:rgba(234,179,8,.4)}.chess-game-status.active{color:#34d399;border-color:rgba(52,211,153,.4)}.chess-game-status.finished,.chess-game-status.forfeit{color:var(--mut)}
 .chess-external-lobby{display:flex;flex-direction:column;gap:10px;margin:16px 0 4px;padding:14px;border:1px solid rgba(143,91,255,.35);border-radius:16px;background:rgba(143,91,255,.06);text-align:left}
 .chess-external-lobby-head b{display:block;font-size:14px;color:var(--ink)}
 .chess-external-lobby-head p{margin:5px 0 0;font-size:12px;line-height:1.5;color:var(--mut)}
@@ -309,9 +309,9 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 <button class="btn" id="un">Undo</button><button class="btn pri w2" id="inv">Invite to game</button><button class="btn w2" id="po">Post to Nostr</button></div>
 </div></main>
 <div class="ov" id="ov"><div class="modal"><h2 id="mh"></h2><p id="mp"></p><div class="row"><button class="btn pri" id="mn" type="button">New game</button><button class="btn" id="mpost">Post to Nostr</button></div></div></div>
-<div class="ov show" id="gameSetup" role="dialog" aria-modal="true" aria-labelledby="gameSetupTitle"><div class="modal set"><div class="setup-kicker">SIFAKA CHESS</div><h2 id="gameSetupTitle">Choose your opponent</h2><p id="setupHelp" class="setup-help">Start a game against the engine or play a two-player game on this device.</p><div class="chips" id="setupOpponents"><button class="btn pri" id="chooseEngine" type="button">Engine</button><button class="btn" id="choosePerson" type="button">Person</button></div><div class="chips" id="setupDifficulty" hidden><button class="btn" type="button" data-start-level="1">Novice</button><button class="btn pri" type="button" data-start-level="2">Adept</button><button class="btn" type="button" data-start-level="3">Master</button></div><div class="row" style="margin-top:18px"><button class="btn" id="setupBack" type="button" hidden>Back</button></div></div></div>
-<div class="ov chess-game-visibility" id="gameVisibilityModal" role="dialog" aria-modal="true" aria-labelledby="gameVisibilityTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">NOSTR CHESS</div><h2 id="gameVisibilityTitle">Choose game visibility</h2><p class="setup-help">Public games appear in the open lobby and publish standard NIP-64 PGN updates. Private games stay out of the lobby and encrypt their game state; anyone you share the private invite link with can access it.</p><div class="chess-online-options"><button class="btn pri" id="createPublicGameBtn" type="button">Public game</button><button class="btn" id="createPrivateGameBtn" type="button">Private invite link</button></div><div class="row" style="margin-top:16px"><button class="btn" id="gameVisibilityCancel" type="button">Cancel</button></div></div></div><div class="ov chess-created-game" id="createdGameModal" role="dialog" aria-modal="true" aria-labelledby="createdGameTitle"><div class="modal set chess-online-modal"><div class="setup-kicker" id="createdGameKicker">GAME CREATED</div><h2 id="createdGameTitle">Your game is ready</h2><p class="setup-help" id="createdGameDescription">Copy the complete game URL and share it with your opponent.</p><label for="createdGameUrl">Complete invitation URL</label><textarea class="created-game-url" id="createdGameUrl" readonly spellcheck="false"></textarea><p class="created-game-note" id="createdGamePrivacyNote"></p><div class="chess-online-options"><button class="btn pri" id="createdGameCopyBtn" type="button">Copy invite link</button><button class="btn" id="createdGameInviteBtn" type="button">Invite a Nostr player</button></div><div class="row" style="margin-top:16px"><button class="btn" id="createdGameCloseBtn" type="button">Continue playing</button></div></div></div><div class="ov" id="personGameModal" role="dialog" aria-modal="true" aria-labelledby="personGameTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">PLAY OVER NOSTR</div><h2 id="personGameTitle">Play a person</h2><p class="setup-help">Invite someone from any Nostr client, join an open Nostr Chess game, or play locally on this device.</p><div class="chess-online-options"><button class="btn pri" id="personInviteBtn" type="button">Invite a player</button><button class="btn" id="personJoinBtn" type="button">Join an open game</button><button class="btn" id="personLocalBtn" type="button">Local two-player</button><button class="btn" id="personCreateBtn" type="button">Create open game</button></div><div class="row" style="margin-top:18px"><button class="btn" id="personCloseBtn" type="button">Back</button></div></div></div>
-<div class="ov" id="openGamesModal" role="dialog" aria-modal="true" aria-labelledby="openGamesTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">NIP-64 CHESS LOBBY</div><h2 id="openGamesTitle">Join a game</h2><p id="openGamesHelp" class="setup-help">Find joinable Sifaka Nostr Chess games published to relays. Create a game or join an open game below.</p><div id="openGamesList" class="chess-open-game-list"><div class="chess-online-muted">Loading Sifaka Nostr games…</div></div><div class="row" style="margin-top:16px"><button class="btn" id="openGamesRefresh" type="button">Refresh</button><button class="btn pri" id="openGamesCreate" type="button">Create a game</button><button class="btn" id="openGamesClose" type="button">Close</button></div></div></div><div class="ov" id="set"><div class="modal set"><h2>Settings</h2><div id="sb"></div><div class="row" style="margin-top:18px"><button class="btn" id="sr">Reset</button><button class="btn pri" id="sd">Done</button></div></div></div><div class="ov" id="inm"><div class="modal set"><h2>Invite to game</h2><p style="margin:0 0 12px">Search Nostr by name, or paste an npub, then send an invite.</p><div class="cin"><input id="iq" type="text" placeholder="Search people or paste npub..." autocomplete="off"><button class="btn pri" id="ig">Search</button></div><div class="ir" id="ir"></div><div class="row" style="margin-top:14px"><button class="btn" id="il">Copy invite link</button><button class="btn" id="ix">Close</button></div></div></div><div id="notes"></div><div class="toast" id="toast"></div>
+<div class="ov show" id="gameSetup" role="dialog" aria-modal="true" aria-labelledby="gameSetupTitle"><div class="modal set"><div class="setup-kicker">SIFAKA CHESS</div><h2 id="gameSetupTitle">Choose your opponent</h2><p id="setupHelp" class="setup-help">Start a game against the engine or play a two-player game on this device.</p><div class="chips" id="setupOpponents"><button class="btn pri" id="chooseEngine" type="button">Engine</button><button class="btn" id="choosePerson" type="button">Person</button></div><div class="chips" id="setupDifficulty" hidden><button class="btn" type="button" data-start-level="1">Novice</button><button class="btn pri" type="button" data-start-level="2">Adept</button><button class="btn" type="button" data-start-level="3">Master</button></div><div class="row" style="margin-top:18px"><button class="btn" id="setupOpenGames" type="button">Open / Current Games</button><button class="btn" id="setupBack" type="button" hidden>Back</button></div></div></div>
+<div class="ov chess-game-visibility" id="gameVisibilityModal" role="dialog" aria-modal="true" aria-labelledby="gameVisibilityTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">NOSTR CHESS</div><h2 id="gameVisibilityTitle">Choose game visibility</h2><p class="setup-help">Public games appear in the open lobby and publish standard NIP-64 PGN updates. Private games stay out of the lobby and encrypt their game state; anyone you share the private invite link with can access it.</p><div class="chess-online-options"><button class="btn pri" id="createPublicGameBtn" type="button">Public game</button><button class="btn" id="createPrivateGameBtn" type="button">Private invite link</button></div><div class="row" style="margin-top:16px"><button class="btn" id="gameVisibilityCancel" type="button">Cancel</button></div></div></div><div class="ov chess-created-game" id="createdGameModal" role="dialog" aria-modal="true" aria-labelledby="createdGameTitle"><div class="modal set chess-online-modal"><div class="setup-kicker" id="createdGameKicker">GAME CREATED</div><h2 id="createdGameTitle">Your game is ready</h2><p class="setup-help" id="createdGameDescription">Copy the complete game URL and share it with your opponent.</p><label for="createdGameUrl">Complete invitation URL</label><textarea class="created-game-url" id="createdGameUrl" readonly spellcheck="false"></textarea><p class="created-game-note" id="createdGamePrivacyNote"></p><div class="chess-online-options"><button class="btn pri" id="createdGameCopyBtn" type="button">Copy invite link</button><button class="btn" id="createdGameInviteBtn" type="button">Invite a Nostr player</button></div><div class="row" style="margin-top:16px"><button class="btn" id="createdGameCloseBtn" type="button">Continue playing</button></div></div></div><div class="ov" id="personGameModal" role="dialog" aria-modal="true" aria-labelledby="personGameTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">PLAY OVER NOSTR</div><h2 id="personGameTitle">Play a person</h2><p class="setup-help">Invite someone from any Nostr client, join an open Nostr Chess game, or play locally on this device.</p><div class="chess-online-options"><button class="btn pri" id="personInviteBtn" type="button">Invite a player</button><button class="btn" id="personJoinBtn" type="button">Open / Current Games</button><button class="btn" id="personLocalBtn" type="button">Local two-player</button><button class="btn" id="personCreateBtn" type="button">Create open game</button></div><div class="row" style="margin-top:18px"><button class="btn" id="personCloseBtn" type="button">Back</button></div></div></div>
+<div class="ov" id="openGamesModal" role="dialog" aria-modal="true" aria-labelledby="openGamesTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">NIP-64 CHESS LOBBY</div><h2 id="openGamesTitle">Join a game</h2><p id="openGamesHelp" class="setup-help">Open matches, current games and recent results from Nostr relays.</p><div class="chess-game-view-tabs" id="openGamesStatusTabs" role="group" aria-label="Game status"><button class="btn" type="button" data-game-view="open" aria-pressed="true">Open</button><button class="btn" type="button" data-game-view="current" aria-pressed="false">Current</button><button class="btn" type="button" data-game-view="all" aria-pressed="false">All / Recent</button></div><div id="openGamesList" class="chess-open-game-list"><div class="chess-online-muted">Loading Sifaka Nostr games…</div></div><div class="row" style="margin-top:16px"><button class="btn" id="openGamesRefresh" type="button">Refresh</button><button class="btn pri" id="openGamesCreate" type="button">Create a game</button><button class="btn" id="openGamesClose" type="button">Close</button></div></div></div><div class="ov" id="set"><div class="modal set"><h2>Settings</h2><div id="sb"></div><div class="row" style="margin-top:18px"><button class="btn" id="sr">Reset</button><button class="btn pri" id="sd">Done</button></div></div></div><div class="ov" id="inm"><div class="modal set"><h2>Invite to game</h2><p style="margin:0 0 12px">Search Nostr by name, or paste an npub, then send an invite.</p><div class="cin"><input id="iq" type="text" placeholder="Search people or paste npub..." autocomplete="off"><button class="btn pri" id="ig">Search</button></div><div class="ir" id="ir"></div><div class="row" style="margin-top:14px"><button class="btn" id="il">Copy invite link</button><button class="btn" id="ix">Close</button></div></div></div><div id="notes"></div><div class="toast" id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const $=id=>document.getElementById(id),G={k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'},V={p:100,n:320,b:330,r:500,q:900,k:0},F='abcdefgh',LV=['','Novice','Adept','Master'],RL=['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net'];
@@ -708,7 +708,8 @@ function eventToChessGame(ev,relayFallback){
  const altTag=ev.tags.find(function(t){return t[0]==='alt'&&t[1]});
  const alt=String(altTag&&altTag[1]||'');
  const statusTag=ev.tags.find(function(t){return t[0]==='status'&&t[1]});
- const forfeited=String(statusTag&&statusTag[1]||'')==='forfeit';
+ let status=String(statusTag&&statusTag[1]||'');
+ const forfeited=status==='forfeit';
  const externalRecord=ev.tags.some(function(t){return t[0]==='a'&&/^32152:/.test(String(t[1]||''))})||/chess game record/i.test(alt);
  if(externalRecord)return null;
  const modeTag=ev.tags.find(function(t){return t[0]==='mode'&&t[1]});
@@ -728,9 +729,10 @@ function eventToChessGame(ev,relayFallback){
  const black=headerBlack||taggedPlayers.find(function(pk){return pk!==white})||'';
  if(!white)return null;
  const players=Array.from(new Set([white,black].filter(function(pk){return NOSTR_PUBKEY_HEX.test(pk||'')})));
+ if(!['open','invite','active','finished','forfeit'].includes(status))status=forfeited?'forfeit':!black?'open':(pgnHeaders(ev.content).Result&&pgnHeaders(ev.content).Result!=='*'?'finished':'active');
  const relayTag=ev.tags.find(function(t){return t[0]==='relay'&&t[1]});
  const relay=(relayTag&&relayTag[1])||relayFallback||preferredGameRelay();
- return{id:dTag[1],relay:relay,white:white,black:black,players:players,content:String(ev.content||''),created_at:Number(ev.created_at)||0,open:!NOSTR_PUBKEY_HEX.test(black),eventId:String(ev.id||''),author:String(ev.pubkey||'').toLowerCase(),plies:pgnPlies(ev.content),mode:mode||'sifaka-nostr-open',forfeited:forfeited};
+ return{id:dTag[1],relay:relay,white:white,black:black,players:players,content:String(ev.content||''),created_at:Number(ev.created_at)||0,open:!NOSTR_PUBKEY_HEX.test(black),eventId:String(ev.id||''),author:String(ev.pubkey||'').toLowerCase(),plies:pgnPlies(ev.content),mode:mode||'sifaka-nostr-open',status:status,forfeited:forfeited};
 }
 function gameLink(g){const u=new URL(location.pathname,location.origin);u.searchParams.set('game',g.id);if(g.relay)u.searchParams.set('relay',g.relay);if(g.private&&g.secret)u.hash='key='+encodeURIComponent(g.secret);return u.toString()}
 function sendToRelays(ev,relays){return pub(ev,relays||networkRelays(netGame&&netGame.relay))}
@@ -1049,31 +1051,48 @@ async function joinNostrGame(g,button){
   toast('Could not join the open game: '+String(err&&err.message||'check the game and your Nostr relay connection.'));
  }finally{joiningNostrGames.delete(g.id);restoreButton()}
 }
+let openGamesView='open',lastDiscoveredChessGames=[];
+function chessGameStatusLabel(g){
+ const status=String(g.status|| (g.forfeited?'forfeit':g.open?'open':'active')).toLowerCase();
+ return status==='invite'?'INVITATION SENT':status==='active'?'IN PROGRESS':status==='finished'?'FINISHED':status==='forfeit'?'FORFEIT':status==='open'?'WAITING FOR PLAYER':'UNKNOWN STATUS';
+}
 function renderOpenGames(games,targetId){
  const list=$('openGamesList');list.replaceChildren();
- const visible=(targetId?games:games.filter(function(g){return !g.private&&g.open&&!g.forfeited})).sort(function(a,b){return b.created_at-a.created_at}).slice(0,40);
- if(!visible.length){const d=document.createElement('div');d.className='chess-online-muted';d.textContent=targetId?'This game was not found on the selected relays. For a private game, open the complete invite URL including the secret after #key=.':'No public Sifaka Chess games were found on these relays. Create a public game or share a private invite link.';list.appendChild(d);return}
+ const all=(targetId?games:games.filter(function(g){return !g.private}));
+ const visible=(targetId?all:all.filter(function(g){
+  const status=String(g.status|| (g.open?'open':'active')).toLowerCase();
+  if(openGamesView==='open')return status==='open'||status==='invite';
+  if(openGamesView==='current')return status==='active'||status==='invite';
+  return true;
+ })).sort(function(a,b){return b.created_at-a.created_at}).slice(0,60);
+ const tabs=$('openGamesStatusTabs');
+ if(tabs)tabs.querySelectorAll('[data-game-view]').forEach(function(button){button.setAttribute('aria-pressed',String(button.dataset.gameView===openGamesView))});
+ if(!visible.length){
+  const d=document.createElement('div');d.className='chess-online-muted';
+  d.textContent=targetId?'This game was not found on the selected relays. For a private game, use the complete invite URL including the key after #key=.':openGamesView==='open'?'No open games found. Refresh to search all configured relays, or switch to Current / All / Recent.':openGamesView==='current'?'No current matches found on the configured relays. Refresh or switch to All / Recent to view completed games.':'No Sifaka Chess games were found on the configured relays.';
+  list.appendChild(d);return;
+ }
  visible.forEach(function(g){
-  const row=document.createElement('div'),av=document.createElement('span'),copy=document.createElement('div'),title=document.createElement('b'),sub=document.createElement('small'),btn=document.createElement('button');
+  const row=document.createElement('div'),av=document.createElement('span'),copy=document.createElement('div'),title=document.createElement('b'),status=document.createElement('span'),sub=document.createElement('small'),btn=document.createElement('button');
   row.className='chess-open-game';av.className='av2 chess-open-game-avatar';copy.className='chess-open-game-copy';
+  const gameStatus=String(g.status||(g.open?'open':'active')).toLowerCase(),ended=gameStatus==='finished'||gameStatus==='forfeit'||!!g.forfeited;
   const prefix=g.private?'Private game from ':g.open?'Open Sifaka game by ':'Sifaka game by ';
-  title.textContent=prefix+shortChessNpub(g.white);
-  sub.textContent=g.private?'Encrypted invite-only game · '+g.status+' · '+g.relay:'Sifaka Nostr Chess · '+(g.open?'Waiting for a second player':'Two players have joined')+' · '+g.relay;
-  copy.append(title,sub);btn.type='button';btn.className='btn pri';
-  btn.textContent=g.private?(g.status==='invite'?'Accept private invite':g.status==='active'?'Open private game':'Join private game'):g.open?'Join game':'Open game';
-  btn.onclick=function(){joinNostrGame(g,btn)};
+  title.textContent=prefix+shortChessNpub(g.white);status.className='chess-game-status '+gameStatus;status.textContent=chessGameStatusLabel(g);
+  sub.textContent=g.private?'Encrypted invite-only game · '+g.relay:'Sifaka Nostr Chess · '+(g.black?'Players: 2':'Players: 1')+' · '+g.relay;
+  sub.title='White player: '+npub(g.white)+(g.black?' · Black player: '+npub(g.black):'')+' · Last update: '+(g.created_at?new Date(g.created_at*1000).toLocaleString():'unknown');
+  copy.append(title,status,sub);btn.type='button';btn.className='btn pri';
+  btn.textContent=ended?'Game ended':g.private?(gameStatus==='invite'?'Accept invite':gameStatus==='active'?'Open private game':'Join private game'):g.open?'Join game':'Open game';
+  btn.disabled=ended;btn.onclick=function(){joinNostrGame(g,btn)};
   paintChessAvatar(av,{},g.white,false);row.append(av,copy,btn);list.appendChild(row);
   lookupChessPlayerProfile(g.white).then(function(result){
    if(!row.isConnected)return;
    const p=result&&result.profile&&typeof result.profile==='object'?result.profile:{};
-   const isVerified=!!(result&&result.verified&&p.nip05);
-   const name=chessProfileName(p,g.white);
+   const isVerified=!!(result&&result.verified&&p.nip05),name=chessProfileName(p,g.white);
    title.replaceChildren(document.createTextNode(prefix+name));
    if(isVerified){const check=document.createElement('span');check.className='chess-player-nip05-check';check.textContent='✓';check.title='NIP-05 verified';title.appendChild(check)}
    paintChessAvatar(av,p,g.white,isVerified);
    const ident=p.nip05?(isVerified?p.nip05:'Claimed NIP-05 (not verified): '+p.nip05):shortChessNpub(g.white);
-   sub.textContent=(g.private?'Encrypted invite-only game · '+g.status:ident+' · '+(g.open?'Waiting for a second player':'Two players have joined'))+' · '+g.relay;
-   sub.title='White player: '+npub(g.white)+(p.nip05?' · NIP-05: '+p.nip05:'');
+   if(!g.private)sub.textContent=ident+' · '+(g.black?'Players: 2':'Players: 1')+' · '+g.relay;
   }).catch(function(){});
  });
 }
@@ -1100,29 +1119,29 @@ function fetchOpenGames(targetId,targetRelay){
     const d=JSON.parse(e.data);
     if(d[0]==='EVENT'&&d[1]===sub&&d[2]){
      if(d[2].kind===64){const g=eventToChessGame(d[2],url);if(g&&(!targetId||g.id===targetId))mergeDiscoveredChessGame(seen,g)}
-     else if(targetId&&d[2].kind===1){const task=decodePrivateChessEvent(d[2],targetId,url).then(function(g){if(g&&requestId===openGamesRequestId)mergeDiscoveredChessGame(seen,g)});pending.push(task)}
+     else if(targetId&&d[2].kind===30079){const task=decodePrivateChessEvent(d[2],targetId,url).then(function(g){if(g&&requestId===openGamesRequestId)mergeDiscoveredChessGame(seen,g)});pending.push(task)}
     }else if(d[0]==='EOSE'&&d[1]===sub)finish();
    }catch(_){}};
    ws.onerror=finish;ws.onclose=finish;
   }catch(_){finish()}
  })})).then(function(){
   if(requestId!==openGamesRequestId||!$('openGamesModal').classList.contains('show'))return;
-  renderOpenGames(Array.from(seen.values()),targetId||'');
+  lastDiscoveredChessGames=Array.from(seen.values());renderOpenGames(lastDiscoveredChessGames,targetId||'');
   $('openGamesHelp').textContent=targetId?'This link points to a Sifaka Chess game. Public games use NIP-64 PGN events; private games decrypt only with the complete link key.':'Public Sifaka Nostr Chess games are listed below. Private games are never listed in the public lobby.';
  });
 }
 
-function openGamesModal(targetId,targetRelay){openGamesReturn=$('personGameModal').classList.contains('show')?'person':$('gameSetup').classList.contains('show')?'setup':'board';$('gameSetup').classList.remove('show');$('personGameModal').classList.remove('show');$('openGamesTitle').textContent=targetId?'Chess invitation':'Join an open game';$('openGamesModal').classList.add('show');return fetchOpenGames(targetId||'',targetRelay||'')}
+function openGamesModal(targetId,targetRelay){openGamesReturn=$('personGameModal').classList.contains('show')?'person':$('gameSetup').classList.contains('show')?'setup':'board';$('gameSetup').classList.remove('show');$('personGameModal').classList.remove('show');$('openGamesTitle').textContent=targetId?'Chess invitation':'Open / Current Games';$('openGamesModal').classList.add('show');return fetchOpenGames(targetId||'',targetRelay||'')}
 function openInviteModal(){inviteReturn=$('personGameModal').classList.contains('show')?'person':'board';$('gameSetup').classList.remove('show');$('personGameModal').classList.remove('show');$('openGamesModal').classList.remove('show');$('inm').classList.add('show');$('ir').replaceChildren();$('iq').value='';setTimeout(function(){$('iq').focus()},60)}
 $('personInviteBtn').onclick=openInviteModal;
-$('personJoinBtn').onclick=function(){openGamesModal('','')};
+$('personJoinBtn').onclick=function(){openGamesView='open';openGamesModal('','')};$('setupOpenGames').onclick=function(){openGamesView='open';openGamesModal('','')};
 $('personCreateBtn').onclick=openGameVisibilityModal;
 $('personLocalBtn').onclick=function(){$('personGameModal').classList.remove('show');startSelectedGame('person')};
 function closePersonOptions(){ $('personGameModal').classList.remove('show');if(personHubFromSetup)$('gameSetup').classList.add('show');personHubFromSetup=false }
 function closeOpenGames(){ $('openGamesModal').classList.remove('show');if(openGamesReturn==='person')openPersonOptions(false);else if(openGamesReturn==='setup')$('gameSetup').classList.add('show') }
 function closeInviteModal(){ $('inm').classList.remove('show');if(inviteReturn==='person')openPersonOptions(false) }
 $('personCloseBtn').onclick=closePersonOptions;
-$('openGamesRefresh').onclick=function(){fetchOpenGames(lastOpenGamesTarget,lastOpenGamesRelay)};
+$('openGamesRefresh').onclick=function(){fetchOpenGames(lastOpenGamesTarget,lastOpenGamesRelay)};$('openGamesStatusTabs').addEventListener('click',function(e){const button=e.target.closest('[data-game-view]');if(!button)return;openGamesView=button.dataset.gameView||'open';renderOpenGames(lastDiscoveredChessGames,lastOpenGamesTarget||'')});
 $('openGamesCreate').onclick=openGameVisibilityModal;
 $('openGamesClose').onclick=closeOpenGames;
 $('personGameModal').addEventListener('click',function(e){if(e.target===$('personGameModal'))closePersonOptions()});
