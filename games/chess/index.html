@@ -121,6 +121,16 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
 .duo .card{position:relative;transition:border-color .3s,background .3s}
 .duo .card.turn{border-color:var(--gold2);background:rgba(242,220,160,.12);animation:tglow 1.8s ease-in-out infinite}
 .duo .card.pl{padding-top:30px}
+/* Player identity boxes: subtle profile-banner wash and readable text highlights. */
+.duo .card.pl{position:relative;isolation:isolate;overflow:hidden;background:transparent}
+.duo .card.pl::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;background-image:var(--chess-profile-banner,none);background-position:center;background-size:cover;background-repeat:no-repeat;opacity:.1}
+.duo .card.pl>*{position:relative;z-index:1}
+.duo .pl b,.duo .pl .sub,.duo .pl .caps{background:rgba(0,0,0,.62);border-radius:5px;padding:2px 6px;box-decoration-break:clone;-webkit-box-decoration-break:clone;text-shadow:0 1px 2px rgba(0,0,0,.95)}
+.duo .pl b{width:fit-content;max-width:100%}
+.duo .pl .sub{width:fit-content;max-width:100%;line-height:1.5}
+.duo .pl .caps{padding:3px 6px;background:rgba(0,0,0,.55)}
+.duo .pl .caps em{background:transparent;padding:0;text-shadow:0 1px 2px rgba(0,0,0,.95)}
+
 .duo .card.turn::after{content:attr(data-t);position:absolute;top:5px;left:10px;z-index:3;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#1a1224;font:700 9px 'DM Sans',sans-serif;letter-spacing:.12em;padding:2px 8px;border-radius:999px;max-width:calc(100% - 20px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .duo .card.turn .av{border-color:var(--gold2);box-shadow:0 0 14px rgba(242,220,160,.6)}
 @keyframes tglow{0%,100%{box-shadow:0 0 8px rgba(242,220,160,.35),0 0 0 1px rgba(242,220,160,.5)}50%{box-shadow:0 0 28px rgba(242,220,160,.85),0 0 0 1px rgba(242,220,160,.95)}}
@@ -945,6 +955,19 @@ window.sifakaChessAfterLogin=function(){const action=pendingChessAction;if(!acti
 function closeOnlineModals(){['personGameModal','openGamesModal','inm'].forEach(function(id){const el=$(id);if(el)el.classList.remove('show')})}
 function shortChessNpub(pk){const value=npub(pk||'');return value.length>24?value.slice(0,13)+'…'+value.slice(-7):value;}
 function chessProfileName(p,pk){return String(p&&(p.display_name||p.displayName||p.name)||shortChessNpub(pk)||'Nostr player').trim().slice(0,80)||shortChessNpub(pk);}
+function applyChessProfileBanner(element,profile){
+ if(!element)return;
+ const card=element.closest('.card.pl');
+ if(!card)return;
+ const raw=String(profile&&profile.banner||'').trim();
+ if(!raw){card.style.removeProperty('--chess-profile-banner');card.classList.remove('has-profile-banner');return}
+ try{
+  const url=new URL(raw,location.href);
+  if(url.protocol!=='https:'&&url.protocol!=='http:')throw new Error('Unsupported banner URL');
+  card.style.setProperty('--chess-profile-banner','url("'+url.href.replace(/["\\]/g,'\\function paintChessAvatar(el,p,pk,isVerified){')+'")');
+  card.classList.add('has-profile-banner');
+ }catch(_){card.style.removeProperty('--chess-profile-banner');card.classList.remove('has-profile-banner')}
+}
 function paintChessAvatar(el,p,pk,isVerified){
  if(!el)return;el.replaceChildren();el.classList.toggle('nip05-square',!!isVerified);
  const fallback=document.createElement('span');fallback.textContent=chessProfileName(p,pk).slice(0,1).toUpperCase()||'♟';
@@ -967,6 +990,7 @@ function currentOpponentKey(){
 }
 function setNostrOpponent(pk,placeholder){
  const token=++opponentProfileRequest,avatar=$('opponentAvatar'),nameEl=$('opponentName'),identity=$('opponentIdentity');
+ applyChessProfileBanner(avatar,{});
  if(!NOSTR_PUBKEY_HEX.test(String(pk||''))){
   nameEl.textContent=placeholder||'Sifaka Engine';avatar.classList.remove('nip05-square');avatar.replaceChildren(document.createTextNode('🦧'));avatar.title='';identity.hidden=true;identity.textContent='';identity.title='';identity.classList.remove('nip05-valid');return;
  }
@@ -975,6 +999,7 @@ function setNostrOpponent(pk,placeholder){
  lookupChessPlayerProfile(pk).then(function(result){
   if(token!==opponentProfileRequest||!netGame||netGame.id!==gameId||currentOpponentKey()!==pk)return;
   const p=result&&result.profile&&typeof result.profile==='object'?result.profile:{},isVerified=!!(result&&result.verified&&p.nip05),name=chessProfileName(p,pk);
+  applyChessProfileBanner(avatar,p);
   nameEl.replaceChildren(document.createTextNode(name));
   if(isVerified){const check=document.createElement('span');check.className='chess-player-nip05-check';check.textContent='✓';check.title='NIP-05 verified';nameEl.appendChild(check);}
   paintChessAvatar(avatar,p,pk,isVerified);
@@ -1809,7 +1834,7 @@ function loggedOutState(){
  try{localStorage.removeItem(STORE);}catch(_){}
  loggedIn.classList.remove('on');loggedOut.classList.remove('off');closeMenus();
  avatar($('navAvatar'),{},'S',false);$('navNip05Badge').style.display='none';$('navNip05Badge').textContent='';
- avatar($('pdAvLg'),{},'S',false);$('pdName').textContent='Guest';$('pdSub').textContent='Not signed in';$('me').textContent='Guest';avatar($('meAvatar'),{},'',false);$('meAvatar').replaceChildren(document.createTextNode('♔'));$('meS').textContent='Tap to connect Nostr';$('meS').title='';$('meS').classList.remove('nip05-valid');
+ avatar($('pdAvLg'),{},'S',false);$('pdName').textContent='Guest';$('pdSub').textContent='Not signed in';$('me').textContent='Guest';avatar($('meAvatar'),{},'',false);applyChessProfileBanner($('meAvatar'),{});$('meAvatar').replaceChildren(document.createTextNode('♔'));$('meS').textContent='Tap to connect Nostr';$('meS').title='';$('meS').classList.remove('nip05-valid');
 }
 function setIdentity(pk,p,isVerified){
  active=pk;fullNpub=np(pk);verified=!!isVerified;chessSignerConnected=true;loggedIn.classList.add('on');loggedOut.classList.add('off');
@@ -1818,7 +1843,7 @@ function setIdentity(pk,p,isVerified){
  avatar($('pdAvLg'),{...p,name},pk,verified);const pdName=$('pdName');pdName.textContent=name;if(verified){const b=document.createElement('span');b.className='nip05-badge';b.textContent=' ✓';pdName.appendChild(b);}
  const sub=$('pdSub');sub.textContent=verified?String(p.nip05||''):short(fullNpub,13,9);sub.title=verified?String(p.nip05||''):fullNpub;
  const me=$('me');me.replaceChildren(document.createTextNode(name));if(verified&&p.nip05){const check=document.createElement('span');check.className='chess-player-nip05-check';check.textContent='✓';check.title='NIP-05 verified';me.appendChild(check);}
- avatar($('meAvatar'),{...p,name},pk,verified);const meSub=$('meS'),hasVerifiedNip05=!!(verified&&p.nip05);meSub.textContent=hasVerifiedNip05?String(p.nip05):short(fullNpub,13,7);meSub.title=hasVerifiedNip05?'NIP-05 verified: '+String(p.nip05):'Nostr public key: '+fullNpub;meSub.classList.toggle('nip05-valid',hasVerifiedNip05);
+ avatar($('meAvatar'),{...p,name},pk,verified);applyChessProfileBanner($('meAvatar'),p);const meSub=$('meS'),hasVerifiedNip05=!!(verified&&p.nip05);meSub.textContent=hasVerifiedNip05?String(p.nip05):short(fullNpub,13,7);meSub.title=hasVerifiedNip05?'NIP-05 verified: '+String(p.nip05):'Nostr public key: '+fullNpub;meSub.classList.toggle('nip05-valid',hasVerifiedNip05);
 }
 function fetchProfile(pk){return new Promise(resolve=>{
  let done=0,best=null,settled=false;const watchdog=setTimeout(()=>{if(!settled){settled=true;resolve(best);}},4300);
