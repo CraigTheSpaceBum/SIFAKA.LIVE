@@ -605,6 +605,7 @@ h+=`<div class="s2${lm&&(i===lm.f||i===lm.t)?' lm':''}${i===sel?' sel':''}${i===
 $('g2').innerHTML=h}
 function mode(two){m2d=two;$('cv').style.display=two?'none':'block';$('b2').classList.toggle('on',two);$('v2').classList.toggle('on',two);$('v3').classList.toggle('on',!two);$('hint').style.display=two?'none':'';$('tp').style.display=two?'none':'';if(two)r2d()}
 function syncLocalPerspective(){if(gameMode!=='person')return;const turn=st.t;fl2=turn==='b';if(turn!==localPerspectiveTurn){taz+=Math.PI;localPerspectiveTurn=turn}if(m2d)r2d()}
+function syncOnlinePerspective(color){if(gameMode!=='online')return;const side=color==='b'?'b':'w';fl2=side==='b';if(side!==localPerspectiveTurn){taz+=Math.PI;localPerspectiveTurn=side}if(m2d)r2d()}
 function apply(){const R=document.documentElement.style;R.setProperty('--fw',CF.fw);R.setProperty('--fb',CF.fb);
 for(const[c,f,a]of[['w','fw','cw'],['b','fb','cb']]){const T=TT[c];T.fur.color.set(CF[f]);T.ost.color.set(CF[f]);T.gor.color.set(CF[f]).lerp(new THREE.Color(c==='w'?0xb9b2c8:0x0b0710),.4);T.cap.color.set(CF[f]).lerp(new THREE.Color(c==='w'?0x6b4430:0x050308),.55);T.cloth.color.set(CF[a])}
 TM[0].color.set(CF.lt);TM[1].color.set(CF.dk);lv=+CF.lv;$('lvl').textContent=LV[lv];[...$('lv').children].forEach(b=>b.classList.toggle('on',+b.dataset.l===lv));
@@ -660,14 +661,39 @@ else if(k==='k'){inl(.98,.235);inl(1.38,.292);add(SG,GD,0,1.42,0,.09,.07,.09);ad
 else{inl(.262,.25);add(KG,T.fur,0,0,0,1.1,1.1,1.1).rotation.y=col==='w'?Math.PI/2:-Math.PI/2}
 return g}
 /* chat */
-const cl=$('cl'),seenC=new Set();let cws=null,lobby=false;
+const cl=$('cl'),seenC=new Set();let cws=null,lobby=false,chessChatBusy=false;const seenChessChatEvents=new Set();
 function cadd(who,txt,cls){const d=document.createElement('div'),b=document.createElement('b'),s=document.createElement('span');d.className='cm '+(cls||'');b.textContent=who;s.textContent=txt;d.append(b,s);cl.appendChild(d);cl.scrollTop=1e5;while(cl.children.length>80)cl.firstChild.remove()}
 const BOT={lost:['Delicious. Thank you!','A fine gift.','You are leaving pieces hanging.'],cap:['Hmph. Lucky shot.','Ouch! I will remember that.','Bold of you.'],chk:['Check! Your king looks nervous.'],hi:['Hello! Ready to play?','Let us see what you have got.']},pk=a=>a[Math.random()*a.length|0];
 function chatEv(ic,t){if(lobby)return;if(/lost your/.test(t))cadd('Sifaka Engine',pk(BOT.lost),'bot');else if(/captured a/.test(t))cadd('Sifaka Engine',pk(BOT.cap),'bot');else if(t==='You are in check!')cadd('Sifaka Engine',pk(BOT.chk),'bot');else if(t==='New game')cadd('Sifaka Engine',pk(BOT.hi),'bot')}
-async function csend(){const t=$('ci').value.trim().slice(0,200);if(!t)return;$('ci').value='';
-if(lobby){if(!(await getSignerKey()))return toast('Sign in to Sifaka or connect a Nostr signer to chat in the lobby');if(!cws||cws.readyState!==1)return toast('Lobby relay not connected');
-try{const ev=await signChessEvent({kind:20000,created_at:Math.floor(Date.now()/1000),tags:[['t','nostrmate-lobby']],content:t});seenC.add(ev.id);cadd('You',t,'me');cws.send(JSON.stringify(['EVENT',ev]))}catch(e){toast('Signing cancelled')}return}
-cadd('You',t,'me');setTimeout(()=>cadd('Sifaka Engine',/\b(hi|hello|hey)\b/i.test(t)?pk(BOT.hi):pk(['Hmm, interesting.','Focus on the board!','I am calculating...','Is that your best idea?','Nice try.']),'bot'),700)}
+async function csend(){
+ const input=$('ci'),t=input.value.trim().slice(0,200);if(!t)return;
+ if(lobby){
+  input.value='';
+  if(!(await getSignerKey()))return toast('Sign in to Sifaka or connect a Nostr signer to chat in the lobby');
+  if(!cws||cws.readyState!==1)return toast('Lobby relay not connected');
+  try{const ev=await signChessEvent({kind:20000,created_at:Math.floor(Date.now()/1000),tags:[['t','nostrmate-lobby']],content:t});seenC.add(ev.id);cadd('You',t,'me');cws.send(JSON.stringify(['EVENT',ev]))}catch(e){toast('Signing cancelled')}return;
+ }
+ if(gameMode==='online'&&netGame){
+  if(chessChatBusy)return;
+  const g=netGame;
+  if(!g.black||(g.private&&!g.accepted))return toast('Chat will be available once both players have joined the game.');
+  chessChatBusy=true;
+  try{
+   const signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond. Reconnect it and try again.');
+   if(!signer||signer!==g.myPk)throw new Error('Reconnect the Nostr account that is playing this game.');
+   let content=t;
+   if(g.private)content=await chessAwait(encryptPrivateChessPayload({app:PRIVATE_CHESS_APP,version:1,id:g.id,type:'chat',message:t,pgn:''},g.secret,g.id),10000,'Could not encrypt this private chat message.');
+   const ev=await chessAwait(signChessEvent({kind:1,created_at:Math.max(Math.floor(Date.now()/1000),Number(g.lastChatPublishTime||0)+1),tags:[['t','sifaka-chess-chat'],['d',g.id]],content:content}),30000,'The signer did not finish signing the chat message.');
+   const ack=await chessAwait(sendToRelays(ev,networkRelays(g.relay)),16000,'Timed out waiting for a relay acknowledgement.');
+   if(!ack)throw new Error(chessRelayPublishError('chat message'));
+   g.lastChatPublishTime=ev.created_at;seenChessChatEvents.add(ev.id);cadd('You',t,'me');input.value='';
+  }catch(e){toast('Could not send chess chat: '+String(e&&e.message||'check your signer and relay connection.'))}
+  finally{chessChatBusy=false}
+  return;
+ }
+ input.value='';
+ cadd('You',t,'me');setTimeout(()=>cadd('Sifaka Engine',/\b(hi|hello|hey)\b/i.test(t)?pk(BOT.hi):pk(['Hmm, interesting.','Focus on the board!','I am calculating...','Nice try.']),'bot'),700)
+}
 function lob(on){lobby=on;$('cs').textContent=on?'Nostr lobby':'Engine';$('cj').textContent=on?'Leave lobby':'Join lobby';if(cws){try{cws.close()}catch(e){}cws=null}
 if(!on){cadd('','Back to engine chat','sys');return}
 const u=CF.rel.split(/\s+/).find(x=>/^wss?:\/\//.test(x));if(!u){lob(false);return}
@@ -690,6 +716,7 @@ function turnGlow(){const a=$('me').closest('.card'),b=$('opponentName').closest
 /* Online chess interoperability: NIP-64 kind:64 PGN snapshots, d game ids, and p player tags. */
 const NOSTR_PUBKEY_HEX=/^[0-9a-f]{64}$/i;
 let netGame=null,gameSockets=[],pendingChessAction=null,pendingNostrGame=null,netPublishChain=Promise.resolve(),lastOpenGamesTarget='',lastOpenGamesRelay='',openGamesReturn='board',inviteReturn='board',personHubFromSetup=false,openGamesRequestId=0,gameSocketGeneration=0,gameReconnectTimer=null;let onlineCreateBusy=false;const joiningNostrGames=new Set();
+function chessAwait(promise,timeoutMs,message){let timer;return Promise.race([Promise.resolve(promise),new Promise(function(_,reject){timer=setTimeout(function(){reject(new Error(message))},timeoutMs)})]).finally(function(){clearTimeout(timer)})}
 function closeGameSockets(){gameSocketGeneration++;if(gameReconnectTimer){clearTimeout(gameReconnectTimer);gameReconnectTimer=null}gameSockets.forEach(function(w){try{if(w._sifakaSub&&w.readyState===1)w.send(JSON.stringify(['CLOSE',w._sifakaSub]));w.close()}catch(_){}});gameSockets=[]}
 function leaveNostrGame(){closeGameSockets();netGame=null;pendingNostrGame=null;netPublishChain=Promise.resolve()}
 function networkRelays(extra){const candidates=[extra].concat(String((typeof CF!=='undefined'&&CF.rel)||'').split(/\s+/),RL,['wss://relay.primal.net','wss://relay.nostr.band']);const out=[];candidates.forEach(function(u){u=String(u||'').trim();if(/^wss?:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,8)}
@@ -793,7 +820,7 @@ function setNostrOpponent(pk,placeholder){
   identity.classList.toggle('nip05-valid',isVerified);
  }).catch(function(){});
 }
-function launchOnlineGame(g,color,content){closeGameSockets();if(!replayNip64Pgn(content||g.content||'')){toast('This game contains PGN moves that this chess board cannot replay.');return false}netGame={id:g.id,relay:g.relay||preferredGameRelay(),white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),myPk:String(g.myPk||'').toLowerCase(),myColor:color,private:!!g.private,secret:g.secret||'',accepted:g.private?!!g.accepted:!!g.black,status:g.status||(g.black?'active':'open'),lastEventTime:Number(g.created_at)||0,lastEventId:g.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(g.players)?g.players.length:(g.black?2:1),lastPublishTime:Number(g.lastPublishTime||g.created_at)||0};try{history.replaceState({},'',gameLink(netGame))}catch(_){}gameMode='online';gameActive=!over&&(!netGame.private||netGame.accepted);busy=false;sel=null;$('gameSetup').classList.remove('show');closeOnlineModals();$('gameVisibilityModal').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('un').disabled=true;$('lv').style.display='none';setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.private&&!netGame.accepted?'Private invitation pending':''):'Waiting for player');$('lvl').textContent='Nostr Chess · '+(color==='w'?'White':'Black');if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);rebuild();draw();turnGlow();subscribeToNostrGame();return true}
+function launchOnlineGame(g,color,content){closeGameSockets();if(!replayNip64Pgn(content||g.content||'')){toast('This game contains PGN moves that this chess board cannot replay.');return false}netGame={id:g.id,relay:g.relay||preferredGameRelay(),white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),myPk:String(g.myPk||'').toLowerCase(),myColor:color,private:!!g.private,secret:g.secret||'',accepted:g.private?!!g.accepted:!!g.black,status:g.status||(g.black?'active':'open'),lastEventTime:Number(g.created_at)||0,lastEventId:g.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(g.players)?g.players.length:(g.black?2:1),lastPublishTime:Number(g.lastPublishTime||g.created_at)||0};try{history.replaceState({},'',gameLink(netGame))}catch(_){}gameMode='online';syncOnlinePerspective(color);gameActive=!over&&(!netGame.private||netGame.accepted);busy=false;sel=null;$('gameSetup').classList.remove('show');closeOnlineModals();$('gameVisibilityModal').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('un').disabled=true;$('lv').style.display='none';setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.private&&!netGame.accepted?'Private invitation pending':''):'Waiting for player');$('lvl').textContent='Nostr Chess · '+(color==='w'?'White':'Black');if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);rebuild();draw();turnGlow();subscribeToNostrGame();return true}
 function chessSnapshotIsNewer(g){
  if(!netGame)return false;
  if(g.created_at!==netGame.lastEventTime)return g.created_at>netGame.lastEventTime;
@@ -832,7 +859,7 @@ function acceptIncomingGameEvent(ev){
  if(netGame.black&&netGame.myColor===st.t&&!over)toast('Your turn — game state synced from Nostr.');
 }
 async function acceptIncomingPrivateGameEvent(ev){
- if(!netGame||!netGame.private||!ev||ev.kind!==1)return;
+ if(!netGame||!netGame.private||!ev||ev.kind!==30079)return;
  const g=await decodePrivateChessEvent(ev,netGame.id,netGame.relay);
  if(!g||g.id!==netGame.id||g.white!==netGame.white||g.author===netGame.myPk)return;
  if(g.author!==g.white&&g.author!==g.black)return;
@@ -852,6 +879,32 @@ async function acceptIncomingPrivateGameEvent(ev){
  if(!wasAccepted&&netGame.accepted)toast('Private chess invitation accepted. Game synchronized.');
  else if(netGame.accepted&&netGame.myColor===st.t&&!over)toast('Your turn — private game state synchronized.');
 }
+function chessChatSenderLabel(pk){
+ if(netGame&&pk===netGame.myPk)return 'You';
+ if(netGame&&pk===currentOpponentKey())return String($('opponentName').textContent||shortChessNpub(pk));
+ return shortChessNpub(pk);
+}
+async function acceptIncomingChessChatEvent(ev){
+ if(!netGame||!ev||ev.kind!==1||!Array.isArray(ev.tags)||!ev.id)return;
+ if(!ev.tags.some(function(t){return t[0]==='t'&&t[1]==='sifaka-chess-chat'}))return;
+ if(!ev.tags.some(function(t){return t[0]==='d'&&t[1]===netGame.id}))return;
+ const author=String(ev.pubkey||'').toLowerCase();
+ if(author!==netGame.white&&author!==netGame.black)return;
+ if(!netGame.black||(netGame.private&&!netGame.accepted))return;
+ if(seenChessChatEvents.has(ev.id))return;
+ let message=String(ev.content||'');
+ if(netGame.private){
+  const payload=await decryptPrivateChessPayload(ev.content,netGame.secret,netGame.id);
+  if(!payload||payload.type!=='chat'||payload.id!==netGame.id||payload.app!==PRIVATE_CHESS_APP||payload.version!==1)return;
+  message=String(payload.message||'');
+ }
+ message=message.trim().slice(0,200);
+ if(!message)return;
+ seenChessChatEvents.add(ev.id);
+ while(seenChessChatEvents.size>600)seenChessChatEvents.delete(seenChessChatEvents.values().next().value);
+ if(author===netGame.myPk)return;
+ cadd(chessChatSenderLabel(author),message,'');
+}
 function subscribeToNostrGame(){
  closeGameSockets();
  if(!netGame)return;
@@ -866,8 +919,8 @@ function subscribeToNostrGame(){
   const finish=function(){if(done)return;done=true};
   try{
    ws=new WebSocket(url);ws._sifakaSub=sub;gameSockets.push(ws);
-   ws.onopen=function(){try{const filter=privateMode?{kinds:[30079],'#d':[gameId],limit:100}:{kinds:[64],'#d':[gameId],limit:100};ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){finish();try{ws.close()}catch(__){}}};
-   ws.onmessage=function(e){try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub){if(privateMode)acceptIncomingPrivateGameEvent(d[2]).catch(function(){});else acceptIncomingGameEvent(d[2])}else if(d[0]==='EOSE'&&d[1]===sub)finish()}catch(_){}};
+   ws.onopen=function(){try{const filter=privateMode?{kinds:[30079,1],'#d':[gameId],limit:100}:{kinds:[64,1],'#d':[gameId],limit:100};ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){finish();try{ws.close()}catch(__){}}};
+   ws.onmessage=function(e){try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub){const ev=d[2];if(ev&&ev.kind===1)acceptIncomingChessChatEvent(ev).catch(function(){});else if(privateMode)acceptIncomingPrivateGameEvent(ev).catch(function(){});else acceptIncomingGameEvent(ev)}else if(d[0]==='EOSE'&&d[1]===sub)finish()}catch(_){}};
    ws.onerror=function(){finish();try{ws.close()}catch(_){scheduleReconnect()}};
    ws.onclose=function(){finish();scheduleReconnect()};
   }catch(_){finish();scheduleReconnect()}
@@ -916,7 +969,31 @@ async function publishOnlineSnapshot(isForfeit=false){
  netPublishChain=job.then(function(){},function(){});
  return job;
 }
-async function createOnlineGame(){if(onlineCreateBusy)return;onlineCreateBusy=true;const buttons=[['personCreateBtn','Create open game'],['openGamesCreate','Create a game']].map(function(row){const button=$(row[0]);return{button:button,label:row[1]}}).filter(function(x){return !!x.button});buttons.forEach(function(x){x.button.disabled=true;x.button.textContent='Creating…'});try{const signer=await getSignerKey();if(!signer){requireSigner(createOnlineGame,true);return}const relay=preferredGameRelay(),id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),created=Math.floor(Date.now()/1000),g={id:id,relay:relay,white:signer,black:'',players:[signer],created_at:created,myPk:signer};const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};let body;try{init();over=null;body=buildNip64Pgn(signer,'?',relay)}finally{st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive}const ev=await signChessEvent({kind:64,pubkey:signer,created_at:created,tags:[['d',id],['p',signer],['t','sifaka-chess'],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+id.slice(0,8)+' — awaiting opponent'],['relay',relay]],content:body});const ack=await sendToRelays(ev,networkRelays(relay));if(!ack)throw new Error(chessRelayPublishError('open game'));g.eventId=ev.id;if(!launchOnlineGame(g,'w',body))throw new Error('The game was published, but Sifaka could not open its board. Reopen the game from the lobby.');if(netGame){netGame.lastEventTime=created;netGame.lastEventId=ev.id;netGame.lastPlayers=1;pendingNostrGame=g}toast('Sifaka Nostr Chess open game created. Copy the complete invite link or invite another player.');showCreatedGameModal(netGame);if(pendingChessInviteSelection){const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;await invite(pending.user,pending.button)}}catch(err){toast('Could not create the open game: '+String(err&&err.message||'check your signer and Nostr relay connection.'))}finally{onlineCreateBusy=false;buttons.forEach(function(x){if(x.button.isConnected){x.button.disabled=false;x.button.textContent=x.label}})}}
+async function createOnlineGame(){
+ if(onlineCreateBusy)return;
+ onlineCreateBusy=true;
+ const buttons=['createPublicGameBtn','personCreateBtn','openGamesCreate'].map(function(id){const button=$(id);return button?{button:button,label:button.textContent}:null}).filter(Boolean);
+ buttons.forEach(function(x){x.button.disabled=true;x.button.textContent='Creating…'});
+ try{
+  const signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond in time. Reconnect your signer and try again.');
+  if(!signer){requireSigner(createOnlineGame,true);return}
+  const relay=preferredGameRelay(),id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),created=Math.floor(Date.now()/1000),g={id:id,relay:relay,white:signer,black:'',players:[signer],created_at:created,myPk:signer};
+  const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};
+  let body;
+  try{init();over=null;body=buildNip64Pgn(signer,'?',relay)}
+  finally{st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive}
+  const ev=await chessAwait(signChessEvent({kind:64,pubkey:signer,created_at:created,tags:[['d',id],['p',signer],['t','sifaka-chess'],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+id.slice(0,8)+' — awaiting opponent'],['relay',relay]],content:body}),30000,'The signer did not finish signing the public game.');
+  const ack=await chessAwait(sendToRelays(ev,networkRelays(relay)),16000,'Timed out waiting for a relay acknowledgement.');
+  if(!ack)throw new Error(chessRelayPublishError('open game'));
+  g.eventId=ev.id;
+  if(!launchOnlineGame(g,'w',body))throw new Error('The game was published, but Sifaka could not open its board. Reopen the game from the lobby.');
+  if(netGame){netGame.lastEventTime=created;netGame.lastEventId=ev.id;netGame.lastPlayers=1;pendingNostrGame=g}
+  toast('Sifaka Nostr Chess open game created. Copy the complete invite link or invite another player.');
+  showCreatedGameModal(netGame);
+  if(pendingChessInviteSelection){const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;Promise.resolve().then(function(){return invite(pending.user,pending.button)}).catch(function(err){toast('Game created, but the invitation could not be sent: '+String(err&&err.message||err))})}
+ }catch(err){toast('Could not create the open game: '+String(err&&err.message||'check your signer and Nostr relay connection.'))}
+ finally{onlineCreateBusy=false;buttons.forEach(function(x){if(x.button.isConnected){x.button.disabled=false;x.button.textContent=x.label}})}
+}
 async function ensureInviteGame(){
  const signer=await getSignerKey();
  if(!signer)throw new Error('signer');
