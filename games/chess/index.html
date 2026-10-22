@@ -304,7 +304,7 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 <div class="duo"><div class="card pl"><div class="av" id="meAvatar">♔</div><div><b id="me">Guest</b><span class="sub" id="meS">Playing locally</span></div><div class="caps" id="capB"></div></div><div class="card pl"><div class="av" id="opponentAvatar" aria-hidden="true">🦧</div><div><b id="opponentName">Sifaka Engine</b><span class="sub" id="opponentIdentity" hidden></span><span class="sub" id="lvl">Adept</span></div><div class="caps" id="capT"></div></div></div>
 <div id="stat" hidden></div>
 <div id="mv" hidden></div>
-<div class="card chat"><div class="chh">Chat<span><small id="cs">Engine</small> <button class="btn" id="cj">Join lobby</button></span></div><div class="cl" id="cl"></div><div class="cin"><input id="ci" type="text" placeholder="Say something..." maxlength="200"><button class="btn pri" id="cb">Send</button></div><div class="chess-game-actions"><button class="btn" id="nw" type="button" disabled>Forfeit</button></div></div>
+<div class="card chat"><div class="chh">Chat<span><small id="cs">Engine</small> <button class="btn" id="cj">Join lobby</button></span></div><div class="cl" id="cl"></div><div class="cin"><input id="ci" type="text" placeholder="Say something..." maxlength="200"><button class="btn pri" id="cb">Send</button></div><div class="chess-game-actions"><button class="btn" id="openCurrentGamesBtn" type="button">Open / Current Games</button><button class="btn" id="nw" type="button" disabled>Forfeit</button></div></div>
 <div class="ctl"><div class="lv" id="lv"><button data-l="1">Novice</button><button data-l="2" class="on">Adept</button><button data-l="3">Master</button></div>
 <button class="btn" id="un">Undo</button><button class="btn pri w2" id="inv">Invite to game</button><button class="btn w2" id="po">Post to Nostr</button></div>
 </div></main>
@@ -1134,14 +1134,14 @@ function fetchOpenGames(targetId,targetRelay){
 function openGamesModal(targetId,targetRelay){openGamesReturn=$('personGameModal').classList.contains('show')?'person':$('gameSetup').classList.contains('show')?'setup':'board';$('gameSetup').classList.remove('show');$('personGameModal').classList.remove('show');$('openGamesTitle').textContent=targetId?'Chess invitation':'Open / Current Games';$('openGamesModal').classList.add('show');return fetchOpenGames(targetId||'',targetRelay||'')}
 function openInviteModal(){inviteReturn=$('personGameModal').classList.contains('show')?'person':'board';$('gameSetup').classList.remove('show');$('personGameModal').classList.remove('show');$('openGamesModal').classList.remove('show');$('inm').classList.add('show');$('ir').replaceChildren();$('iq').value='';setTimeout(function(){$('iq').focus()},60)}
 $('personInviteBtn').onclick=openInviteModal;
-$('personJoinBtn').onclick=function(){openGamesView='open';openGamesModal('','')};$('setupOpenGames').onclick=function(){openGamesView='open';openGamesModal('','')};
+$('personJoinBtn').onclick=function(){openGamesView='open';openGamesModal('','')};$('setupOpenGames').onclick=function(){openGamesView='open';openGamesModal('','')};$('openCurrentGamesBtn').onclick=function(){openGamesModal('','')};
 $('personCreateBtn').onclick=openGameVisibilityModal;
 $('personLocalBtn').onclick=function(){$('personGameModal').classList.remove('show');startSelectedGame('person')};
 function closePersonOptions(){ $('personGameModal').classList.remove('show');if(personHubFromSetup)$('gameSetup').classList.add('show');personHubFromSetup=false }
 function closeOpenGames(){ $('openGamesModal').classList.remove('show');if(openGamesReturn==='person')openPersonOptions(false);else if(openGamesReturn==='setup')$('gameSetup').classList.add('show') }
 function closeInviteModal(){ $('inm').classList.remove('show');if(inviteReturn==='person')openPersonOptions(false) }
 $('personCloseBtn').onclick=closePersonOptions;
-$('openGamesRefresh').onclick=function(){fetchOpenGames(lastOpenGamesTarget,lastOpenGamesRelay)};$('openGamesStatusTabs').addEventListener('click',function(e){const button=e.target.closest('[data-game-view]');if(!button)return;openGamesView=button.dataset.gameView||'open';renderOpenGames(lastDiscoveredChessGames,lastOpenGamesTarget||'')});
+$('openGamesRefresh').onclick=function(){fetchOpenGames(lastOpenGamesTarget,lastOpenGamesRelay)};$('openGamesStatusTabs').addEventListener('click',function(e){const button=e.target.closest('[data-game-view]');if(!button)return;openGamesView=button.dataset.gameView||'open';if(!lastDiscoveredChessGames.length&&!lastOpenGamesTarget)fetchOpenGames('','');else renderOpenGames(lastDiscoveredChessGames,lastOpenGamesTarget||'')});
 $('openGamesCreate').onclick=openGameVisibilityModal;
 $('openGamesClose').onclick=closeOpenGames;
 $('personGameModal').addEventListener('click',function(e){if(e.target===$('personGameModal'))closePersonOptions()});
