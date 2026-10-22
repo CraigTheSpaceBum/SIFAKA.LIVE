@@ -326,7 +326,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     notificationsReposts: true,
     notificationsZaps: true,
     notificationsFollows: true,
-    theme: 'dark',
+    theme: 'daily',
     cacheQueryTtlSec: 12,
     cacheWarmSec: 75,
     cacheLiveFeedTtlSec: 120,
@@ -3169,7 +3169,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   const SIFAKA_THEME_IDS = [
-    'dark','midnight','light','cyberpunk','synthwave','matrix','ocean','arctic','forest','emerald',
+    'daily','dark','midnight','light','cyberpunk','synthwave','matrix','ocean','arctic','forest','emerald',
     'ruby','crimson','violet','lavender','amethyst','sunset','solar','amber','copper','rose',
     'bubblegum','coffee','slate','mono','terminal','nord','dracula','hacker','toxic','deepsea'
   ];
@@ -3436,6 +3436,20 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     merged.relays = derivedRelays.length ? derivedRelays : (hasSavedRelayBuckets ? [] : [...DEFAULT_RELAYS]);
     merged.blossomUploadEndpoints = normalizeBlossomUploadEndpointList(merged.blossomUploadEndpoints);
     merged.theme = normalizeThemeSetting(merged.theme);
+    // Older builds saved "dark" as the default even when no manual theme was chosen.
+    // Migrate that legacy default to automatic daily mode once, preserving custom themes.
+    try {
+      const dailyThemeMigrationKey = 'sifaka_daily_theme_migrated_v1';
+      if (localStorage.getItem(dailyThemeMigrationKey) !== '1') {
+        const hasSavedTheme = !!(saved && typeof saved === 'object' && Object.prototype.hasOwnProperty.call(saved, 'theme'));
+        if (!hasSavedTheme || String(saved.theme || '').trim().toLowerCase() === 'dark') {
+          merged.theme = 'daily';
+        }
+        localStorage.setItem(dailyThemeMigrationKey, '1');
+      }
+    } catch (_) {
+      if (merged.theme === 'dark') merged.theme = 'daily';
+    }
     merged.notificationsMentions = merged.notificationsMentions !== false;
     merged.notificationsReplies = merged.notificationsReplies !== false;
     merged.notificationsLikes = merged.notificationsLikes !== false;
@@ -3710,8 +3724,15 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
     const theme = normalizeThemeSetting(state.settings.theme);
     state.settings.theme = theme;
-    if (window.setSifakaTheme) window.setSifakaTheme(theme, false);
-    else if (window.SifakaTheme && typeof window.SifakaTheme.apply === 'function') window.SifakaTheme.apply(theme, false);
+    const dailyMode = theme === 'daily';
+    if (window.SifakaTheme && typeof window.SifakaTheme.setDailyEnabled === 'function') {
+      window.SifakaTheme.setDailyEnabled(dailyMode);
+    }
+    const resolvedTheme = dailyMode && window.SifakaTheme && typeof window.SifakaTheme.daily === 'function'
+      ? window.SifakaTheme.daily(new Date())
+      : theme;
+    if (window.setSifakaTheme) window.setSifakaTheme(resolvedTheme, false);
+    else if (window.SifakaTheme && typeof window.SifakaTheme.apply === 'function') window.SifakaTheme.apply(resolvedTheme, false);
   }
 
   function relayHashSeed(value) {
@@ -28949,12 +28970,15 @@ function renderProfileFeed(pubkey) {
 
     window.previewSifakaTheme = function (theme) {
       const nextTheme = normalizeThemeSetting(theme);
+      const resolvedTheme = nextTheme === 'daily' && window.SifakaTheme && typeof window.SifakaTheme.daily === 'function'
+        ? window.SifakaTheme.daily(new Date())
+        : nextTheme;
       if (typeof window.setSifakaTheme === 'function') {
-        window.setSifakaTheme(nextTheme, false);
+        window.setSifakaTheme(resolvedTheme, false);
       } else if (window.SifakaTheme && typeof window.SifakaTheme.apply === 'function') {
-        window.SifakaTheme.apply(nextTheme, false);
+        window.SifakaTheme.apply(resolvedTheme, false);
       } else {
-        document.documentElement.setAttribute('data-theme', nextTheme === 'dark' ? '' : nextTheme);
+        document.documentElement.setAttribute('data-theme', resolvedTheme === 'dark' ? '' : resolvedTheme);
       }
     };
 
