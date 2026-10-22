@@ -96,6 +96,23 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:clamp(16px,2.5vw
 .chat{padding:12px}.chh{display:flex;justify-content:space-between;align-items:center;font:600 17px 'DM Sans',Georgia,serif;margin-bottom:6px}.chh small{font:500 11px 'DM Sans';color:var(--mut);margin-right:6px}.chh .btn{padding:4px 10px;font-size:11px;border-radius:999px}
 .cl{height:120px;overflow:auto;display:flex;flex-direction:column;gap:4px;font-size:13px}.cm b{color:var(--gold2);margin-right:6px}.cm.me b{color:#fff}.cm.sys{color:var(--mut);font-size:12px}.cm:not(.sys){display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:8px;row-gap:2px;align-items:start;padding:3px 0}.cm .cm-av{grid-column:1;grid-row:1 / span 2;width:30px;height:30px;min-width:30px;border-radius:9px;display:grid;place-items:center;overflow:hidden;flex:none;font-size:16px;background:linear-gradient(145deg,#2a2040,#150f22);border:1px solid var(--line)}.cm .cm-av img{display:block;width:100%;height:100%;object-fit:cover}.cm .cm-head{grid-column:2;display:flex;align-items:center;gap:4px;min-width:0;line-height:1.35}.cm .cm-name{display:inline;margin:0;color:var(--gold2);font-weight:600;overflow-wrap:anywhere}.cm .cm-text{grid-column:2;display:block;min-width:0;color:var(--ink);overflow-wrap:anywhere;white-space:pre-wrap}.cm.me .cm-name{color:#fff}.cm .cm-av.nip05-square{border:1.5px solid rgba(155,114,255,.75);box-shadow:0 0 8px rgba(155,114,255,.55),0 0 18px rgba(155,114,255,.25);animation:nip05Pulse 2.8s ease-in-out infinite}
 .cin{display:flex;gap:8px;margin-top:8px}.cin input{flex:1;min-width:0;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:12px;color:var(--ink);padding:9px 12px;font:13px 'DM Sans'}.cin .btn{padding:9px 14px}
+.chess-cin{display:flex;flex-direction:column;gap:7px}
+.chess-cin textarea{display:block;width:100%;min-width:0;max-width:100%;min-height:56px;max-height:180px;resize:vertical;box-sizing:border-box;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:12px;color:var(--ink);padding:9px 12px;font:13px/1.45 'DM Sans',sans-serif;outline:none}
+.chess-cin textarea:focus{border-color:var(--gold)}
+.chess-chat-acts{display:flex;align-items:flex-start;gap:7px;min-width:0}
+.chess-chat-format-toolbar{display:flex;flex:1 1 auto;flex-wrap:wrap;gap:4px;min-width:0}
+.chess-chat-format-toolbar button{appearance:none;background:rgba(0,0,0,.22);border:1px solid var(--line);color:var(--mut);border-radius:6px;min-width:28px;padding:4px 6px;font:600 10px/1.2 'DM Mono',monospace;cursor:pointer}
+.chess-chat-format-toolbar button:hover,.chess-chat-format-toolbar button:focus-visible{border-color:var(--gold);color:var(--ink);outline:none}
+.chess-chat-format-toolbar button u{text-underline-offset:2px}
+.chess-chat-send{flex:0 0 auto;align-self:stretch}
+.cm .cm-text .chess-chat-heading{font-weight:800;color:var(--ink)}
+.cm .cm-text .chess-chat-h1{font-size:1.14em}
+.cm .cm-text .chess-chat-h2{font-size:1.08em}
+.cm .cm-text .chess-chat-h3{font-size:1.03em}
+.cm .cm-text .chess-chat-quote{border-left:2px solid var(--gold);padding-left:5px;color:var(--mut);font-style:italic}
+.cm .cm-text code{padding:1px 4px;border-radius:4px;background:rgba(0,0,0,.3);font:.92em 'DM Mono',monospace}
+.cm .cm-text a{color:#c4b5fd;text-decoration:underline;overflow-wrap:anywhere}
+@media(max-width:520px){.chess-chat-acts{flex-direction:column}.chess-chat-format-toolbar{width:100%}.chess-chat-send{align-self:flex-end}.chess-chat-format-toolbar button{padding:5px 7px}}
 .cl{height:250px}.cm.mv{padding-left:8px;border-left:2px solid var(--gold)}.cm.mv span{color:var(--ink)}
 html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-highlight-color:transparent;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}.s2,.g2,.vt,.btn{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.cin input{font-size:16px}
 @media(max-width:900px){header{padding:10px 14px;gap:8px}.wm small{display:none}.wm{font-size:22px}#conn{padding:9px 12px;font-size:12px}main{padding:4px 12px 28px;gap:14px}.stage{aspect-ratio:1/1.1;border-radius:18px}.b2d{inset:44px 0 0 0}.g2{width:calc(100% - 40px)}.vt{top:8px;right:8px}.vt button{padding:7px 12px}.note{padding:10px 12px}.note b{font-size:16px}.cl{height:200px}.duo{gap:8px}.duo .pl{padding:10px}.ctl .btn{padding:13px 10px}}
@@ -305,7 +322,9 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 <div class="duo"><div class="card pl"><div class="av" id="meAvatar">♔</div><div><b id="me">Guest</b><span class="sub" id="meS">Playing locally</span></div><div class="caps" id="capB"></div></div><div class="card pl"><div class="av" id="opponentAvatar" aria-hidden="true">🦧</div><div><b id="opponentName">Sifaka Engine</b><span class="sub" id="opponentIdentity" hidden></span><span class="sub" id="lvl">Adept</span></div><div class="caps" id="capT"></div></div></div>
 <div id="stat" hidden></div>
 <div id="mv" hidden></div>
-<div class="card chat"><div class="chh">Chat</div><div class="cl" id="cl"></div><div class="cin"><input id="ci" type="text" placeholder="Say something..." maxlength="200"><button class="btn pri" id="cb">Send</button></div><div class="chess-game-actions"><button class="btn" id="openCurrentGamesBtn" type="button">Open / Current Games</button><button class="btn" id="nw" type="button" disabled>Forfeit</button></div></div>
+<div class="card chat"><div class="chh">Chat</div><div class="cl" id="cl"></div><div class="cin chess-cin"><textarea id="ci" rows="2" placeholder="Say something... (Enter to send, Shift+Enter for a new line)" maxlength="800" aria-label="Chess chat message"></textarea><div class="chess-chat-acts"><div class="chess-chat-format-toolbar" role="toolbar" aria-label="Format chat message">
+<button type="button" data-chess-format="h1" title="Heading 1">H1</button><button type="button" data-chess-format="h2" title="Heading 2">H2</button><button type="button" data-chess-format="h3" title="Heading 3">H3</button><button type="button" data-chess-format="bold" title="Bold"><b>B</b></button><button type="button" data-chess-format="italic" title="Italic"><i>I</i></button><button type="button" data-chess-format="underline" title="Underline"><u>U</u></button><button type="button" data-chess-format="strike" title="Strikethrough"><s>S</s></button><button type="button" data-chess-format="ul" title="Bulleted list">UL</button><button type="button" data-chess-format="ol" title="Numbered list">OL</button><button type="button" data-chess-format="quote" title="Quote">❝</button><button type="button" data-chess-format="code" title="Code">&lt;/&gt;</button>
+</div><button class="btn pri chess-chat-send" id="cb" type="button">Send</button></div></div><div class="chess-game-actions"><button class="btn" id="openCurrentGamesBtn" type="button">Open / Current Games</button><button class="btn" id="nw" type="button" disabled>Forfeit</button></div></div>
 <div class="ctl"><div class="lv" id="lv"><button data-l="1">Novice</button><button data-l="2" class="on">Adept</button><button data-l="3">Master</button></div>
 <button class="btn" id="un">Undo</button><button class="btn pri w2" id="inv">Invite to game</button><button class="btn w2" id="po">Post to Nostr</button></div>
 </div></main>
@@ -667,10 +686,73 @@ else{inl(.262,.25);add(KG,T.fur,0,0,0,1.1,1.1,1.1).rotation.y=col==='w'?Math.PI/
 return g}
 /* chat */
 const cl=$('cl'),seenC=new Set();let cws=null,lobby=false,chessChatBusy=false,chessChatOwnPk='';const seenChessChatEvents=new Set();
+function appendChessInlineMarkup(target,value){
+ const text=String(value||''),pattern=/\*\*[^*\n]+\*\*|\*[^*\n]+\*|\+\+[^+\n]+\+\+|~~[^~\n]+~~|`[^`\n]+`|https?:\/\/[^\s<>]+/g;
+ let last=0,match;
+ function plain(part){if(part)target.appendChild(document.createTextNode(part))}
+ while((match=pattern.exec(text))){
+  plain(text.slice(last,match.index));
+  const token=match[0];let node,body;
+  if(token.slice(0,2)==='**'){node=document.createElement('strong');body=token.slice(2,-2)}
+  else if(token[0]==='*'){node=document.createElement('em');body=token.slice(1,-1)}
+  else if(token.slice(0,2)==='++'){node=document.createElement('u');body=token.slice(2,-2)}
+  else if(token.slice(0,2)==='~~'){node=document.createElement('s');body=token.slice(2,-2)}
+  else if(token[0]==='`'){node=document.createElement('code');body=token.slice(1,-1)}
+  else{node=document.createElement('a');node.href=token;node.target='_blank';node.rel='noopener noreferrer';body=token}
+  node.textContent=body;target.appendChild(node);last=pattern.lastIndex;
+ }
+ plain(text.slice(last));
+}
+function renderChessChatText(target,value){
+ target.replaceChildren();
+ const lines=String(value==null?'':value).replace(/\r\n?/g,'\n').split('\n');
+ let inCode=false,hasRenderedLine=false;
+ lines.forEach(function(line){
+  if(line.trim()==='```'){inCode=!inCode;return}
+  if(hasRenderedLine)target.appendChild(document.createElement('br'));
+  hasRenderedLine=true;
+  if(inCode){const code=document.createElement('code');code.textContent=line;target.appendChild(code);return}
+  const heading=line.match(/^(#{1,3})\s+(.*)$/);
+  if(heading){const node=document.createElement('span');node.className='chess-chat-heading chess-chat-h'+heading[1].length;appendChessInlineMarkup(node,heading[2]);target.appendChild(node);return}
+  const quote=line.match(/^>\s?(.*)$/);
+  if(quote){const node=document.createElement('span');node.className='chess-chat-quote';node.textContent='❝ ';appendChessInlineMarkup(node,quote[1]);target.appendChild(node);return}
+  const bullet=line.match(/^\s*[-*]\s+(.*)$/);
+  if(bullet){target.appendChild(document.createTextNode('• '));appendChessInlineMarkup(target,bullet[1]);return}
+  const number=line.match(/^\s*(\d+)\.\s+(.*)$/);
+  if(number){target.appendChild(document.createTextNode(number[1]+'. '));appendChessInlineMarkup(target,number[2]);return}
+  appendChessInlineMarkup(target,line);
+ });
+}
+function applyChessChatMarkup(action){
+ const input=$('ci');if(!input)return;
+ const value=input.value,start=Number.isInteger(input.selectionStart)?input.selectionStart:value.length,end=Number.isInteger(input.selectionEnd)?input.selectionEnd:start;
+ const selected=value.slice(start,end);
+ const placeholders={h1:'Heading',h2:'Heading',h3:'Heading',bold:'bold text',italic:'italic text',underline:'underlined text',strike:'strikethrough',ul:'list item',ol:'list item',quote:'quoted text',code:'code'};
+ let inserted='',innerStart=0,innerLength=0;
+ if(['h1','h2','h3','ul','ol','quote'].includes(action)){
+  const base=selected||placeholders[action],prefixes={h1:'# ',h2:'## ',h3:'### ',ul:'- ',quote:'> '};
+  inserted=base.split('\n').map(function(line,index){return action==='ol'?String(index+1)+'. '+line:prefixes[action]+line}).join('\n');
+  if(selected){innerStart=0;innerLength=inserted.length}else{innerStart=action==='ol'?2:prefixes[action].length;innerLength=base.length}
+ }else{
+  const base=selected||placeholders[action];let before='',after='';
+  if(action==='bold'){before='**';after='**'}
+  else if(action==='italic'){before='*';after='*'}
+  else if(action==='underline'){before='++';after='++'}
+  else if(action==='strike'){before='~~';after='~~'}
+  else if(action==='code'&&selected.indexOf('\n')>=0){before='```\n';after='\n```'}
+  else if(action==='code'){before='`';after='`'}
+  else return;
+  inserted=before+base+after;innerStart=before.length;innerLength=base.length;
+ }
+ input.setRangeText(inserted,start,end,'select');
+ input.setSelectionRange(start+innerStart,start+innerStart+innerLength);
+ input.focus({preventScroll:true});
+ input.dispatchEvent(new Event('input',{bubbles:true}));
+}
 function cadd(who,txt,cls,authorPk){
  const d=document.createElement('div'),b=document.createElement('b'),s=document.createElement('span');
  d.className='cm '+(cls||'');
- b.textContent=who;s.textContent=txt;
+ b.textContent=who;renderChessChatText(s,txt);
  if((cls||'').split(/\s+/).includes('sys')){
   d.append(b,s);
  }else{
@@ -713,7 +795,7 @@ function cadd(who,txt,cls,authorPk){
 const BOT={lost:['Delicious. Thank you!','A fine gift.','You are leaving pieces hanging.'],cap:['Hmph. Lucky shot.','Ouch! I will remember that.','Bold of you.'],chk:['Check! Your king looks nervous.'],hi:['Hello! Ready to play?','Let us see what you have got.']},pk=a=>a[Math.random()*a.length|0];
 function chatEv(ic,t){if(lobby||gameMode!=='engine')return;if(/lost your/.test(t))cadd('Sifaka Engine',pk(BOT.lost),'bot');else if(/captured a/.test(t))cadd('Sifaka Engine',pk(BOT.cap),'bot');else if(t==='You are in check!')cadd('Sifaka Engine',pk(BOT.chk),'bot');else if(t==='New game')cadd('Sifaka Engine',pk(BOT.hi),'bot')}
 async function csend(){
- const input=$('ci'),t=input.value.trim().slice(0,200);if(!t)return;
+ const input=$('ci'),t=input.value.trim().slice(0,800);if(!t)return;
  if(lobby){
   input.value='';
   const signer=await getSignerKey();if(!signer)return toast('Sign in to Sifaka or connect a Nostr signer to chat in the lobby');
@@ -745,7 +827,9 @@ function lob(on){lobby=on;if(cws){try{cws.close()}catch(e){}cws=null}
 if(!on){cadd('','Back to engine chat','sys');return}
 const u=CF.rel.split(/\s+/).find(x=>/^wss?:\/\//.test(x));if(!u){lob(false);return}
 try{cws=new WebSocket(u);cws.onopen=()=>{cws.send(JSON.stringify(['REQ','nmchat',{kinds:[20000],'#t':['nostrmate-lobby'],since:Math.floor(Date.now()/1000)-300}]));cadd('','Joined the Nostrmate lobby (public, ephemeral)','sys')};cws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&!seenC.has(d[2].id)){seenC.add(d[2].id);cadd('Nostr player',String(d[2].content).slice(0,300),'',String(d[2].pubkey||'').toLowerCase())}}catch(_){}};cws.onerror=()=>{if(lobby){cadd('','Lobby relay unreachable from this page','sys');lob(false)}}}catch(e){cadd('','Lobby unavailable','sys');lobby=false}}
-$('cb').onclick=csend;$('ci').addEventListener('keydown',e=>{if(e.key==='Enter')csend()});
+$('cb').onclick=csend;
+document.querySelectorAll('[data-chess-format]').forEach(function(button){button.addEventListener('mousedown',function(event){event.preventDefault()});button.addEventListener('click',function(){applyChessChatMarkup(button.dataset.chessFormat)});});
+$('ci').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();csend()}});
 /* Keep the shared-style navigation fixed at the document root. */
 /* merged move log + sticky check */
 let stk=null;
