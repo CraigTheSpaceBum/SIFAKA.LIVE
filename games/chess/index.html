@@ -112,6 +112,11 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:clamp(16px,2.5vw
 .cm .cm-text .chess-chat-quote{border-left:2px solid var(--gold);padding-left:5px;color:var(--mut);font-style:italic}
 .cm .cm-text code{padding:1px 4px;border-radius:4px;background:rgba(0,0,0,.3);font:.92em 'DM Mono',monospace}
 .cm .cm-text a{color:#c4b5fd;text-decoration:underline;overflow-wrap:anywhere}
+.cm .cm-actions{grid-column:2;display:flex;align-items:center;gap:6px;margin-top:2px;min-width:0}
+.cm .cm-like-btn{appearance:none;display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:3px 8px;background:rgba(0,0,0,.2);color:var(--mut);font:500 11px/1.25 'DM Sans',sans-serif;cursor:pointer;touch-action:manipulation;transition:color .15s,border-color .15s,background .15s}
+.cm .cm-like-btn:hover:not(:disabled),.cm .cm-like-btn:focus-visible{border-color:rgba(214,178,100,.65);color:var(--gold2);outline:none}
+.cm .cm-like-btn.liked{border-color:rgba(255,79,111,.4);color:#ff7188;background:rgba(255,79,111,.09)}
+.cm .cm-like-btn:disabled{cursor:default;opacity:.78}
 @media(max-width:520px){.chess-chat-acts{flex-direction:column}.chess-chat-format-toolbar{width:100%}.chess-chat-send{align-self:flex-end}.chess-chat-format-toolbar button{padding:5px 7px}}
 .cl{height:250px}.cm.mv{padding-left:8px;border-left:2px solid var(--gold)}.cm.mv span{color:var(--ink)}
 html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-highlight-color:transparent;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}.s2,.g2,.vt,.btn{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.cin input{font-size:16px}
@@ -759,7 +764,7 @@ function applyChessChatMarkup(action){
  input.focus({preventScroll:true});
  input.dispatchEvent(new Event('input',{bubbles:true}));
 }
-function cadd(who,txt,cls,authorPk){
+function cadd(who,txt,cls,authorPk,chatEventId){
  const d=document.createElement('div'),b=document.createElement('b'),s=document.createElement('span');
  d.className='cm '+(cls||'');
  b.textContent=who;renderChessChatText(s,txt);
@@ -799,8 +804,33 @@ function cadd(who,txt,cls,authorPk){
    if(profileName&&!/^(guest|player one|player two)$/i.test(profileName))b.textContent=profileName;
   }else av.textContent=/engine/i.test(String(who||''))?'♟':'♙';
   d.append(av,head,s);
+  if(validPk&&/^[0-9a-f]{64}$/i.test(String(chatEventId||''))){
+   const actions=document.createElement('div'),like=document.createElement('button');
+   actions.className='cm-actions';like.type='button';like.className='cm-like-btn';like.textContent='♡ Like';
+   like.title='Like this message';like.setAttribute('aria-label','Like this chat message');like.setAttribute('aria-pressed','false');
+   const gameId=netGame&&gameMode==='online'?netGame.id:'',gameRelay=netGame&&gameMode==='online'?netGame.relay:'';
+   like.addEventListener('click',function(){likeChessChatMessage(String(chatEventId).toLowerCase(),pk,gameId,gameRelay,like)});
+   actions.appendChild(like);d.appendChild(actions);
+  }
  }
  cl.appendChild(d);cl.scrollTop=1e5;while(cl.children.length>80)cl.firstChild.remove();
+}
+async function likeChessChatMessage(eventId,authorPk,gameId,gameRelay,button){
+ if(!button||button.dataset.busy==='1'||button.dataset.liked==='1')return;
+ if(!gameId||!netGame||gameMode!=='online'||netGame.id!==gameId){toast('This chess chat message is no longer in the active game.');return;}
+ const target=String(eventId||'').toLowerCase(),targetPk=String(authorPk||'').toLowerCase();
+ if(!/^[0-9a-f]{64}$/.test(target)||!NOSTR_PUBKEY_HEX.test(targetPk)){toast('This chat message cannot be liked.');return;}
+ button.dataset.busy='1';button.disabled=true;
+ try{
+  const signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond. Reconnect it and try again.');
+  if(!signer)throw new Error('Sign in to Sifaka or connect a Nostr signer to like messages.');
+  if(!netGame||netGame.id!==gameId||gameMode!=='online')throw new Error('The active chess game changed. Reopen its chat and try again.');
+  const reaction=await chessAwait(signChessEvent({kind:7,created_at:Math.floor(Date.now()/1000),tags:[['e',target],['p',targetPk],['k','1']],content:'+'}),30000,'The signer did not finish signing the like.');
+  const ack=await chessAwait(sendToRelays(reaction,networkRelays(gameRelay||netGame.relay)),16000,'Timed out waiting for a relay acknowledgement.');
+  if(!ack)throw new Error(chessRelayPublishError('chat message like'));
+  button.dataset.liked='1';button.classList.add('liked');button.textContent='♥ Liked';button.title='You liked this message';button.setAttribute('aria-label','You liked this chat message');button.setAttribute('aria-pressed','true');
+ }catch(e){toast('Could not like this chat message: '+String(e&&e.message||'check your signer and relay connection.'))}
+ finally{delete button.dataset.busy;if(button.dataset.liked!=='1')button.disabled=false;}
 }
 const BOT={lost:['Delicious. Thank you!','A fine gift.','You are leaving pieces hanging.'],cap:['Hmph. Lucky shot.','Ouch! I will remember that.','Bold of you.'],chk:['Check! Your king looks nervous.'],hi:['Hello! Ready to play?','Let us see what you have got.']},pk=a=>a[Math.random()*a.length|0];
 function chatEv(ic,t){if(lobby||gameMode!=='engine')return;if(/lost your/.test(t))cadd('Sifaka Engine',pk(BOT.lost),'bot');else if(/captured a/.test(t))cadd('Sifaka Engine',pk(BOT.cap),'bot');else if(t==='You are in check!')cadd('Sifaka Engine',pk(BOT.chk),'bot');else if(t==='New game')cadd('Sifaka Engine',pk(BOT.hi),'bot')}
@@ -825,7 +855,7 @@ async function csend(){
    const ev=await chessAwait(signChessEvent({kind:1,created_at:Math.max(Math.floor(Date.now()/1000),Number(g.lastChatPublishTime||0)+1),tags:[['t','sifaka-chess-chat'],['d',g.id]],content:content}),30000,'The signer did not finish signing the chat message.');
    const ack=await chessAwait(sendToRelays(ev,networkRelays(g.relay)),16000,'Timed out waiting for a relay acknowledgement.');
    if(!ack)throw new Error(chessRelayPublishError('chat message'));
-   g.lastChatPublishTime=ev.created_at;seenChessChatEvents.add(ev.id);cadd('You',t,'me',signer);input.value='';
+   g.lastChatPublishTime=ev.created_at;seenChessChatEvents.add(ev.id);cadd('You',t,'me',signer,ev.id);input.value='';
   }catch(e){toast('Could not send chess chat: '+String(e&&e.message||'check your signer and relay connection.'))}
   finally{chessChatBusy=false}
   return;
@@ -1115,7 +1145,7 @@ async function acceptIncomingChessChatEvent(ev){
  seenChessChatEvents.add(ev.id);
  while(seenChessChatEvents.size>600)seenChessChatEvents.delete(seenChessChatEvents.values().next().value);
  if(author===netGame.myPk)return;
- cadd(chessChatSenderLabel(author),message,'',author);
+ cadd(chessChatSenderLabel(author),message,'',author,ev.id);
 }
 function subscribeToNostrGame(){
  closeGameSockets();
