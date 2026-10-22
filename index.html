@@ -2593,11 +2593,10 @@ body.sifaka-games-modal-open{overflow:hidden}
           media.load();
         }catch(_){}
       });
+      // The page is leaving for Chess, so stop every embedded player regardless of
+      // provider hostname (some video embeds do not use their provider's usual URL).
       document.querySelectorAll('iframe').forEach(function(frame){
-        var src=String(frame.getAttribute('src')||'');
-        if(/youtube\.com\/embed|youtu\.be|zap\.stream|peer\.tube|streamable|hls/i.test(src)){
-          try{frame.src='about:blank'}catch(_){}
-        }
+        try{frame.src='about:blank'}catch(_){}
       });
       if(document.pictureInPictureElement&&document.exitPictureInPicture){
         try{await document.exitPictureInPicture()}catch(_){}
@@ -2619,7 +2618,6 @@ body.sifaka-games-modal-open{overflow:hidden}
     window.sifakaPrepareForChessNavigation().then(function(){window.location.assign(target.href)},function(){window.location.assign(target.href)});
   });
   window.addEventListener('pagehide',function(){
-    if(!window.__sifakaChessNavigationInProgress)return;
     document.querySelectorAll('video,audio').forEach(function(media){
       try{
         media.pause();media.autoplay=false;
@@ -2633,8 +2631,7 @@ body.sifaka-games-modal-open{overflow:hidden}
       }catch(_){}
     });
     document.querySelectorAll('iframe').forEach(function(frame){
-      var src=String(frame.getAttribute('src')||'');
-      var lower=src.toLowerCase();if(lower.indexOf('youtube.com/embed')>=0||lower.indexOf('youtu.be')>=0||lower.indexOf('zap.stream')>=0||lower.indexOf('peer.tube')>=0||lower.indexOf('streamable')>=0||lower.indexOf('hls')>=0){try{frame.src='about:blank'}catch(_){}}
+      try{frame.src='about:blank'}catch(_){}
     });
     if(document.pictureInPictureElement&&document.exitPictureInPicture){
       try{var exit=document.exitPictureInPicture();if(exit&&exit.catch)exit.catch(function(){})}catch(_){}
