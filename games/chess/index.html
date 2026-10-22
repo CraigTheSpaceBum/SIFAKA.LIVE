@@ -1216,23 +1216,55 @@ function pub(ev,preferredRelays){
  if(!rl.length){report.error='No valid relay URLs are configured.';return Promise.resolve(0)}
  let ok=0;
  return Promise.all(rl.map(function(url){return new Promise(function(resolve){
-  let ws,done=false,timer,sent=false;
+  let ws,done=false,timer,sent=false,authAttempts=0,authEventId='',waitingForAuth=false;
   function finish(){if(done)return;done=true;clearTimeout(timer);try{if(ws)ws.close()}catch(_){}resolve()}
-  timer=setTimeout(function(){if(!sent)report.unavailable.push({relay:url,reason:'Connection/publish timed out.'});else if(!report.accepted.some(function(x){return x.relay===url})&&!report.rejected.some(function(x){return x.relay===url})&&!report.authRequired.some(function(x){return x.relay===url}))report.unavailable.push({relay:url,reason:'No relay acknowledgement before timeout.'});finish()},9000);
+  timer=setTimeout(function(){
+   if(waitingForAuth&&!authAttempts)report.authRequired.push({relay:url,reason:'Relay requested authentication but sent no NIP-42 challenge.'});
+   else if(!sent)report.unavailable.push({relay:url,reason:'Connection/publish timed out.'});
+   else if(!report.accepted.some(function(x){return x.relay===url})&&!report.rejected.some(function(x){return x.relay===url})&&!report.authRequired.some(function(x){return x.relay===url}))report.unavailable.push({relay:url,reason:'No relay acknowledgement before timeout.'});
+   finish();
+  },12000);
   try{
    ws=new WebSocket(url);
    ws.onopen=function(){try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(err){report.unavailable.push({relay:url,reason:'Could not send event: '+String(err&&err.message||err)});finish()}};
    ws.onmessage=function(e){try{
     const d=JSON.parse(e.data);
+    if(d[0]==='AUTH'){
+     const challenge=String(d[1]||'');waitingForAuth=true;
+     if(!challenge){report.authRequired.push({relay:url,reason:'Relay sent an empty NIP-42 challenge.'});finish();return}
+     if(authAttempts){report.authRequired.push({relay:url,reason:'Relay requested authentication more than once in the same connection.'});finish();return}
+     authAttempts++;
+     signChessEvent({kind:22242,created_at:Math.floor(Date.now()/1000),tags:[['relay',url],['challenge',challenge]],content:''}).then(function(authEvent){
+      if(done)return;
+      authEventId=String(authEvent.id||'');
+      ws.send(JSON.stringify(['AUTH',authEvent]));
+     }).catch(function(err){
+      report.authRequired.push({relay:url,reason:'Could not sign NIP-42 authentication event: '+String(err&&err.message||err)});finish();
+     });
+     return;
+    }
+    if(d[0]==='OK'&&authEventId&&d[1]===authEventId){
+     if(d[2]){
+      waitingForAuth=false;authEventId='';
+      try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(err){report.unavailable.push({relay:url,reason:'Authenticated, but retrying the event failed: '+String(err&&err.message||err)});finish()}
+     }else{
+      report.authRequired.push({relay:url,reason:'Relay rejected NIP-42 authentication: '+String(d[3]||'no reason provided')});finish();
+     }
+     return;
+    }
     if(d[0]==='OK'&&d[1]===ev.id){
-     const item={relay:url,reason:String(d[3]||'')};
+     const reason=String(d[3]||'');
+     if(!d[2]&&/auth(?:entication)?-required|auth required|must authenticate/i.test(reason)){
+      waitingForAuth=true;
+      return;
+     }
+     const item={relay:url,reason:reason};
      if(d[2]){ok++;report.accepted.push(item)}else report.rejected.push(item);
      finish();return;
     }
-    if(d[0]==='AUTH')report.authRequired.push({relay:url,reason:'Relay requires NIP-42 authentication.',challenge:String(d[1]||'').slice(0,160)});
    }catch(_){}};
    ws.onerror=function(){report.unavailable.push({relay:url,reason:'WebSocket error.'});finish()};
-   ws.onclose=function(){if(!done){if(sent&&!report.accepted.some(function(x){return x.relay===url})&&!report.rejected.some(function(x){return x.relay===url})&&!report.authRequired.some(function(x){return x.relay===url}))report.unavailable.push({relay:url,reason:'Relay closed before acknowledging the event.'});finish()}};
+   ws.onclose=function(){if(!done){if(waitingForAuth)report.authRequired.push({relay:url,reason:'Relay closed during NIP-42 authentication.'});else if(sent&&!report.accepted.some(function(x){return x.relay===url})&&!report.rejected.some(function(x){return x.relay===url})&&!report.authRequired.some(function(x){return x.relay===url}))report.unavailable.push({relay:url,reason:'Relay closed before acknowledging the event.'});finish()}};
   }catch(err){report.unavailable.push({relay:url,reason:String(err&&err.message||err)});finish()}
  })})).then(function(){report.acceptedCount=ok;report.completedAt=Date.now();return ok});
 }
