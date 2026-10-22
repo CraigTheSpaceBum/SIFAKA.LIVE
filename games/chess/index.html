@@ -1790,5 +1790,58 @@ document.addEventListener('click',e=>{if(!e.target.closest('.chess-site-nav .sea
 const pk=stored();if(pk){try{localStorage.setItem(STORE,pk);}catch(_){}requestId++;setIdentity(pk,{},false);load(pk,requestId);}else loggedOutState();
 window.addEventListener('storage',()=>{const current=stored();if(current&&current!==active){requestId++;setIdentity(current,{},false);load(current,requestId);}});
 })();</script>
+<script id="sifaka-chess-media-guard">
+(function(){
+  // Chess has no in-page video/audio feature. Keep unexpected embeds from
+  // becoming background playback, while preserving the two Sifaka sign-in frames.
+  function allowedFrame(frame){
+    return frame.id==='chessLoginFrame'||frame.title==='Sifaka account connection';
+  }
+  function stopMedia(root){
+    if(!root)return;
+    var media=[];
+    try{if(root.nodeType===1&&root.matches&&root.matches('video,audio'))media.push(root)}catch(_){}
+    try{if(root.querySelectorAll)Array.prototype.forEach.call(root.querySelectorAll('video,audio'),function(el){media.push(el)})}catch(_){}
+    media.forEach(function(el){
+      try{
+        el.autoplay=false;el.loop=false;el.pause();
+        if(el.srcObject&&typeof el.srcObject.getTracks==='function'){
+          el.srcObject.getTracks().forEach(function(track){try{track.stop()}catch(_){}});
+          el.srcObject=null;
+        }
+        el.removeAttribute('src');
+        el.querySelectorAll('source').forEach(function(source){source.removeAttribute('src')});
+        el.load();
+      }catch(_){}
+    });
+    var frames=[];
+    try{if(root.nodeType===1&&root.tagName==='IFRAME')frames.push(root)}catch(_){}
+    try{if(root.querySelectorAll)Array.prototype.forEach.call(root.querySelectorAll('iframe'),function(frame){frames.push(frame)})}catch(_){}
+    frames.forEach(function(frame){
+      if(allowedFrame(frame))return;
+      try{frame.src='about:blank';frame.removeAttribute('srcdoc')}catch(_){}
+    });
+  }
+  stopMedia(document);
+  // Also stop media injected after the chess page has loaded.
+  document.addEventListener('play',function(event){
+    var el=event.target;
+    if(el&&/^(VIDEO|AUDIO)$/.test(el.tagName)){try{el.pause()}catch(_){}}
+  },true);
+  if(typeof MutationObserver!=='undefined'&&document.documentElement){
+    var observer=new MutationObserver(function(records){
+      records.forEach(function(record){
+        record.addedNodes.forEach(function(node){stopMedia(node)});
+      });
+    });
+    observer.observe(document.documentElement,{childList:true,subtree:true});
+  }
+  try{
+    if(document.pictureInPictureElement&&document.exitPictureInPicture){
+      var exit=document.exitPictureInPicture();if(exit&&exit.catch)exit.catch(function(){});
+    }
+  }catch(_){}
+})();
+</script>
 <script src="../../scripts/theme-manager.js?v=0.9.9" defer></script>
 </body></html>
