@@ -1352,30 +1352,21 @@ async function invitePrivateChessPlayer(u,button){
  if(!NOSTR_PUBKEY_HEX.test(peer)){toast('This player does not have a valid Nostr public key.');return}
  const signer=await getSignerKey();
  if(!signer||signer!==g.myPk){toast('Reconnect the Nostr account that created this private game.');return}
+ if(peer===signer){toast('Choose another player; you cannot invite your own account.');return}
  if(g.black&&g.black!==peer){toast('This private game is already locked to another player. Create a new private game to invite someone else.');return}
- const link=gameLink(g);
- if(button){button.disabled=true;button.textContent='Preparing private invite…'}
+ try{getChessInviteSchedule()}catch(err){toast(err.message);return}
+ if(!await getChessInviteDmProvider(signer)){toast('This signer cannot encrypt direct messages for the active account. Connect a NIP-04-enabled Nostr signer for the same public key. Nothing was posted publicly.');return}
+ if(button){button.disabled=true;button.textContent='Preparing invite…'}
  try{
   if(!g.black){
-   const locked=Object.assign({},g,{black:peer,accepted:false});
-   const body=buildNip64Pgn(g.white,peer,g.relay),result=await publishPrivateChessEvent(locked,'invite',body);
+   const locked=Object.assign({},g,{black:peer,accepted:false}),body=buildNip64Pgn(g.white,peer,g.relay),result=await publishPrivateChessEvent(locked,'invite',body);
    if(!result.ack)throw new Error('The encrypted invitation state was not accepted by any relay.');
    g.black=peer;g.accepted=false;g.status='invite';g.content=body;g.lastEventTime=result.created_at;g.lastEventId=result.event.id;g.lastPlies=pgnPlies(body);g.lastPlayers=2;g.lastPublishTime=result.created_at;
    setNostrOpponent(peer,'Private invitation pending');turnGlow();
   }
-  let extensionPk='';
-  try{if(window.nostr&&typeof window.nostr.getPublicKey==='function'&&window.nostr.nip04&&typeof window.nostr.nip04.encrypt==='function')extensionPk=String(await window.nostr.getPublicKey()||'').toLowerCase()}catch(_){}
-  if(extensionPk!==signer||!window.nostr||!window.nostr.nip04||typeof window.nostr.nip04.encrypt!=='function'){
-   try{await navigator.clipboard.writeText(link)}catch(_){}
-   if(button){button.disabled=false;button.textContent='Copy private invite link';button.onclick=async function(){try{await navigator.clipboard.writeText(link);toast('Private invite link copied. Send it directly to the invited player.')}catch(_){toast('Select and copy the complete invitation URL from the game-ready dialog.')}}}
-   toast('This game is locked to the selected Nostr account. Your current signer cannot send a compatible encrypted DM, so the private invite link was copied for you to send directly.');
-   return;
-  }
-  const message='You have a private Sifaka Chess invitation. Open this complete link to join: '+link;
-  const dm=await signChessEvent({kind:4,created_at:Math.max(Math.floor(Date.now()/1000),g.lastEventTime+1),tags:[['p',peer]],content:await window.nostr.nip04.encrypt(peer,message)});
-  const ack=await sendToRelays(dm,networkRelays(g.relay));
-  if(ack){if(button){button.textContent='Private invite sent ✓';button.disabled=false}toast('Encrypted private invitation sent. The game is not listed in the public chess lobby.')}
-  else{try{await navigator.clipboard.writeText(link)}catch(_){ }if(button){button.textContent='Copy private invite link';button.disabled=false}toast('No relay confirmed the direct message. The private invite link was copied so you can send it directly.')}
+  await sendChessCalendarDm(u,g,gameLink(g));
+  if(button){button.textContent='Private invite sent ✓';button.disabled=false}
+  toast('Encrypted private chess DM sent with the match link and calendar invitation.');
  }catch(err){if(button){button.disabled=false;button.textContent='Invite'}toast('Could not send the private invite: '+String(err&&err.message||'check the signer and relay connection.'))}
 }
 async function joinNostrGame(g,button){
@@ -1713,59 +1704,39 @@ async function invite(u,btn){
  if(netGame&&netGame.private)return invitePrivateChessPlayer(u,btn);
  if(!(netGame&&gameMode==='online'&&netGame.myColor==='w'&&!netGame.black&&!netGame.conflicted)){
   pendingChessInviteSelection={user:u,button:btn};openGameVisibilityModal();
-  if(btn){btn.disabled=false;btn.textContent='Choose visibility';}
+  if(btn){btn.disabled=false;btn.textContent='Choose visibility'}
   toast('Choose public or private before creating the match and sending this invitation.');return;
  }
- let txt='';
- if(!chessSignerAvailable()){
-  try{await navigator.clipboard.writeText('Chess challenge! Open Sifaka Chess: '+INV)}catch(_){}
-  requireSigner(function(){invite(u,btn)});
-  return;
- }
+ if(!NOSTR_PUBKEY_HEX.test(String(u&&u.pk||''))){toast('Choose a valid Nostr profile before sending an invite.');return}
+ try{getChessInviteSchedule()}catch(err){toast(err.message);return}
  btn.disabled=true;btn.textContent='Preparing…';
  try{
-  const g=await ensureInviteGame(),link=gameLink(g),signer=await getSignerKey();
+  const g=await ensureInviteGame(),signer=await getSignerKey();
   if(!signer||signer!==g.white)throw new Error('The active signer no longer matches the white player in this game. Reconnect Sifaka and try again.');
-  txt='♞ Chess challenge! Join me for a game on Sifaka Chess.\nJoin this Nostr Chess match: '+link+'\nThis match uses NIP-64 (kind:64) PGN game events so compatible Nostr chess clients can follow it.';
-  let ev,dm=false,extensionPk='';
-  // NIP-04 ciphertext must be produced by the same identity that signs the event.
-  // Sifaka's local signer may differ from window.nostr, so use private DM only when
-  // the extension's public key matches the active game's white player.
-  try{
-   if(window.nostr&&typeof window.nostr.getPublicKey==='function'&&window.nostr.nip04&&typeof window.nostr.nip04.encrypt==='function'){
-    extensionPk=String(await window.nostr.getPublicKey()||'').toLowerCase();
-   }
-  }catch(_){}
-  const t=Math.floor(Date.now()/1000);
-  if(extensionPk===signer&&window.nostr&&window.nostr.nip04&&typeof window.nostr.nip04.encrypt==='function'){
-   ev=await signChessEvent({kind:4,created_at:t,tags:[['p',u.pk]],content:await window.nostr.nip04.encrypt(u.pk,txt)});
-   dm=true;
-  }else{
-   // Public mention is the compatible fallback for local Sifaka signers or mismatched extensions.
-   ev=await signChessEvent({kind:1,created_at:t,tags:[['p',u.pk],['t','chess']],content:'nostr:'+npub(u.pk)+' '+txt});
-  }
-  const ok=await pub(ev,networkRelays(g.relay));
-  if(ok){
-   btn.textContent='Invited ✓';
-   toast(dm?'Private invite sent':'Invite posted as a public Nostr mention; the game link is included');
-  }else{
-   try{await navigator.clipboard.writeText(txt)}catch(_){}
-   btn.disabled=false;btn.textContent='Invite';
-   toast('No relay confirmed the invite. The game link was copied so you can send it directly.');
-  }
- }catch(e){
-  btn.disabled=false;btn.textContent='Invite';
-  if(e&&e.message==='signer')requireSigner(function(){invite(u,btn)});
-  else toast('Could not send the invitation: '+String(e&&e.message||'check your signer and relay settings.'));
- }
+  await sendChessCalendarDm(u,g,gameLink(g));
+  btn.textContent='Invited ✓';btn.disabled=false;toast('Encrypted chess DM sent with the match link and calendar invitation.');
+ }catch(e){btn.disabled=false;btn.textContent='Invite';if(e&&e.message==='signer')requireSigner(function(){invite(u,btn)});else toast('Could not send the invitation: '+String(e&&e.message||'check your signer and relay settings.'))}
 }
-async function isearch(){const q=$('iq').value.trim(),r=$('ir');if(!q)return;r.textContent='Searching...';
-const m=q.match(/^npub1[a-z0-9]{58}$/i),pk=m?b32d(q.toLowerCase()):HEX.test(q.toLowerCase())?q.toLowerCase():null;
-const list=pk?[{pk,name:'',picture:'',nip05:'',about:''}]:await nostrSearch(q);r.textContent='';
-if(!list.length){r.textContent='No results (the search relays may be unreachable from this page). Try another name or paste an npub.';return}
-list.slice(0,20).forEach(u=>{const d=document.createElement('div'),av=document.createElement('span'),t=document.createElement('div'),b=document.createElement('b'),s=document.createElement('small'),btn=document.createElement('button'),np=npub(u.pk);d.className='ur';av.className='av2';b.textContent=u.name||shortChessNpub(u.pk);s.textContent=u.nip05?('Claimed NIP-05: '+u.nip05):u.about||np; t.append(b,s);btn.className='btn pri';btn.textContent='Invite';btn.onclick=()=>invite(u,btn);setChessAvatarFallback(av,u.picture,u.name,u.pk);d.append(av,t,btn);r.appendChild(d);
-lookupChessPlayerProfile(u.pk).then(function(result){if(!d.isConnected)return;const p=result&&result.profile&&typeof result.profile==='object'?result.profile:{};const verified=!!(result&&result.verified&&p.nip05);const name=chessProfileName(p,u.pk);b.replaceChildren(document.createTextNode(name));if(verified){const check=document.createElement('span');check.className='chess-player-nip05-check';check.textContent='✓';check.title='NIP-05 verified';b.appendChild(check)}paintChessAvatar(av,p,u.pk,verified);s.textContent=p.nip05?(verified?p.nip05:'Claimed NIP-05 (not verified): '+p.nip05):p.about||np;s.title='Nostr public key: '+np;}).catch(function(){});
-})}
+async function isearch(){
+ const q=$('iq').value.trim(),status=$('inviteSearchStatus');
+ if(chessInviteSource!=='search'){
+  const list=chessInviteItemsForSource().filter(function(p){return chessInviteMatches(p,q)});
+  status.textContent=list.length+' profile'+(list.length===1?'':'s')+' match'+(list.length===1?'es':'')+(q?' “'+q+'”':' in this source')+'.';
+  renderChessInviteResults(list,chessInviteSource==='following'?'No followed profiles match. Try My lists or Search Nostr.':'No saved public list entries match. Try Search Nostr.');return;
+ }
+ if(!q){status.textContent='Enter a display name, npub, hex public key, or NIP-05 address.';$('ir').replaceChildren();return}
+ const token=++chessInviteSearchRequest;status.textContent='Searching Nostr profiles…';$('ir').replaceChildren();
+ let list=[];const npubMatch=q.match(/^npub1[a-z0-9]{58}$/i),pk=npubMatch?b32d(q.toLowerCase()):HEX.test(q.toLowerCase())?q.toLowerCase():null;
+ if(pk)list=[{pk:pk,name:'',display_name:'',picture:'',nip05:'',about:''}];
+ else{if(q.includes('@')){const resolved=await resolveChessNip05(q);if(resolved)list=[resolved]}if(!list.length)list=await nostrSearch(q)}
+ if(token!==chessInviteSearchRequest)return;
+ if(!list.length){status.textContent='No matching profile found. The NIP-05 server or search relays may be unavailable; verify the address and try again.';renderChessInviteResults([],'No results. Try an npub or a different display-name query.');return}
+ status.textContent='Found '+list.length+' matching profile'+(list.length===1?'':'s')+'. Choose Invite to send an encrypted DM and calendar event.';
+ renderChessInviteResults(list,'No matching profiles found.');
+}
+$('inviteSourceTabs').addEventListener('click',function(e){const button=e.target.closest('[data-invite-source]');if(button)setChessInviteSource(button.dataset.inviteSource)});
+$('inviteListSelect').addEventListener('change',renderChessInviteCurrentSource);
+$('iq').addEventListener('input',function(){if(chessInviteSource!=='search')renderChessInviteCurrentSource()});
 $('inv').onclick=openInviteModal;$('ix').onclick=closeInviteModal;
 $('inm').addEventListener('click',e=>{if(e.target===$('inm'))closeInviteModal()});
 $('ig').onclick=isearch;$('iq').addEventListener('keydown',e=>{if(e.key==='Enter')isearch()});
