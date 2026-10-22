@@ -1517,7 +1517,7 @@ function installMainSiteSigner(frameWindow,expectedPubkey){
 function connectLocalSignerBridge(){
  let expected='';
  try{expected=String(active||stored()||'').toLowerCase()}catch(_){}
- if(!HEX.test(expected))return Promise.resolve('');
+ if(expected&&!HEX.test(expected))expected='';
  if(signerBridgePromise)return signerBridgePromise;
  signerBridgePromise=new Promise(resolve=>{
   let finished=false;
@@ -1563,19 +1563,25 @@ function closeChessLoginPopup(syncUser=true){
   }else if(syncUser){
    toast('Sign in to play against a person. The game has not started.');
   }
- }else if(!authenticatedFromMain&&!syncUser){
-  // Do not leave a previously cached Chess identity active after a failed auth popup.
-  // A valid, main-site session is reloaded through stored() on the next visit.
  }
- if(syncUser&&!authenticatedFromMain&&pendingChessAction&&active&&typeof window.sifakaChessConnectLocalSigner==='function'){
+ if(syncUser&&pendingChessAction&&typeof window.sifakaChessConnectLocalSigner==='function'){
   const action=pendingChessAction;
   window.sifakaChessConnectLocalSigner().then(function(pk){
    if(pk&&pendingChessAction===action&&typeof window.sifakaChessAfterLogin==='function')window.sifakaChessAfterLogin();
-   else if(pendingChessAction===action){if(typeof window.sifakaChessClearPendingAction==='function')window.sifakaChessClearPendingAction();toast('Could not reconnect the signed-in Sifaka account. Please try again or connect a Nostr signer.')}
-  }).catch(function(){if(pendingChessAction===action&&typeof window.sifakaChessClearPendingAction==='function')window.sifakaChessClearPendingAction()});
- }else if(syncUser&&!authenticatedFromMain&&typeof window.sifakaChessClearPendingAction==='function'){try{window.sifakaChessClearPendingAction()}catch(_){}}
- if(authenticatedFromMain&&typeof window.sifakaChessAfterLogin==='function'){try{window.sifakaChessAfterLogin()}catch(_){}}
+   else if(pendingChessAction===action){
+    if(typeof window.sifakaChessClearPendingAction==='function')window.sifakaChessClearPendingAction();
+    toast('Could not reconnect the signed-in Sifaka account. Please try again or connect a Nostr signer.');
+   }
+  }).catch(function(){
+   if(pendingChessAction===action&&typeof window.sifakaChessClearPendingAction==='function')window.sifakaChessClearPendingAction();
+   toast('Could not reconnect the signed-in Sifaka account. Please try again or connect a Nostr signer.');
+  });
+ }else if(syncUser&&!authenticatedFromMain&&typeof window.sifakaChessClearPendingAction==='function'){
+  try{window.sifakaChessClearPendingAction()}catch(_){}
+ }
+ if(authenticatedFromMain&&!pendingChessAction&&typeof window.sifakaChessAfterLogin==='function'){try{window.sifakaChessAfterLogin()}catch(_){}}
 }
+
 function openChessSitePopup(kind='login'){
  if(!loginOverlay||!loginFrame||!loginOverlay.hidden)return;
  activeChessPopup=kind==='go-live'?'go-live':'login';
@@ -1599,7 +1605,29 @@ function openChessSitePopup(kind='login'){
   function watchModal(modal){
    if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}
    const Observer=win.MutationObserver;
-   if(Observer){loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open'))closeChessLoginPopup(true);});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']});}
+   if(Observer){loginPopupObserver=new Observer(()=>{
+    if(modal.classList.contains('open'))return;
+    if(popupKind==='login'){
+     const onboarding=doc&&doc.getElementById('onboardingModal');
+     if(onboarding&&onboarding.classList.contains('open')){
+      setIsolate('onboardingModal');
+      watchModal(onboarding);
+      return;
+     }
+     // Account creation closes the login modal before its async continuation opens
+     // onboarding. Check on the next task so that transition is not mistaken for cancel.
+     win.setTimeout(()=>{
+      if(token!==loginPopupToken||loginOverlay.hidden)return;
+      const followup=doc&&doc.getElementById('onboardingModal');
+      if(followup&&followup.classList.contains('open')){
+       setIsolate('onboardingModal');
+       watchModal(followup);
+       return;
+      }
+      closeChessLoginPopup(true);
+     },0);
+    }else closeChessLoginPopup(true);
+   });loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']});}
   }
   function awaitPopupApi(attempt){
    if(token!==loginPopupToken||loginOverlay.hidden)return;
