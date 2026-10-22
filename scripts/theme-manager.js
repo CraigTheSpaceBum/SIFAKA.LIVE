@@ -44,6 +44,7 @@
   let rolloverTimer = null;
   let transitionTimer = null;
   let lastDailyDateKey = "";
+  let dailyThemeEnabled = true;
 
   function localDateKey(date) {
     return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
@@ -57,7 +58,7 @@
 
   function syncThemePicker(theme) {
     const picker = document.getElementById("settingsThemeSelect");
-    if (picker && Array.from(picker.options).some(option => option.value === theme)) {
+    if (picker && picker.value !== "daily" && Array.from(picker.options).some(option => option.value === theme)) {
       picker.value = theme;
     }
   }
@@ -66,9 +67,10 @@
     const now = new Date();
     const dateKey = localDateKey(now);
     const nextTheme = dailyThemeForDate(now);
-    const current = currentTheme();
     lastDailyDateKey = dateKey;
+    if (!dailyThemeEnabled) return nextTheme;
 
+    const current = currentTheme();
     if (current !== nextTheme) {
       if (animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         root.setAttribute("data-theme-transitioning", "true");
@@ -110,7 +112,8 @@
     current: currentTheme,
     cycle: cycleTheme,
     list: () => [...THEMES],
-    daily: dailyThemeForDate
+    daily: dailyThemeForDate,
+    setDailyEnabled: (enabled) => { dailyThemeEnabled = enabled !== false; }
   };
 
   window.setSifakaTheme = applyTheme;
