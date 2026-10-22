@@ -1492,7 +1492,7 @@ async function fetchChessInvite(targetId,targetRelay){
   let ws,done=false,timer;const pending=[],sub='sifaka-chess-invite-'+requestId+'-'+i;
   const finish=function(){if(done)return;done=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close()}}catch(_){}Promise.allSettled(pending).then(resolve)};
   timer=setTimeout(finish,7500);
-  try{ws=new WebSocket(url);ws.onopen=function(){try{const filter=privateInvite?{kinds:[30079],'#d':[targetId],limit:30}:{kinds:[64],'#d':[targetId],limit:50};ws.send(JSON.stringify(['REQ',sub,filter))}catch(_){finish()}};
+  try{ws=new WebSocket(url);ws.onopen=function(){try{const filter=privateInvite?{kinds:[30079],'#d':[targetId],limit:30}:{kinds:[64],'#d':[targetId],limit:50};ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){finish()}};
    ws.onmessage=function(e){try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub&&d[2]){if(privateInvite&&d[2].kind===30079){const task=decodePrivateChessEvent(d[2],targetId,url).then(function(g){if(g&&requestId===incomingChessInviteRequest)found.push(g)});pending.push(task)}else if(!privateInvite&&d[2].kind===64){const g=eventToChessGame(d[2],url);if(g&&g.id===targetId&&requestId===incomingChessInviteRequest)found.push(g)}}else if(d[0]==='EOSE'&&d[1]===sub)finish()}catch(_){}};
    ws.onerror=finish;ws.onclose=finish;
   }catch(_){finish()}
