@@ -1742,5 +1742,5 @@ document.addEventListener('click',e=>{if(!e.target.closest('.chess-site-nav .sea
 const pk=stored();if(pk){try{localStorage.setItem(STORE,pk);}catch(_){}requestId++;setIdentity(pk,{},false);load(pk,requestId);}else loggedOutState();
 window.addEventListener('storage',()=>{const current=stored();if(current&&current!==active){requestId++;setIdentity(current,{},false);load(current,requestId);}});
 })();</script>
-<script src="../../scripts/theme-manager.js?v=0.9.8" defer></script>
+<script src="../../scripts/theme-manager.js?v=0.9.9" defer></script>
 </body></html>
