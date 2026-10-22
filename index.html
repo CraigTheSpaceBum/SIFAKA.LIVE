@@ -2594,11 +2594,10 @@ body.sifaka-games-modal-open{overflow:hidden}
           media.load();
         }catch(_){}
       });
+      // Chess is a standalone game page. Stop every embedded frame, not only
+      // known video hosts: stream/player wrappers can proxy media under other URLs.
       document.querySelectorAll('iframe').forEach(function(frame){
-        var src=String(frame.getAttribute('src')||'');
-        if(/youtube\.com\/embed|youtu\.be|zap\.stream|peer\.tube|streamable|hls/i.test(src)){
-          try{frame.src='about:blank'}catch(_){}
-        }
+        try{frame.src='about:blank';frame.removeAttribute('srcdoc')}catch(_){}
       });
       if(document.pictureInPictureElement&&document.exitPictureInPicture){
         try{await document.exitPictureInPicture()}catch(_){}
@@ -2633,9 +2632,10 @@ body.sifaka-games-modal-open{overflow:hidden}
         media.load();
       }catch(_){}
     });
+    // The previous page is leaving for Chess; blank every frame so unrecognized
+    // embed/player hosts cannot keep video or audio alive after navigation.
     document.querySelectorAll('iframe').forEach(function(frame){
-      var src=String(frame.getAttribute('src')||'');
-      var lower=src.toLowerCase();if(lower.indexOf('youtube.com/embed')>=0||lower.indexOf('youtu.be')>=0||lower.indexOf('zap.stream')>=0||lower.indexOf('peer.tube')>=0||lower.indexOf('streamable')>=0||lower.indexOf('hls')>=0){try{frame.src='about:blank'}catch(_){}}
+      try{frame.src='about:blank';frame.removeAttribute('srcdoc')}catch(_){}
     });
     if(document.pictureInPictureElement&&document.exitPictureInPicture){
       try{var exit=document.exitPictureInPicture();if(exit&&exit.catch)exit.catch(function(){})}catch(_){}
