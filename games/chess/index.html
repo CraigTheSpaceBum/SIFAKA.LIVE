@@ -103,7 +103,8 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
 @supports not (width:1cqw){.g{font-size:min(10vw,64px)!important}.rk,.fl{font-size:10px!important}.s2.sel{box-shadow:inset 0 0 0 3px #ffd23f}.s2.cp::after{border:3px solid rgba(20,16,10,.4)}}
 .duo .card{position:relative;transition:border-color .3s,background .3s}
 .duo .card.turn{border-color:var(--gold2);background:rgba(242,220,160,.12);animation:tglow 1.8s ease-in-out infinite}
-.duo .card.turn::after{content:attr(data-t);position:absolute;top:-9px;left:12px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#1a1224;font:700 9px 'DM Sans',sans-serif;letter-spacing:.12em;padding:2px 8px;border-radius:999px}
+.duo .card.pl{padding-top:30px}
+.duo .card.turn::after{content:attr(data-t);position:absolute;top:5px;left:10px;z-index:3;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#1a1224;font:700 9px 'DM Sans',sans-serif;letter-spacing:.12em;padding:2px 8px;border-radius:999px;max-width:calc(100% - 20px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .duo .card.turn .av{border-color:var(--gold2);box-shadow:0 0 14px rgba(242,220,160,.6)}
 @keyframes tglow{0%,100%{box-shadow:0 0 8px rgba(242,220,160,.35),0 0 0 1px rgba(242,220,160,.5)}50%{box-shadow:0 0 28px rgba(242,220,160,.85),0 0 0 1px rgba(242,220,160,.95)}}
 @media(prefers-reduced-motion:reduce){.duo .card.turn{animation:none;box-shadow:0 0 18px rgba(242,220,160,.7)}}
@@ -484,14 +485,18 @@ const sfx=k=>{if(!mute)try{SFX[k]()}catch(e){}};
 /* notifications */
 const NM={p:'Sifaka Pawn',n:'Ostrich Knight',b:'Sifaka Bishop',r:'Gorilla Rook',q:'Sifaka Queen',k:'Sifaka King'};
 function note(ic,t,s,c){if(window.chatEv)chatEv(ic,t,s);if(!CF.notif)return;const e=document.createElement('div'),n=$('notes');e.className='note';e.style.setProperty('--c',c||'#d6b264');e.innerHTML=`<i>${ic}</i><div><b>${t}</b><small>${s||''}</small></div>`;n.appendChild(e);while(n.children.length>3)n.firstChild.remove();setTimeout(()=>{e.classList.add('out');setTimeout(()=>e.remove(),400)},3400)}
-function fx(m,pre){const me=pre.t==='w',cp=pre.b[m.t]||(m.ep?pre.b[m.t+(me?8:-8)]:null),mate=over&&over.h==='Checkmate';
-setTimeout(()=>{sfx(m.cs?'cas':m.pr?'pro':cp?'cap':'mv');
-if(cp)note('⚔️',me?'You captured a '+NM[cp[1]]:'You lost your '+NM[cp[1]],me?'Nicely played':'Sifaka Engine took a piece',me?'#d6b264':'#ff6b81');
-if(m.cs)note('🏰','Castled '+(m.cs==='K'?'kingside':'queenside'),me?'Your king is tucked away':'The engine castled','#8b5cf6');
-if(m.pr)note('👑','Promotion!',me?'Your pawn became a Queen':'Engine pawn became a Queen','#8b5cf6')},330);
-if(inChk(st)&&!mate)setTimeout(()=>{sfx('chk');note('⚠️',me?'Check!':'You are in check!',me?'Enemy king under attack':'Protect your king','#ff4d6d',1)},cp?620:420);
-if(mate)setTimeout(()=>note('♚','Checkmate!',me?'You won the game':'You lost the game',me?'#d6b264':'#ff4d6d'),700);
-else if(over)setTimeout(()=>note('🤝','Draw',over.p,'#8b5cf6'),700)}
+function fx(m,pre){
+ const whiteMove=pre.t==='w',me=gameMode==='online'&&netGame?pre.t===netGame.myColor:gameMode==='person'?true:whiteMove;
+ const cp=pre.b[m.t]||(m.ep?pre.b[m.t+(whiteMove?8:-8)]:null),mate=over&&over.h==='Checkmate';
+ setTimeout(()=>{sfx(m.cs?'cas':m.pr?'pro':cp?'cap':'mv');
+  if(cp)note('⚔️',me?'You captured a '+NM[cp[1]]:'You lost your '+NM[cp[1]],me?'Nicely played':(gameMode==='online'?'Your opponent took a piece':'Sifaka Engine took a piece'),me?'#d6b264':'#ff6b81');
+  if(m.cs)note('🏰','Castled '+(m.cs==='K'?'kingside':'queenside'),me?'Your king is tucked away':(gameMode==='online'?'Your opponent castled':'The engine castled'),'#8b5cf6');
+  if(m.pr)note('👑','Promotion!',me?'Your pawn became a Queen':(gameMode==='online'?'Your opponent promoted a pawn to a Queen':'Engine pawn became a Queen'),'#8b5cf6')
+ },330);
+ if(inChk(st)&&!mate)setTimeout(()=>{sfx('chk');note('⚠️',me?'Check!':'You are in check!',me?'Enemy king under attack':'Protect your king','#ff4d6d',1)},cp?620:420);
+ if(mate)setTimeout(()=>note('♚','Checkmate!',me?'You won the game':'You lost the game',me?'#d6b264':'#ff6b81'),700);
+ else if(over)setTimeout(()=>note('🤝','Draw',over.p,'#8b5cf6'),700)
+}
 function addPiece(i,p){const g=mkPiece(p);g.position.copy(pos(i));g.userData.sq=i;scene.add(g);meshes[i]=g}
 function rebuild(){meshes.forEach(m=>m&&scene.remove(m));meshes.fill(null);st.b.forEach((p,i)=>p&&addPiece(i,p))}
 const AN=[],ease=k=>k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2,anim=(d,fn,done)=>AN.push({t0:performance.now(),d,fn,done});
@@ -664,7 +669,7 @@ return g}
 const cl=$('cl'),seenC=new Set();let cws=null,lobby=false,chessChatBusy=false;const seenChessChatEvents=new Set();
 function cadd(who,txt,cls){const d=document.createElement('div'),b=document.createElement('b'),s=document.createElement('span');d.className='cm '+(cls||'');b.textContent=who;s.textContent=txt;d.append(b,s);cl.appendChild(d);cl.scrollTop=1e5;while(cl.children.length>80)cl.firstChild.remove()}
 const BOT={lost:['Delicious. Thank you!','A fine gift.','You are leaving pieces hanging.'],cap:['Hmph. Lucky shot.','Ouch! I will remember that.','Bold of you.'],chk:['Check! Your king looks nervous.'],hi:['Hello! Ready to play?','Let us see what you have got.']},pk=a=>a[Math.random()*a.length|0];
-function chatEv(ic,t){if(lobby)return;if(/lost your/.test(t))cadd('Sifaka Engine',pk(BOT.lost),'bot');else if(/captured a/.test(t))cadd('Sifaka Engine',pk(BOT.cap),'bot');else if(t==='You are in check!')cadd('Sifaka Engine',pk(BOT.chk),'bot');else if(t==='New game')cadd('Sifaka Engine',pk(BOT.hi),'bot')}
+function chatEv(ic,t){if(lobby||gameMode!=='engine')return;if(/lost your/.test(t))cadd('Sifaka Engine',pk(BOT.lost),'bot');else if(/captured a/.test(t))cadd('Sifaka Engine',pk(BOT.cap),'bot');else if(t==='You are in check!')cadd('Sifaka Engine',pk(BOT.chk),'bot');else if(t==='New game')cadd('Sifaka Engine',pk(BOT.hi),'bot')}
 async function csend(){
  const input=$('ci'),t=input.value.trim().slice(0,200);if(!t)return;
  if(lobby){
@@ -692,7 +697,7 @@ async function csend(){
   return;
  }
  input.value='';
- cadd('You',t,'me');setTimeout(()=>cadd('Sifaka Engine',/\b(hi|hello|hey)\b/i.test(t)?pk(BOT.hi):pk(['Hmm, interesting.','Focus on the board!','I am calculating...','Nice try.']),'bot'),700)
+ cadd('You',t,'me');if(gameMode==='engine')setTimeout(()=>cadd('Sifaka Engine',/\b(hi|hello|hey)\b/i.test(t)?pk(BOT.hi):pk(['Hmm, interesting.','Focus on the board!','I am calculating...','Nice try.']),'bot'),700)
 }
 function lob(on){lobby=on;$('cs').textContent=on?'Nostr lobby':'Engine';$('cj').textContent=on?'Leave lobby':'Join lobby';if(cws){try{cws.close()}catch(e){}cws=null}
 if(!on){cadd('','Back to engine chat','sys');return}
@@ -820,13 +825,18 @@ function setNostrOpponent(pk,placeholder){
   identity.classList.toggle('nip05-valid',isVerified);
  }).catch(function(){});
 }
-function launchOnlineGame(g,color,content){closeGameSockets();if(!replayNip64Pgn(content||g.content||'')){toast('This game contains PGN moves that this chess board cannot replay.');return false}netGame={id:g.id,relay:g.relay||preferredGameRelay(),white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),myPk:String(g.myPk||'').toLowerCase(),myColor:color,private:!!g.private,secret:g.secret||'',accepted:g.private?!!g.accepted:!!g.black,status:g.status||(g.black?'active':'open'),lastEventTime:Number(g.created_at)||0,lastEventId:g.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(g.players)?g.players.length:(g.black?2:1),lastPublishTime:Number(g.lastPublishTime||g.created_at)||0};try{history.replaceState({},'',gameLink(netGame))}catch(_){}gameMode='online';syncOnlinePerspective(color);gameActive=!over&&(!netGame.private||netGame.accepted);busy=false;sel=null;$('gameSetup').classList.remove('show');closeOnlineModals();$('gameVisibilityModal').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('un').disabled=true;$('lv').style.display='none';setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.private&&!netGame.accepted?'Private invitation pending':''):'Waiting for player');$('lvl').textContent='Nostr Chess · '+(color==='w'?'White':'Black');if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);rebuild();draw();turnGlow();subscribeToNostrGame();return true}
+function launchOnlineGame(g,color,content){closeGameSockets();if(!replayNip64Pgn(content||g.content||'')){toast('This game contains PGN moves that this chess board cannot replay.');return false}netGame={id:g.id,relay:g.relay||preferredGameRelay(),white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),myPk:String(g.myPk||'').toLowerCase(),myColor:color,private:!!g.private,secret:g.secret||'',accepted:g.private?!!g.accepted:!!g.black,status:g.status||(g.black?'active':'open'),lastEventTime:Number(g.created_at)||0,lastEventId:g.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(g.players)?g.players.length:(g.black?2:1),lastPublishTime:Number(g.lastPublishTime||g.created_at)||0};try{history.replaceState({},'',gameLink(netGame))}catch(_){}gameMode='online';syncOnlinePerspective(color);gameActive=!over&&(!netGame.private||netGame.accepted);busy=false;sel=null;$('gameSetup').classList.remove('show');closeOnlineModals();$('gameVisibilityModal').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('un').disabled=true;$('lv').style.display='none';setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.private&&!netGame.accepted?'Private invitation pending':''):'Waiting for player');$('lvl').textContent='Nostr Chess · '+(color==='w'?'Black':'White');if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);rebuild();draw();turnGlow();subscribeToNostrGame();return true}
 function chessSnapshotIsNewer(g){
  if(!netGame)return false;
  if(g.created_at!==netGame.lastEventTime)return g.created_at>netGame.lastEventTime;
  if(g.plies!==netGame.lastPlies)return g.plies>netGame.lastPlies;
  if(g.players.length!==netGame.lastPlayers)return g.players.length>netGame.lastPlayers;
  return String(g.eventId||'')>String(netGame.lastEventId||'');
+}
+function notifySyncedChessMove(previousPlies){
+ if(gameMode!=='online'||!netGame||H.length<=previousPlies)return;
+ const entry=H[H.length-1];
+ if(entry&&entry.m&&entry.s)fx(entry.m,entry.s);
 }
 function acceptIncomingGameEvent(ev){
  if(!netGame||!ev||ev.kind!==64||netGame.conflicted)return;
@@ -847,6 +857,7 @@ function acceptIncomingGameEvent(ev){
   return;
  }
  if(!newer||g.eventId===netGame.lastEventId)return;
+ const previousPlies=H.length;
  if(!replayNip64Pgn(g.content))return;
  netGame.white=g.white||netGame.white;netGame.black=g.black||netGame.black;netGame.relay=g.relay||netGame.relay;
  netGame.myColor=netGame.myPk===netGame.white?'w':netGame.myPk===netGame.black?'b':netGame.myColor;
@@ -854,8 +865,9 @@ function acceptIncomingGameEvent(ev){
  if(netGame.black&&pendingNostrGame&&pendingNostrGame.id===netGame.id)pendingNostrGame=null;
  gameActive=!over;busy=false;sel=null;
  setNostrOpponent(currentOpponentKey(),netGame.black?'':'Waiting for player');
- $('lvl').textContent='Nostr Chess · '+(netGame.myColor==='w'?'White':'Black');
+ $('lvl').textContent='Nostr Chess · '+(netGame.myColor==='w'?'Black':'White');
  rebuild();draw();turnGlow();
+ if(g.author!==netGame.myPk)notifySyncedChessMove(previousPlies);
  if(netGame.black&&netGame.myColor===st.t&&!over)toast('Your turn — game state synced from Nostr.');
 }
 async function acceptIncomingPrivateGameEvent(ev){
@@ -866,6 +878,7 @@ async function acceptIncomingPrivateGameEvent(ev){
  if(netGame.black&&g.black&&g.black!==netGame.black)return;
  if(netGame.myColor==='b'&&g.black!==netGame.myPk)return;
  if(!chessSnapshotIsNewer(g)||g.eventId===netGame.lastEventId)return;
+ const previousPlies=H.length;
  if(!replayNip64Pgn(g.content))return;
  const wasAccepted=!!netGame.accepted;
  netGame.black=g.black||netGame.black;netGame.relay=g.relay||netGame.relay;netGame.status=g.status;
@@ -874,8 +887,9 @@ async function acceptIncomingPrivateGameEvent(ev){
  if(g.status==='forfeit'&&!over)over={h:'Forfeit',p:'The other player forfeited the private game.'};
  gameActive=!over&&netGame.accepted;busy=false;sel=null;
  setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.accepted?'':'Private invitation pending'):'Waiting for player');
- $('lvl').textContent='Nostr Chess · '+(netGame.myColor==='w'?'White':'Black');$('nw').disabled=!!over;
+ $('lvl').textContent='Nostr Chess · '+(netGame.myColor==='w'?'Black':'White');$('nw').disabled=!!over;
  rebuild();draw();turnGlow();
+ notifySyncedChessMove(previousPlies);
  if(!wasAccepted&&netGame.accepted)toast('Private chess invitation accepted. Game synchronized.');
  else if(netGame.accepted&&netGame.myColor===st.t&&!over)toast('Your turn — private game state synchronized.');
 }
