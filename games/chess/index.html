@@ -692,7 +692,7 @@ async function csend(){
   return;
  }
  input.value='';
- cadd('You',t,'me');setTimeout(()=>cadd('Sifaka Engine',/\\b(hi|hello|hey)\\b/i.test(t)?pk(BOT.hi):pk(['Hmm, interesting.','Focus on the board!','I am calculating...','Nice try.']),'bot'),700)
+ cadd('You',t,'me');setTimeout(()=>cadd('Sifaka Engine',/\b(hi|hello|hey)\b/i.test(t)?pk(BOT.hi):pk(['Hmm, interesting.','Focus on the board!','I am calculating...','Nice try.']),'bot'),700)
 }
 function lob(on){lobby=on;$('cs').textContent=on?'Nostr lobby':'Engine';$('cj').textContent=on?'Leave lobby':'Join lobby';if(cws){try{cws.close()}catch(e){}cws=null}
 if(!on){cadd('','Back to engine chat','sys');return}
