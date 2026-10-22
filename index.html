@@ -2578,6 +2578,7 @@ body.sifaka-games-modal-open{overflow:hidden}
     if(previousFocus && typeof previousFocus.focus==='function') previousFocus.focus();
   };
   window.sifakaPrepareForChessNavigation=async function(){
+    window.__sifakaChessNavigationInProgress=true;
     try{
       document.querySelectorAll('video,audio').forEach(function(media){
         try{
@@ -2603,6 +2604,42 @@ body.sifaka-games-modal-open{overflow:hidden}
       }
     }catch(_){}
   };
+  // Cover every same-page entry point to Chess, not only the current Games card.
+  // Stop live media before navigating so streams, captured tracks, and PiP cannot
+  // continue playing behind the Chess page.
+  document.addEventListener('click',function(event){
+    if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+    var anchor=event.target&&event.target.closest?event.target.closest('a[href]'):null;
+    if(!anchor||String(anchor.target||'').toLowerCase()==='_blank')return;
+    var target;
+    try{target=new URL(anchor.href,window.location.href)}catch(_){return}
+    if(target.origin!==window.location.origin||target.pathname.replace(/\\/+$/,'')!=='/games/chess')return;
+    if(typeof window.sifakaPrepareForChessNavigation!=='function')return;
+    event.preventDefault();
+    window.sifakaPrepareForChessNavigation().then(function(){window.location.assign(target.href)},function(){window.location.assign(target.href)});
+  });
+  window.addEventListener('pagehide',function(){
+    if(!window.__sifakaChessNavigationInProgress)return;
+    document.querySelectorAll('video,audio').forEach(function(media){
+      try{
+        media.pause();media.autoplay=false;
+        if(media.srcObject&&typeof media.srcObject.getTracks==='function'){
+          media.srcObject.getTracks().forEach(function(track){try{track.stop()}catch(_){}});
+          media.srcObject=null;
+        }
+        media.removeAttribute('src');
+        media.querySelectorAll('source').forEach(function(source){source.removeAttribute('src')});
+        media.load();
+      }catch(_){}
+    });
+    document.querySelectorAll('iframe').forEach(function(frame){
+      var src=String(frame.getAttribute('src')||'');
+      if(/youtube\\.com\\/embed|youtu\\.be|zap\\.stream|peer\\.tube|streamable|hls/i.test(src)){try{frame.src='about:blank'}catch(_){}}
+    });
+    if(document.pictureInPictureElement&&document.exitPictureInPicture){
+      try{var exit=document.exitPictureInPicture();if(exit&&exit.catch)exit.catch(function(){})}catch(_){}
+    }
+  });
   overlay.addEventListener('click',function(event){if(event.target===overlay) window.closeSifakaGamesMenu();});
   document.addEventListener('keydown',function(event){if(event.key==='Escape' && overlay.classList.contains('open')) window.closeSifakaGamesMenu();});
 })();
