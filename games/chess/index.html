@@ -1374,7 +1374,7 @@ async function createPrivateGame(){
   finally{st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive}
   const g={id:id,relay:relay,white:signer,black:'',private:true,secret:secret,accepted:false,status:'open',players:[signer],created_at:created,myPk:signer,content:body};
   if(status)status.textContent='Encrypting the game and publishing the private invite link…';
-  const result=await chessAwait(publishPrivateChessEvent(g,'open',body),18000,'Timed out waiting for a relay to accept the private game. Please retry or check your relay connection.');
+  const result=await publishPrivateChessEvent(g,'open',body);
   if(!result.ack)throw new Error(chessRelayPublishError('private game'));
   g.created_at=result.created_at;g.eventId=result.event.id;g.lastEventTime=result.created_at;g.lastEventId=result.event.id;g.lastPlies=0;g.lastPlayers=1;g.lastPublishTime=result.created_at;
   try{history.replaceState({},'',location.pathname+'?game='+encodeURIComponent(id)+'&relay='+encodeURIComponent(relay)+'#key='+encodeURIComponent(secret))}catch(_){location.hash='key='+encodeURIComponent(secret)}
