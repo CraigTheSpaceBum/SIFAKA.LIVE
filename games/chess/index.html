@@ -224,6 +224,13 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 <link rel="stylesheet" href="../../styles/themes.css?v=0.9.6">
 <link rel="stylesheet" href="../../styles/chess-daily-themes.css?v=20261014">
 <link rel="stylesheet" href="../../styles/daily-theme-polish.css?v=20261014">
+<style id="chess-chat-inline-image-styles">
+.cm-image-link{display:block;width:fit-content;max-width:min(100%,360px);margin-top:6px;line-height:0;border-radius:10px;overflow:hidden}
+.cm-image-preview{display:block;width:auto;height:auto;max-width:100%;max-height:280px;object-fit:contain;border-radius:10px}
+.cm-image-fallback{display:inline-block;line-height:1.35;overflow-wrap:anywhere}
+.game-visibility-status{margin:10px 0;padding:9px 11px;border-radius:9px;background:rgba(10,8,18,.52);border:1px solid rgba(177,132,255,.22);color:var(--text,#e8e0f8);font-size:.88rem;line-height:1.4;overflow-wrap:anywhere}
+.game-visibility-status[hidden]{display:none!important}
+</style>
 </head><body><div class="bg"></div><div class="chess-page-loader" id="chessPageLoader" role="status" aria-live="polite"><div class="chess-page-loader-inner"><img src="../../logo.webp" alt="" width="58" height="58" fetchpriority="high"><span>Loading Sifaka Chess</span><div class="chess-page-loader-track" aria-hidden="true"></div></div></div>
 <nav class="chess-site-nav" id="chessSiteNav">
   <!-- Logo (left) -->
@@ -311,7 +318,7 @@ main{padding-top:calc(var(--chess-site-nav-height,68px) + 16px)!important}
 </div></main>
 <div class="ov" id="ov"><div class="modal"><h2 id="mh"></h2><p id="mp"></p><div class="row"><button class="btn pri" id="mn" type="button">New game</button></div></div></div>
 <div class="ov show" id="gameSetup" role="dialog" aria-modal="true" aria-labelledby="gameSetupTitle"><div class="modal set"><div class="setup-kicker">SIFAKA CHESS</div><h2 id="gameSetupTitle">Choose your opponent</h2><p id="setupHelp" class="setup-help">Start a game against the engine or play a two-player game on this device.</p><div class="chips" id="setupOpponents"><button class="btn pri" id="chooseEngine" type="button">Engine</button><button class="btn" id="choosePerson" type="button">Person</button></div><div class="chips" id="setupDifficulty" hidden><button class="btn" type="button" data-start-level="1">Novice</button><button class="btn pri" type="button" data-start-level="2">Adept</button><button class="btn" type="button" data-start-level="3">Master</button></div><div class="row" style="margin-top:18px"><button class="btn" id="setupOpenGames" type="button">Open / Current Games</button><button class="btn" id="setupBack" type="button" hidden>Back</button></div></div></div>
-<div class="ov chess-game-visibility" id="gameVisibilityModal" role="dialog" aria-modal="true" aria-labelledby="gameVisibilityTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">NOSTR CHESS</div><h2 id="gameVisibilityTitle">Choose game visibility</h2><p class="setup-help">Public games appear in the open lobby and publish standard NIP-64 PGN updates. Private games stay out of the lobby and encrypt their game state; anyone you share the private invite link with can access it.</p><div class="chess-online-options"><button class="btn pri" id="createPublicGameBtn" type="button">Public game</button><button class="btn" id="createPrivateGameBtn" type="button">Private invite link</button></div><div class="row" style="margin-top:16px"><button class="btn" id="gameVisibilityCancel" type="button">Cancel</button></div></div></div><div class="ov chess-created-game" id="createdGameModal" role="dialog" aria-modal="true" aria-labelledby="createdGameTitle"><div class="modal set chess-online-modal"><div class="setup-kicker" id="createdGameKicker">GAME CREATED</div><h2 id="createdGameTitle">Your game is ready</h2><p class="setup-help" id="createdGameDescription">Copy the complete game URL and share it with your opponent.</p><label for="createdGameUrl">Complete invitation URL</label><textarea class="created-game-url" id="createdGameUrl" readonly spellcheck="false"></textarea><p class="created-game-note" id="createdGamePrivacyNote"></p><div class="chess-online-options"><button class="btn pri" id="createdGameCopyBtn" type="button">Copy invite link</button><button class="btn" id="createdGameInviteBtn" type="button">Invite a Nostr player</button></div><div class="row" style="margin-top:16px"><button class="btn" id="createdGameCloseBtn" type="button">Continue playing</button></div></div></div><div class="ov" id="personGameModal" role="dialog" aria-modal="true" aria-labelledby="personGameTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">PLAY OVER NOSTR</div><h2 id="personGameTitle">Play a person</h2><p class="setup-help">Invite someone from any Nostr client, join an open Nostr Chess game, or play locally on this device.</p><div class="chess-online-options"><button class="btn pri" id="personInviteBtn" type="button">Invite a player</button><button class="btn" id="personJoinBtn" type="button">Open / Current Games</button><button class="btn" id="personLocalBtn" type="button">Local two-player</button><button class="btn" id="personCreateBtn" type="button">Create open game</button></div><div class="row" style="margin-top:18px"><button class="btn" id="personCloseBtn" type="button">Back</button></div></div></div>
+<div class="ov chess-game-visibility" id="gameVisibilityModal" role="dialog" aria-modal="true" aria-labelledby="gameVisibilityTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">NOSTR CHESS</div><h2 id="gameVisibilityTitle">Choose game visibility</h2><p class="setup-help">Public games appear in the open lobby and publish standard NIP-64 PGN updates. Private games stay out of the lobby and encrypt their game state; anyone you share the private invite link with can access it.</p><p class="game-visibility-status" id="gameVisibilityStatus" role="status" aria-live="polite" hidden></p><div class="chess-online-options"><button class="btn pri" id="createPublicGameBtn" type="button">Public game</button><button class="btn" id="createPrivateGameBtn" type="button">Private invite link</button></div><div class="row" style="margin-top:16px"><button class="btn" id="gameVisibilityCancel" type="button">Cancel</button></div></div></div><div class="ov chess-created-game" id="createdGameModal" role="dialog" aria-modal="true" aria-labelledby="createdGameTitle"><div class="modal set chess-online-modal"><div class="setup-kicker" id="createdGameKicker">GAME CREATED</div><h2 id="createdGameTitle">Your game is ready</h2><p class="setup-help" id="createdGameDescription">Copy the complete game URL and share it with your opponent.</p><label for="createdGameUrl">Complete invitation URL</label><textarea class="created-game-url" id="createdGameUrl" readonly spellcheck="false"></textarea><p class="created-game-note" id="createdGamePrivacyNote"></p><div class="chess-online-options"><button class="btn pri" id="createdGameCopyBtn" type="button">Copy invite link</button><button class="btn" id="createdGameInviteBtn" type="button">Invite a Nostr player</button></div><div class="row" style="margin-top:16px"><button class="btn" id="createdGameCloseBtn" type="button">Continue playing</button></div></div></div><div class="ov" id="personGameModal" role="dialog" aria-modal="true" aria-labelledby="personGameTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">PLAY OVER NOSTR</div><h2 id="personGameTitle">Play a person</h2><p class="setup-help">Invite someone from any Nostr client, join an open Nostr Chess game, or play locally on this device.</p><div class="chess-online-options"><button class="btn pri" id="personInviteBtn" type="button">Invite a player</button><button class="btn" id="personJoinBtn" type="button">Open / Current Games</button><button class="btn" id="personLocalBtn" type="button">Local two-player</button><button class="btn" id="personCreateBtn" type="button">Create open game</button></div><div class="row" style="margin-top:18px"><button class="btn" id="personCloseBtn" type="button">Back</button></div></div></div>
 <div class="ov" id="openGamesModal" role="dialog" aria-modal="true" aria-labelledby="openGamesTitle"><div class="modal set chess-online-modal"><div class="setup-kicker">NIP-64 CHESS LOBBY</div><h2 id="openGamesTitle">Join a game</h2><p id="openGamesHelp" class="setup-help">Open matches, current games and recent results from Nostr relays.</p><div class="chess-game-view-tabs" id="openGamesStatusTabs" role="group" aria-label="Game status"><button class="btn" type="button" data-game-view="open" aria-pressed="true">Open</button><button class="btn" type="button" data-game-view="current" aria-pressed="false">Current</button><button class="btn" type="button" data-game-view="all" aria-pressed="false">All / Recent</button></div><div id="openGamesList" class="chess-open-game-list"><div class="chess-online-muted">Loading Sifaka Nostr games…</div></div><div class="row" style="margin-top:16px"><button class="btn" id="openGamesRefresh" type="button">Refresh</button><button class="btn pri" id="openGamesCreate" type="button">Create a game</button><button class="btn" id="openGamesClose" type="button">Close</button></div></div></div><div class="ov" id="set"><div class="modal set"><h2>Settings</h2><div id="sb"></div><div class="row" style="margin-top:18px"><button class="btn" id="sr">Reset</button><button class="btn pri" id="sd">Done</button></div></div></div><div class="ov" id="inm"><div class="modal set"><h2>Invite to game</h2><p style="margin:0 0 12px">Search Nostr by name, or paste an npub, then send an invite.</p><div class="cin"><input id="iq" type="text" placeholder="Search people or paste npub..." autocomplete="off"><button class="btn pri" id="ig">Search</button></div><div class="ir" id="ir"></div><div class="row" style="margin-top:14px"><button class="btn" id="il">Copy invite link</button><button class="btn" id="ix">Close</button></div></div></div><div id="notes"></div><div class="toast" id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -569,7 +576,7 @@ function startSelectedGame(mode,difficulty){
  if(mode!=='online')leaveNostrGame();
  gameMode=mode;if(difficulty){lv=+difficulty;CF.lv=lv;}apply();
  setNostrOpponent('',mode==='engine'?'Sifaka Engine':'Player Two');
- $('lvl').textContent=mode==='engine'?LV[lv]:'Two-player';
+ $('lvl').textContent=mode==='engine'?LV[lv]:'Two-player';$('lvl').style.display='';
  $('lv').style.display=mode==='engine'?'flex':'none';nw();if(mode==='person')syncLocalPerspective();
 }
 async function forfeitGame(){
@@ -667,16 +674,57 @@ else{inl(.262,.25);add(KG,T.fur,0,0,0,1.1,1.1,1.1).rotation.y=col==='w'?Math.PI/
 return g}
 /* chat */
 const cl=$('cl'),seenC=new Set();let cws=null,lobby=false,chessChatBusy=false,chessChatOwnPk='';const seenChessChatEvents=new Set();
+function chessChatImageUrl(rawUrl){
+ const token=String(rawUrl||'').replace(/[)\],.;!?'"\x60>]+$/g,'');
+ try{
+  const parsed=new URL(token);
+  if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')return '';
+  const base=parsed.href.split('#')[0].split('?')[0].toLowerCase();
+  const query=parsed.href.split('#')[0].toLowerCase();
+  if(/\.(jpg|jpeg|jpe|png|gif|webp|avif|apng|bmp|svg|svgz|tif|tiff|heic|heif|jxl|ico)$/.test(base)
+   ||/(?:^|[?&])(type|mime|content-type|format)=(?:image\/|image%2f)/i.test(query))return parsed.href;
+ }catch(_){}
+ return '';
+}
+function renderChessChatContent(container,rawText){
+ if(!container)return;
+ const raw=String(rawText||'');
+ container.replaceChildren();
+ const urlPattern=/https?:\/\/[^\s<>"']+/gi;
+ let cursor=0,match,images=0;
+ while((match=urlPattern.exec(raw))!==null){
+  const token=match[0],cleanToken=token.replace(/[)\],.;!?'"\x60>]+$/g,''),url=chessChatImageUrl(cleanToken);
+  if(match.index>cursor)container.appendChild(document.createTextNode(raw.slice(cursor,match.index)));
+  if(url&&images<4){
+   const link=document.createElement('a');
+   link.className='cm-image-link';link.href=url;link.target='_blank';link.rel='noopener noreferrer';
+   const img=document.createElement('img');
+   img.className='cm-image-preview';img.src=url;img.alt='Chat image';img.loading='lazy';img.decoding='async';img.referrerPolicy='no-referrer';
+   img.addEventListener('error',function(){
+    if(!link.isConnected)return;
+    link.replaceChildren(document.createTextNode(url));
+    link.classList.add('cm-image-fallback');
+   },{once:true});
+   link.appendChild(img);container.appendChild(link);images++;
+   const trailing=token.slice(cleanToken.length);
+   if(trailing)container.appendChild(document.createTextNode(trailing));
+  }else{
+   container.appendChild(document.createTextNode(token));
+  }
+  cursor=match.index+token.length;
+ }
+ if(cursor<raw.length)container.appendChild(document.createTextNode(raw.slice(cursor)));
+}
 function cadd(who,txt,cls,authorPk){
  const d=document.createElement('div'),b=document.createElement('b'),s=document.createElement('span');
  d.className='cm '+(cls||'');
- b.textContent=who;s.textContent=txt;
+ b.textContent=who;
  if((cls||'').split(/\s+/).includes('sys')){
-  d.append(b,s);
+  s.textContent=txt;d.append(b,s);
  }else{
   const av=document.createElement('div'),head=document.createElement('div');
   av.className='av cm-av';av.setAttribute('aria-hidden','true');
-  head.className='cm-head';b.className='cm-name';s.className='cm-text';
+  head.className='cm-head';b.className='cm-name';s.className='cm-text';renderChessChatContent(s,txt);
   const pk=String(authorPk||'').trim().toLowerCase(),validPk=/^[0-9a-f]{64}$/.test(pk);
   const meEl=$('me'),textNode=meEl&&Array.from(meEl.childNodes).find(n=>n.nodeType===3&&n.textContent.trim());
   const profileName=textNode?textNode.textContent.trim():'';
@@ -725,6 +773,8 @@ async function csend(){
   const g=netGame;
   if(!g.black||(g.private&&!g.accepted))return toast('Chat will be available once both players have joined the game.');
   chessChatBusy=true;
+  const chatButton=$('cb'),chatButtonLabel=chatButton?chatButton.textContent:'';
+  if(chatButton){chatButton.disabled=true;chatButton.textContent='Sending…'}
   try{
    const signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond. Reconnect it and try again.');
    if(!signer||signer!==g.myPk)throw new Error('Reconnect the Nostr account that is playing this game.');
@@ -735,7 +785,7 @@ async function csend(){
    if(!ack)throw new Error(chessRelayPublishError('chat message'));
    g.lastChatPublishTime=ev.created_at;seenChessChatEvents.add(ev.id);cadd('You',t,'me',signer);input.value='';
   }catch(e){toast('Could not send chess chat: '+String(e&&e.message||'check your signer and relay connection.'))}
-  finally{chessChatBusy=false}
+  finally{chessChatBusy=false;if(chatButton&&chatButton.isConnected){chatButton.disabled=false;chatButton.textContent=chatButtonLabel}}
   return;
  }
  input.value='';
@@ -867,7 +917,7 @@ function setNostrOpponent(pk,placeholder){
   identity.classList.toggle('nip05-valid',isVerified);
  }).catch(function(){});
 }
-function launchOnlineGame(g,color,content){closeGameSockets();if(!replayNip64Pgn(content||g.content||'')){toast('This game contains PGN moves that this chess board cannot replay.');return false}netGame={id:g.id,relay:g.relay||preferredGameRelay(),white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),myPk:String(g.myPk||'').toLowerCase(),myColor:color,private:!!g.private,secret:g.secret||'',accepted:g.private?!!g.accepted:!!g.black,status:g.status||(g.black?'active':'open'),lastEventTime:Number(g.created_at)||0,lastEventId:g.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(g.players)?g.players.length:(g.black?2:1),lastPublishTime:Number(g.lastPublishTime||g.created_at)||0};try{history.replaceState({},'',gameLink(netGame))}catch(_){}gameMode='online';syncOnlinePerspective(color);gameActive=!over&&(!netGame.private||netGame.accepted);busy=false;sel=null;$('gameSetup').classList.remove('show');closeOnlineModals();$('gameVisibilityModal').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('un').disabled=true;$('lv').style.display='none';setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.private&&!netGame.accepted?'Private invitation pending':''):'Waiting for player');$('lvl').textContent='Nostr Chess · '+(color==='w'?'Black':'White');if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);rebuild();draw();turnGlow();subscribeToNostrGame();return true}
+function launchOnlineGame(g,color,content){closeGameSockets();if(!replayNip64Pgn(content||g.content||'')){toast('This game contains PGN moves that this chess board cannot replay.');return false}netGame={id:g.id,relay:g.relay||preferredGameRelay(),white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),myPk:String(g.myPk||'').toLowerCase(),myColor:color,private:!!g.private,secret:g.secret||'',accepted:g.private?!!g.accepted:!!g.black,status:g.status||(g.black?'active':'open'),lastEventTime:Number(g.created_at)||0,lastEventId:g.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(g.players)?g.players.length:(g.black?2:1),lastPublishTime:Number(g.lastPublishTime||g.created_at)||0};try{history.replaceState({},'',gameLink(netGame))}catch(_){}gameMode='online';syncOnlinePerspective(color);gameActive=!over&&(!netGame.private||netGame.accepted);busy=false;sel=null;$('gameSetup').classList.remove('show');closeOnlineModals();$('gameVisibilityModal').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('un').disabled=true;$('lv').style.display='none';setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.private&&!netGame.accepted?'Private invitation pending':''):'Waiting for player');$('lvl').textContent='';$('lvl').style.display='none';if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);rebuild();draw();turnGlow();subscribeToNostrGame();return true}
 function chessSnapshotIsNewer(g){
  if(!netGame)return false;
  if(g.created_at!==netGame.lastEventTime)return g.created_at>netGame.lastEventTime;
@@ -907,7 +957,7 @@ function acceptIncomingGameEvent(ev){
  if(netGame.black&&pendingNostrGame&&pendingNostrGame.id===netGame.id)pendingNostrGame=null;
  gameActive=!over;busy=false;sel=null;
  setNostrOpponent(currentOpponentKey(),netGame.black?'':'Waiting for player');
- $('lvl').textContent='Nostr Chess · '+(netGame.myColor==='w'?'Black':'White');
+ $('lvl').textContent='';$('lvl').style.display='none';
  rebuild();draw();turnGlow();
  if(g.author!==netGame.myPk)notifySyncedChessMove(previousPlies);
  if(netGame.black&&netGame.myColor===st.t&&!over)toast('Your turn — game state synced from Nostr.');
@@ -929,7 +979,7 @@ async function acceptIncomingPrivateGameEvent(ev){
  if(g.status==='forfeit'&&!over)over={h:'Forfeit',p:'The other player forfeited the private game.'};
  gameActive=!over&&netGame.accepted;busy=false;sel=null;
  setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.accepted?'':'Private invitation pending'):'Waiting for player');
- $('lvl').textContent='Nostr Chess · '+(netGame.myColor==='w'?'Black':'White');$('nw').disabled=!!over;
+ $('lvl').textContent='';$('lvl').style.display='none';$('nw').disabled=!!over;
  rebuild();draw();turnGlow();
  notifySyncedChessMove(previousPlies);
  if(!wasAccepted&&netGame.accepted)toast('Private chess invitation accepted. Game synchronized.');
@@ -1028,11 +1078,13 @@ async function publishOnlineSnapshot(isForfeit=false){
 async function createOnlineGame(){
  if(onlineCreateBusy)return;
  onlineCreateBusy=true;
- const buttons=['createPublicGameBtn','personCreateBtn','openGamesCreate'].map(function(id){const button=$(id);return button?{button:button,label:button.textContent}:null}).filter(Boolean);
- buttons.forEach(function(x){x.button.disabled=true;x.button.textContent='Creating…'});
+ const buttons=['createPublicGameBtn','createPrivateGameBtn','personCreateBtn','openGamesCreate','gameVisibilityCancel'].map(function(id){const button=$(id);return button?{button:button,label:button.textContent}:null}).filter(Boolean);
+ buttons.forEach(function(x){x.button.disabled=true;if(x.button.id==='createPublicGameBtn')x.button.textContent='Publishing…'});
+ const status=$('gameVisibilityStatus');
+ if(status){status.hidden=false;status.textContent='Publishing the public game to Nostr relays…'}
  try{
   const signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond in time. Reconnect your signer and try again.');
-  if(!signer){requireSigner(createOnlineGame,true);return}
+  if(!signer){if(status)status.textContent='Connect a Nostr signer to create this public game.';requireSigner(createOnlineGame,true);return}
   const relay=preferredGameRelay(),id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),created=Math.floor(Date.now()/1000),g={id:id,relay:relay,white:signer,black:'',players:[signer],created_at:created,myPk:signer};
   const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};
   let body;
@@ -1044,11 +1096,18 @@ async function createOnlineGame(){
   g.eventId=ev.id;
   if(!launchOnlineGame(g,'w',body))throw new Error('The game was published, but Sifaka could not open its board. Reopen the game from the lobby.');
   if(netGame){netGame.lastEventTime=created;netGame.lastEventId=ev.id;netGame.lastPlayers=1;pendingNostrGame=g}
+  $('gameVisibilityModal').classList.remove('show');if(status){status.hidden=true;status.textContent=''}
   toast('Sifaka Nostr Chess open game created. Copy the complete invite link or invite another player.');
   showCreatedGameModal(netGame);
   if(pendingChessInviteSelection){const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;Promise.resolve().then(function(){return invite(pending.user,pending.button)}).catch(function(err){toast('Game created, but the invitation could not be sent: '+String(err&&err.message||err))})}
- }catch(err){toast('Could not create the open game: '+String(err&&err.message||'check your signer and Nostr relay connection.'))}
- finally{onlineCreateBusy=false;buttons.forEach(function(x){if(x.button.isConnected){x.button.disabled=false;x.button.textContent=x.label}})}
+ }catch(err){
+  const message=String(err&&err.message||'check your signer and Nostr relay connection.');
+  if(status){status.hidden=false;status.textContent='Could not create the public game: '+message}
+  toast('Could not create the open game: '+message);
+ }finally{
+  onlineCreateBusy=false;
+  buttons.forEach(function(x){if(x.button.isConnected){x.button.disabled=false;x.button.textContent=x.label}});
+ }
 }
 async function ensureInviteGame(){
  const signer=await getSignerKey();
@@ -1298,27 +1357,42 @@ async function copyCreatedGameLink(){
  catch(_){$('createdGameUrl').focus();$('createdGameUrl').select();toast('Select the highlighted URL and copy it.')}
 }
 async function createPrivateGame(){
- $('gameVisibilityModal').classList.remove('show');
- let signer='';try{signer=await getSignerKey()}catch(_){}
- if(!signer){requireSigner(createPrivateGame,true);return}
- let secret;try{secret=makePrivateChessSecret()}catch(_){toast('Could not create a secure private-link key in this browser.');return}
- const relay=preferredGameRelay(),id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),created=Math.floor(Date.now()/1000);
- const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};
- let body;
- try{init();over=null;body=buildNip64Pgn(signer,'?',relay)}
- finally{st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive}
- const g={id:id,relay:relay,white:signer,black:'',private:true,secret:secret,accepted:false,status:'open',players:[signer],created_at:created,myPk:signer,content:body};
+ if(onlineCreateBusy)return;
+ onlineCreateBusy=true;
+ const buttons=['createPublicGameBtn','createPrivateGameBtn','personCreateBtn','openGamesCreate','gameVisibilityCancel'].map(function(id){const button=$(id);return button?{button:button,label:button.textContent}:null}).filter(Boolean);
+ buttons.forEach(function(x){x.button.disabled=true;if(x.button.id==='createPrivateGameBtn')x.button.textContent='Creating link…'});
+ const status=$('gameVisibilityStatus');
+ if(status){status.hidden=false;status.textContent='Preparing the encrypted private game…'}
  try{
+  const signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond in time. Reconnect your signer and try again.');
+  if(!signer){if(status)status.textContent='Connect a Nostr signer to create this private invite link.';requireSigner(createPrivateGame,true);return}
+  let secret;try{secret=makePrivateChessSecret()}catch(_){throw new Error('Could not create a secure private-link key in this browser.')}
+  const relay=preferredGameRelay(),id=(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),created=Math.floor(Date.now()/1000);
+  const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};
+  let body;
+  try{init();over=null;body=buildNip64Pgn(signer,'?',relay)}
+  finally{st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive}
+  const g={id:id,relay:relay,white:signer,black:'',private:true,secret:secret,accepted:false,status:'open',players:[signer],created_at:created,myPk:signer,content:body};
+  if(status)status.textContent='Encrypting the game and publishing the private invite link…';
   const result=await publishPrivateChessEvent(g,'open',body);
   if(!result.ack)throw new Error(chessRelayPublishError('private game'));
   g.created_at=result.created_at;g.eventId=result.event.id;g.lastEventTime=result.created_at;g.lastEventId=result.event.id;g.lastPlies=0;g.lastPlayers=1;g.lastPublishTime=result.created_at;
   try{history.replaceState({},'',location.pathname+'?game='+encodeURIComponent(id)+'&relay='+encodeURIComponent(relay)+'#key='+encodeURIComponent(secret))}catch(_){location.hash='key='+encodeURIComponent(secret)}
   if(!launchOnlineGame(g,'w',body))throw new Error('The private game was published, but Sifaka could not open it.');
   Object.assign(netGame,{private:true,secret:secret,accepted:false,status:'open',lastEventTime:result.created_at,lastEventId:result.event.id,lastPlayers:1,lastPlies:0,lastPublishTime:result.created_at});
-  showCreatedGameModal(netGame);toast('Private encrypted game created. Copy the complete invite link or invite a Nostr player.');if(pendingChessInviteSelection){const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;await invitePrivateChessPlayer(pending.user,pending.button)}
- }catch(err){toast('Could not create the private game: '+String(err&&err.message||'check your signer and relay connection.'))}
+  $('gameVisibilityModal').classList.remove('show');if(status){status.hidden=true;status.textContent=''}
+  showCreatedGameModal(netGame);toast('Private encrypted game created. Copy the complete invite link or invite a Nostr player.');
+  if(pendingChessInviteSelection){const pending=pendingChessInviteSelection;pendingChessInviteSelection=null;await invitePrivateChessPlayer(pending.user,pending.button)}
+ }catch(err){
+  const message=String(err&&err.message||'check your signer and relay connection.');
+  if(status){status.hidden=false;status.textContent='Could not create the private invite link: '+message}
+  toast('Could not create the private game: '+message)
+ }finally{
+  onlineCreateBusy=false;
+  buttons.forEach(function(x){if(x.button.isConnected){x.button.disabled=false;x.button.textContent=x.label}});
+ }
 }
-function choosePublicChessGame(){$('gameVisibilityModal').classList.remove('show');createOnlineGame()}
+function choosePublicChessGame(){createOnlineGame()}
 function choosePrivateChessGame(){createPrivateGame()}
 $('createPublicGameBtn').onclick=choosePublicChessGame;
 $('createPrivateGameBtn').onclick=choosePrivateChessGame;
@@ -1346,60 +1420,76 @@ function pub(ev,preferredRelays){
  const rl=source.map(function(u){return String(u||'').trim()}).filter(function(u,i,a){return /^wss?:\/\//i.test(u)&&a.indexOf(u)===i});
  const report={eventId:String(ev&&ev.id||''),kind:Number(ev&&ev.kind),attempted:rl.slice(),accepted:[],rejected:[],unavailable:[],authRequired:[]};
  window.__sifakaChessLastPublishReport=report;
- if(!rl.length){report.error='No valid relay URLs are configured.';return Promise.resolve(0)}
- let ok=0;
- return Promise.all(rl.map(function(url){return new Promise(function(resolve){
-  let ws,done=false,timer,sent=false,authAttempts=0,authEventId='',waitingForAuth=false;
-  function finish(){if(done)return;done=true;clearTimeout(timer);try{if(ws)ws.close()}catch(_){}resolve()}
-  timer=setTimeout(function(){
-   if(waitingForAuth&&!authAttempts)report.authRequired.push({relay:url,reason:'Relay requested authentication but sent no NIP-42 challenge.'});
-   else if(!sent)report.unavailable.push({relay:url,reason:'Connection/publish timed out.'});
-   else if(!report.accepted.some(function(x){return x.relay===url})&&!report.rejected.some(function(x){return x.relay===url})&&!report.authRequired.some(function(x){return x.relay===url}))report.unavailable.push({relay:url,reason:'No relay acknowledgement before timeout.'});
-   finish();
-  },12000);
-  try{
-   ws=new WebSocket(url);
-   ws.onopen=function(){try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(err){report.unavailable.push({relay:url,reason:'Could not send event: '+String(err&&err.message||err)});finish()}};
-   ws.onmessage=function(e){try{
-    const d=JSON.parse(e.data);
-    if(d[0]==='AUTH'){
-     const challenge=String(d[1]||'');waitingForAuth=true;
-     if(!challenge){report.authRequired.push({relay:url,reason:'Relay sent an empty NIP-42 challenge.'});finish();return}
-     if(authAttempts){report.authRequired.push({relay:url,reason:'Relay requested authentication more than once in the same connection.'});finish();return}
-     authAttempts++;
-     signChessEvent({kind:22242,created_at:Math.floor(Date.now()/1000),tags:[['relay',url],['challenge',challenge]],content:''}).then(function(authEvent){
-      if(done)return;
-      authEventId=String(authEvent.id||'');
-      ws.send(JSON.stringify(['AUTH',authEvent]));
-     }).catch(function(err){
-      report.authRequired.push({relay:url,reason:'Could not sign NIP-42 authentication event: '+String(err&&err.message||err)});finish();
-     });
-     return;
-    }
-    if(d[0]==='OK'&&authEventId&&d[1]===authEventId){
-     if(d[2]){
-      waitingForAuth=false;authEventId='';
-      try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(err){report.unavailable.push({relay:url,reason:'Authenticated, but retrying the event failed: '+String(err&&err.message||err)});finish()}
-     }else{
-      report.authRequired.push({relay:url,reason:'Relay rejected NIP-42 authentication: '+String(d[3]||'no reason provided')});finish();
-     }
-     return;
-    }
-    if(d[0]==='OK'&&d[1]===ev.id){
-     const reason=String(d[3]||'');
-     if(!d[2]&&/auth(?:entication)?-required|auth required|must authenticate/i.test(reason)){
-      waitingForAuth=true;
+ if(!rl.length){report.error='No valid relay URLs are configured.';report.completedAt=Date.now();report.acceptedCount=0;return Promise.resolve(0)}
+ let ok=0,completed=0,resultResolved=false;
+ return new Promise(function(resolve){
+  function resolveResult(){
+   if(resultResolved)return;
+   resultResolved=true;report.acceptedCount=ok;report.completedAt=Date.now();resolve(ok);
+  }
+  rl.forEach(function(url){
+   let ws,done=false,timer,sent=false,authAttempts=0,authEventId='',waitingForAuth=false;
+   function finish(){
+    if(done)return;
+    done=true;clearTimeout(timer);completed++;
+    try{if(ws)ws.close()}catch(_){}
+    // If nothing was accepted, wait until all relays complete or time out.
+    if(completed>=rl.length)resolveResult();
+   }
+   timer=setTimeout(function(){
+    if(waitingForAuth&&!authAttempts)report.authRequired.push({relay:url,reason:'Relay requested authentication but sent no NIP-42 challenge.'});
+    else if(!sent)report.unavailable.push({relay:url,reason:'Connection/publish timed out.'});
+    else if(!report.accepted.some(function(x){return x.relay===url})&&!report.rejected.some(function(x){return x.relay===url})&&!report.authRequired.some(function(x){return x.relay===url}))report.unavailable.push({relay:url,reason:'No relay acknowledgement before timeout.'});
+    finish();
+   },12000);
+   try{
+    ws=new WebSocket(url);
+    ws.onopen=function(){try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(err){report.unavailable.push({relay:url,reason:'Could not send event: '+String(err&&err.message||err)});finish()}};
+    ws.onmessage=function(e){try{
+     const d=JSON.parse(e.data);
+     if(d[0]==='AUTH'){
+      const challenge=String(d[1]||'');waitingForAuth=true;
+      if(!challenge){report.authRequired.push({relay:url,reason:'Relay sent an empty NIP-42 challenge.'});finish();return}
+      if(authAttempts){report.authRequired.push({relay:url,reason:'Relay requested authentication more than once in the same connection.'});finish();return}
+      authAttempts++;
+      signChessEvent({kind:22242,created_at:Math.floor(Date.now()/1000),tags:[['relay',url],['challenge',challenge]],content:''}).then(function(authEvent){
+       if(done)return;
+       authEventId=String(authEvent.id||'');
+       ws.send(JSON.stringify(['AUTH',authEvent]));
+      }).catch(function(err){
+       report.authRequired.push({relay:url,reason:'Could not sign NIP-42 authentication event: '+String(err&&err.message||err)});finish();
+      });
       return;
      }
-     const item={relay:url,reason:reason};
-     if(d[2]){ok++;report.accepted.push(item)}else report.rejected.push(item);
-     finish();return;
-    }
-   }catch(_){}};
-   ws.onerror=function(){report.unavailable.push({relay:url,reason:'WebSocket error.'});finish()};
-   ws.onclose=function(){if(!done){if(waitingForAuth)report.authRequired.push({relay:url,reason:'Relay closed during NIP-42 authentication.'});else if(sent&&!report.accepted.some(function(x){return x.relay===url})&&!report.rejected.some(function(x){return x.relay===url})&&!report.authRequired.some(function(x){return x.relay===url}))report.unavailable.push({relay:url,reason:'Relay closed before acknowledging the event.'});finish()}};
-  }catch(err){report.unavailable.push({relay:url,reason:String(err&&err.message||err)});finish()}
- })})).then(function(){report.acceptedCount=ok;report.completedAt=Date.now();return ok});
+     if(d[0]==='OK'&&authEventId&&d[1]===authEventId){
+      if(d[2]){
+       waitingForAuth=false;authEventId='';
+       try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(err){report.unavailable.push({relay:url,reason:'Authenticated, but retrying the event failed: '+String(err&&err.message||err)});finish()}
+      }else{
+       report.authRequired.push({relay:url,reason:'Relay rejected NIP-42 authentication: '+String(d[3]||'no reason provided')});finish();
+      }
+      return;
+     }
+     if(d[0]==='OK'&&d[1]===ev.id){
+      const reason=String(d[3]||'');
+      if(!d[2]&&/auth(?:entication)?-required|auth required|must authenticate/i.test(reason)){
+       waitingForAuth=true;
+       return;
+      }
+      const item={relay:url,reason:reason};
+      if(d[2]){
+       ok++;report.accepted.push(item);report.acceptedCount=ok;
+       // Return as soon as one relay accepts, while other parallel sends keep running.
+       resolveResult();
+      }else report.rejected.push(item);
+      finish();return;
+     }
+    }catch(_){}};
+    ws.onerror=function(){report.unavailable.push({relay:url,reason:'WebSocket error.'});finish()};
+    ws.onclose=function(){if(!done){if(waitingForAuth)report.authRequired.push({relay:url,reason:'Relay closed during NIP-42 authentication.'});else if(sent&&!report.accepted.some(function(x){return x.relay===url})&&!report.rejected.some(function(x){return x.relay===url})&&!report.authRequired.some(function(x){return x.relay===url}))report.unavailable.push({relay:url,reason:'Relay closed before acknowledging the event.'});finish()}};
+   }catch(err){report.unavailable.push({relay:url,reason:String(err&&err.message||err)});finish()}
+  });
+ });
 }
 function chessRelayPublishError(action){
  const report=window.__sifakaChessLastPublishReport;
