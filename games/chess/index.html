@@ -910,7 +910,7 @@ function switchChessChatGame(previousId,nextId){
  cl.replaceChildren();
  const rows=chessChatByGame.get(nextId)||[];
  rows.forEach(function(row){cl.appendChild(row)});
- chessChatByGame.set(nextId,rows);
+ rememberChessChatRows(nextId,rows);
  cl.scrollTop=1e5;
 }
 function removeChessChatFromCache(gameId,row){
