@@ -1418,25 +1418,29 @@ function chessChatSenderLabel(pk){
  return shortChessNpub(pk);
 }
 async function acceptIncomingChessChatEvent(ev){
- if(!netGame||!ev||ev.kind!==1||!Array.isArray(ev.tags)||!ev.id)return;
+ const game=netGame;
+ if(!game||gameMode!=='online'||!ev||ev.kind!==1||!Array.isArray(ev.tags)||!ev.id)return;
  if(!ev.tags.some(function(t){return t[0]==='t'&&t[1]==='sifaka-chess-chat'}))return;
- if(!ev.tags.some(function(t){return t[0]==='d'&&t[1]===netGame.id}))return;
+ const gameId=String(game.id||''),gameRelay=String(game.relay||''),privateMode=!!game.private,gameSecret=String(game.secret||'');
+ if(!ev.tags.some(function(t){return t[0]==='d'&&t[1]===gameId}))return;
  const author=String(ev.pubkey||'').toLowerCase();
- if(author!==netGame.white&&author!==netGame.black)return;
- if(!netGame.black||(netGame.private&&!netGame.accepted))return;
+ if(author!==game.white&&author!==game.black)return;
+ if(!game.black||(privateMode&&!game.accepted))return;
  if(seenChessChatEvents.has(ev.id))return;
  let message=String(ev.content||'');
- if(netGame.private){
-  const payload=await decryptPrivateChessPayload(ev.content,netGame.secret,netGame.id);
-  if(!payload||payload.type!=='chat'||payload.id!==netGame.id||payload.app!==PRIVATE_CHESS_APP||payload.version!==1)return;
+ const sender=chessChatSenderLabel(author);
+ if(privateMode){
+  const payload=await decryptPrivateChessPayload(ev.content,gameSecret,gameId);
+  if(!payload||payload.type!=='chat'||payload.id!==gameId||payload.app!==PRIVATE_CHESS_APP||payload.version!==1)return;
   message=String(payload.message||'');
  }
  message=message.trim().slice(0,800);
  if(!message)return;
  seenChessChatEvents.add(ev.id);
  while(seenChessChatEvents.size>600)seenChessChatEvents.delete(seenChessChatEvents.values().next().value);
- if(author===netGame.myPk)return;
- cadd(chessChatSenderLabel(author),message,'',author,ev.id,netGame.id,netGame.relay);
+ if(author===game.myPk)return;
+ if(netGame&&netGame.id===gameId&&gameMode==='online')cadd(sender,message,'',author,ev.id,gameId,gameRelay);
+ else appendChessChatToGame(gameId,gameRelay,sender,message,'',author,ev.id,null);
 }
 function subscribeToNostrGame(){
  closeGameSockets();
