@@ -1435,18 +1435,21 @@ async function joinPrivateNostrGame(g,button){
  }catch(err){toast('Could not join the private game: '+String(err&&err.message||'check the private link, signer and relay connection.'))}
  finally{restore()}
 }
+const pendingPrivateChessInvites=new Set();
 async function invitePrivateChessPlayer(u,button){
- const g=netGame,peer=String(u&&u.pk||'').toLowerCase();
- if(!g||!g.private){toast('Create a private game before sending a private invitation.');return}
- if(!NOSTR_PUBKEY_HEX.test(peer)){toast('This player does not have a valid Nostr public key.');return}
- const signer=await getSignerKey();
- if(!signer||signer!==g.myPk){toast('Reconnect the Nostr account that created this private game.');return}
- if(peer===signer){toast('Choose another player; you cannot invite your own account.');return}
- if(g.black&&g.black!==peer){toast('This private game is already locked to another player. Create a new private game to invite someone else.');return}
- try{getChessInviteSchedule()}catch(err){toast(err.message);return}
- if(!await getChessInviteDmProvider(signer)){toast('This signer cannot encrypt direct messages for the active account. Connect a NIP-04-enabled Nostr signer for the same public key. Nothing was posted publicly.');return}
+ const g=netGame,peer=String(u&&u.pk||'').toLowerCase(),key=String(g&&g.id||'')+':'+peer;
+ if(pendingPrivateChessInvites.has(key))return;
+ pendingPrivateChessInvites.add(key);
  if(button){button.disabled=true;button.textContent='Preparing invite…'}
  try{
+  if(!g||!g.private)throw new Error('Create a private game before sending a private invitation.');
+  if(!NOSTR_PUBKEY_HEX.test(peer))throw new Error('This player does not have a valid Nostr public key.');
+  const signer=await getSignerKey();
+  if(!signer||signer!==g.myPk)throw new Error('Reconnect the Nostr account that created this private game.');
+  if(peer===signer)throw new Error('Choose another player; you cannot invite your own account.');
+  if(g.black&&g.black!==peer)throw new Error('This private game is already locked to another player. Create a new private game to invite someone else.');
+  getChessInviteSchedule();
+  if(!await getChessInviteDmProvider(signer))throw new Error('This signer cannot encrypt direct messages for the active account. Connect a NIP-04-enabled Nostr signer for the same public key. Nothing was posted publicly.');
   if(!g.black){
    const locked=Object.assign({},g,{black:peer,accepted:false}),body=buildNip64Pgn(g.white,peer,g.relay),result=await publishPrivateChessEvent(locked,'invite',body);
    if(!result.ack)throw new Error('The encrypted invitation state was not accepted by any relay.');
@@ -1456,7 +1459,13 @@ async function invitePrivateChessPlayer(u,button){
   await sendChessCalendarDm(u,g,gameLink(g));
   if(button){button.textContent='Private invite sent ✓';button.disabled=false}
   toast('Encrypted private chess DM sent with the match link and calendar invitation.');
- }catch(err){if(button){button.disabled=false;button.textContent='Invite'}toast('Could not send the private invite: '+String(err&&err.message||'check the signer and relay connection.'))}
+ }catch(err){
+  if(button){button.textContent='Invite';button.disabled=false}
+  toast('Could not send the private invite: '+String(err&&err.message||'check the signer and relay connection.'));
+ }finally{
+  pendingPrivateChessInvites.delete(key);
+  if(button&&button.isConnected&&button.textContent==='Preparing invite…')button.disabled=false;
+ }
 }
 async function joinNostrGame(g,button){
  if(!g||!g.id||joiningNostrGames.has(g.id))return;
