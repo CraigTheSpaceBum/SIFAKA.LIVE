@@ -642,7 +642,7 @@ await Promise.all(RL.map(u=>new Promise(res=>{try{const w=new WebSocket(u),to=se
 if(ok)toast(`Published to ${ok} relay${ok>1?'s':''} ⚡`);else{try{await navigator.clipboard.writeText(JSON.stringify(ev))}catch(e){}toast('Signed! Relays unreachable from this page — signed event copied')}}catch(e){toast('Signing cancelled')}}
 $('po').onclick=post;
 const nw=()=>{init();gameActive=true;$('ov').classList.remove('show');$('gameSetup').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=false;$('un').disabled=false;rebuild();draw();note('🦧',gameMode==='engine'?'New game':'Two-player game',gameMode==='engine'?'You lead the ivory sifakas. Good luck!':'White moves first. Pass the device between players.','#8b5cf6')};
-function showGameSetup(){leaveNostrGame();gameActive=false;busy=false;$('ov').classList.remove('show');$('personGameModal').classList.remove('show');$('openGamesModal').classList.remove('show');$('inm').classList.remove('show');$('nw').disabled=true;$('gameSetup').classList.add('show');$('setupOpponents').hidden=false;$('setupDifficulty').hidden=true;$('setupBack').hidden=true;$('setupHelp').textContent='Start a game against the engine or choose Person to play over Nostr.';}
+function showGameSetup(){const preserving=!!(netGame&&gameMode==='online');if(preserving)stashActiveChessSession();leaveNostrGame();gameActive=false;busy=false;$('ov').classList.remove('show');$('personGameModal').classList.remove('show');$('openGamesModal').classList.remove('show');$('inm').classList.remove('show');$('nw').disabled=true;$('gameSetup').classList.add('show');$('setupOpponents').hidden=false;$('setupDifficulty').hidden=true;$('setupBack').hidden=true;$('setupHelp').textContent='Start a game against the engine or choose Person to play over Nostr. Your existing online matches stay active and can be reopened from Current Games.';if(preserving)toast('Match saved. It remains active and can be reopened under Current Games; it was not forfeited.')}
 function startSelectedGame(mode,difficulty){
  if(mode!=='online')leaveNostrGame();
  gameMode=mode;if(difficulty){lv=+difficulty;CF.lv=lv;}apply();
@@ -1007,7 +1007,7 @@ function turnGlow(){const shareBtn=$('shareChessGameBtn');if(shareBtn)shareBtn.s
 
 /* Online chess interoperability: NIP-64 kind:64 PGN snapshots, d game ids, and p player tags. */
 const NOSTR_PUBKEY_HEX=/^[0-9a-f]{64}$/i;
-let netGame=null,gameSockets=[],pendingChessAction=null,pendingNostrGame=null,netPublishChain=Promise.resolve(),lastOpenGamesTarget='',lastOpenGamesRelay='',openGamesReturn='board',inviteReturn='board',personHubFromSetup=false,openGamesRequestId=0,gameSocketGeneration=0,gameReconnectTimer=null;let onlineCreateBusy=false;const joiningNostrGames=new Set();
+let netGame=null,gameSockets=[],pendingChessAction=null,pendingNostrGame=null,netPublishChain=Promise.resolve(),lastOpenGamesTarget='',lastOpenGamesRelay='',openGamesReturn='board',inviteReturn='board',personHubFromSetup=false,openGamesRequestId=0,gameSocketGeneration=0,gameReconnectTimer=null;let onlineCreateBusy=false;const joiningNostrGames=new Set();const chessSessionCache=new Map();
 function chessAwait(promise,timeoutMs,message){let timer;return Promise.race([Promise.resolve(promise),new Promise(function(_,reject){timer=setTimeout(function(){reject(new Error(message))},timeoutMs)})]).finally(function(){clearTimeout(timer)})}
 function closeGameSockets(){gameSocketGeneration++;if(gameReconnectTimer){clearTimeout(gameReconnectTimer);gameReconnectTimer=null}gameSockets.forEach(function(w){try{if(w._sifakaSub&&w.readyState===1)w.send(JSON.stringify(['CLOSE',w._sifakaSub]));w.close()}catch(_){}});gameSockets=[]}
 function leaveNostrGame(){closeGameSockets();netGame=null;pendingNostrGame=null;netPublishChain=Promise.resolve()}
@@ -1060,12 +1060,75 @@ function bytesToChessB64(bytes){let bin='';for(let i=0;i<bytes.length;i++)bin+=S
 function chessB64ToBytes(value){let s=String(value||'').split('-').join('+').split('_').join('/');while(s.length%4)s+='=';const bin=atob(s),out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out}
 function makePrivateChessSecret(){const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);return bytesToChessB64(bytes)}
 function privateSecretFromUrl(){try{return new URLSearchParams(location.hash.charAt(0)==='#'?location.hash.slice(1):location.hash).get('key')||''}catch(_){return''}}
+const PRIVATE_CHESS_REGISTRY_KEY='sifaka_chess_private_games_v1';
+function normalizeChessPubkeyForLobby(value){
+ const raw=String(value||'').trim().toLowerCase();
+ if(NOSTR_PUBKEY_HEX.test(raw))return raw;
+ try{if(/^npub1/.test(raw)&&typeof b32d==='function'){const decoded=b32d(raw);if(NOSTR_PUBKEY_HEX.test(String(decoded||'')))return String(decoded).toLowerCase()}}catch(_){}
+ return '';
+}
+function currentChessPubkeyForLobby(){
+ const candidates=[];try{candidates.push(localStorage.getItem('sifaka_chess_pubkey'))}catch(_){}
+ try{candidates.push(chessChatOwnPk)}catch(_){}
+ try{candidates.push(netGame&&netGame.myPk)}catch(_){}
+ for(const candidate of candidates){const pk=normalizeChessPubkeyForLobby(candidate);if(pk)return pk}
+ return '';
+}
+function readPrivateChessRegistry(){
+ try{const raw=JSON.parse(localStorage.getItem(PRIVATE_CHESS_REGISTRY_KEY)||'[]');if(!Array.isArray(raw))return [];
+  return raw.filter(function(g){return g&&/^[a-zA-Z0-9_-]{1,128}$/.test(String(g.id||''))&&typeof g.secret==='string'&&g.secret.length>=20&&NOSTR_PUBKEY_HEX.test(String(g.myPk||''))&&NOSTR_PUBKEY_HEX.test(String(g.white||''))&&(String(g.myPk).toLowerCase()===String(g.white).toLowerCase()||String(g.myPk).toLowerCase()===String(g.black||'').toLowerCase())}).slice(0,60);
+ }catch(_){return []}
+}
+function rememberPrivateChessGame(g){
+ if(!g||!g.private||!/^[a-zA-Z0-9_-]{1,128}$/.test(String(g.id||'')))return null;
+ const secret=String(g.secret||privateSecretFromUrl()||''),myPk=normalizeChessPubkeyForLobby(g.myPk||currentChessPubkeyForLobby()),white=String(g.white||'').toLowerCase(),black=String(g.black||'').toLowerCase();
+ if(secret.length<20||!NOSTR_PUBKEY_HEX.test(white)||!NOSTR_PUBKEY_HEX.test(myPk)||(myPk!==white&&myPk!==black))return null;
+ const prior=readPrivateChessRegistry().filter(function(item){return item.id!==g.id});
+ prior.unshift({id:g.id,relay:String(g.relay||preferredGameRelay()),secret:secret,myPk:myPk,white:white,black:NOSTR_PUBKEY_HEX.test(black)?black:'',status:String(g.status||(!black?'open':'active')),created_at:Number(g.created_at)||0,lastEventTime:Number(g.lastEventTime||g.created_at)||0,lastEventId:String(g.lastEventId||g.eventId||''),updatedAt:Date.now()});
+ try{localStorage.setItem(PRIVATE_CHESS_REGISTRY_KEY,JSON.stringify(prior.slice(0,50)))}catch(_){}
+ return prior[0];
+}
+function privateChessRegistryStub(record){
+ return {id:record.id,relay:record.relay,white:record.white,black:record.black||'',players:Array.from(new Set([record.white,record.black].filter(function(pk){return NOSTR_PUBKEY_HEX.test(String(pk||''))}))),content:'',created_at:Number(record.lastEventTime||record.created_at||record.updatedAt/1000)||0,eventId:record.lastEventId||'',plies:0,open:!record.black,mode:'sifaka-private-chess',status:record.status||(!record.black?'open':'active'),private:true,_localPrivate:true,secret:record.secret,myPk:record.myPk,lastEventTime:Number(record.lastEventTime||record.created_at)||0};
+}
+function mergeLocalPrivateChessSnapshot(seen,g){
+ const old=seen.get(g.id);if(!old){seen.set(g.id,g);rememberPrivateChessGame(g);return g}
+ const newer=Number(g.created_at||0)>=Number(old.created_at||0),base=newer?g:old,black=String(old.black||g.black||'').toLowerCase();
+ let status=newer?g.status:old.status;if(black&&status==='open'&&old.status&&old.status!=='open')status=old.status;
+ const merged=Object.assign({},base,{white:g.white||old.white,black:black,players:Array.from(new Set([g.white||old.white,black].filter(function(pk){return NOSTR_PUBKEY_HEX.test(String(pk||''))}))),open:!black,private:true,_localPrivate:true,secret:g.secret||old.secret,myPk:g.myPk||old.myPk,content:(newer&&g.content)?g.content:(old.content||g.content||''),eventId:newer?(g.eventId||old.eventId):(old.eventId||g.eventId),created_at:Math.max(Number(old.created_at)||0,Number(g.created_at)||0),lastEventTime:Math.max(Number(old.lastEventTime||old.created_at)||0,Number(g.lastEventTime||g.created_at)||0),status:status||(!black?'open':'active')});
+ seen.set(g.id,merged);rememberPrivateChessGame(merged);return merged;
+}
+async function fetchPrivateChessGameSnapshot(record){
+ if(!record||!record.id||!record.secret)return null;
+ const relays=networkRelays(record.relay).slice(0,6),found=[];
+ await Promise.all(relays.map(function(url,i){return new Promise(function(resolve){
+  let ws,done=false,timer;const pending=[],sub='sifaka-private-refresh-'+Date.now().toString(36)+'-'+i;
+  const finish=function(){if(done)return;done=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close()}}catch(_){}Promise.allSettled(pending).then(resolve)};
+  timer=setTimeout(finish,3200);
+  try{ws=new WebSocket(url);ws.onopen=function(){try{ws.send(JSON.stringify(['REQ',sub,{kinds:[30079],'#d':[record.id],limit:50}]))}catch(_){finish()}};
+   ws.onmessage=function(e){try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&d[2].kind===30079){const task=Promise.resolve(decodePrivateChessEvent(d[2],record.id,url,record.secret)).then(function(g){if(g)found.push(g)});pending.push(task)}else if(d[0]==='EOSE'&&d[1]===sub)finish()}catch(_){}};
+   ws.onerror=finish;ws.onclose=finish;
+  }catch(_){finish()}
+ })}));
+ if(!found.length)return null;
+ found.sort(function(a,b){return Number(a.created_at||0)-Number(b.created_at||0)||Number(a.plies||0)-Number(b.plies||0)||String(a.eventId||'').localeCompare(String(b.eventId||''))});
+ let g=found[found.length-1];
+ if(!g.black){const claims=found.filter(function(x){return !!x.black}).sort(function(a,b){return Number(a.created_at||0)-Number(b.created_at||0)||String(a.eventId||'').localeCompare(String(b.eventId||''))});const claim=claims[claims.length-1];if(claim)g=Object.assign({},g,{black:claim.black,players:Array.from(new Set((g.players||[]).concat([claim.black]))),open:false,status:g.status==='open'?claim.status:g.status})}
+ g=Object.assign({},g,{private:true,_localPrivate:true,secret:record.secret,myPk:record.myPk});rememberPrivateChessGame(g);return g;
+}
+function stashActiveChessSession(){
+ if(!netGame||gameMode!=='online')return null;
+ try{const content=buildNip64Pgn(netGame.white,netGame.black),g=Object.assign({},netGame,{content:content,lastPlies:H.length,lastEventTime:Number(netGame.lastEventTime||netGame.created_at)||0,lastPlayers:netGame.black?2:1,status:over?(over.h==='Forfeit'?'forfeit':'finished'):(netGame.status||(netGame.black?'active':'open'))});
+  chessSessionCache.set(g.id,{game:g,content:content,savedAt:Date.now()});while(chessSessionCache.size>40)chessSessionCache.delete(chessSessionCache.keys().next().value);if(g.private)rememberPrivateChessGame(g);return g;
+ }catch(_){return null}
+}
+
 async function privateChessKey(secret,gameId){if(!window.crypto||!crypto.subtle)throw new Error('Secure browser encryption is unavailable. Open Chess over HTTPS and try again.');const material=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('Sifaka private chess v1:'+String(gameId)+':'+String(secret)));return crypto.subtle.importKey('raw',material,{name:'AES-GCM'},false,['encrypt','decrypt'])}
 async function encryptPrivateChessPayload(payload,secret,gameId){if(!secret)throw new Error('The private invite key is missing. Copy the complete private game link again.');const key=await privateChessKey(secret,gameId),iv=new Uint8Array(12);crypto.getRandomValues(iv);const data=new TextEncoder().encode(JSON.stringify(payload)),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,data);return PRIVATE_CHESS_PREFIX+'.'+bytesToChessB64(iv)+'.'+bytesToChessB64(new Uint8Array(cipher))}
 async function decryptPrivateChessPayload(content,secret,gameId){try{const parts=String(content||'').split('.');if(parts.length!==3||parts[0]!==PRIVATE_CHESS_PREFIX||!secret)return null;const key=await privateChessKey(secret,gameId),iv=chessB64ToBytes(parts[1]),cipher=chessB64ToBytes(parts[2]),plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:iv},key,cipher),payload=JSON.parse(new TextDecoder().decode(plain));if(!payload||payload.app!==PRIVATE_CHESS_APP||payload.version!==1||payload.id!==gameId||typeof payload.pgn!=='string')return null;return payload}catch(_){return null}}
 function privateChessPayload(g,status,pgn){return{app:PRIVATE_CHESS_APP,version:1,id:g.id,white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),status:status,pgn:String(pgn||''),relay:g.relay||preferredGameRelay()}}
 async function publishPrivateChessEvent(g,status,pgn){const signer=await getSignerKey();if(!signer||signer!==String(g.myPk||'').toLowerCase())throw new Error('Reconnect the Nostr account that owns this game before publishing.');const created=Math.max(Math.floor(Date.now()/1000),Number(g.lastEventTime||0)+1,Number(g.lastPublishTime||0)+1);const content=await encryptPrivateChessPayload(privateChessPayload(g,status,pgn),g.secret,g.id);const ev=await signChessEvent({kind:30079,pubkey:signer,created_at:created,tags:[['d',g.id]],content:content});g.lastPublishTime=created;const ack=await sendToRelays(ev,networkRelays(g.relay));return{event:ev,created_at:created,ack:ack}}
-async function decodePrivateChessEvent(ev,targetId,relayFallback){if(!ev||ev.kind!==30079||!Array.isArray(ev.tags)||!targetId)return null;const d=ev.tags.find(function(t){return t[0]==='d'&&t[1]===targetId});if(!d)return null;const secret=privateSecretFromUrl();const payload=await decryptPrivateChessPayload(ev.content,secret,targetId);if(!payload)return null;const white=String(payload.white||'').toLowerCase(),black=String(payload.black||'').toLowerCase(),author=String(ev.pubkey||'').toLowerCase();if(!NOSTR_PUBKEY_HEX.test(white)||(author!==white&&author!==black))return null;if(black&&!NOSTR_PUBKEY_HEX.test(black))return null;if(!['open','invite','active','finished','forfeit'].includes(payload.status))return null;return{id:targetId,relay:payload.relay||relayFallback||preferredGameRelay(),white:white,black:black,players:Array.from(new Set([white,black].filter(function(pk){return NOSTR_PUBKEY_HEX.test(pk||'')}))),content:payload.pgn,created_at:Number(ev.created_at)||0,open:!black,eventId:String(ev.id||''),author:author,plies:pgnPlies(payload.pgn),mode:'sifaka-private-chess',private:true,secret:secret,status:payload.status,forfeited:payload.status==='forfeit'}}
+async function decodePrivateChessEvent(ev,targetId,relayFallback,secretOverride){if(!ev||ev.kind!==30079||!Array.isArray(ev.tags)||!targetId)return null;const d=ev.tags.find(function(t){return t[0]==='d'&&t[1]===targetId});if(!d)return null;const secret=String(secretOverride||privateSecretFromUrl()||'');const payload=await decryptPrivateChessPayload(ev.content,secret,targetId);if(!payload)return null;const white=String(payload.white||'').toLowerCase(),black=String(payload.black||'').toLowerCase(),author=String(ev.pubkey||'').toLowerCase();if(!NOSTR_PUBKEY_HEX.test(white)||(author!==white&&author!==black))return null;if(black&&!NOSTR_PUBKEY_HEX.test(black))return null;if(!['open','invite','active','finished','forfeit'].includes(payload.status))return null;return{id:targetId,relay:payload.relay||relayFallback||preferredGameRelay(),white:white,black:black,players:Array.from(new Set([white,black].filter(function(pk){return NOSTR_PUBKEY_HEX.test(pk||'')}))),content:payload.pgn,created_at:Number(ev.created_at)||0,open:!black,eventId:String(ev.id||''),author:author,plies:pgnPlies(payload.pgn),mode:'sifaka-private-chess',private:true,secret:secret,status:payload.status,forfeited:payload.status==='forfeit'}}
 function chessSignerAvailable(){return !!((window.sifakaChessMainSigner&&typeof window.sifakaChessMainSigner.getPublicKey==='function'&&typeof window.sifakaChessMainSigner.signEvent==='function')||(typeof window.sifakaChessConnectLocalSigner==='function')||(window.nostr&&typeof window.nostr.getPublicKey==='function'&&typeof window.nostr.signEvent==='function'))}
 async function getSignerKey(){const app=window.sifakaChessMainSigner;if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{const k=String(await app.getPublicKey()||'').toLowerCase();if(NOSTR_PUBKEY_HEX.test(k)){chessSignerConnected=true;chessChatOwnPk=k;if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(k);return k}}catch(_){}if(window.sifakaChessMainSigner===app)window.sifakaChessMainSigner=null}try{const bridge=window.sifakaChessConnectLocalSigner;if(typeof bridge==='function'){const k=String(await bridge()||'').toLowerCase();if(NOSTR_PUBKEY_HEX.test(k)){chessSignerConnected=true;chessChatOwnPk=k;if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(k);return k}}}catch(_){}try{const n=window.nostr;if(n&&typeof n.getPublicKey==='function'&&typeof n.signEvent==='function'){const k=String(await n.getPublicKey()||'').toLowerCase();if(NOSTR_PUBKEY_HEX.test(k)){chessSignerConnected=true;chessChatOwnPk=k;if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(k);return k}}}catch(_){}return ''}
 async function signChessEvent(event){
@@ -1168,7 +1231,29 @@ function setNostrOpponent(pk,placeholder){
   identity.classList.toggle('nip05-valid',isVerified);
  }).catch(function(){});
 }
-function launchOnlineGame(g,color,content){closeGameSockets();if(!replayNip64Pgn(content||g.content||'')){toast('This game contains PGN moves that this chess board cannot replay.');return false}netGame={id:g.id,relay:g.relay||preferredGameRelay(),white:String(g.white||'').toLowerCase(),black:String(g.black||'').toLowerCase(),myPk:String(g.myPk||'').toLowerCase(),myColor:color,private:!!g.private,secret:g.secret||'',accepted:g.private?!!g.accepted:!!g.black,status:g.status||(g.black?'active':'open'),lastEventTime:Number(g.created_at)||0,lastEventId:g.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(g.players)?g.players.length:(g.black?2:1),lastPublishTime:Number(g.lastPublishTime||g.created_at)||0};try{history.replaceState({},'',gameLink(netGame))}catch(_){}gameMode='online';syncOnlinePerspective(color);gameActive=!over&&(!netGame.private||netGame.accepted);busy=false;sel=null;$('gameSetup').classList.remove('show');closeOnlineModals();$('gameVisibilityModal').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('un').disabled=true;$('lv').style.display='none';setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.private&&!netGame.accepted?'Private invitation pending':''):'Waiting for player');$('lvl').hidden=true;$('lvl').textContent='';if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);rebuild();draw();turnGlow();subscribeToNostrGame();return true}
+function launchOnlineGame(g,color,content){
+ const previousId=netGame&&gameMode==='online'?netGame.id:'';
+ if(netGame&&gameMode==='online')stashActiveChessSession();
+ let body=String(content||g.content||''),incoming=Object.assign({},g);
+ const cached=chessSessionCache.get(g.id),remoteTime=Number(g.lastEventTime||g.created_at)||0,remotePlies=Number(g.plies)||pgnPlies(body);
+ if(cached&&cached.game&&String(cached.game.myPk||'').toLowerCase()===String(g.myPk||'').toLowerCase()&&(Number(cached.game.lastEventTime||0)>remoteTime||Number(cached.game.lastPlies||0)>remotePlies)){
+  incoming=Object.assign({},incoming,cached.game,{id:g.id,white:g.white||cached.game.white,black:cached.game.black||g.black||'',relay:g.relay||cached.game.relay,private:!!(g.private||cached.game.private),secret:g.secret||cached.game.secret||'',myPk:g.myPk||cached.game.myPk,myColor:color,status:(remoteTime>Number(cached.game.lastEventTime||0)?g.status:cached.game.status)||g.status,created_at:Math.max(Number(g.created_at)||0,Number(cached.game.created_at)||0)});
+  body=cached.content||body;
+ }
+ closeGameSockets();
+ if(!replayNip64Pgn(body)){toast('This game contains PGN moves that this chess board cannot replay.');return false}
+ netGame={id:incoming.id,relay:incoming.relay||preferredGameRelay(),white:String(incoming.white||'').toLowerCase(),black:String(incoming.black||'').toLowerCase(),myPk:String(incoming.myPk||'').toLowerCase(),myColor:color,private:!!incoming.private,secret:incoming.secret||'',accepted:incoming.private?!!incoming.accepted:!!incoming.black,status:incoming.status||(incoming.black?'active':'open'),content:body,created_at:Number(incoming.created_at)||0,lastEventTime:Number(incoming.lastEventTime||incoming.created_at)||0,lastEventId:incoming.lastEventId||incoming.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(incoming.players)?incoming.players.length:(incoming.black?2:1),lastPublishTime:Number(incoming.lastPublishTime||incoming.lastEventTime||incoming.created_at)||0};
+ try{history.replaceState({},'',gameLink(netGame))}catch(_){}
+ gameMode='online';syncOnlinePerspective(color);gameActive=!over&&(!netGame.private||netGame.accepted);busy=false;sel=null;
+ $('gameSetup').classList.remove('show');closeOnlineModals();$('gameVisibilityModal').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=!!over;$('un').disabled=true;$('lv').style.display='none';
+ setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.private&&!netGame.accepted?'Private invitation pending':''):'Waiting for player');$('lvl').hidden=true;$('lvl').textContent='';
+ if(netGame.myPk&&typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(netGame.myPk);
+ if(netGame.private)rememberPrivateChessGame(netGame);
+ chessSessionCache.set(netGame.id,{game:Object.assign({},netGame),content:body,savedAt:Date.now()});
+ rebuild();draw();turnGlow();subscribeToNostrGame();
+ if(previousId&&previousId!==netGame.id)toast('Switched matches. Your previous game remains active; reopen it under Current Games. Switching does not forfeit a match.');
+ return true
+}
 function chessSnapshotIsNewer(g){
  if(!netGame)return false;
  if(g.created_at!==netGame.lastEventTime)return g.created_at>netGame.lastEventTime;
@@ -1350,7 +1435,7 @@ async function publishOnlineSnapshot(isForfeit=false){
  const body=buildNip64Pgn(g.white,g.black);
  const status=isForfeit?'forfeit':over?'finished':'active';const publicTags=[['d',gameId],['p',players[0]],['t','sifaka-chess'],['mode','sifaka-nostr-open'],['alt','Sifaka Nostr Chess #'+gameId.slice(0,8)],['status',status],['relay',relay]];if(NOSTR_PUBKEY_HEX.test(players[1]||''))publicTags.splice(2,0,['p',players[1]]);
  const job=netPublishChain.then(async function(){
-  if(!netGame||netGame.id!==gameId||netGame.conflicted)return false;
+  if(g.conflicted)return false;
   try{
    const signer=await getSignerKey();
    if(!signer||signer!==g.myPk){
@@ -1364,7 +1449,7 @@ async function publishOnlineSnapshot(isForfeit=false){
    let ack=await sendToRelays(signed,networkRelays(relay));
    if(!ack){
     await new Promise(function(resolve){setTimeout(resolve,900)});
-    if(!netGame||netGame.id!==gameId)return false;
+    if(g.conflicted)return false;
     ack=await sendToRelays(signed,networkRelays(relay));
    }
    if(!ack){
@@ -1374,7 +1459,8 @@ async function publishOnlineSnapshot(isForfeit=false){
    g.lastEventTime=Math.max(g.lastEventTime,created);
    g.lastEventId=signed.id;
    g.lastPlies=pgnPlies(body);
-   g.lastPlayers=2;
+   g.lastPlayers=2;g.content=body;g.status=status;g.created_at=Math.max(Number(g.created_at)||0,created);
+   chessSessionCache.set(gameId,{game:Object.assign({},g),content:body,savedAt:Date.now()});if(g.private)rememberPrivateChessGame(g);
    return true;
   }catch(err){
    toast('Could not publish the game update: '+String(err&&err.message||'check your signer and relay connection.'));
