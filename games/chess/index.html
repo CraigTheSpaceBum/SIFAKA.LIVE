@@ -1207,7 +1207,7 @@ function acceptIncomingGameEvent(ev){
  // Accept the first valid claim from the player who signed it, then publish
  // White's authoritative current PGN with the accepted seat attached.
  const isBlackSeatClaim=!!(netGame.myColor==='w'&&netGame.myPk===netGame.white&&!netGame.black&&g.black&&g.author===g.black);
- if(netGame.myColor==='b'&&g.black&&g.black!==netGame.myPk){
+ if(netGame.myColor==='b'&&g.author===g.white&&g.black&&g.black!==netGame.myPk){
   // Do not let a losing concurrent join continue just because its event ID or
   // timestamp sorts differently on different relays.
   netGame.conflicted=true;gameActive=false;busy=false;
