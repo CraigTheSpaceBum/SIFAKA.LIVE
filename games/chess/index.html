@@ -1366,7 +1366,7 @@ async function acceptIncomingPrivateGameEvent(ev){
  const wasAccepted=!!netGame.accepted;
  netGame.black=g.black||netGame.black;netGame.relay=g.relay||netGame.relay;netGame.status=g.status;
  netGame.accepted=!!netGame.black&&g.status!=='open'&&g.status!=='invite';
- netGame.lastEventTime=g.created_at;netGame.lastEventId=g.eventId;netGame.lastPlies=H.length;netGame.lastPlayers=g.players.length;
+ netGame.lastEventTime=g.created_at;netGame.lastEventId=g.eventId;netGame.lastPlies=H.length;netGame.lastPlayers=g.players.length;rememberPrivateChessGame(netGame);
  if(g.status==='forfeit'&&!over)over={h:'Forfeit',p:'The other player forfeited the private game.'};
  gameActive=!over&&netGame.accepted;busy=false;sel=null;
  setNostrOpponent(currentOpponentKey(),netGame.black?(netGame.accepted?'':'Private invitation pending'):'Waiting for player');
@@ -1637,7 +1637,7 @@ async function joinNostrGame(g,button){
   const ack=await sendToRelays(ev,networkRelays(relay));
   if(!ack)throw new Error(chessRelayPublishError('game join'));
   pendingNostrGame=null;
-  const joined=Object.assign({},g,{black:signer,players:[g.white,signer],myPk:signer,created_at:created,eventId:ev.id,mode:'sifaka-nostr-open'});
+  const joined=Object.assign({},g,{black:signer,open:false,status:'active',players:[g.white,signer],myPk:signer,created_at:created,eventId:ev.id,mode:'sifaka-nostr-open'});
   if(!launchOnlineGame(joined,'b',body))throw new Error('The join was published, but Sifaka could not open the board.');
   launched=true;
   if(netGame){netGame.lastEventTime=created;netGame.lastEventId=ev.id;netGame.lastPlayers=2;netGame.lastPlies=H.length}
@@ -1686,7 +1686,7 @@ function renderOpenGames(games,targetId){
  visible.forEach(function(g){
   const row=document.createElement('div'),players=document.createElement('div'),whiteAvatar=document.createElement('span'),blackAvatar=document.createElement('span'),copy=document.createElement('div'),title=document.createElement('b'),whiteName=document.createElement('span'),vs=document.createElement('span'),blackName=document.createElement('span'),status=document.createElement('span'),sub=document.createElement('small'),btn=document.createElement('button');
   row.className='chess-open-game';players.className='chess-open-game-players';copy.className='chess-open-game-copy';title.className='chess-open-game-matchup';
-  const gameStatus=String(g.status||(g.open?'open':'active')).toLowerCase(),ended=gameStatus==='finished'||gameStatus==='forfeit'||!!g.forfeited;
+  let gameStatus=String(g.status||(g.open?'open':'active')).toLowerCase();if(!g.private&&g.black&&gameStatus==='open')gameStatus='active';const ended=gameStatus==='finished'||gameStatus==='forfeit'||!!g.forfeited;
   whiteAvatar.className='av2 chess-open-game-avatar';whiteAvatar.title='White player';paintChessAvatar(whiteAvatar,{},g.white,false);players.appendChild(whiteAvatar);
   whiteName.className='chess-game-player-name';whiteName.textContent=shortChessNpub(g.white);vs.className='chess-game-vs';vs.textContent=' vs ';
   blackName.className='chess-game-player-name';blackName.textContent=NOSTR_PUBKEY_HEX.test(String(g.black||''))?shortChessNpub(g.black):'';
@@ -1729,6 +1729,15 @@ function fetchOpenGames(targetId,targetRelay){
  const privateById=new Map(registry.map(function(item){return[item.id,item]})),seen=new Map();
  if(!targetId){
   (lastDiscoveredChessGames||[]).filter(function(g){return g&&!g.private}).forEach(function(g){seen.set(g.id,g)});
+  // Keep this account's own active public sessions visible even while a relay is
+  // slow to return the newest snapshot. Fresh relay events can still replace them.
+  chessSessionCache.forEach(function(session){
+   const g=session&&session.game;
+   if(g&&!g.private&&myPk&&String(g.myPk||'').toLowerCase()===myPk){
+    const cached=Object.assign({},g,{content:session.content||g.content||'',localSession:true,plies:Number(g.lastPlies)||pgnPlies(session.content||g.content||''),created_at:Number(g.lastEventTime||g.created_at)||0,open:!g.black,players:Array.from(new Set([g.white,g.black].filter(function(pk){return NOSTR_PUBKEY_HEX.test(String(pk||''))})))});
+    seen.set(g.id,cached);
+   }
+  });
   registry.forEach(function(item){seen.set(item.id,privateChessRegistryStub(item))});
  }
  if(openGamesPartialTimer){clearTimeout(openGamesPartialTimer);openGamesPartialTimer=null}
