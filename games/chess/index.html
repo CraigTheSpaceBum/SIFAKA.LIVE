@@ -644,7 +644,7 @@ $('po').onclick=post;
 const nw=()=>{init();gameActive=true;$('ov').classList.remove('show');$('gameSetup').classList.remove('show');$('nw').textContent='Forfeit';$('nw').disabled=false;$('un').disabled=false;rebuild();draw();note('🦧',gameMode==='engine'?'New game':'Two-player game',gameMode==='engine'?'You lead the ivory sifakas. Good luck!':'White moves first. Pass the device between players.','#8b5cf6')};
 function showGameSetup(){const preserving=!!(netGame&&gameMode==='online');if(preserving)stashActiveChessSession();leaveNostrGame();gameActive=false;busy=false;$('ov').classList.remove('show');$('personGameModal').classList.remove('show');$('openGamesModal').classList.remove('show');$('inm').classList.remove('show');$('nw').disabled=true;$('gameSetup').classList.add('show');$('setupOpponents').hidden=false;$('setupDifficulty').hidden=true;$('setupBack').hidden=true;$('setupHelp').textContent='Start a game against the engine or choose Person to play over Nostr. Your existing online matches stay active and can be reopened from Current Games.';if(preserving)toast('Match saved. It remains active and can be reopened under Current Games; it was not forfeited.')}
 function startSelectedGame(mode,difficulty){
- if(mode!=='online')leaveNostrGame();
+ if(mode!=='online'){if(gameMode==='online'&&netGame)stashActiveChessSession();leaveNostrGame();}
  gameMode=mode;if(difficulty){lv=+difficulty;CF.lv=lv;}apply();
  setNostrOpponent('',mode==='engine'?'Sifaka Engine':'Player Two');
  $('lvl').hidden=false;$('lvl').textContent=mode==='engine'?LV[lv]:'Two-player';
