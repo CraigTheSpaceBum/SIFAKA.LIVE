@@ -1729,6 +1729,7 @@ function fetchOpenGames(targetId,targetRelay){
  const privateById=new Map(registry.map(function(item){return[item.id,item]})),seen=new Map();
  if(!targetId){
   (lastDiscoveredChessGames||[]).filter(function(g){return g&&!g.private}).forEach(function(g){seen.set(g.id,g)});
+  (lastDiscoveredChessGames||[]).filter(function(g){return g&&g.private&&g._localPrivate&&myPk&&String(g.myPk||'').toLowerCase()===myPk}).forEach(function(g){seen.set(g.id,g)});
   // Keep this account's own active public sessions visible even while a relay is
   // slow to return the newest snapshot. Fresh relay events can still replace them.
   chessSessionCache.forEach(function(session){
@@ -1738,7 +1739,10 @@ function fetchOpenGames(targetId,targetRelay){
     seen.set(g.id,cached);
    }
   });
-  registry.forEach(function(item){seen.set(item.id,privateChessRegistryStub(item))});
+  registry.forEach(function(item){
+   const old=seen.get(item.id),stub=privateChessRegistryStub(item);
+   seen.set(item.id,old&&old.content&&old.secret===item.secret?Object.assign({},old,{myPk:item.myPk,secret:item.secret,_localPrivate:true,private:true}):stub);
+  });
  }
  if(openGamesPartialTimer){clearTimeout(openGamesPartialTimer);openGamesPartialTimer=null}
  if(!targetId&&seen.size){lastDiscoveredChessGames=Array.from(seen.values());renderOpenGames(lastDiscoveredChessGames,'')}
