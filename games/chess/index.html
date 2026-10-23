@@ -1691,8 +1691,8 @@ function renderOpenGames(games,targetId){
   whiteName.className='chess-game-player-name';whiteName.textContent=shortChessNpub(g.white);vs.className='chess-game-vs';vs.textContent=' vs ';
   blackName.className='chess-game-player-name';blackName.textContent=NOSTR_PUBKEY_HEX.test(String(g.black||''))?shortChessNpub(g.black):'';
   if(NOSTR_PUBKEY_HEX.test(String(g.black||''))){blackAvatar.className='av2 chess-open-game-avatar';blackAvatar.title='Black player';paintChessAvatar(blackAvatar,{},g.black,false);players.appendChild(blackAvatar)}
-  title.append(whiteName,vs,blackName);status.className='chess-game-status '+gameStatus;status.textContent=chessGameStatusLabel(g);
-  if(g.private)sub.textContent=(g.black?'Two players · Private match':'Waiting for invited player · Private match')+' · encrypted · '+String(g.relay||'');
+  title.append(whiteName,vs,blackName);status.className='chess-game-status '+gameStatus;status.textContent=chessGameStatusLabel(Object.assign({},g,{status:gameStatus,open:!g.black}));
+  if(g.private)sub.textContent=(gameStatus==='invite'?'Private invitation · awaiting acceptance':g.black?'Two players · Private match':'Waiting for invited player · Private match')+' · encrypted · '+String(g.relay||'');
   else sub.textContent=(g.black?'Two players · Match in progress':'Waiting for an opponent')+' · '+String(g.relay||'');
   sub.title='White player: '+npub(g.white)+(g.black?' · Black player: '+npub(g.black):' · Waiting for Black')+' · Last update: '+(g.created_at?new Date(g.created_at*1000).toLocaleString():'unknown');
   copy.append(title,status,sub);btn.type='button';btn.className='btn pri';
