@@ -1699,11 +1699,26 @@ async function fetchChessInvite(targetId,targetRelay){
   }catch(_){finish()}
  })}));
  if(requestId!==incomingChessInviteRequest||!$('chessInvitePrompt').classList.contains('show'))return;
- // Merge the relay results by game ID instead of blindly trusting timestamp order.
- // A late older event may be the first event that proves Black's seat was claimed.
- const mergedSnapshots=new Map();
- found.forEach(function(snapshot){mergeDiscoveredChessGame(mergedSnapshots,snapshot)});
- const g=mergedSnapshots.get(targetId)||null;
+ // Relay order is not authoritative. For public games, merge seat claims across
+ // snapshots. For encrypted private games, preserve the actual invite/accepted
+ // status from the newest event that names Black instead of inferring "active".
+ let g=null;
+ if(privateInvite){
+  found.sort(function(a,b){return Number(a.created_at||0)-Number(b.created_at||0)||(a.players.length-b.players.length)||(a.plies-b.plies)||String(a.eventId||'').localeCompare(String(b.eventId||''))});
+  g=found[found.length-1]||null;
+  if(g&&!g.black){
+   const claims=found.filter(function(snapshot){return !!snapshot.black});
+   claims.sort(function(a,b){return Number(a.created_at||0)-Number(b.created_at||0)||String(a.eventId||'').localeCompare(String(b.eventId||''))});
+   const claim=claims[claims.length-1];
+   if(claim){
+    g=Object.assign({},g,{black:claim.black,players:Array.from(new Set((g.players||[]).concat([claim.black]))),open:false,status:(g.status==='finished'||g.status==='forfeit')?g.status:claim.status,forfeited:!!(g.forfeited||claim.forfeited)});
+   }
+  }
+ }else{
+  const mergedSnapshots=new Map();
+  found.forEach(function(snapshot){mergeDiscoveredChessGame(mergedSnapshots,snapshot)});
+  g=mergedSnapshots.get(targetId)||null;
+ }
  if(!g){$('chessInviteTitle').textContent='Invitation not found';$('chessInviteProfileName').textContent='Unable to verify inviter';$('chessInviteIdentity').textContent='';$('chessInviteMessage').textContent=privateInvite?'This private chess invite could not be loaded or decrypted.':'This chess game could not be found on the configured Nostr relays.';$('chessInviteStatus').textContent=privateInvite?'Make sure you opened the complete invite link, including its #key=… section, and try again.':'Ask the inviter to copy a fresh game link, or check back when the game is published to Nostr.';$('chessInviteAccept').disabled=true;return}
  incomingChessInvite=g;
  $('chessInviteTitle').textContent='Chess invitation';$('chessInviteMessage').textContent='has invited you to play Chess.';
