@@ -744,7 +744,7 @@ else if(k==='k'){inl(.98,.235);inl(1.38,.292);add(SG,GD,0,1.42,0,.09,.07,.09);ad
 else{inl(.262,.25);add(KG,T.fur,0,0,0,1.1,1.1,1.1).rotation.y=col==='w'?Math.PI/2:-Math.PI/2}
 return g}
 /* chat */
-const cl=$('cl'),seenC=new Set();let cws=null,lobby=false,chessChatBusy=false,chessChatOwnPk='';const seenChessChatEvents=new Set();
+const cl=$('cl'),seenC=new Set();let cws=null,lobby=false,chessChatBusy=false,chessChatOwnPk='';const seenChessChatEvents=new Set(),chessChatByGame=new Map();
 const CHESS_PIECE_GLYPHS={pawn:'♟',knight:'♞',bishop:'♝',rook:'♜',queen:'♛',king:'♚'};
 function appendChessPieceIcons(target,value){
  const text=String(value||''),pattern=/\b(Pawns?|Knights?|Bishops?|Rooks?|Queens?|Kings?)\b/gi;
@@ -844,7 +844,7 @@ function applyChessChatMarkup(action){
  input.focus({preventScroll:true});
  input.dispatchEvent(new Event('input',{bubbles:true}));
 }
-function cadd(who,txt,cls,authorPk,chatEventId){
+function cadd(who,txt,cls,authorPk,chatEventId,gameIdOverride,gameRelayOverride){
  const d=document.createElement('div'),b=document.createElement('b'),s=document.createElement('span');
  d.className='cm '+(cls||'');
  b.textContent=who;renderChessChatText(s,txt);
@@ -888,12 +888,41 @@ function cadd(who,txt,cls,authorPk,chatEventId){
    const actions=document.createElement('div'),like=document.createElement('button');
    actions.className='cm-actions';like.type='button';like.className='cm-like-btn';like.textContent='♡ Like';
    like.title='Like this message';like.setAttribute('aria-label','Like this chat message');like.setAttribute('aria-pressed','false');
-   const gameId=netGame&&gameMode==='online'?netGame.id:'',gameRelay=netGame&&gameMode==='online'?netGame.relay:'';
+   const gameId=String(gameIdOverride|| (netGame&&gameMode==='online'?netGame.id:'')||''),gameRelay=String(gameRelayOverride|| (netGame&&gameMode==='online'?netGame.relay:'')||'');
    like.addEventListener('click',function(){likeChessChatMessage(String(chatEventId).toLowerCase(),pk,gameId,gameRelay,like)});
    actions.appendChild(like);d.appendChild(actions);
   }
  }
  cl.appendChild(d);cl.scrollTop=1e5;while(cl.children.length>80)cl.firstChild.remove();return d;
+}
+function stashChessChatForGame(gameId){
+ if(!gameId)return;
+ chessChatByGame.set(gameId,Array.from(cl.childNodes));
+ cl.replaceChildren();
+}
+function switchChessChatGame(previousId,nextId){
+ if(previousId)chessChatByGame.set(previousId,Array.from(cl.childNodes));
+ cl.replaceChildren();
+ const rows=chessChatByGame.get(nextId)||[];
+ rows.forEach(function(row){cl.appendChild(row)});
+ chessChatByGame.set(nextId,rows);
+ cl.scrollTop=1e5;
+}
+function removeChessChatFromCache(gameId,row){
+ const rows=chessChatByGame.get(gameId)||[];
+ chessChatByGame.set(gameId,rows.filter(function(node){return node!==row}));
+}
+function appendChessChatToGame(gameId,gameRelay,who,message,cls,authorPk,eventId,pendingRow){
+ const visible=Array.from(cl.childNodes);
+ const saved=chessChatByGame.get(gameId)||[];
+ cl.replaceChildren();
+ saved.filter(function(node){return node!==pendingRow}).forEach(function(node){cl.appendChild(node)});
+ const row=cadd(who,message,cls,authorPk,eventId,gameId,gameRelay);
+ const updated=Array.from(cl.childNodes);
+ chessChatByGame.set(gameId,updated);
+ cl.replaceChildren(...visible);
+ cl.scrollTop=1e5;
+ return row;
 }
 async function likeChessChatMessage(eventId,authorPk,gameId,gameRelay,button){
  if(!button||button.dataset.busy==='1'||button.dataset.liked==='1')return;
@@ -945,11 +974,12 @@ async function csend(){
    const ack=await chessAwait(sendToRelays(ev,networkRelays(g.relay)),16000,'Timed out waiting for a relay acknowledgement.');
    if(!ack)throw new Error(chessRelayPublishError('chat message'));
    seenChessChatEvents.add(ev.id);
-   if(pendingRow.isConnected)pendingRow.remove();
-   cadd('You',t,'me',signer,ev.id);
+   if(pendingRow.isConnected)pendingRow.remove();else removeChessChatFromCache(g.id,pendingRow);
+   if(netGame&&netGame.id===g.id&&gameMode==='online')cadd('You',t,'me',signer,ev.id,g.id,g.relay);
+   else appendChessChatToGame(g.id,g.relay,'You',t,'me',signer,ev.id,pendingRow);
   }catch(e){
-   if(pendingRow.isConnected)pendingRow.remove();
-   if(!input.value)input.value=t;
+   if(pendingRow.isConnected)pendingRow.remove();else removeChessChatFromCache(g.id,pendingRow);
+   if(netGame&&netGame.id===g.id&&gameMode==='online'&&!input.value)input.value=t;
    toast('Could not send chess chat: '+String(e&&e.message||'check your signer and relay connection.'));
   }finally{
    chessChatBusy=false;
@@ -1010,7 +1040,7 @@ const NOSTR_PUBKEY_HEX=/^[0-9a-f]{64}$/i;
 let netGame=null,gameSockets=[],pendingChessAction=null,pendingNostrGame=null,netPublishChain=Promise.resolve(),lastOpenGamesTarget='',lastOpenGamesRelay='',openGamesReturn='board',inviteReturn='board',personHubFromSetup=false,openGamesRequestId=0,gameSocketGeneration=0,gameReconnectTimer=null;let onlineCreateBusy=false;const joiningNostrGames=new Set();const chessSessionCache=new Map();
 function chessAwait(promise,timeoutMs,message){let timer;return Promise.race([Promise.resolve(promise),new Promise(function(_,reject){timer=setTimeout(function(){reject(new Error(message))},timeoutMs)})]).finally(function(){clearTimeout(timer)})}
 function closeGameSockets(){gameSocketGeneration++;if(gameReconnectTimer){clearTimeout(gameReconnectTimer);gameReconnectTimer=null}gameSockets.forEach(function(w){try{if(w._sifakaSub&&w.readyState===1)w.send(JSON.stringify(['CLOSE',w._sifakaSub]));w.close()}catch(_){}});gameSockets=[]}
-function leaveNostrGame(){closeGameSockets();netGame=null;pendingNostrGame=null;netPublishChain=Promise.resolve()}
+function leaveNostrGame(){if(netGame&&gameMode==='online'&&typeof stashChessChatForGame==='function')stashChessChatForGame(netGame.id);closeGameSockets();netGame=null;pendingNostrGame=null;netPublishChain=Promise.resolve()}
 function networkRelays(extra){const candidates=[extra].concat(String((typeof CF!=='undefined'&&CF.rel)||'').split(/\s+/),RL,['wss://relay.primal.net','wss://relay.nostr.band']);const out=[];candidates.forEach(function(u){u=String(u||'').trim();if(/^wss?:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,8)}
 function preferredGameRelay(){return networkRelays()[0]||'wss://relay.damus.io'}
 function pgnHeaders(content){const h={};String(content||'').replace(/^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm,function(_,k,v){h[k]=v;return ''});return h}
@@ -1243,6 +1273,7 @@ function launchOnlineGame(g,color,content){
  if(!replayNip64Pgn(body)){toast('This game contains PGN moves that this chess board cannot replay.');return false}
  // Only disconnect the current game's live subscription after the replacement
  // game has passed PGN validation. A rejected switch must leave the old game live.
+ switchChessChatGame(previousId,incoming.id);
  closeGameSockets();
  netGame={id:incoming.id,relay:incoming.relay||preferredGameRelay(),white:String(incoming.white||'').toLowerCase(),black:String(incoming.black||'').toLowerCase(),myPk:String(incoming.myPk||'').toLowerCase(),myColor:color,private:!!incoming.private,secret:incoming.secret||'',accepted:incoming.private?!!incoming.accepted:!!incoming.black,status:incoming.status||(incoming.black?'active':'open'),content:body,created_at:Number(incoming.created_at)||0,lastEventTime:Number(incoming.lastEventTime||incoming.created_at)||0,lastEventId:incoming.lastEventId||incoming.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(incoming.players)?incoming.players.length:(incoming.black?2:1),lastPublishTime:Number(incoming.lastPublishTime||incoming.lastEventTime||incoming.created_at)||0};
  try{history.replaceState({},'',gameLink(netGame))}catch(_){}
@@ -1405,7 +1436,7 @@ async function acceptIncomingChessChatEvent(ev){
  seenChessChatEvents.add(ev.id);
  while(seenChessChatEvents.size>600)seenChessChatEvents.delete(seenChessChatEvents.values().next().value);
  if(author===netGame.myPk)return;
- cadd(chessChatSenderLabel(author),message,'',author,ev.id);
+ cadd(chessChatSenderLabel(author),message,'',author,ev.id,netGame.id,netGame.relay);
 }
 function subscribeToNostrGame(){
  closeGameSockets();
