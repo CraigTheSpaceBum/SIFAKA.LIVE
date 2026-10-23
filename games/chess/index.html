@@ -1495,7 +1495,7 @@ async function joinNostrGame(g,button){
   toast('Could not join the open game: '+String(err&&err.message||'check the game and your Nostr relay connection.'));
  }finally{joiningNostrGames.delete(g.id);restoreButton()}
 }
-let openGamesView='open',lastDiscoveredChessGames=[],openGamesRefreshTimer=null,chessLobbyProfileObserver=null,chessInviteResultObserver=null;
+let openGamesView='open',lastDiscoveredChessGames=[],openGamesRefreshTimer=null,openGamesPartialTimer=null,chessLobbyProfileObserver=null,chessInviteResultObserver=null;
 function chessGameStatusLabel(g){
  const status=String(g.status|| (g.forfeited?'forfeit':g.open?'open':'active')).toLowerCase();
  return status==='invite'?'INVITATION SENT':status==='active'?'IN PROGRESS':status==='finished'?'FINISHED':status==='forfeit'?'FORFEIT':status==='open'?'WAITING FOR PLAYER':'UNKNOWN STATUS';
@@ -1576,11 +1576,22 @@ function fetchOpenGames(targetId,targetRelay){
  const requestId=++openGamesRequestId;lastOpenGamesTarget=targetId||'';lastOpenGamesRelay=targetRelay||'';
  $('openGamesList').replaceChildren();const loading=document.createElement('div');loading.className='chess-online-muted';loading.textContent='Searching Nostr relays…';$('openGamesList').appendChild(loading);
  const relays=networkRelays(targetRelay),seen=new Map(),since=Math.floor(Date.now()/1000)-30*86400;
+ if(openGamesPartialTimer){clearTimeout(openGamesPartialTimer);openGamesPartialTimer=null}
+ function queuePartialRender(){
+  if(targetId||requestId!==openGamesRequestId||!$('openGamesModal').classList.contains('show'))return;
+  if(openGamesPartialTimer)clearTimeout(openGamesPartialTimer);
+  openGamesPartialTimer=setTimeout(function(){
+   openGamesPartialTimer=null;
+   if(requestId!==openGamesRequestId||!$('openGamesModal').classList.contains('show'))return;
+   const partial=Array.from(seen.values());
+   if(partial.length){lastDiscoveredChessGames=partial;renderOpenGames(lastDiscoveredChessGames,'')}
+  },180);
+ }
  return Promise.all(relays.map(function(url,i){return new Promise(function(resolve){
   let ws,finished=false,timer;const pending=[];
   const sub='sifaka-chess-discovery-'+Date.now().toString(36)+'-'+i;
   const finish=function(){if(finished)return;finished=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close()}}catch(_){}Promise.allSettled(pending).then(resolve)};
-  timer=setTimeout(finish,10000);
+  timer=setTimeout(finish,6500);
   try{ws=new WebSocket(url);
    ws.onopen=function(){try{
     const filters=targetId?[{kinds:[64],'#d':[targetId],limit:100},{kinds:[30079],'#d':[targetId],limit:100}]:[{kinds:[64],'#t':['sifaka-chess'],since:since,limit:500},{kinds:[64],since:since,limit:250}];
@@ -1589,13 +1600,14 @@ function fetchOpenGames(targetId,targetRelay){
    ws.onmessage=function(e){try{
     const d=JSON.parse(e.data);
     if(d[0]==='EVENT'&&d[1]===sub&&d[2]){
-     if(d[2].kind===64){const g=eventToChessGame(d[2],url);if(g&&(!targetId||g.id===targetId))mergeDiscoveredChessGame(seen,g)}
-     else if(targetId&&d[2].kind===30079){const task=decodePrivateChessEvent(d[2],targetId,url).then(function(g){if(g&&requestId===openGamesRequestId)mergeDiscoveredChessGame(seen,g)});pending.push(task)}
+     if(d[2].kind===64){const g=eventToChessGame(d[2],url);if(g&&(!targetId||g.id===targetId)){mergeDiscoveredChessGame(seen,g);queuePartialRender()}}
+     else if(targetId&&d[2].kind===30079){const task=decodePrivateChessEvent(d[2],targetId,url).then(function(g){if(g&&requestId===openGamesRequestId){mergeDiscoveredChessGame(seen,g);queuePartialRender()}});pending.push(task)}
     }else if(d[0]==='EOSE'&&d[1]===sub)finish();
    }catch(_){}};
    ws.onerror=finish;ws.onclose=finish;
   }catch(_){finish()}
  })})).then(function(){
+  if(openGamesPartialTimer){clearTimeout(openGamesPartialTimer);openGamesPartialTimer=null}
   if(requestId!==openGamesRequestId||!$('openGamesModal').classList.contains('show'))return;
   lastDiscoveredChessGames=Array.from(seen.values());renderOpenGames(lastDiscoveredChessGames,targetId||'');
   $('openGamesHelp').textContent=targetId?'This link points to a Sifaka Chess game. Public games use NIP-64 PGN events; private games decrypt only with the complete link key.':'Public Sifaka Nostr Chess games are listed below. Private games are never listed in the public lobby.';
