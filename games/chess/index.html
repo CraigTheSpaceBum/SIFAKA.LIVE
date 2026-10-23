@@ -1123,6 +1123,15 @@ function setNostrOpponent(pk,placeholder){
   nameEl.textContent=String(placeholder||(gameMode==='online'?'Waiting for opponent':'Sifaka Engine'));avatar.classList.remove('nip05-square');avatar.replaceChildren(document.createTextNode('🦧'));avatar.title='';identity.hidden=true;identity.textContent='';identity.title='';identity.classList.remove('nip05-valid');return;
  }
  const full=npub(pk);nameEl.textContent=shortChessNpub(pk);identity.hidden=false;identity.textContent=shortChessNpub(pk);identity.title=full;identity.classList.remove('nip05-valid');paintChessAvatar(avatar,{},pk,false);
+ try{
+  const cached=JSON.parse(localStorage.getItem('sifaka_chess_profile_'+pk)||'null');
+  if(cached&&typeof cached==='object'){
+   nameEl.textContent=chessProfileName(cached,pk);
+   identity.textContent=cached.nip05?'Claimed NIP-05 (not verified): '+cached.nip05:shortChessNpub(pk);
+   identity.title=cached.nip05?'Claimed NIP-05, not verified: '+cached.nip05:'Nostr public key: '+full;
+   applyChessProfileBanner(avatar,cached);paintChessAvatar(avatar,cached,pk,false);
+  }
+ }catch(_){}
  const gameId=netGame&&netGame.id;
  lookupChessPlayerProfile(pk).then(function(result){
   if(token!==opponentProfileRequest||!netGame||netGame.id!==gameId||currentOpponentKey()!==pk)return;
