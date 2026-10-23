@@ -1558,7 +1558,14 @@ function renderOpenGames(games,targetId){
 function mergeDiscoveredChessGame(seen,g){
  const old=seen.get(g.id);
  const newer=!old||g.created_at>old.created_at||(g.created_at===old.created_at&&(g.plies>old.plies||(g.plies===old.plies&&(g.players.length>old.players.length||(g.players.length===old.players.length&&String(g.eventId)>String(old.eventId))))));
- if(!newer)return;
+ if(!newer){
+  // Relay event arrival order is not guaranteed: a late older join event still
+  // establishes Black's seat even if a newer host snapshot reached us first.
+  if(old&&!old.black&&g.black){
+   seen.set(g.id,Object.assign({},old,{black:g.black,open:false,players:Array.from(new Set((old.players||[]).concat([g.black]))),status:old.status==='open'?'active':old.status}));
+  }
+  return;
+ }
  // Once Black has claimed the seat, keep that identity if a later host snapshot still has a '?' PGN header.
  if(old&&old.black&&!g.black){
   g=Object.assign({},g,{black:old.black,open:false,players:Array.from(new Set((g.players||[]).concat([old.black]))),status:g.status==='open'?'active':g.status});
