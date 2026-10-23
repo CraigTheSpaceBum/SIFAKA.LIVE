@@ -895,13 +895,18 @@ function cadd(who,txt,cls,authorPk,chatEventId,gameIdOverride,gameRelayOverride)
  }
  cl.appendChild(d);cl.scrollTop=1e5;while(cl.children.length>80)cl.firstChild.remove();return d;
 }
+function rememberChessChatRows(gameId,rows){
+ if(!gameId)return;
+ chessChatByGame.delete(gameId);chessChatByGame.set(gameId,(rows||[]).slice(-80));
+ while(chessChatByGame.size>40)chessChatByGame.delete(chessChatByGame.keys().next().value);
+}
 function stashChessChatForGame(gameId){
  if(!gameId)return;
- chessChatByGame.set(gameId,Array.from(cl.childNodes));
+ rememberChessChatRows(gameId,Array.from(cl.childNodes));
  cl.replaceChildren();
 }
 function switchChessChatGame(previousId,nextId){
- if(previousId)chessChatByGame.set(previousId,Array.from(cl.childNodes));
+ if(previousId)rememberChessChatRows(previousId,Array.from(cl.childNodes));
  cl.replaceChildren();
  const rows=chessChatByGame.get(nextId)||[];
  rows.forEach(function(row){cl.appendChild(row)});
@@ -910,7 +915,7 @@ function switchChessChatGame(previousId,nextId){
 }
 function removeChessChatFromCache(gameId,row){
  const rows=chessChatByGame.get(gameId)||[];
- chessChatByGame.set(gameId,rows.filter(function(node){return node!==row}));
+ rememberChessChatRows(gameId,rows.filter(function(node){return node!==row}));
 }
 function appendChessChatToGame(gameId,gameRelay,who,message,cls,authorPk,eventId,pendingRow){
  const visible=Array.from(cl.childNodes);
@@ -919,7 +924,7 @@ function appendChessChatToGame(gameId,gameRelay,who,message,cls,authorPk,eventId
  saved.filter(function(node){return node!==pendingRow}).forEach(function(node){cl.appendChild(node)});
  const row=cadd(who,message,cls,authorPk,eventId,gameId,gameRelay);
  const updated=Array.from(cl.childNodes);
- chessChatByGame.set(gameId,updated);
+ rememberChessChatRows(gameId,updated);
  cl.replaceChildren(...visible);
  cl.scrollTop=1e5;
  return row;
