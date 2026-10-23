@@ -864,7 +864,7 @@ function cadd(who,txt,cls,authorPk,chatEventId,gameIdOverride,gameRelayOverride)
    if(typeof paintChessAvatar==='function')paintChessAvatar(av,{},pk,false);
    if(typeof window.sifakaChessLookupProfile==='function'){
     Promise.resolve().then(()=>window.sifakaChessLookupProfile(pk)).then(function(result){
-     if(!d.isConnected)return;
+     // This row may be cached off-screen for another match; finish hydration so its profile is correct when restored.
      const p=result&&result.profile&&typeof result.profile==='object'?result.profile:{};
      const verified=!!(result&&result.verified&&p.nip05);
      const fallback=typeof shortChessNpub==='function'?shortChessNpub(pk):pk.slice(0,8)+'…'+pk.slice(-4);
