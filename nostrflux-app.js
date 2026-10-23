@@ -621,6 +621,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       this.subscriptions = new Map();
       this.reconnectTimers = new Map();
       this.subscriptionEventDedupeLimit = 3000;
+      this.pendingPublishes = new Map();
       this.connectTimers = new Set();
       this.destroyed = false;
       this.connectAll();
@@ -706,9 +707,29 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             sub.handlers.eose(url);
           }
         } else if (type === 'OK') {
-          const eventId = data[1];
-          const ok = data[2];
-          const reason = data[3] || '';
+          const eventId = String(data[1] || '');
+          const ok = data[2] === true;
+          const reason = String(data[3] || '');
+          const pendingPublish = this.pendingPublishes.get(eventId);
+          if (pendingPublish && pendingPublish.targets.has(url)) {
+            pendingPublish.responses.set(url, { ok, reason });
+            if (ok) {
+              clearTimeout(pendingPublish.timer);
+              this.pendingPublishes.delete(eventId);
+              pendingPublish.resolve({ relayUrl: url });
+            } else if (pendingPublish.responses.size >= pendingPublish.targets.size) {
+              clearTimeout(pendingPublish.timer);
+              this.pendingPublishes.delete(eventId);
+              const reasons = Array.from(pendingPublish.responses.values())
+                .map((response) => response && response.reason || '')
+                .filter(Boolean);
+              pendingPublish.reject(new Error(
+                reasons.length
+                  ? 'All connected relays rejected the message: ' + reasons.join('; ')
+                  : 'All connected relays rejected the message.'
+              ));
+            }
+          }
           if (window.console && !ok) console.warn('Relay reject', url, eventId, reason);
         }
       });
@@ -770,9 +791,64 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       return sent;
     }
 
+    publishAndConfirm(event, opts = {}) {
+      const eventId = String(event && event.id || '').trim();
+      if (!eventId) return Promise.reject(new Error('Cannot publish a message without an event ID.'));
+      if (this.pendingPublishes.has(eventId)) {
+        return Promise.reject(new Error('This message is already awaiting relay confirmation.'));
+      }
+      const timeoutMs = Math.max(1000, Number(opts.timeoutMs || 4500));
+      const targetUrls = this.urls.filter((url) => {
+        const ws = this.sockets.get(url);
+        return !!(ws && ws.readyState === WebSocket.OPEN);
+      });
+      if (!targetUrls.length) {
+        return Promise.reject(new Error('No relay connections are currently open.'));
+      }
+
+      return new Promise((resolve, reject) => {
+        const pending = {
+          targets: new Set(),
+          responses: new Map(),
+          resolve,
+          reject,
+          timer: null
+        };
+        this.pendingPublishes.set(eventId, pending);
+        targetUrls.forEach((url) => {
+          if (this.send(url, ['EVENT', event])) pending.targets.add(url);
+        });
+
+        if (!pending.targets.size) {
+          this.pendingPublishes.delete(eventId);
+          reject(new Error('No relay connections are currently open.'));
+          return;
+        }
+        pending.timer = setTimeout(() => {
+          if (this.pendingPublishes.get(eventId) !== pending) return;
+          this.pendingPublishes.delete(eventId);
+          const error = new Error(
+            'No relay confirmed delivery. The message may still have been sent; check the chat before retrying.'
+          );
+          error.deliveryAmbiguous = true;
+          reject(error);
+        }, timeoutMs);
+      });
+    }
+
     destroy() {
       if (this.destroyed) return;
       this.destroyed = true;
+
+      this.pendingPublishes.forEach((pending) => {
+        if (pending.timer) clearTimeout(pending.timer);
+        const error = new Error(
+          'The relay connection closed before delivery was confirmed. The message may still have been sent; check chat before retrying.'
+        );
+        error.deliveryAmbiguous = true;
+        pending.reject(error);
+      });
+      this.pendingPublishes.clear();
 
       this.connectTimers.forEach((timer) => clearTimeout(timer));
       this.connectTimers.clear();
@@ -2442,10 +2518,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         return await sendNwcRequestOnce(session, method, params, mode, opts);
       } catch (err) {
         if (isAbortLikeError(err)) throw err;
-        // Once a request was delivered to a relay and the wallet service did not
-        // return a response, the outcome may be unknown. Never retry a payment
-        // request with another encryption mode in that state.
-        if (err && err.nwcAmbiguous) throw err;
+        // A payment request with no reply may already have been executed; never
+        // retry a side-effecting request using another encryption mode. Read-only
+        // wallet queries are safe to retry because they cannot spend funds.
+        const safeReadMethods = new Set(['get_balance', 'get_info', 'list_transactions', 'lookup_invoice']);
+        if (err && err.nwcAmbiguous && !safeReadMethods.has(String(method || '').trim().toLowerCase())) throw err;
         lastErr = err;
       }
     }
@@ -2742,9 +2819,43 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     return String(value || '').trim().toLowerCase();
   }
 
+  function getBolt11PaymentHash(invoice) {
+    try {
+      const clean = String(invoice || '').trim().toLowerCase();
+      const hrpMatch = clean.match(/^ln(?:bcrt|bc|tb|sb)(?:[0-9]+[munp]?)?1/);
+      if (!hrpMatch || clean.length < hrpMatch[0].length + 6) return '';
+      const separator = hrpMatch[0].length - 1;
+      const payload = clean.slice(separator + 1, -6);
+      const words = Array.from(payload, (character) => BECH32_CHARSET.indexOf(character));
+      if (words.length < 111 || words.some((word) => word < 0)) return '';
+
+      // A BOLT11 signature occupies the final 104 five-bit words.
+      const taggedDataEnd = words.length - 104;
+      if (taggedDataEnd < 7) return '';
+      const paymentHashTag = BECH32_CHARSET.indexOf('p');
+      for (let index = 7; index < taggedDataEnd;) {
+        if (index + 2 >= taggedDataEnd) return '';
+        const tagType = words[index];
+        const tagLength = words[index + 1] * 32 + words[index + 2];
+        const valueStart = index + 3;
+        const valueEnd = valueStart + tagLength;
+        if (tagLength < 0 || valueEnd > taggedDataEnd) return '';
+        if (tagType === paymentHashTag) {
+          const bytes = convertBits(words.slice(valueStart, valueEnd), 5, 8, false);
+          return bytes.length === 32 ? bytesToHex(bytes).toLowerCase() : '';
+        }
+        index = valueEnd;
+      }
+      return '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   async function confirmNwcInvoicePayment(session, invoice, info) {
     const cleanInvoice = String(invoice || '').trim();
     if (!session || !cleanInvoice) return null;
+    const invoicePaymentHash = getBolt11PaymentHash(cleanInvoice);
 
     const capabilityList = Array.isArray(info && info.capabilities) ? info.capabilities : [];
     const explicitlyUnsupportedLookup = capabilityList.length > 0 && !capabilityList.includes('lookup_invoice');
@@ -2785,9 +2896,13 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             ? txResult.transactions
             : (Array.isArray(txResult) ? txResult : []);
           const cleanLower = cleanInvoice.toLowerCase();
-          const paymentHash = String(lookupResult && lookupResult.payment_hash || '').trim().toLowerCase();
+          const paymentHash = String(lookupResult && lookupResult.payment_hash || invoicePaymentHash || '').trim().toLowerCase();
           const matched = transactions.some((tx) => {
             if (!tx || typeof tx !== 'object') return false;
+            const txType = String(tx.type || '').trim().toLowerCase();
+            if (txType && !['outgoing', 'outbound', 'send', 'sent', 'payment'].includes(txType)) return false;
+            const txState = normalizeNwcPaymentState(tx.state || tx.status || '');
+            if (['failed', 'expired', 'pending', 'accepted', 'unpaid'].includes(txState)) return false;
             const invoiceValues = [
               tx.invoice,
               tx.payment_request,
@@ -2795,7 +2910,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
               tx.bolt11
             ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
             if (invoiceValues.includes(cleanLower)) return true;
-            if (paymentHash && String(tx.payment_hash || '').trim().toLowerCase() === paymentHash) return true;
+            if (paymentHash && String(tx.payment_hash || tx.paymentHash || '').trim().toLowerCase() === paymentHash) return true;
             return false;
           });
           if (matched) return { status: 'settled', result: lookupResult || null };
@@ -2814,7 +2929,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   async function payInvoiceWithNwcConfig(config, invoice, opts = {}) {
     const session = await createNwcSession(config);
     try {
-      const infoEvent = await waitForNwcInfoEvent(session, { timeoutMs: Math.min(NWC_INFO_TIMEOUT_MS, 2200) });
+      const infoEvent = await waitForNwcInfoEvent(session, { timeoutMs: Math.min(NWC_INFO_TIMEOUT_MS, 4200) });
       const info = parseNwcInfoEvent(infoEvent);
       if (info && info.preferredEncryption) {
         session.encryption = info.preferredEncryption;
@@ -4597,7 +4712,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       // Do not make a query wait for every configured relay. A single offline/slow
       // relay should not hold up pages when several relays have already answered.
       const relayCount = Math.max(1, Number((state.pool.urls && state.pool.urls.length) || 1));
-      const expectedEose = opts.waitForAllRelays ? relayCount : Math.min(3, relayCount);
+      const requestedMinRelays = Math.max(1, Math.floor(Number(opts.minRelays || 3) || 3));
+      const expectedEose = opts.waitForAllRelays
+        ? relayCount
+        : Math.min(requestedMinRelays, relayCount);
       let done = false;
       let subId = null;
 
@@ -4633,7 +4751,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function refreshOneShotQueryCache(key, filters, opts = {}) {
     const existing = state.oneShotQueryInflightByKey.get(key);
-    if (existing) return existing;
+    if (existing && !opts.force) return existing;
     const promise = runOneShotRelayQuery(filters, opts)
       .then((events) => {
         state.oneShotQueryCacheByKey.set(key, {
@@ -21815,10 +21933,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     fetchEventsCached(chatHistoryFilters, {
       scope: 'theater-chat-history',
       cacheKey: `theater-chat-history:${stream.address}:${chatSince}:${chatHistoryLimit}`,
-      timeoutMs: 2400,
+      // Re-read history on theater entry rather than returning an old warm cache.
+      timeoutMs: 4000,
       maxEvents: Math.max(240, chatHistoryLimit * 2),
       ttlMs: THEATER_CHAT_CACHE_TTL_MS,
-      warmMs: THEATER_CHAT_CACHE_WARM_MS
+      warmMs: THEATER_CHAT_CACHE_WARM_MS,
+      force: true,
+      allowStale: false,
+      minRelays: 5
     }).then((events) => {
       if (!isSameSelectedStream()) return;
       const sorted = (events || [])
@@ -25740,10 +25862,27 @@ function renderProfileFeed(pubkey) {
     ];
 
     try {
-      await signAndPublish(KIND_LIVE_CHAT, text, tags);
-      input.value = '';
+      const signed = await signEvent(KIND_LIVE_CHAT, text, tags);
+      if (state.pool && typeof state.pool.publishAndConfirm === 'function') {
+        await state.pool.publishAndConfirm(signed, { timeoutMs: 5000 });
+      } else {
+        const sent = state.pool ? state.pool.publish(signed) : 0;
+        if (sent === 0) throw new Error('No relay connections are currently open.');
+      }
+
+      // Discard any pre-send history cache so later theater visits see this message.
+      const historyPrefix = `theater-chat-history:${stream.address}:`;
+      if (state.oneShotQueryCacheByKey && typeof state.oneShotQueryCacheByKey.forEach === 'function') {
+        Array.from(state.oneShotQueryCacheByKey.keys()).forEach((key) => {
+          if (String(key).startsWith(historyPrefix)) state.oneShotQueryCacheByKey.delete(key);
+        });
+      }
+      if (input) input.value = '';
     } catch (err) {
-      alert(err.message || 'Failed to send chat message.');
+      const message = err && err.deliveryAmbiguous
+        ? (err.message || 'Relay confirmation timed out. Check chat before retrying.')
+        : (err && err.message || 'Failed to send chat message.');
+      alert(message);
     }
   }
 
@@ -28181,7 +28320,7 @@ function renderProfileFeed(pubkey) {
         // Read the wallet's NIP-47 info event before the first live request so
         // modern wallets use NIP-44 immediately and legacy wallets use NIP-04.
         try {
-          const infoEvent = await waitForNwcInfoEvent(session, { timeoutMs: Math.min(NWC_INFO_TIMEOUT_MS, 2500) });
+          const infoEvent = await waitForNwcInfoEvent(session, { timeoutMs: Math.min(NWC_INFO_TIMEOUT_MS, 4200) });
           const info = parseNwcInfoEvent(infoEvent);
           if (info && info.preferredEncryption) {
             session.encryption = info.preferredEncryption;
@@ -31231,9 +31370,16 @@ window.saveAppSettings = function () {
         showTheaterDonationResult(true, 'Lightning donation successful', successDetail);
       } catch (err) {
         console.warn('Lightning donation failed:', err && err.message ? err.message : err);
-        const failureText = err?.message || (method === 'nwc' ? 'NWC could not complete the donation.' : 'The Lightning wallet extension could not complete the donation.');
+        const paymentUnconfirmed = !!(err && err.nwcAmbiguous);
+        const failureText = paymentUnconfirmed
+          ? 'Lightning payment status could not be confirmed. Your wallet may have completed the payment, but its reply was not received. Check your wallet activity and balance before trying again; do not retry until you verify the first attempt.'
+          : (err?.message || (method === 'nwc' ? 'NWC could not complete the donation.' : 'The Lightning wallet extension could not complete the donation.'));
         if (status) status.textContent = failureText;
-        showTheaterDonationResult(false, 'Lightning donation failed', failureText);
+        showTheaterDonationResult(
+          false,
+          paymentUnconfirmed ? 'Lightning payment status unconfirmed' : 'Lightning donation failed',
+          failureText
+        );
       } finally {
         if (loading) loading.hidden = true;
         if (nwcButton) { nwcButton.disabled = false; nwcButton.textContent = 'Send donation (via NWC)'; }
