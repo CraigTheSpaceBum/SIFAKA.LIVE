@@ -141,7 +141,7 @@ html{touch-action:manipulation;-webkit-text-size-adjust:100%}body{-webkit-tap-hi
 .duo .card.turn .av{border-color:var(--gold2);box-shadow:0 0 14px rgba(242,220,160,.6)}
 @keyframes tglow{0%,100%{box-shadow:0 0 8px rgba(242,220,160,.35),0 0 0 1px rgba(242,220,160,.5)}50%{box-shadow:0 0 28px rgba(242,220,160,.85),0 0 0 1px rgba(242,220,160,.95)}}
 @media(prefers-reduced-motion:reduce){.duo .card.turn{animation:none;box-shadow:0 0 18px rgba(242,220,160,.7)}}
-.ir{margin-top:12px;max-height:34vh;min-height:76px;overflow:auto;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--mut);scrollbar-width:thin;overscroll-behavior:contain}.ur{display:flex;align-items:center;gap:11px;padding:10px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.035);transition:border-color .18s,background .18s}.ur:hover{border-color:rgba(214,178,100,.42);background:rgba(255,255,255,.055)}.ur>div{min-width:0;flex:1}.ur b{display:block;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.ur small{display:block;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;font-size:11px}.ur .btn{padding:8px 14px;white-space:nowrap}.av2{width:42px;height:42px;border-radius:13px;flex:none;border:1px solid var(--line);display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#2a2040,#150f22);font-size:16px}.av2 img{display:block;width:100%;height:100%;object-fit:cover}
+.ir{margin-top:12px;max-height:min(36vh,280px);min-height:120px;overflow:auto;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--mut);scrollbar-width:thin;overscroll-behavior:contain}.ur{display:flex;align-items:center;gap:11px;padding:10px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.035);transition:border-color .18s,background .18s}.ur:hover{border-color:rgba(214,178,100,.42);background:rgba(255,255,255,.055)}.ur>div{min-width:0;flex:1}.ur b{display:block;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.ur small{display:block;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;font-size:11px}.ur .btn{padding:8px 14px;white-space:nowrap}.av2{width:42px;height:42px;border-radius:13px;flex:none;border:1px solid var(--line);display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#2a2040,#150f22);font-size:16px}.av2 img{display:block;width:100%;height:100%;object-fit:cover}
 .chess-invite-manager{width:min(96vw,660px);max-height:min(92vh,900px);overflow:auto;padding:clamp(18px,3vw,28px)}
 .chess-invite-manager .invite-kicker{font:700 10px/1.3 'DM Mono',monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .chess-invite-title-row{display:flex;align-items:flex-start;gap:12px;margin-bottom:5px}
@@ -1495,7 +1495,7 @@ async function joinNostrGame(g,button){
   toast('Could not join the open game: '+String(err&&err.message||'check the game and your Nostr relay connection.'));
  }finally{joiningNostrGames.delete(g.id);restoreButton()}
 }
-let openGamesView='open',lastDiscoveredChessGames=[],openGamesRefreshTimer=null;
+let openGamesView='open',lastDiscoveredChessGames=[],openGamesRefreshTimer=null,chessLobbyProfileObserver=null,chessInviteResultObserver=null;
 function chessGameStatusLabel(g){
  const status=String(g.status|| (g.forfeited?'forfeit':g.open?'open':'active')).toLowerCase();
  return status==='invite'?'INVITATION SENT':status==='active'?'IN PROGRESS':status==='finished'?'FINISHED':status==='forfeit'?'FORFEIT':status==='open'?'WAITING FOR PLAYER':'UNKNOWN STATUS';
@@ -1512,7 +1512,7 @@ function applyChessLobbyPlayerIdentity(nameEl,avatar,pk){
  }).catch(function(){});
 }
 function renderOpenGames(games,targetId){
- const list=$('openGamesList');list.replaceChildren();
+ const list=$('openGamesList');if(chessLobbyProfileObserver){chessLobbyProfileObserver.disconnect();chessLobbyProfileObserver=null}list.replaceChildren();
  const all=(targetId?games:games.filter(function(g){return !g.private}));
  const visible=(targetId?all:all.filter(function(g){
   const status=String(g.status|| (g.open?'open':'active')).toLowerCase();
@@ -1527,16 +1527,18 @@ function renderOpenGames(games,targetId){
   d.textContent=targetId?'This game was not found on the selected relays. For a private game, use the complete invite URL including the key after #key=.':openGamesView==='open'?'No open games found. Refresh to search all configured relays, or switch to Current / All / Recent.':openGamesView==='current'?'No current matches found on the configured relays. Refresh or switch to All / Recent to view completed games.':'No Sifaka Chess games were found on the configured relays.';
   list.appendChild(d);return;
  }
+ if(typeof IntersectionObserver==='function')chessLobbyProfileObserver=new IntersectionObserver(function(entries,observer){entries.forEach(function(entry){if(!entry.isIntersecting)return;const tasks=entry.target._chessProfileTasks||[];delete entry.target._chessProfileTasks;observer.unobserve(entry.target);tasks.forEach(function(task){applyChessLobbyPlayerIdentity(task.nameEl,task.avatar,task.pk)})})},{root:list,rootMargin:'90px 0px',threshold:0.01});
+ let lobbyRowIndex=0;
  visible.forEach(function(g){
   const row=document.createElement('div'),players=document.createElement('div'),whiteAvatar=document.createElement('span'),blackAvatar=document.createElement('span'),copy=document.createElement('div'),title=document.createElement('b'),whiteName=document.createElement('span'),vs=document.createElement('span'),blackName=document.createElement('span'),status=document.createElement('span'),sub=document.createElement('small'),btn=document.createElement('button');
   row.className='chess-open-game';players.className='chess-open-game-players';copy.className='chess-open-game-copy';title.className='chess-open-game-matchup';
   const gameStatus=String(g.status||(g.open?'open':'active')).toLowerCase(),ended=gameStatus==='finished'||gameStatus==='forfeit'||!!g.forfeited;
   whiteAvatar.className='av2 chess-open-game-avatar';whiteAvatar.title='White player';paintChessAvatar(whiteAvatar,{},g.white,false);players.appendChild(whiteAvatar);
-  whiteName.className='chess-game-player-name';whiteName.textContent=shortChessNpub(g.white);applyChessLobbyPlayerIdentity(whiteName,whiteAvatar,g.white);
+  whiteName.className='chess-game-player-name';whiteName.textContent=shortChessNpub(g.white);
   vs.className='chess-game-vs';vs.textContent=' vs ';
   blackName.className='chess-game-player-name';blackName.textContent=NOSTR_PUBKEY_HEX.test(String(g.black||''))?shortChessNpub(g.black):'';
   if(NOSTR_PUBKEY_HEX.test(String(g.black||''))){
-   blackAvatar.className='av2 chess-open-game-avatar';blackAvatar.title='Black player';paintChessAvatar(blackAvatar,{},g.black,false);players.appendChild(blackAvatar);applyChessLobbyPlayerIdentity(blackName,blackAvatar,g.black);
+   blackAvatar.className='av2 chess-open-game-avatar';blackAvatar.title='Black player';paintChessAvatar(blackAvatar,{},g.black,false);players.appendChild(blackAvatar);
   }
   title.append(whiteName,vs,blackName);status.className='chess-game-status '+gameStatus;status.textContent=chessGameStatusLabel(g);
   sub.textContent=g.private?'Encrypted invite-only game · '+g.relay:(g.black?'Two players · Match in progress':'Waiting for an opponent')+' · '+g.relay;
@@ -1545,7 +1547,12 @@ function renderOpenGames(games,targetId){
   btn.textContent=ended?'Game ended':g.private?(gameStatus==='invite'?'Accept invite':gameStatus==='active'?'Open private game':'Join private game'):g.open?'Join game':'Open game';
   btn.disabled=ended;btn.onclick=function(){joinNostrGame(g,btn)};
   row.append(players,copy,btn);list.appendChild(row);
- });;
+  row._chessProfileTasks=[{nameEl:whiteName,avatar:whiteAvatar,pk:g.white}];
+  if(NOSTR_PUBKEY_HEX.test(String(g.black||'')))row._chessProfileTasks.push({nameEl:blackName,avatar:blackAvatar,pk:g.black});
+  if(chessLobbyProfileObserver)chessLobbyProfileObserver.observe(row);
+  else if(lobbyRowIndex<6)row._chessProfileTasks.forEach(function(task){applyChessLobbyPlayerIdentity(task.nameEl,task.avatar,task.pk)});
+  lobbyRowIndex++;
+ });
 }
 
 function mergeDiscoveredChessGame(seen,g){
@@ -1722,7 +1729,44 @@ function setChessInviteSource(source){chessInviteSource=['following','lists','se
 function chessInviteItemsForSource(){if(chessInviteSource==='following')return chessInviteContacts.following||[];if(chessInviteSource==='lists'){const id=$('inviteListSelect').value||'__all__';if(id!=='__all__')return(chessInviteContacts.lists.find(l=>l.id===id)||{profiles:[]}).profiles;const m=new Map();(chessInviteContacts.lists||[]).forEach(l=>(l.profiles||[]).forEach(p=>{const old=m.get(p.pk)||Object.assign({},p,{listNames:[]});old.listNames=Array.from(new Set((old.listNames||[]).concat(l.title)));m.set(p.pk,old)}));return Array.from(m.values())}return[]}
 function chessInviteMatches(p,q){if(!q)return true;const n=String(q).trim().toLowerCase();return[p.name,p.display_name,p.displayName,p.petname,p.nip05,p.about,p.pk,npub(p.pk||''),(p.listNames||[]).join(' ')].filter(Boolean).join(' ').toLowerCase().includes(n)}
 function renderChessInviteCurrentSource(){if(!document.getElementById('ir'))return;const q=$('iq').value.trim();if(chessInviteSource==='search'){if(!q){$('inviteSearchStatus').textContent='Search globally by display name, npub, hex public key, or name@domain.';$('ir').replaceChildren()}return}const list=chessInviteItemsForSource().filter(p=>chessInviteMatches(p,q));if(!chessInviteContacts.pubkey){$('inviteSearchStatus').textContent='Connect your Nostr account to load follows and saved lists.';renderChessInviteResults([],'No contact list loaded yet.');return}$('inviteSearchStatus').textContent=list.length+' profile'+(list.length===1?'':'s')+' in '+(chessInviteSource==='following'?'your follows':'your public lists')+(q?' matching “'+q+'”':'')+'.';renderChessInviteResults(list,list.length?'':chessInviteSource==='following'?'No followed profiles match. Try My lists or Search Nostr.':'No saved public list entries match. Try Search Nostr.')}
-function renderChessInviteResults(items,emptyMessage){const root=$('ir');root.replaceChildren();const own=String(chessInviteContacts.pubkey||chessChatOwnPk||'').toLowerCase(),seen=new Set(),list=(items||[]).filter(p=>p&&NOSTR_PUBKEY_HEX.test(String(p.pk||''))&&String(p.pk).toLowerCase()!==own&&!seen.has(String(p.pk).toLowerCase())&&seen.add(String(p.pk).toLowerCase())).slice(0,60);if(!list.length){const empty=document.createElement('div');empty.className='chess-online-muted';empty.textContent=emptyMessage||'No matching profiles found.';root.appendChild(empty);return}list.forEach(function(u){const row=document.createElement('div'),av=document.createElement('span'),copy=document.createElement('div'),name=document.createElement('b'),details=document.createElement('small'),button=document.createElement('button');row.className='ur';row.setAttribute('role','listitem');av.className='av2';av.setAttribute('aria-hidden','true');const initial=String(u.name||u.display_name||u.petname||shortChessNpub(u.pk));name.textContent=initial;details.textContent=u.nip05||u.petname||(u.listNames&&u.listNames.length?'In '+u.listNames.join(', '):npub(u.pk));details.title='Public key: '+npub(u.pk);copy.append(name,details);button.type='button';button.className='btn pri';button.textContent='Invite';button.addEventListener('click',()=>invite(u,button));setChessAvatarFallback(av,u.picture,initial,u.pk);row.append(av,copy,button);root.appendChild(row);lookupChessPlayerProfile(u.pk).then(function(result){if(!row.isConnected)return;const p=result&&result.profile&&typeof result.profile==='object'?result.profile:{},verified=!!(result&&result.verified&&p.nip05),display=chessProfileName(p,u.pk);name.replaceChildren(document.createTextNode(p.display_name||p.displayName||p.name||u.petname||display));if(verified){const check=document.createElement('span');check.className='chess-player-nip05-check';check.textContent='✓';check.title='NIP-05 verified';name.appendChild(check)}if(!u.name&&!u.petname){u.name=display;u.display_name=String(p.display_name||p.displayName||'');u.nip05=String(p.nip05||'');u.about=String(p.about||'')}if(p.nip05)details.textContent=(verified?'✓ ':'')+p.nip05;else if(u.petname)details.textContent='Your name for this profile: '+u.petname;else if(u.listNames&&u.listNames.length)details.textContent='In '+u.listNames.join(', ');else details.textContent=npub(u.pk);paintChessAvatar(av,p,u.pk,verified)}).catch(function(){})})}
+function renderChessInviteResults(items,emptyMessage){
+ const root=$('ir');
+ if(chessInviteResultObserver){chessInviteResultObserver.disconnect();chessInviteResultObserver=null}
+ root.replaceChildren();
+ const own=String(chessInviteContacts.pubkey||chessChatOwnPk||'').toLowerCase(),seen=new Set();
+ const list=(items||[]).filter(function(p){return p&&NOSTR_PUBKEY_HEX.test(String(p.pk||''))&&String(p.pk).toLowerCase()!==own&&!seen.has(String(p.pk).toLowerCase())&&seen.add(String(p.pk).toLowerCase())}).slice(0,60);
+ if(!list.length){const empty=document.createElement('div');empty.className='chess-online-muted';empty.textContent=emptyMessage||'No matching profiles found.';root.appendChild(empty);return}
+ if(typeof IntersectionObserver==='function')chessInviteResultObserver=new IntersectionObserver(function(entries,observer){
+  entries.forEach(function(entry){if(!entry.isIntersecting)return;const hydrate=entry.target._chessProfileHydrate;delete entry.target._chessProfileHydrate;observer.unobserve(entry.target);if(hydrate)hydrate()});
+ },{root:root,rootMargin:'70px 0px',threshold:0.01});
+ list.forEach(function(u,index){
+  const row=document.createElement('div'),av=document.createElement('span'),copy=document.createElement('div'),name=document.createElement('b'),details=document.createElement('small'),button=document.createElement('button');
+  row.className='ur';row.setAttribute('role','listitem');av.className='av2';av.setAttribute('aria-hidden','true');
+  const initial=String(u.name||u.display_name||u.displayName||u.petname||shortChessNpub(u.pk));
+  name.textContent=initial;
+  details.textContent=u.nip05?((u._nip05Verified?'✓ ':'')+u.nip05):u.petname||(u.listNames&&u.listNames.length?'In '+u.listNames.join(', '):npub(u.pk));
+  details.title='Public key: '+npub(u.pk);
+  copy.append(name,details);button.type='button';button.className='btn pri';button.textContent='Invite';
+  button.addEventListener('click',function(){invite(u,button)});
+  setChessAvatarFallback(av,u.picture,initial,u.pk);row.append(av,copy,button);root.appendChild(row);
+  row._chessProfileHydrate=function(){
+   lookupChessPlayerProfile(u.pk).then(function(result){
+    if(!row.isConnected)return;
+    const p=result&&result.profile&&typeof result.profile==='object'?result.profile:{},verified=!!(result&&result.verified&&p.nip05),display=chessProfileName(p,u.pk);
+    name.replaceChildren(document.createTextNode(p.display_name||p.displayName||p.name||u.petname||display));
+    if(verified){const check=document.createElement('span');check.className='chess-player-nip05-check';check.textContent='✓';check.title='NIP-05 verified';name.appendChild(check)}
+    if(!u.name&&!u.petname){u.name=display;u.display_name=String(p.display_name||p.displayName||'');u.nip05=String(p.nip05||'');u.about=String(p.about||'')}
+    if(p.nip05)details.textContent=(verified?'✓ ':'')+p.nip05;
+    else if(u.petname)details.textContent='Your name for this profile: '+u.petname;
+    else if(u.listNames&&u.listNames.length)details.textContent='In '+u.listNames.join(', ');
+    else details.textContent=npub(u.pk);
+    paintChessAvatar(av,p,u.pk,verified);
+   }).catch(function(){});
+  };
+  if(chessInviteResultObserver)chessInviteResultObserver.observe(row);
+  else if(index<6)row._chessProfileHydrate();
+ });
+}
 function requestChessInviteRelayEvents(filter,token,timeoutMs){return Promise.all(networkRelays().slice(0,4).map(function(url,i){return new Promise(function(resolve){let ws,done=false,timer;const events=[],sub='sifaka-chess-invite-data-'+token+'-'+i;const finish=function(){if(done)return;done=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close()}}catch(_){}resolve(events)};timer=setTimeout(finish,timeoutMs||4500);try{ws=new WebSocket(url);ws.onopen=function(){try{ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){finish()}};ws.onmessage=function(e){try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub&&d[2])events.push(d[2]);else if(d[0]==='EOSE'&&d[1]===sub)finish()}catch(_){}};ws.onerror=finish;ws.onclose=finish}catch(_){finish()}})})).then(chunks=>{const m=new Map();chunks.flat().forEach(e=>{if(e&&e.id&&!m.has(e.id))m.set(e.id,e)});return Array.from(m.values())})}
 async function decryptChessPrivateListTags(event,signer){
  const cipher=String(event&&event.content||'').trim();if(!cipher)return[];
