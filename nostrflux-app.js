@@ -2873,7 +2873,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
             { timeoutMs: 6500 }
           );
           const state = normalizeNwcPaymentState(lookupResult && lookupResult.state);
-          if (state === 'settled' || state === 'paid' || state === 'success' || state === 'succeeded' || state === 'completed' || lookupResult?.preimage) {
+          const hasSettlementTime = Number(lookupResult && lookupResult.settled_at || 0) > 0;
+          if (state === 'settled' || state === 'paid' || state === 'success' || state === 'succeeded' || state === 'completed' || lookupResult?.preimage || hasSettlementTime) {
             return { status: 'settled', result: lookupResult };
           }
           if (state === 'failed' || state === 'expired') {
