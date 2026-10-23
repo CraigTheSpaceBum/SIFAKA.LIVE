@@ -1670,7 +1670,7 @@ function renderOpenGames(games,targetId){
  const ownedPrivate=(games||[]).filter(function(g){return g&&g.private&&g._localPrivate&&myPk&&String(g.myPk||'').toLowerCase()===myPk&&(String(g.white||'').toLowerCase()===myPk||String(g.black||'').toLowerCase()===myPk)});
  const all=targetId?(games||[]):publicGames.concat(ownedPrivate.filter(function(g){return !publicGames.some(function(p){return p.id===g.id})}));
  const visible=(targetId?all:all.filter(function(g){
-  const status=String(g.status||(g.open?'open':'active')).toLowerCase();
+  let status=String(g.status||(g.open?'open':'active')).toLowerCase();if(!g.private&&g.black&&status==='open')status='active';
   if(openGamesView==='open')return !g.private&&(status==='open'||status==='invite');
   if(openGamesView==='current')return g.private?(status==='open'||status==='invite'||status==='active'):(status==='active'||status==='invite');
   return true;
@@ -1845,6 +1845,9 @@ async function fetchChessInvite(targetId,targetRelay){
  }
  if(!g){$('chessInviteTitle').textContent='Invitation not found';$('chessInviteProfileName').textContent='Unable to verify inviter';$('chessInviteIdentity').textContent='';$('chessInviteMessage').textContent=privateInvite?'This private chess invite could not be loaded or decrypted.':'This chess game could not be found on the configured Nostr relays.';$('chessInviteStatus').textContent=privateInvite?'Make sure you opened the complete invite link, including its #key=… section, and try again.':'Ask the inviter to copy a fresh game link, or check back when the game is published to Nostr.';$('chessInviteAccept').disabled=true;return}
  incomingChessInvite=g;
+ // If this is one of the signed-in user's own private links, remember its key
+ // locally so it can appear in Current / All after the URL changes to another game.
+ const lobbyPk=currentChessPubkeyForLobby();if(privateInvite&&lobbyPk&&(g.white===lobbyPk||g.black===lobbyPk))rememberPrivateChessGame(Object.assign({},g,{myPk:lobbyPk,private:true,secret:privateSecretFromUrl()}));
  $('chessInviteTitle').textContent='Chess invitation';$('chessInviteMessage').textContent='has invited you to play Chess.';
  const ended=g.forfeited||g.status==='forfeit'||g.status==='finished';
  $('chessInviteStatus').textContent=ended?'This chess game has already ended. Ask the inviter for a new invitation.':g.status==='active'&&g.black?'This game is already in progress. Accept to reconnect if you are the invited player.':g.private?'Accept to join this private game, or decline to leave it unopened.':'Accept to join this open game, or decline to leave it unopened.';
