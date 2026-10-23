@@ -1531,33 +1531,47 @@ async function ensureInviteGame(){
 }
 async function joinPrivateNostrGame(g,button){
  if(g.forfeited||g.status==='forfeit'||g.status==='finished'){toast('This private game has already ended. Ask the host for a new invitation.');return}
- const restore=function(){if(button&&button.isConnected){button.disabled=false;button.textContent=g.status==='invite'?'Accept private invite':g.black?'Open private game':'Join private game'}};
  const secret=g.secret||privateSecretFromUrl();
+ const restore=function(){if(button&&button.isConnected){button.disabled=false;button.textContent=g.status==='invite'?(String(g.myPk||'')===String(g.white||'')?'Open private game':'Accept invite'):'Open private game'}};
  if(!secret){toast('This private invitation is missing its secret key. Use the complete invite URL, including #key=...');return}
- let signer='';try{signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond in time. Reconnect your signer and try again.')}catch(err){
-  restore();toast(String(err&&err.message||'The Nostr signer did not respond. Please reconnect and try again.'));return;
- }
- if(!signer){restore();requireSigner(function(){joinNostrGame(g,button)},true);return}
- if(signer===g.white){
-  const opened=Object.assign({},g,{myPk:signer,secret:secret,private:true,accepted:g.status!=='open'&&g.status!=='invite'});
-  if(launchOnlineGame(opened,'w',g.content))toast('Opened your private chess game.');
-  return;
- }
- if(g.black&&signer!==g.black){toast('This private game is locked to a different Nostr account. Ask the host for an invite for this account.');return}
- if(g.status==='active'&&g.black===signer){
-  const opened=Object.assign({},g,{myPk:signer,secret:secret,private:true,accepted:true});
-  if(launchOnlineGame(opened,'b',g.content))toast('Reconnected to your private chess game.');
-  return;
- }
- if(button){button.disabled=true;button.textContent='Joining private game…'}
+ if(button){button.disabled=true;button.textContent='Loading private game…'}
  try{
-  if(!replayNip64Pgn(g.content))throw new Error('The private game state could not be replayed by this chess board.');
-  const body=buildNip64Pgn(g.white,signer,g.relay),joined=Object.assign({},g,{black:signer,private:true,secret:secret,myPk:signer,accepted:true,players:[g.white,signer],status:'active',lastEventTime:Number(g.created_at)||0});
+  const signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond in time. Reconnect your signer and try again.');
+  if(!signer){restore();requireSigner(function(){joinNostrGame(g,button)},true);return}
+  if(!g.content){
+   const snapshot=await fetchPrivateChessGameSnapshot({id:g.id,relay:g.relay,secret:secret,myPk:signer,white:g.white,black:g.black});
+   if(!snapshot||!snapshot.content)throw new Error('The private game could not be loaded from the configured relays. Check the complete invite link and try again.');
+   g=Object.assign({},g,snapshot,{secret:secret,private:true,myPk:signer,_localPrivate:true});
+  }else g=Object.assign({},g,{secret:secret,private:true,myPk:signer});
+  if(g.forfeited||g.status==='forfeit'||g.status==='finished')throw new Error('This private game has already ended. Ask the host for a new invitation.');
+  if(signer===g.white){
+   const opened=Object.assign({},g,{myPk:signer,secret:secret,private:true,accepted:g.status!=='open'&&g.status!=='invite'});
+   if(launchOnlineGame(opened,'w',g.content))toast('Opened your private chess game.');
+   return;
+  }
+  if(g.black&&signer!==g.black)throw new Error('This private game is locked to a different Nostr account. Ask the host for an invite for this account.');
+  if(g.status==='active'&&g.black===signer){
+   const opened=Object.assign({},g,{myPk:signer,secret:secret,private:true,accepted:true});
+   if(launchOnlineGame(opened,'b',g.content))toast('Reconnected to your private chess game.');
+   return;
+  }
+  if(button)button.textContent='Joining private game…';
+  // Validate/build the seat-claim PGN without leaving the currently active
+  // game's board state replaced while relay publishing is still in progress.
+  const previous={st:st,H:H,sel:sel,over:over,busy:busy,gameMode:gameMode,gameActive:gameActive};
+  let body='';
+  try{
+   if(!replayNip64Pgn(g.content))throw new Error('The private game state could not be replayed by this chess board.');
+   body=buildNip64Pgn(g.white,signer,g.relay);
+  }finally{
+   st=previous.st;H=previous.H;sel=previous.sel;over=previous.over;busy=previous.busy;gameMode=previous.gameMode;gameActive=previous.gameActive;draw();
+  }
+  const joined=Object.assign({},g,{black:signer,private:true,secret:secret,myPk:signer,accepted:true,players:[g.white,signer],status:'active',lastEventTime:Number(g.lastEventTime||g.created_at)||0});
   const result=await publishPrivateChessEvent(joined,'active',body);
   if(!result.ack)throw new Error(chessRelayPublishError('private game join'));
   joined.content=body;joined.created_at=result.created_at;joined.eventId=result.event.id;joined.lastEventTime=result.created_at;joined.lastPlayers=2;joined.lastPlies=pgnPlies(body);joined.lastPublishTime=result.created_at;
   if(!launchOnlineGame(joined,'b',body))throw new Error('The private join was published, but Sifaka could not open the board.');
-  if(netGame){netGame.accepted=true;netGame.status='active';netGame.lastEventTime=result.created_at;netGame.lastEventId=result.event.id;netGame.lastPlayers=2;netGame.lastPlies=pgnPlies(body);netGame.lastPublishTime=result.created_at}
+  if(netGame){netGame.accepted=true;netGame.status='active';netGame.lastEventTime=result.created_at;netGame.lastEventId=result.event.id;netGame.lastPlayers=2;netGame.lastPlies=H.length;netGame.lastPublishTime=result.created_at;rememberPrivateChessGame(netGame)}
   toast('Joined private Sifaka Chess. You are Black.');
  }catch(err){toast('Could not join the private game: '+String(err&&err.message||'check the private link, signer and relay connection.'))}
  finally{restore()}
@@ -1580,7 +1594,7 @@ async function invitePrivateChessPlayer(u,button){
   if(!g.black){
    const locked=Object.assign({},g,{black:peer,accepted:false}),body=buildNip64Pgn(g.white,peer,g.relay),result=await publishPrivateChessEvent(locked,'invite',body);
    if(!result.ack)throw new Error('The encrypted invitation state was not accepted by any relay.');
-   g.black=peer;g.accepted=false;g.status='invite';g.content=body;g.lastEventTime=result.created_at;g.lastEventId=result.event.id;g.lastPlies=pgnPlies(body);g.lastPlayers=2;g.lastPublishTime=result.created_at;
+   g.black=peer;g.accepted=false;g.status='invite';g.content=body;g.lastEventTime=result.created_at;g.lastEventId=result.event.id;g.lastPlies=pgnPlies(body);g.lastPlayers=2;g.lastPublishTime=result.created_at;rememberPrivateChessGame(g);
    setNostrOpponent(peer,'Private invitation pending');turnGlow();
   }
   await sendChessCalendarDm(u,g,gameLink(g));
