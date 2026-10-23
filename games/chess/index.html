@@ -1240,8 +1240,10 @@ function launchOnlineGame(g,color,content){
   incoming=Object.assign({},incoming,cached.game,{id:g.id,white:g.white||cached.game.white,black:cached.game.black||g.black||'',relay:g.relay||cached.game.relay,private:!!(g.private||cached.game.private),secret:g.secret||cached.game.secret||'',myPk:g.myPk||cached.game.myPk,myColor:color,status:(remoteTime>Number(cached.game.lastEventTime||0)?g.status:cached.game.status)||g.status,created_at:Math.max(Number(g.created_at)||0,Number(cached.game.created_at)||0)});
   body=cached.content||body;
  }
- closeGameSockets();
  if(!replayNip64Pgn(body)){toast('This game contains PGN moves that this chess board cannot replay.');return false}
+ // Only disconnect the current game's live subscription after the replacement
+ // game has passed PGN validation. A rejected switch must leave the old game live.
+ closeGameSockets();
  netGame={id:incoming.id,relay:incoming.relay||preferredGameRelay(),white:String(incoming.white||'').toLowerCase(),black:String(incoming.black||'').toLowerCase(),myPk:String(incoming.myPk||'').toLowerCase(),myColor:color,private:!!incoming.private,secret:incoming.secret||'',accepted:incoming.private?!!incoming.accepted:!!incoming.black,status:incoming.status||(incoming.black?'active':'open'),content:body,created_at:Number(incoming.created_at)||0,lastEventTime:Number(incoming.lastEventTime||incoming.created_at)||0,lastEventId:incoming.lastEventId||incoming.eventId||'',lastPlies:H.length,lastPlayers:Array.isArray(incoming.players)?incoming.players.length:(incoming.black?2:1),lastPublishTime:Number(incoming.lastPublishTime||incoming.lastEventTime||incoming.created_at)||0};
  try{history.replaceState({},'',gameLink(netGame))}catch(_){}
  gameMode='online';syncOnlinePerspective(color);gameActive=!over&&(!netGame.private||netGame.accepted);busy=false;sel=null;
