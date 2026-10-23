@@ -1201,25 +1201,64 @@ function acceptIncomingGameEvent(ev){
  const g=eventToChessGame(ev,netGame.relay);
  if(!g||g.id!==netGame.id||g.white!==netGame.white)return;
  if(g.author!==g.white&&g.author!==g.black)return;
- const newer=chessSnapshotIsNewer(g);
- // Two users can try to claim the open seat at once. Pick a consistent winning
- // snapshot (created_at, move count/player count, then event id) and stop the
- // losing Black client from playing a fork that White will never accept.
- if(!g.players.includes(netGame.myPk)){
-  if(netGame.myColor==='b'&&g.black&&g.black!==netGame.myPk&&newer){
-   netGame.conflicted=true;gameActive=false;busy=false;
-   over={h:'Game already joined',p:'Another player claimed the open seat first. Return to the chess lobby and join another game.'};
-   $('nw').disabled=true;$('mh').textContent=over.h;$('mp').textContent=over.p;$('ov').classList.add('show');
-   turnGlow();toast('Another player joined this game first. Please join another open game.');
+
+ // A Black-seat claim is a state transition, not just another timestamped
+ // snapshot. Relay clocks may deliver an older event after a newer White move.
+ // Accept the first valid claim from the player who signed it, then publish
+ // White's authoritative current PGN with the accepted seat attached.
+ const isBlackSeatClaim=!!(netGame.myColor==='w'&&netGame.myPk===netGame.white&&!netGame.black&&g.black&&g.author===g.black);
+ if(netGame.myColor==='b'&&g.black&&g.black!==netGame.myPk){
+  // Do not let a losing concurrent join continue just because its event ID or
+  // timestamp sorts differently on different relays.
+  netGame.conflicted=true;gameActive=false;busy=false;
+  over={h:'Game already joined',p:'Another player claimed the open seat first. Return to the chess lobby and join another game.'};
+  $('nw').disabled=true;$('mh').textContent=over.h;$('mp').textContent=over.p;$('ov').classList.add('show');
+  turnGlow();toast('Another player joined this game first. Please join another open game.');
+  return;
+ }
+ if(isBlackSeatClaim){
+  const previousPlies=H.length;
+  let appliedIncoming=false;
+  // Keep White's local board if it already contains newer moves than the
+  // invitee's snapshot. Otherwise sync the received PGN before confirming.
+  if(g.plies>previousPlies||(g.plies===previousPlies&&g.created_at>netGame.lastEventTime)){
+   if(!replayNip64Pgn(g.content))return;
+   appliedIncoming=true;
+  }
+  netGame.black=g.black;netGame.relay=g.relay||netGame.relay;netGame.status=over?'finished':'active';netGame.lastPlayers=2;
+  if(g.created_at>netGame.lastEventTime||(g.created_at===netGame.lastEventTime&&String(g.eventId||'')>String(netGame.lastEventId||''))){
+   netGame.lastEventTime=g.created_at;netGame.lastEventId=g.eventId;
+  }
+  netGame.lastPlies=H.length;
+  if(pendingNostrGame&&pendingNostrGame.id===netGame.id)pendingNostrGame=null;
+  gameActive=!over;busy=false;sel=null;
+  setNostrOpponent(currentOpponentKey(),'');
+  $('lvl').hidden=true;$('lvl').textContent='';
+  rebuild();draw();turnGlow();
+  if(appliedIncoming&&g.author!==netGame.myPk){logSyncedChessMoves(previousPlies);notifySyncedChessMove(previousPlies);}
+  toast('Opponent connected. Synchronizing the match…');
+  const claimedGameId=netGame.id;
+  publishOnlineSnapshot().then(function(ok){
+   if(!ok&&netGame&&netGame.id===claimedGameId)toast('The opponent joined, but game sync could not be confirmed. Check the configured Nostr relays.');
+  });
+  if($('openGamesModal').classList.contains('show')&&!lastOpenGamesTarget){
+   if(openGamesRefreshTimer)clearTimeout(openGamesRefreshTimer);
+   openGamesRefreshTimer=setTimeout(function(){openGamesRefreshTimer=null;if($('openGamesModal').classList.contains('show')&&!lastOpenGamesTarget)fetchOpenGames('','')},250);
   }
   return;
  }
+
+ // Once White has accepted a Black seat, never replace that player with a
+ // second claimant. A later timestamp cannot make a second seat valid.
+ if(netGame.myColor==='w'&&netGame.black&&g.black&&g.black!==netGame.black)return;
+ const newer=chessSnapshotIsNewer(g);
+ if(!g.players.includes(netGame.myPk))return;
  if(!newer||g.eventId===netGame.lastEventId)return;
  const previousPlies=H.length;
  if(!replayNip64Pgn(g.content))return;
  netGame.white=g.white||netGame.white;netGame.black=g.black||netGame.black;netGame.relay=g.relay||netGame.relay;
  netGame.myColor=netGame.myPk===netGame.white?'w':netGame.myPk===netGame.black?'b':netGame.myColor;
- netGame.lastEventTime=g.created_at;netGame.lastEventId=g.eventId;netGame.lastPlies=H.length;netGame.lastPlayers=g.players.length;
+ netGame.lastEventTime=g.created_at;netGame.lastEventId=g.eventId;netGame.lastPlies=H.length;netGame.lastPlayers=Math.max(g.players.length,netGame.black?2:1);
  if(netGame.black&&pendingNostrGame&&pendingNostrGame.id===netGame.id)pendingNostrGame=null;
  gameActive=!over;busy=false;sel=null;
  setNostrOpponent(currentOpponentKey(),netGame.black?'':'Waiting for player');
@@ -1409,8 +1448,10 @@ async function joinPrivateNostrGame(g,button){
  const restore=function(){if(button&&button.isConnected){button.disabled=false;button.textContent=g.status==='invite'?'Accept private invite':g.black?'Open private game':'Join private game'}};
  const secret=g.secret||privateSecretFromUrl();
  if(!secret){toast('This private invitation is missing its secret key. Use the complete invite URL, including #key=...');return}
- let signer='';try{signer=await getSignerKey()}catch(_){}
- if(!signer){requireSigner(function(){joinNostrGame(g,button)},true);return}
+ let signer='';try{signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond in time. Reconnect your signer and try again.')}catch(err){
+  restore();toast(String(err&&err.message||'The Nostr signer did not respond. Please reconnect and try again.'));return;
+ }
+ if(!signer){restore();requireSigner(function(){joinNostrGame(g,button)},true);return}
  if(signer===g.white){
   const opened=Object.assign({},g,{myPk:signer,secret:secret,private:true,accepted:g.status!=='open'&&g.status!=='invite'});
   if(launchOnlineGame(opened,'w',g.content))toast('Opened your private chess game.');
@@ -1478,7 +1519,9 @@ async function joinNostrGame(g,button){
  const restoreButton=function(){if(button&&button.isConnected){button.disabled=false;button.textContent=g.open?'Join game':'Open game'}};
  if(button){button.disabled=true;button.textContent='Connecting…'}
  let signer='';
- try{signer=await getSignerKey()}catch(_){}
+ try{signer=await chessAwait(getSignerKey(),20000,'The Nostr signer did not respond in time. Reconnect your signer and try again.')}catch(err){
+  joiningNostrGames.delete(g.id);restoreButton();toast(String(err&&err.message||'The Nostr signer did not respond. Please reconnect and try again.'));return;
+ }
  if(!signer){joiningNostrGames.delete(g.id);restoreButton();requireSigner(function(){joinNostrGame(g,button)},true);return}
  if(signer===g.white){joiningNostrGames.delete(g.id);restoreButton();if(launchOnlineGame(Object.assign({},g,{myPk:signer}),'w',g.content))toast('Opened your game.');return}
  if(g.black&&signer===g.black){joiningNostrGames.delete(g.id);restoreButton();if(launchOnlineGame(Object.assign({},g,{myPk:signer}),'b',g.content))toast('Opened your game.');return}
@@ -1656,8 +1699,11 @@ async function fetchChessInvite(targetId,targetRelay){
   }catch(_){finish()}
  })}));
  if(requestId!==incomingChessInviteRequest||!$('chessInvitePrompt').classList.contains('show'))return;
- found.sort(function(a,b){return Number(a.created_at||0)-Number(b.created_at||0)||String(a.eventId||'').localeCompare(String(b.eventId||''))});
- const g=found[found.length-1];
+ // Merge the relay results by game ID instead of blindly trusting timestamp order.
+ // A late older event may be the first event that proves Black's seat was claimed.
+ const mergedSnapshots=new Map();
+ found.forEach(function(snapshot){mergeDiscoveredChessGame(mergedSnapshots,snapshot)});
+ const g=mergedSnapshots.get(targetId)||null;
  if(!g){$('chessInviteTitle').textContent='Invitation not found';$('chessInviteProfileName').textContent='Unable to verify inviter';$('chessInviteIdentity').textContent='';$('chessInviteMessage').textContent=privateInvite?'This private chess invite could not be loaded or decrypted.':'This chess game could not be found on the configured Nostr relays.';$('chessInviteStatus').textContent=privateInvite?'Make sure you opened the complete invite link, including its #key=… section, and try again.':'Ask the inviter to copy a fresh game link, or check back when the game is published to Nostr.';$('chessInviteAccept').disabled=true;return}
  incomingChessInvite=g;
  $('chessInviteTitle').textContent='Chess invitation';$('chessInviteMessage').textContent='has invited you to play Chess.';
