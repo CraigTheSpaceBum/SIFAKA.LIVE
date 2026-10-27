@@ -134,7 +134,7 @@ function renderBoard(){
  $('boardHint').textContent=terminal?terminal.text:(selected>=0&&selectedPath.length>1?'Continue the jump sequence; you must complete every available capture.':legal.some(m=>m.capture)?'A capture is available and must be taken. Select a highlighted destination.':'Select a piece, then a highlighted destination.');
 }
 function clickSquare(i){
- if(busy||terminal)return;const p=state.b[i];
+ if(busy||terminal)return;if(!local&&game&&!game.black){say('Waiting for an opponent to join before moving.');return}const p=state.b[i];
  if(selected>=0&&pathCandidates.length){
   const nextLen=selectedPath.length+1,matching=pathCandidates.filter(t=>t.path.length>=nextLen&&t.path.slice(0,nextLen).every((v,j)=>v===selectedPath.concat(i)[j]));
   if(matching.length){selectedPath.push(i);pathCandidates=matching;const finished=matching.find(t=>t.path.length===selectedPath.length);const canContinue=matching.some(t=>t.path.length>selectedPath.length);
@@ -147,7 +147,7 @@ function clickSquare(i){
 }
 function completeTurn(path){
  const result=applyTurn(state,path);if(!result){selected=-1;selectedPath=[];pathCandidates=[];renderBoard();return}
- turns.push({path:path.slice()});state=result.state;selected=-1;selectedPath=[];pathCandidates=[];terminal=getTerminal(state,turns);renderBoard();
+ turns.push({path:path.slice()});state=result.state;if(!local&&game)game.moves=turns.map(t=>({path:t.path.slice()}));selected=-1;selectedPath=[];pathCandidates=[];terminal=getTerminal(state,turns);renderBoard();
  if(result.captured)say('Capture! '+result.captured+' piece'+(result.captured===1?'':'s')+' taken.');
  if(terminal){addChatSystem(terminal.text);if(!local)publishSnapshot(terminal.status==='finished'?'finished':'finished').catch(e=>say(e.message))}
  else if(!local)publishSnapshot('active').catch(e=>say('Move made locally, but publishing failed: '+e.message));
@@ -169,7 +169,8 @@ async function getSignerKey(){
  const app=window.sifakaCheckersMainSigner;
  if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{const pk=String(await app.getPublicKey()||'').toLowerCase();if(HEX.test(pk)){signerPk=pk;return pk}}catch(_){}}
  try{const localPk=await connectLocalSigner();if(HEX.test(localPk)){signerPk=localPk;return localPk}}catch(_){}
- const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){const pk=String(await ext.getPublicKey()||'').toLowerCase();if(HEX.test(pk)){signerPk=pk;return pk}}
+ const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){try{const epk=String(await ext.getPublicKey()||'').toLowerCase();if(HEX.test(epk)){signerPk=epk;return epk}}catch(_){}}
+ try{const localPk=await connectLocalSigner();if(HEX.test(localPk)){signerPk=localPk;return localPk}}catch(_){}
  return '';
 }
 async function signEvent(event){
@@ -196,7 +197,7 @@ async function decryptPayload(content,secret,id){try{const p=String(content||'')
 function urlSecret(){try{return new URLSearchParams(location.hash.slice(1)).get('key')||''}catch(_){return ''}}
 function getLink(g){const u=new URL(location.pathname,location.origin);u.searchParams.set('game',g.id);u.searchParams.set('relay',g.relay||preferredRelay());if(g.private&&g.secret)u.hash='key='+encodeURIComponent(g.secret);return u.toString()}
 function modeStatus(g){return g.status||(!g.black?'open':'active')}
-function gamePayload(g,status){return {app:APP,version:1,id:g.id,mode:g.private?'private':'public',status:status,red:g.red,black:g.black||'',moves:g.moves||[],relay:g.relay,updatedAt:Date.now()}}
+function gamePayload(g,status){return {app:APP,version:1,id:g.id,mode:g.private?'private':'public',status:status,red:g.red,black:g.black||'',moves:(g.moves||[]).map(t=>Array.isArray(t)?t.slice():Array.isArray(t.path)?t.path.slice():[]),relay:g.relay,updatedAt:Date.now()}}
 function eventFromPayload(ev,relayFallback){
  if(!ev||!Array.isArray(ev.tags)||!HEX.test(String(ev.pubkey||'')))return null;
  const d=ev.tags.find(t=>t[0]==='d'&&t[1]);if(!d)return null;const privateMode=ev.kind===PRIV_KIND; if(ev.kind!==PUB_KIND&&!privateMode)return null;
@@ -204,6 +205,7 @@ function eventFromPayload(ev,relayFallback){
  let data;try{data=privateMode?null:JSON.parse(ev.content)}catch(_){return null}
  if(privateMode)return {id:d[1],private:true,secret:urlSecret(),event:ev,author:ev.pubkey,relay:relayFallback||preferredRelay(),created_at:Number(ev.created_at)||0};
  if(!data||data.app!==APP||data.version!==1||data.id!==d[1]||data.mode!=='public'||!HEX.test(String(data.red||''))||(data.black&&!HEX.test(String(data.black))))return null;
+ const author=String(ev.pubkey||'').toLowerCase();if(author!==String(data.red||'').toLowerCase()&&author!==String(data.black||'').toLowerCase())return null;
  if(!Array.isArray(data.moves)||!['open','active','finished','forfeit'].includes(data.status))return null;
  const moves=data.moves.map(t=>({path:Array.isArray(t)?t.map(Number):[]}));if(moves.some(t=>t.path.length<2||t.path.some(x=>!Number.isInteger(x)||x<0||x>63)))return null;
  if(!replay(moves))return null;
@@ -211,7 +213,7 @@ function eventFromPayload(ev,relayFallback){
 }
 async function eventToGame(ev,relayFallback,secret){
  if(!ev||!Array.isArray(ev.tags)||!HEX.test(String(ev.pubkey||'')))return null;const d=ev.tags.find(t=>t[0]==='d'&&t[1]);if(!d)return null;
- if(ev.kind===PRIV_KIND){const k=secret||urlSecret();const data=await decryptPayload(ev.content,k,d[1]);if(!data||data.mode!=='private'||!HEX.test(String(data.red||''))||(data.black&&!HEX.test(String(data.black)))||!Array.isArray(data.moves))return null;const moves=data.moves.map(t=>({path:Array.isArray(t)?t.map(Number):[]}));if(moves.some(t=>t.path.length<2||t.path.some(x=>!Number.isInteger(x)||x<0||x>63))||!replay(moves))return null;return {id:data.id,private:true,secret:k,red:data.red.toLowerCase(),black:String(data.black||'').toLowerCase(),moves:moves,relay:data.relay||relayFallback||preferredRelay(),status:data.status,eventId:ev.id,author:String(ev.pubkey).toLowerCase(),created_at:Number(ev.created_at)||0,content:data};}
+ if(ev.kind===PRIV_KIND){const k=secret||urlSecret();const data=await decryptPayload(ev.content,k,d[1]);if(!data||data.mode!=='private'||!HEX.test(String(data.red||''))||(data.black&&!HEX.test(String(data.black)))||!Array.isArray(data.moves))return null;const author=String(ev.pubkey||'').toLowerCase();if(author!==String(data.red||'').toLowerCase()&&author!==String(data.black||'').toLowerCase())return null;const moves=data.moves.map(t=>({path:Array.isArray(t)?t.map(Number):[]}));if(moves.some(t=>t.path.length<2||t.path.some(x=>!Number.isInteger(x)||x<0||x>63))||!replay(moves))return null;return {id:data.id,private:true,secret:k,red:data.red.toLowerCase(),black:String(data.black||'').toLowerCase(),moves:moves,relay:data.relay||relayFallback||preferredRelay(),status:data.status,eventId:ev.id,author:String(ev.pubkey).toLowerCase(),created_at:Number(ev.created_at)||0,content:data};}
  return eventFromPayload(ev,relayFallback);
 }
 function isNewer(incoming){if(!game)return true;const n=incoming.moves.length,c=game.moves.length;if(n!==c)return n>c;if(incoming.created_at!==game.lastEventTime)return incoming.created_at>game.lastEventTime;return String(incoming.eventId||'')>String(game.lastEventId||'')}
@@ -292,9 +294,10 @@ async function createOnline(privateMode){
 async function joinOnline(g,secret){
  const pk=await getSignerKey();if(!pk){openLogin();throw new Error('Connect a Nostr account to join the game.')}
  if(g.private&&!secret)throw new Error('The private invite key is missing. Copy the full invitation URL.');
+ const claimingSeat=!g.black;
  if(g.red===pk||g.black===pk){g.myPk=pk;g.myColor=g.red===pk?'r':'b'}else if(!g.black){g.black=pk;g.myPk=pk;g.myColor='b';g.status='active'}else throw new Error('This match already has two players.');
  leaveGame();local=false;game=g;game.secret=secret||g.secret||'';game.myPk=pk;game.myColor=pk===game.red?'r':'b';game.moves=g.moves||[];const s=replay(game.moves);if(!s)throw new Error('Game history failed validation.');turns=game.moves.map(t=>({path:t.path.slice()}));state=s;terminal=getTerminal(state,turns);selected=-1;pathCandidates=[];selectedPath=[];signerPk=pk;updatePlayers();renderBoard();subscribeGame();writeRecent(game);
- if(game.black&&game.status!=='finished'&&game.myColor==='b'&&g.black!==pk){await publishSnapshot('active')}
+ if(claimingSeat&&game.black&&game.status!=='finished'&&game.myColor==='b'){await publishSnapshot('active')}
  closeOverlay('incomingOverlay');closeOverlay('lobbyOverlay');say('Connected to the Checkers match over Nostr.');
 }
 async function forfeitGame(){
