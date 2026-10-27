@@ -2546,7 +2546,7 @@ body.sifaka-games-modal-open{overflow:hidden}
 <div id="sifakaGamesOverlay" aria-hidden="true">
   <section id="sifakaGamesDialog" role="dialog" aria-modal="true" aria-labelledby="sifakaGamesTitle" aria-describedby="sifakaGamesIntro">
     <button type="button" class="sifaka-games-close" aria-label="Close Games" onclick="closeSifakaGamesMenu()">×</button>
-    <div class="sifaka-games-kicker">SIFAKA ARCADE · 3 GAMES AVAILABLE</div>
+    <div class="sifaka-games-kicker">SIFAKA ARCADE · 4 GAMES AVAILABLE</div>
     <h2 class="sifaka-games-heading" id="sifakaGamesTitle">Games</h2>
     <p class="sifaka-games-intro" id="sifakaGamesIntro">Choose a game to play. More games can be added here as they become available.</p>
     <div class="sifaka-games-list">
@@ -2564,6 +2564,12 @@ body.sifaka-games-modal-open{overflow:hidden}
         <span class="sifaka-game-icon" aria-hidden="true">🔴</span>
         <span class="sifaka-game-copy"><strong>Nostr Connect Four</strong><small>Connect four in a row with AI, public and private Nostr matches, player invites, and chat.</small></span>
         <span class="sifaka-game-launch">Play Connect Four →</span>
+      </a>
+
+      <a class="sifaka-game-card" href="/games/tetris/" onclick="if(window.sifakaPrepareForChessNavigation){event.preventDefault();window.sifakaPrepareForChessNavigation().finally(function(){window.location.assign('/games/tetris/')})}">
+        <span class="sifaka-game-icon" aria-hidden="true">▦</span>
+        <span class="sifaka-game-copy"><strong>Nostr Tetris</strong><small>Classic falling blocks, locally saved best scores, and a verified Nostr high-score board.</small></span>
+        <span class="sifaka-game-launch">Play Tetris →</span>
       </a>
     </div>
     
