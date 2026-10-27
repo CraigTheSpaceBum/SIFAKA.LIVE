@@ -59,7 +59,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{
 const $=id=>document.getElementById(id),HEX=/^[0-9a-f]{64}$/i,APP='sifaka-connect4',PUBLIC_KIND=1,PRIVATE_KIND=30079,CHAT_KIND=1;
 const DEFAULT_RELAYS=['wss://nos.lol','wss://relay.damus.io','wss://relay.primal.net','wss://relay.nostr.band'];
 const SEARCH_RELAYS=['wss://relay.nostr.band','wss://search.nos.today'];
-let signerPk='',signerProfile={},signerBridgePromise=null,loginPopupObserver=null,game=null,local=true,engineMode=false,engineLevel=2,flipped=false,busy=false,relayPending=false,selectedCol=-1,gameSockets=[],socketGeneration=0,reconnectTimer=null,publishChain=Promise.resolve(),chatSeen=new Set(),lobbyTab='open',lobbyBusy=false,inviteSource='all',inviteRequest=0,profileCache=new Map(),verifiedCache=new Map(),pendingShared=null,toastTimer=null;
+let signerPk='',signerProfile={},signerBridgePromise=null,loginPopupObserver=null,game=null,local=true,engineMode=false,engineLevel=2,moves=[],flipped=false,busy=false,relayPending=false,selectedCol=-1,gameSockets=[],socketGeneration=0,reconnectTimer=null,publishChain=Promise.resolve(),chatSeen=new Set(),lobbyTab='open',lobbyBusy=false,inviteSource='all',inviteRequest=0,profileCache=new Map(),verifiedCache=new Map(),pendingShared=null,toastTimer=null;
 const other=c=>c==='r'?'y':'r',colorName=c=>c==='r'?'Red':'Yellow',shortPk=pk=>HEX.test(String(pk||''))?String(pk).slice(0,8)+'…'+String(pk).slice(-6):'Unknown player';
 function emptyBoard(){return Array(42).fill('')}
 function idx(r,c){return r*7+c}
