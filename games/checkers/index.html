@@ -272,7 +272,7 @@ async function publishSnapshot(status){
  publishChain=job.then(()=>{},()=>{});return job;
 }
 function closeSockets(){if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null}gameSockets.forEach(ws=>{try{if(ws._sub&&ws.readyState===1)ws.send(JSON.stringify(['CLOSE',ws._sub]));ws.close()}catch(_){} });gameSockets=[]}
-function leaveGame(){closeSockets();game=null;publishChain=Promise.resolve();seenChat.clear()}
+function leaveGame(){closeSockets();game=null;publishChain=Promise.resolve();seenChat.clear();busy=false;}
 function subscribeGame(){
  closeSockets();if(!game)return;const id=game.id,priv=game.private;gameSockets=[];
  const relays=currentRelayList(game.relay);
