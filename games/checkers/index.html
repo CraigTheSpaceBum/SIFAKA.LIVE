@@ -218,7 +218,21 @@ async function publishEvent(ev,relay){
  return true;
 }
 function requestEvents(url,filter,ms=4800){
- return new Promise(resolve=>{let ws,done=false,timer;const events=new Map(),sub='sifaka-checkers-'+Math.random().toString(36).slice(2,10);const finish=()=>{if(done)return;done=true;clearTimeout(timer);try{if(ws){if(ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close()}}}catch(_){}resolve([...events.values()])};timer=setTimeout(finish,ms);try{ws=new WebSocket(url);ws.onopen=()=>{try{ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){finish()}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&d[2].id)events.set(d[2].id,d[2]);if(d[0]==='EOSE'&&d[1]===sub)finish()}catch(_) {}};ws.onerror=finish;ws.onclose=()=>{if(!done)finish()}}catch(_){finish()}});
+ return new Promise(resolve=>{let ws,done=false,timer,authAttempts=0,authEventId='';const events=new Map(),sub='sifaka-checkers-'+Math.random().toString(36).slice(2,10);
+ const finish=()=>{if(done)return;done=true;clearTimeout(timer);try{if(ws){if(ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close()}}}catch(_){}resolve([...events.values()])};
+ const request=()=>{try{ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){finish()}};
+ timer=setTimeout(finish,ms);
+ try{ws=new WebSocket(url);ws.onopen=request;ws.onmessage=e=>{try{const d=JSON.parse(e.data);
+  if(d[0]==='AUTH'){
+   if(authAttempts++||!signerPk){finish();return}
+   signRelayAuth(url,String(d[1]||'')).then(auth=>{if(done)return;authEventId=String(auth.id||'');ws.send(JSON.stringify(['AUTH',auth]))}).catch(()=>finish());return;
+  }
+  if(d[0]==='OK'&&authEventId&&d[1]===authEventId){authEventId='';if(d[2])request();else finish();return}
+  if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&d[2].id)events.set(d[2].id,d[2]);
+  if(d[0]==='EOSE'&&d[1]===sub)finish();
+ }catch(_){}};
+ ws.onerror=finish;ws.onclose=()=>{if(!done)finish()}}catch(_){finish()}
+ });
 }
 async function queryRelays(filter,extra){const relays=currentRelayList(extra);const results=await Promise.all(relays.map(url=>requestEvents(url,filter,5300)));const map=new Map();results.flat().forEach(ev=>{if(ev&&ev.id)map.set(ev.id,ev)});return [...map.values()]}
 function bytesToB64(bytes){let s='';bytes.forEach(b=>s+=String.fromCharCode(b));return btoa(s)}
@@ -277,7 +291,12 @@ function subscribeGame(){
  if(terminal&&incoming.status==='forfeit')addChatSystem(terminal.text);else if(author!==signerPk&&turns.length)appendChat('system','Game state synchronized from Nostr.');
  }).catch(()=>{})}
  const subs=[];
- relays.forEach((url,i)=>{let ws;const sub='sifaka-checkers-live-'+id.slice(0,12)+'-'+i;try{ws=new WebSocket(url);ws._sub=sub;gameSockets.push(ws);ws.onopen=()=>{const f=priv?{kinds:[PRIV_KIND,CHAT_KIND],'#d':[id],limit:100}:{kinds:[PUB_KIND,CHAT_KIND],'#d':[id],limit:100};try{ws.send(JSON.stringify(['REQ',sub,f]))}catch(_){try{ws.close()}catch(__){}}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub)handle(d[2])}catch(_){}};ws.onerror=()=>{try{ws.close()}catch(_){}};ws.onclose=()=>{scheduleReconnect()}}catch(_){}});
+ relays.forEach((url,i)=>{let ws,authAttempts=0,authEventId='';const sub='sifaka-checkers-live-'+id.slice(0,12)+'-'+i,filter=priv?{kinds:[PRIV_KIND,CHAT_KIND],'#d':[id],limit:100}:{kinds:[PUB_KIND,CHAT_KIND],'#d':[id],limit:100};
+ try{ws=new WebSocket(url);ws._sub=sub;gameSockets.push(ws);ws.onopen=()=>{try{ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){try{ws.close()}catch(__){}}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);
+  if(d[0]==='AUTH'){if(authAttempts++||!signerPk){try{ws.close()}catch(_){}return}signRelayAuth(url,String(d[1]||'')).then(auth=>{if(!game||game.id!==id)return;authEventId=String(auth.id||'');ws.send(JSON.stringify(['AUTH',auth]))}).catch(()=>{try{ws.close()}catch(_){}});return}
+  if(d[0]==='OK'&&authEventId&&d[1]===authEventId){authEventId='';if(d[2]){try{ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){try{ws.close()}catch(__){}}}else{try{ws.close()}catch(_){}}return}
+  if(d[0]==='EVENT'&&d[1]===sub)handle(d[2]);
+ }catch(_){}};ws.onerror=()=>{try{ws.close()}catch(_){}};ws.onclose=()=>{scheduleReconnect()}}catch(_){}});
 }
 function currentOther(){return game?(game.myColor==='r'?game.black:game.red):''}
 function updatePlayers(){
