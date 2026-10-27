@@ -309,13 +309,14 @@ async function forfeitGame(){
  if(local||!game||terminal)return;if(!confirm('Forfeit this Checkers game?'))return;
  terminal={status:'forfeit',text:(game.myColor==='r'?'Red':'Black')+' forfeited the match.',winner:other(game.myColor)};renderBoard();try{await publishSnapshot('forfeit');addChatSystem(terminal.text);say('Forfeit published to Nostr.')}catch(e){say('Forfeit was not confirmed: '+e.message)}
 }
+function refreshIncomingInviteControls(){if(!pendingInvite||!pendingInvite.game)return;const g=pendingInvite.game,isParticipant=!!signerPk&&(g.red===signerPk||g.black===signerPk);$('incomingDescription').textContent=(g.private?'Private encrypted game':'Public game')+' hosted by '+shortPk(g.red)+'.';$('acceptInviteBtn').textContent=isParticipant?'Resume game':'Accept invitation';$('incomingStatus').textContent=isParticipant?'This is one of your games. Resume to synchronize the latest state.':g.black?'This match already has two players or has ended.':'The game history is valid. Connect your Nostr identity and accept to join.';$('acceptInviteBtn').disabled=(!isParticipant&&!!g.black)||(['finished','forfeit'].includes(g.status)&&!isParticipant)}
 async function loadIncomingInvite(){
  const params=new URLSearchParams(location.search),id=params.get('game'),relay=params.get('relay')||preferredRelay(),secret=urlSecret();if(!id)return;
  pendingInvite={id:id,relay:relay,secret:secret};$('incomingOverlay').classList.add('open');$('incomingStatus').textContent='Searching Nostr relays for the game…';
  const filter={kinds:secret?[PRIV_KIND]:[PUB_KIND],'#d':[id],limit:60},evs=await queryRelays(filter,relay);let found=null;
  for(const ev of evs){const g=await eventToGame(ev,relay,secret);if(g&&g.id===id){if(!found||g.created_at>found.created_at)found=g}}
  if(!found){$('incomingDescription').textContent='The invitation event was not found or could not be decrypted. Make sure the complete link is intact and the relays are reachable.';$('incomingStatus').textContent='Invite could not be verified. Retry from the shared link after checking relay connectivity.';$('acceptInviteBtn').disabled=true;return}
- pendingInvite.game=found;const isParticipant=!!signerPk&&(found.red===signerPk||found.black===signerPk);$('incomingDescription').textContent=(found.private?'Private encrypted game':'Public game')+' hosted by '+shortPk(found.red)+'.';$('acceptInviteBtn').textContent=isParticipant?'Resume game':'Accept invitation';$('incomingStatus').textContent=isParticipant?'This is one of your games. Resume to synchronize the latest state.':found.black?'This match already has two players or has ended.':'The game history is valid. Connect your Nostr identity and accept to join.';$('acceptInviteBtn').disabled=(!isParticipant&&!!found.black)||['finished','forfeit'].includes(found.status);
+ pendingInvite.game=found;refreshIncomingInviteControls();
 }
 function openOverlay(id){$(id).classList.add('open')}function closeOverlay(id){$(id).classList.remove('open')}
 function lobbyStatus(g){if(g.status==='forfeit')return 'Forfeited';if(g.status==='finished')return 'Finished';if(!g.black)return 'Open';return 'In progress'}
@@ -400,7 +401,7 @@ function restoreStoredIdentity(){connect().catch(()=>{const pk=storedKey();if(pk
 function bootstrap(){
  bindEvents();state=newBoard();renderBoard();updateIdentity();
  const params=new URLSearchParams(location.search);if(params.get('game'))loadIncomingInvite().catch(e=>{$('incomingStatus').textContent=e.message});
- connectLocalSigner().then(pk=>{if(pk&&!signerPk)connect().catch(()=>{});else if(pk&&pendingInvite&&pendingInvite.game){const g=pendingInvite.game,isParticipant=g.red===pk||g.black===pk;if(isParticipant){$('acceptInviteBtn').disabled=['finished','forfeit'].includes(g.status);$('acceptInviteBtn').textContent='Resume game';$('incomingStatus').textContent='This is one of your games. Resume to synchronize the latest state.'}}}).catch(()=>{});
+ connectLocalSigner().then(pk=>{if(pk&&!signerPk)connect().then(()=>refreshIncomingInviteControls()).catch(()=>{});else if(pk){signerPk=pk;refreshIncomingInviteControls()}}).catch(()=>{});
 }
 bootstrap();
 })();
