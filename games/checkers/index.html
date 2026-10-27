@@ -288,6 +288,89 @@ async function sendChat(){
  if(!game||!game.black){say('Wait for an opponent to join before using game chat.');return}
  try{const pk=await getSignerKey();if(!pk||pk!==signerPk)throw new Error('Reconnect the game owner account to chat.');const content=game.private?await encryptPayload({app:APP,version:1,id:game.id,type:'chat',message:message},game.secret,game.id):message;const created=Math.floor(Date.now()/1000),ev=await signEvent({kind:CHAT_KIND,pubkey:pk,created_at:created,tags:[['t','sifaka-checkers-chat'],['d',game.id],['p',currentOther()]],content:content});await publishEvent(ev,game.relay);appendChat('You',message);input.value=''}catch(e){say('Could not send chat: '+e.message)}
 }
+
+const BECH32='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function decodeNpub(value){
+ const v=String(value||'').trim().toLowerCase();if(HEX.test(v))return v;
+ const sep=v.lastIndexOf('1');if(sep!==4||v.slice(0,sep)!=='npub'||v.length>90)return '';
+ const words=v.slice(sep+1).split('').map(c=>BECH32.indexOf(c));if(words.length<7||words.some(n=>n<0))return '';
+ const hrp=[...v.slice(0,sep)].map(c=>c.charCodeAt(0)>>5).concat([0],[...v.slice(0,sep)].map(c=>c.charCodeAt(0)&31)),gen=[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3];let check=1;
+ hrp.concat(words).forEach(n=>{const top=check>>>25;check=((check&0x1ffffff)<<5)^n;for(let i=0;i<5;i++)if((top>>>i)&1)check^=gen[i]});if(check!==1)return '';
+ const data=words.slice(0,-6),bytes=[];let acc=0,bits=0;data.forEach(n=>{acc=(acc<<5)|n;bits+=5;if(bits>=8){bits-=8;bytes.push((acc>>bits)&255)}});if(bits>=5||((acc<<(8-bits))&255)!==0||bytes.length!==32)return '';
+ return bytes.map(n=>n.toString(16).padStart(2,'0')).join('');
+}
+async function resolveCheckersNip05(query){
+ const m=String(query||'').trim().match(/^([a-z0-9._-]+)@([a-z0-9.-]+)$/i);if(!m)return '';
+ const user=m[1],domain=m[2].toLowerCase();if(!domain.includes('.')||domain.includes('..')||domain.length>253)return '';
+ try{const res=await fetch('https://'+domain+'/.well-known/nostr.json?name='+encodeURIComponent(user),{mode:'cors',credentials:'omit',cache:'no-store',headers:{Accept:'application/json'}});if(!res.ok)return '';const data=await res.json(),pk=String(data&&data.names&&(data.names[user]||data.names[user.toLowerCase()])||'').toLowerCase();if(!HEX.test(pk))return '';const p=await lookupProfile(pk),profile=p&&p.profile||{};if(String(profile.nip05||'').trim().toLowerCase()!==(user+'@'+domain).toLowerCase()||!p.verified)return '';return pk}catch(_){return ''}
+}
+function renderInviteResults(items,empty){
+ const root=$('inviteResults');root.replaceChildren();
+ if(!items.length){const e=document.createElement('div');e.className='muted';e.textContent=empty||'No matching Nostr profiles found.';root.appendChild(e);return}
+ items.slice(0,30).forEach(user=>{
+  const rowEl=document.createElement('div');rowEl.className='gameitem';
+  const av=document.createElement('span');av.className='avatar';av.style.width='38px';av.style.height='38px';av.style.fontSize='16px';av.textContent=String(user.name||user.display_name||'N')[0].toUpperCase();
+  if(/^https?:\/\//i.test(String(user.picture||''))){const img=document.createElement('img');img.src=user.picture;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.style.cssText='width:100%;height:100%;object-fit:cover';img.addEventListener('error',()=>{av.textContent=String(user.name||'N')[0].toUpperCase()},{once:true});av.replaceChildren(img)}
+  const details=document.createElement('div');details.className='grow';const name=document.createElement('strong');name.textContent=String(user.display_name||user.name||shortPk(user.pk));const identity=document.createElement('small');identity.textContent=user.nip05?user.nip05:shortPk(user.pk);identity.title=user.pk;details.append(name,identity);
+  const invite=document.createElement('button');invite.type='button';invite.className='btn small primary';invite.textContent='Send DM';invite.addEventListener('click',()=>sendCheckersDirectInvite(user,invite).catch(err=>say('Could not send encrypted invite: '+String(err&&err.message||err))));
+  rowEl.append(av,details,invite);root.appendChild(rowEl);
+  lookupProfile(user.pk).then(result=>{if(!rowEl.isConnected)return;const p=result&&result.profile||{};name.textContent=String(p.display_name||p.displayName||p.name||user.name||shortPk(user.pk));if(result&&result.verified&&p.nip05){identity.textContent='✓ '+p.nip05;av.classList.add('verified')}else if(p.nip05)identity.textContent='Claimed, not verified: '+p.nip05;if(p.picture&&!/^https?:\/\//i.test(String(user.picture||''))){av.textContent=String(name.textContent||'N')[0].toUpperCase();if(/^https?:\/\//i.test(p.picture)){const img=document.createElement('img');img.src=p.picture;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.style.cssText='width:100%;height:100%;object-fit:cover';av.replaceChildren(img)}}}).catch(()=>{});
+ });
+}
+async function searchCheckersPlayers(){
+ const input=$('inviteSearchInput'),status=$('inviteSearchStatus'),q=input.value.trim();const token=++inviteSearchRequest;
+ if(!q){status.textContent='Enter a display name, npub, public key, or NIP-05 address.';renderInviteResults([]);return}
+ status.textContent='Searching Nostr profiles…';$('inviteSearchBtn').disabled=true;$('inviteResults').replaceChildren();
+ try{
+  let keys=[];const exact=decodeNpub(q);
+  if(exact)keys=[exact];
+  else if(q.includes('@')){const pk=await resolveCheckersNip05(q);if(pk)keys=[pk]}
+  if(!keys.length){
+   const results=await Promise.all(['wss://relay.nostr.band','wss://search.nos.today'].map(url=>requestEvents(url,{kinds:[0],search:q,limit:30},5000)));
+   const profiles=new Map();
+   results.flat().forEach(ev=>{if(!ev||ev.kind!==0||!HEX.test(String(ev.pubkey||'')))return;let profile={};try{profile=JSON.parse(ev.content||'{}')}catch(_){}const pk=String(ev.pubkey).toLowerCase(),old=profiles.get(pk);if(!old||Number(ev.created_at)>Number(old.created_at))profiles.set(pk,{pk,profile,created_at:Number(ev.created_at)||0})});
+   const needle=q.toLowerCase();
+   keys=[...profiles.values()].filter(x=>[x.profile.name,x.profile.display_name,x.profile.displayName,x.profile.nip05,x.profile.about,x.pk].filter(Boolean).join(' ').toLowerCase().includes(needle)).slice(0,30).map(x=>x.pk);
+  }
+  if(token!==inviteSearchRequest)return;
+  const list=[];
+  for(const pk of keys.slice(0,20)){const res=await lookupProfile(pk);if(token!==inviteSearchRequest)return;const p=res&&res.profile||{};list.push({pk:pk,name:String(p.name||''),display_name:String(p.display_name||p.displayName||''),picture:String(p.picture||''),nip05:String(p.nip05||''),verified:!!(res&&res.verified)})}
+  if(token!==inviteSearchRequest)return;
+  status.textContent=list.length?'Found '+list.length+' Nostr profile'+(list.length===1?'':'s')+'. Sending a DM requires a connected signer with NIP-04 encryption.':'No profiles matched. Search relays may not support global search; try an npub, hex key, or NIP-05 address.';
+  renderInviteResults(list,list.length?'':'Try a more specific name or verify the identifier.');
+ }catch(err){if(token===inviteSearchRequest){status.textContent='Profile search failed: '+String(err&&err.message||err);renderInviteResults([],'Search relay or NIP-05 lookup failed. You can still copy the game link.')}}finally{if(token===inviteSearchRequest)$('inviteSearchBtn').disabled=false}
+}
+async function sendCheckersDirectInvite(user,button){
+ if(!game)throw new Error('Create a public game or private invite link before inviting a player.');
+ if(game.black)throw new Error('This game already has an opponent. Create another game to invite a different player.');
+ const peer=String(user&&user.pk||'').toLowerCase();if(!HEX.test(peer))throw new Error('The selected profile has no valid Nostr public key.');
+ const signer=await getSignerKey();if(!signer){openLogin();throw new Error('Connect your Nostr signer, then retry the invitation.')}
+ if(signer!==game.red||signer!==signerPk)throw new Error('Reconnect the Nostr account that created this game before inviting a player.');
+ if(peer===signer)throw new Error('Choose another player; you cannot invite your own account.');
+ let provider=null;
+ for(const candidate of [window.nostr,window.sifakaCheckersMainSigner]){
+  if(!candidate||typeof candidate.getPublicKey!=='function'||!candidate.nip04||typeof candidate.nip04.encrypt!=='function')continue;
+  try{if(String(await candidate.getPublicKey()||'').toLowerCase()===signer){provider=candidate.nip04;break}}catch(_){}
+ }
+ if(!provider)throw new Error('The active signer does not expose NIP-04 encryption. Your game link is still available through “Share invite”; no public mention was sent.');
+ if(button){button.disabled=true;button.textContent='Encrypting…'}
+ try{
+  const link=getLink(game),display=String(user.display_name||user.name||shortPk(peer));
+  const message='♟ SIFAKA.LIVE CHECKERS INVITATION\n\nHi '+display+', you are invited to play a Checkers match.\n\nJoin the match: '+link+'\n\nThis invitation was sent as an encrypted Nostr direct message. '+(game.private?'The URL fragment contains the private game key. Keep the complete link private.':'The match is public and appears in the Sifaka Checkers lobby.');
+  const encrypted=await provider.encrypt(peer,message);if(typeof encrypted!=='string'||!encrypted.trim())throw new Error('The signer did not return encrypted direct-message content.');
+  let targets=currentRelayList(game.relay);
+  try{const events=await queryRelays({kinds:[10002],authors:[peer],limit:5},game.relay);events.sort((a,b)=>Number(b.created_at||0)-Number(a.created_at||0));const relayEvent=events[0];if(relayEvent){const hints=(relayEvent.tags||[]).filter(t=>t[0]==='r'&&/^wss:\/\//i.test(String(t[1]||''))&&(!t[2]||t[2]==='write')).map(t=>String(t[1]).trim());targets=currentRelayList(targets.concat(hints))}}catch(_){}
+  const ev=await signEvent({kind:4,pubkey:signer,created_at:Math.max(Math.floor(Date.now()/1000),Number(game.lastEventTime||0)+1),tags:[['p',peer],['t','sifaka-checkers-invite']],content:encrypted});
+  await publishEvent(ev,targets);
+  if(button){button.textContent='Sent ✓';button.disabled=false}say('Encrypted Checkers invite sent by Nostr DM.');$('inviteSearchStatus').textContent='Encrypted invitation sent to '+display+'.';return true;
+ }catch(err){if(button){button.disabled=false;button.textContent='Send DM'}throw err}
+}
+function openInviteSearch(){
+ if(!game){say('Create a game first, then invite a player.');openOverlay('setupOverlay');return}
+ if(game.black){say('This match already has an opponent. Create a new game to invite another player.');return}
+ $('inviteSearchInput').value='';$('inviteSearchStatus').textContent='Search by name, npub, hexadecimal public key, or NIP-05.';$('inviteResults').replaceChildren();openOverlay('inviteOverlay');$('inviteSearchInput').focus();
+}
+
 async function createOnline(privateMode){
  const pk=await getSignerKey();if(!pk){openLogin();throw new Error('Connect a Nostr account before creating an online game.')}
  const id=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)),secret=privateMode?bytesToB64(crypto.getRandomValues(new Uint8Array(32))):'',relay=preferredRelay();
