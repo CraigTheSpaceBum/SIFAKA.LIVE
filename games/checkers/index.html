@@ -93,12 +93,12 @@ function legalTurns(s){
  return out;
 }
 function samePath(a,b){return a.length===b.length&&a.every((v,i)=>v===b[i])}
-function applyTurn(s,path){
- const legal=legalTurns(s).find(m=>samePath(m.path,path));if(!legal)return null;
+function applyLegalTurn(s,path){
  const n=boardClone(s),piece=n.b[path[0]];let at=path[0],captured=0;
- for(let k=1;k<path.length;k++){const to=path[k];if(Math.abs(row(to)-row(at))===2){const mid=((row(to)+row(at))/2)*8+(col(to)+col(at))/2;if(!n.b[mid]||colorOf(n.b[mid])!==other(s.turn))return null;n.b[mid]=null;captured++}n.b[at]=null;let np=piece;if(!isKing(piece)&&((piece==='r'&&row(to)===0)||(piece==='b'&&row(to)===7)))np=piece.toUpperCase();n.b[to]=np;at=to}
+ for(let k=1;k<path.length;k++){const to=path[k];if(Math.abs(row(to)-row(at))===2){const mid=((row(to)+row(at))/2)*8+(col(to)+col(at))/2;n.b[mid]=null;captured++}n.b[at]=null;let np=piece;if(!isKing(piece)&&((piece==='r'&&row(to)===0)||(piece==='b'&&row(to)===7)))np=piece.toUpperCase();n.b[to]=np;at=to}
  n.turn=other(s.turn);n.quiet=captured?0:s.quiet+1;return {state:n,captured:captured,from:path[0],to:path[path.length-1]};
 }
+function applyTurn(s,path){const legal=legalTurns(s).find(m=>samePath(m.path,path));return legal?applyLegalTurn(s,legal.path):null;}
 function replay(all){let s=newBoard(),capturedAny=false;for(const turn of all){const res=applyTurn(s,turn.path);if(!res)return null;s=res.state;if(res.captured)capturedAny=true}return s}
 function boardKey(s){return s.b.map(x=>x||'.').join('')+s.turn}
 function getTerminal(s,all){
@@ -111,6 +111,69 @@ function getTerminal(s,all){
  const last=keys[keys.length-1];if(keys.filter(k=>k===last).length>=3)return {status:'finished',text:'Draw — threefold repetition.',winner:''};
  return null;
 }
+
+function evaluateEnginePosition(s,root){
+ let score=0;
+ for(let i=0;i<64;i++){
+  const p=s.b[i];if(!p)continue;
+  const side=colorOf(p),king=isKing(p),r=row(i),c=col(i);
+  let value=king?178:100;
+  if(!king)value+=(side==='r'?7-r:r)*4;
+  if(r>=2&&r<=5&&c>=2&&c<=5)value+=5;
+  if((side==='r'&&r===7)||(side==='b'&&r===0))value+=4;
+  score+=(side===root?1:-1)*value;
+ }
+ return score;
+}
+function chooseEngineMove(position,level){
+ const difficulty=Math.max(1,Math.min(3,Number(level)||2)),root=position.turn,depth=[0,2,4,6][difficulty],limit=[0,1800,8500,24000][difficulty];
+ let nodes=0;const memo=new Map();
+ function ordered(pos,moves){
+  return moves.sort((a,b)=>{
+   if(a.capture!==b.capture)return a.capture?-1:1;
+   const score=m=>{const p=pos.b[m.path[0]],last=m.path[m.path.length-1],promotion=p&&!isKing(p)&&((p==='r'&&row(last)===0)||(p==='b'&&row(last)===7));return(m.path.length-1)*2+(promotion?8:0)+((col(last)>=2&&col(last)<=5)?1:0)};
+   return score(b)-score(a);
+  });
+ }
+ function search(pos,d,alpha,beta,ply){
+  nodes++;
+  const rootCount=pos.b.filter(p=>colorOf(p)===root).length,enemyCount=pos.b.filter(p=>colorOf(p)===other(root)).length;
+  if(!rootCount)return -100000+ply;if(!enemyCount)return 100000-ply;
+  if(pos.quiet>=80)return 0;
+  if(d<=0||nodes>limit)return evaluateEnginePosition(pos,root);
+  const key=boardKey(pos)+':'+pos.quiet+':'+d;if(memo.has(key))return memo.get(key);
+  const moves=ordered(pos,legalTurns(pos));if(!moves.length)return pos.turn===root?-100000+ply:100000-ply;
+  const maximize=pos.turn===root;let best=maximize?-Infinity:Infinity,cut=false;
+  for(const move of moves){
+   const child=applyLegalTurn(pos,move.path).state,score=search(child,d-1,alpha,beta,ply+1);
+   if(maximize){if(score>best)best=score;if(best>alpha)alpha=best}
+   else{if(score<best)best=score;if(best<beta)beta=best}
+   if(beta<=alpha){cut=true;break}
+   if(nodes>limit)break;
+  }
+  if(!cut)memo.set(key,best);
+  return best;
+ }
+ const moves=ordered(position,legalTurns(position));if(!moves.length)return null;
+ let bestMove=moves[0],bestScore=-Infinity,alpha=-Infinity,beta=Infinity;
+ for(const move of moves){
+  const result=search(applyLegalTurn(position,move.path).state,depth-1,alpha,beta,1);
+  if(result>bestScore){bestScore=result;bestMove=move;alpha=Math.max(alpha,bestScore)}
+  if(nodes>limit)break;
+ }
+ return bestMove.path.slice();
+}
+function queueEngineMove(){
+ if(!engineMode||!local||terminal||!state||state.turn!=='b'||engineTimer)return;
+ const token=++engineRequestId;busy=true;renderBoard();$('statusLine').textContent='Sifaka Checkers Engine thinking…';
+ engineTimer=setTimeout(function(){
+  engineTimer=null;
+  if(token!==engineRequestId||!engineMode||!local||terminal||!state||state.turn!=='b'){busy=false;return}
+  try{const path=chooseEngineMove(state,engineLevel);busy=false;if(path)completeTurn(path);else{terminal=getTerminal(state,turns);renderBoard()}}
+  catch(err){busy=false;renderBoard();say('The Checkers engine could not find a move: '+String(err&&err.message||err))}
+ },70);
+}
+
 function coord(i){return 'abcdefgh'[col(i)]+(8-row(i))}
 function turnSummary(t,idx){return (idx+1)+'. '+coord(t.path[0])+'-'+t.path.slice(1).map(coord).join('x')}
 function currentTurns(){return turns.map(t=>t.path)}
@@ -422,7 +485,7 @@ function openInviteSearch(){
 async function createOnline(privateMode){
  const pk=await getSignerKey();if(!pk){openLogin();throw new Error('Connect a Nostr account before creating an online game.')}
  const id=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)),secret=privateMode?bytesToB64(crypto.getRandomValues(new Uint8Array(32))):'',relay=preferredRelay();
- leaveGame();local=false;turns=[];state=newBoard();terminal=null;selected=-1;pathCandidates=[];selectedPath=[];$('chatLog').replaceChildren();$('chatStatus').textContent=privateMode?'· private Nostr chat':'· Nostr relay chat';
+ leaveGame();local=false;engineMode=false;turns=[];state=newBoard();terminal=null;selected=-1;pathCandidates=[];selectedPath=[];$('chatLog').replaceChildren();$('chatStatus').textContent=privateMode?'· private Nostr chat':'· Nostr relay chat';
  game={id:id,private:!!privateMode,secret:secret,relay:relay,red:pk,black:'',myPk:pk,myColor:'r',moves:[],status:privateMode?'invite':'open',lastEventTime:0,lastPublishTime:0,lastEventId:''};
  signerPk=pk;updatePlayers();renderBoard();
  const ok=await publishSnapshot(privateMode?'invite':'open');if(!ok)throw new Error('The game could not be confirmed by a relay.');
@@ -433,7 +496,7 @@ async function joinOnline(g,secret){
  if(g.private&&!secret)throw new Error('The private invite key is missing. Copy the full invitation URL.');
  const claimingSeat=!g.black;
  if(g.red===pk||g.black===pk){g.myPk=pk;g.myColor=g.red===pk?'r':'b'}else if(!g.black){g.black=pk;g.myPk=pk;g.myColor='b';g.status='active'}else throw new Error('This match already has two players.');
- leaveGame();local=false;$('chatLog').replaceChildren();$('chatStatus').textContent=g.private?'· private Nostr chat':'· Nostr relay chat';game=g;game.secret=secret||g.secret||'';game.myPk=pk;game.myColor=pk===game.red?'r':'b';game.moves=g.moves||[];const s=replay(game.moves);if(!s)throw new Error('Game history failed validation.');turns=game.moves.map(t=>({path:t.path.slice()}));state=s;terminal=getTerminal(state,turns);selected=-1;pathCandidates=[];selectedPath=[];signerPk=pk;updatePlayers();renderBoard();subscribeGame();writeRecent(game);
+ leaveGame();local=false;engineMode=false;$('chatLog').replaceChildren();$('chatStatus').textContent=g.private?'· private Nostr chat':'· Nostr relay chat';game=g;game.secret=secret||g.secret||'';game.myPk=pk;game.myColor=pk===game.red?'r':'b';game.moves=g.moves||[];const s=replay(game.moves);if(!s)throw new Error('Game history failed validation.');turns=game.moves.map(t=>({path:t.path.slice()}));state=s;terminal=getTerminal(state,turns);selected=-1;pathCandidates=[];selectedPath=[];signerPk=pk;updatePlayers();renderBoard();subscribeGame();writeRecent(game);
  if(claimingSeat&&game.black&&game.status!=='finished'&&game.myColor==='b'){await publishSnapshot('active')}
  closeOverlay('incomingOverlay');closeOverlay('lobbyOverlay');say('Connected to the Checkers match over Nostr.');
 }
@@ -460,7 +523,7 @@ function renderLobby(games){
  if(!shown.length){const e=document.createElement('div');e.className='muted';e.textContent=lobbyTab==='open'?'No open games were found on the selected relays. Create a public game or refresh.':lobbyTab==='current'?'No current games for this Nostr account were found.':'No recent Checkers events were found.';list.appendChild(e);return}
  shown.sort(gameSort).slice(0,80).forEach(g=>{const el=document.createElement('div');el.className='gameitem';const info=document.createElement('div');info.className='grow';const t=document.createElement('strong');t.textContent=shortPk(g.red)+' vs '+(g.black?shortPk(g.black):'Open seat');const m=document.createElement('small');m.textContent=(g.private?'Private':'Public')+' · '+lobbyStatus(g)+' · '+g.moves.length+' turns · '+new Date((g.created_at||0)*1000).toLocaleString();info.append(t,m);const b=document.createElement('button');b.className='btn small '+(!g.black?'primary':'');b.textContent=g.red===signerPk||g.black===signerPk?'Resume':!g.black?'Join':'View';b.disabled=!!g.private&&!g.secret||(!g.black&&g.red===signerPk)||(!!g.black&&g.red!==signerPk&&g.black!==signerPk)||(['finished','forfeit'].includes(g.status)&&g.red!==signerPk&&g.black!==signerPk);b.addEventListener('click',async()=>{b.disabled=true;try{if(g.red===signerPk||g.black===signerPk){await activateExisting(g)}else{await joinOnline(g,'')}}catch(e){say(e.message)}finally{b.disabled=false}});el.append(info,b);list.appendChild(el)})
 }
-async function activateExisting(g){if(!signerPk)await getSignerKey();if(!signerPk)throw new Error('Connect your Nostr identity first.');const found=await eventToGame(g.raw||g.event,g.relay,g.secret);const item=found||g;if(item.private&&!item.secret)throw new Error('Open the original private invite URL to restore this game.');leaveGame();local=false;game=item;game.myPk=signerPk;game.myColor=signerPk===game.red?'r':'b';turns=item.moves.map(t=>({path:t.path.slice()}));state=replay(turns);terminal=getTerminal(state,turns);renderBoard();updatePlayers();subscribeGame();closeOverlay('lobbyOverlay')}
+async function activateExisting(g){if(!signerPk)await getSignerKey();if(!signerPk)throw new Error('Connect your Nostr identity first.');const found=await eventToGame(g.raw||g.event,g.relay,g.secret);const item=found||g;if(item.private&&!item.secret)throw new Error('Open the original private invite URL to restore this game.');leaveGame();local=false;engineMode=false;game=item;game.myPk=signerPk;game.myColor=signerPk===game.red?'r':'b';turns=item.moves.map(t=>({path:t.path.slice()}));state=replay(turns);terminal=getTerminal(state,turns);renderBoard();updatePlayers();subscribeGame();closeOverlay('lobbyOverlay')}
 async function refreshLobby(){
  if(lobbyBusy)return;lobbyBusy=true;$('refreshLobbyBtn').disabled=true;$('gamesList').innerHTML='<div class="muted">Querying Checkers events from Nostr relays…</div>';
  try{const [publicEvents,privRecent]=await Promise.all([queryRelays({kinds:[PUB_KIND],'#t':[APP],limit:500}),Promise.resolve([])]),map=new Map();
