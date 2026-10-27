@@ -2560,7 +2560,7 @@ body.sifaka-games-modal-open{overflow:hidden}
         <span class="sifaka-game-copy"><strong>Nostr Checkers</strong><small>Classic checkers with public and encrypted private Nostr matches.</small></span>
         <span class="sifaka-game-launch">Play Checkers →</span>
       </a>
-<a class="sifaka-game-card" href="/games/connect4/">
+<a class="sifaka-game-card" href="/games/connect4/" onclick="if(window.sifakaPrepareForChessNavigation){event.preventDefault();window.sifakaPrepareForChessNavigation().finally(function(){window.location.assign('/games/connect4/')})}">
         <span class="sifaka-game-icon" aria-hidden="true">🔴</span>
         <span class="sifaka-game-copy"><strong>Nostr Connect Four</strong><small>Connect four in a row with AI, public and private Nostr matches, player invites, and chat.</small></span>
         <span class="sifaka-game-launch">Play Connect Four →</span>
