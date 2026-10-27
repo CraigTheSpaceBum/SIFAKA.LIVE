@@ -27,7 +27,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 <body>
 <header class="topbar">
 <a class="brand" href="/" aria-label="Sifaka.Live home"><span class="mark">♟</span><span><strong>SIFAKA.LIVE</strong><small>NOSTR GAME ROOM</small></span></a>
-<nav class="toplinks" aria-label="Main navigation"><a href="/">Live Now</a><a href="/?chessAction=navigate&page=nest">Nest</a><a href="/?chessAction=navigate&page=feed">Feed</a><a href="/?chessAction=navigate&page=videos">Videos</a><a class="active" href="/games/chess/">Games</a></nav>
+<div class="toplinks" role="navigation" aria-label="Main navigation"><a href="/">Live Now</a><a href="/?chessAction=navigate&page=nest">Nest</a><a href="/?chessAction=navigate&page=feed">Feed</a><a href="/?chessAction=navigate&page=videos">Videos</a><a class="active" href="/games/chess/">Games</a></div>
 <div class="topspacer"></div><span class="identity" id="identityLabel">Not connected</span><button class="btn primary" id="connectBtn" type="button">Connect Nostr</button>
 </header>
 <main class="page">
@@ -60,7 +60,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 'use strict';
 const $=id=>document.getElementById(id),HEX=/^[0-9a-f]{64}$/i,APP='sifaka-checkers',PUB_KIND=30078,PRIV_KIND=30079,CHAT_KIND=1;
 const DEFAULT_RELAYS=['wss://nos.lol','wss://relay.damus.io','wss://relay.primal.net'];
-let signerPk='',signerProfile={},signerBridgePromise=null,game=null,local=true,flipped=false,selected=-1,selectedPath=[],pathCandidates=[],busy=false,turns=[],state=null,terminal=null,gameSockets=[],reconnectTimer=null,publishChain=Promise.resolve(),seenChat=new Set(),lobbyTab='open',lobbyBusy=false,pendingInvite=null,toastTimer=null;
+let signerPk='',signerProfile={},signerBridgePromise=null,game=null,local=true,flipped=false,selected=-1,selectedPath=[],pathCandidates=[],busy=false,turns=[],state=null,terminal=null,gameSockets=[],reconnectTimer=null,publishChain=Promise.resolve(),seenChat=new Set(),lobbyTab='open',lobbyBusy=false,pendingInvite=null,toastTimer=null;const playerVersions={red:0,black:0};
 const pieceName=p=>p==='r'?'Red':p==='b'?'Black':'',other=c=>c==='r'?'b':'r';
 function say(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3200)}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -165,7 +165,7 @@ function installSigner(frame,expected){
 }
 function connectLocalSigner(){
  if(signerBridgePromise)return signerBridgePromise;
- signerBridgePromise=new Promise(resolve=>{const frame=$('signerBridge');let ended=false;const done=v=>{if(ended)return;ended=true;signerBridgePromise=null;resolve(v||'')};try{frame.src='/?sifakaChessSignerBridge=1'}catch(_){done('');return}const start=Date.now(),check=()=>{const expected=storedKey();const pk=installSigner(frame.contentWindow,expected);if(pk){done(pk);return}if(Date.now()-start>8000){done('');return}setTimeout(check,120)};setTimeout(check,100)});return signerBridgePromise;
+ signerBridgePromise=new Promise(resolve=>{const frame=$('signerBridge');let ended=false;const done=v=>{if(ended)return;ended=true;signerBridgePromise=null;resolve(v||'')};try{if(!String(frame.src||'').includes('sifakaChessSignerBridge=1'))frame.src='/?sifakaChessSignerBridge=1'}catch(_){done('');return}const start=Date.now(),check=()=>{const pk=installSigner(frame.contentWindow,'');if(pk){done(pk);return}if(Date.now()-start>8000){done('');return}setTimeout(check,120)};setTimeout(check,100)});return signerBridgePromise;
 }
 async function getSignerKey(){
  const app=window.sifakaCheckersMainSigner;
@@ -235,6 +235,7 @@ function subscribeGame(){
  if(priv){if(!incoming.private||author===signerPk)return}
  else if(incoming.private)return;
  if(incoming.red!==game.red)return;
+ if(['finished','forfeit'].includes(game.status)&&!['finished','forfeit'].includes(incoming.status))return;
  if(incoming.black&&game.black&&incoming.black!==game.black&&author!==game.red){if(game.myColor==='b'){terminal={status:'forfeit',text:'Another player claimed this seat first. Return to the lobby and join another game.'};busy=true;renderBoard();say(terminal.text)}return}
  if(!incoming.black&&game.black)return;
  if(!isNewer(incoming)&&incoming.eventId!==game.lastEventId)return;
@@ -253,10 +254,10 @@ function updatePlayers(){
  if(black){setPlayer('black',black)}else{setPlayer('black','');$('blackName').textContent=game&&game.private?'Awaiting invite':'Waiting for player';$('blackIdentity').textContent='No opponent yet';$('blackAvatar').textContent='⚫'}
 }
 function setPlayer(side,pk){
- const av=$(side+'Avatar'),name=$(side+'Name'),id=$(side+'Identity');
+ const version=++playerVersions[side];const av=$(side+'Avatar'),name=$(side+'Name'),id=$(side+'Identity');
  if(!pk){name.textContent=side==='red'?'Red':'Black';id.textContent='Not joined';av.textContent=side==='red'?'🔴':'⚫';av.classList.remove('verified');return}
  const fallback=shortPk(pk);name.textContent=fallback;id.textContent=fallback;av.textContent=side==='red'?'🔴':'⚫';av.classList.remove('verified');
- lookupProfile(pk).then(result=>{if(!result||!$(side+'Avatar').isConnected)return;const p=result.profile||{},nm=String(p.display_name||p.displayName||p.name||fallback).trim()||fallback;name.textContent=nm;id.textContent=result.verified&&p.nip05?p.nip05:(p.nip05?'Unverified: '+p.nip05:fallback);if(result.verified)av.classList.add('verified');av.replaceChildren();const pic=String(p.picture||'');if(/^https?:\/\//i.test(pic)){const img=document.createElement('img');img.src=pic;img.alt='';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>{av.textContent=side==='red'?'🔴':'⚫'},{once:true});av.appendChild(img)}else av.textContent=String(nm[0]||'S').toUpperCase()}).catch(()=>{});
+ lookupProfile(pk).then(result=>{if(!result||version!==playerVersions[side]||!$(side+'Avatar').isConnected)return;const p=result.profile||{},nm=String(p.display_name||p.displayName||p.name||fallback).trim()||fallback;name.textContent=nm;id.textContent=result.verified&&p.nip05?p.nip05:(p.nip05?'Unverified: '+p.nip05:fallback);if(result.verified)av.classList.add('verified');av.replaceChildren();const pic=String(p.picture||'');if(/^https?:\/\//i.test(pic)){const img=document.createElement('img');img.src=pic;img.alt='';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>{av.textContent=side==='red'?'🔴':'⚫'},{once:true});av.appendChild(img)}else av.textContent=String(nm[0]||'S').toUpperCase()}).catch(()=>{});
 }
 const profileCache=new Map();
 async function queryOne(url,filter,ms=2600){const got=await requestEvents(url,filter,ms);return got}
@@ -321,7 +322,7 @@ function renderLobby(games){
  if(lobbyTab==='open')shown=games.filter(g=>!g.black&&g.status!=='finished'&&g.status!=='forfeit'&&!g.private);
  if(lobbyTab==='current')shown=games.filter(g=>signerPk&&(g.red===signerPk||g.black===signerPk));
  if(!shown.length){const e=document.createElement('div');e.className='muted';e.textContent=lobbyTab==='open'?'No open games were found on the selected relays. Create a public game or refresh.':lobbyTab==='current'?'No current games for this Nostr account were found.':'No recent Checkers events were found.';list.appendChild(e);return}
- shown.sort(gameSort).slice(0,80).forEach(g=>{const el=document.createElement('div');el.className='gameitem';const info=document.createElement('div');info.className='grow';const t=document.createElement('strong');t.textContent=shortPk(g.red)+' vs '+(g.black?shortPk(g.black):'Open seat');const m=document.createElement('small');m.textContent=(g.private?'Private':'Public')+' · '+lobbyStatus(g)+' · '+g.moves.length+' turns · '+new Date((g.created_at||0)*1000).toLocaleString();info.append(t,m);const b=document.createElement('button');b.className='btn small '+(!g.black?'primary':'');b.textContent=g.red===signerPk||g.black===signerPk?'Resume':!g.black?'Join':'View';b.disabled=!!g.private||(!g.black&&g.red===signerPk)||(['finished','forfeit'].includes(g.status)&&g.red!==signerPk&&g.black!==signerPk);b.addEventListener('click',async()=>{b.disabled=true;try{if(g.red===signerPk||g.black===signerPk){await activateExisting(g)}else{await joinOnline(g,'')}}catch(e){say(e.message)}finally{b.disabled=false}});el.append(info,b);list.appendChild(el)})
+ shown.sort(gameSort).slice(0,80).forEach(g=>{const el=document.createElement('div');el.className='gameitem';const info=document.createElement('div');info.className='grow';const t=document.createElement('strong');t.textContent=shortPk(g.red)+' vs '+(g.black?shortPk(g.black):'Open seat');const m=document.createElement('small');m.textContent=(g.private?'Private':'Public')+' · '+lobbyStatus(g)+' · '+g.moves.length+' turns · '+new Date((g.created_at||0)*1000).toLocaleString();info.append(t,m);const b=document.createElement('button');b.className='btn small '+(!g.black?'primary':'');b.textContent=g.red===signerPk||g.black===signerPk?'Resume':!g.black?'Join':'View';b.disabled=!!g.private||(!g.black&&g.red===signerPk)||(!!g.black&&g.red!==signerPk&&g.black!==signerPk)||(['finished','forfeit'].includes(g.status)&&g.red!==signerPk&&g.black!==signerPk);b.addEventListener('click',async()=>{b.disabled=true;try{if(g.red===signerPk||g.black===signerPk){await activateExisting(g)}else{await joinOnline(g,'')}}catch(e){say(e.message)}finally{b.disabled=false}});el.append(info,b);list.appendChild(el)})
 }
 async function activateExisting(g){if(!signerPk)await getSignerKey();if(!signerPk)throw new Error('Connect your Nostr identity first.');const found=await eventToGame(g.raw||g.event,g.relay,g.secret);const item=found||g;if(item.private&&!item.secret)throw new Error('Open the original private invite URL to restore this game.');leaveGame();local=false;game=item;game.myPk=signerPk;game.myColor=signerPk===game.red?'r':'b';turns=item.moves.map(t=>({path:t.path.slice()}));state=replay(turns);terminal=getTerminal(state,turns);renderBoard();updatePlayers();subscribeGame();closeOverlay('lobbyOverlay')}
 async function refreshLobby(){
@@ -366,11 +367,10 @@ function bindEvents(){
 }
 function addMovePieceSounds(){/* Kept deliberately quiet to avoid autoplay restrictions. */}
 function restoreStoredIdentity(){connect().catch(()=>{const pk=storedKey();if(pk){signerPk=pk;updateIdentity()}})}
-async function bootstrap(){
- bindEvents();state=newBoard();renderBoard();
- try{await connect()}catch(_){}
+function bootstrap(){
+ bindEvents();state=newBoard();renderBoard();updateIdentity();
  const params=new URLSearchParams(location.search);if(params.get('game'))loadIncomingInvite().catch(e=>{$('incomingStatus').textContent=e.message});
- if(typeof window.sifakaCheckersMainSigner==='undefined')connectLocalSigner().then(pk=>{if(pk&&!signerPk)connect().catch(()=>{})}).catch(()=>{});
+ connectLocalSigner().then(pk=>{if(pk&&!signerPk)connect().catch(()=>{})}).catch(()=>{});
 }
 bootstrap();
 })();
