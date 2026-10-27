@@ -23,6 +23,33 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 @media(max-width:720px){.topbar{padding:10px 12px;gap:8px}.brand strong{font-size:16px}.mark{width:36px;height:36px}.identity{display:none}.page{padding-top:17px}.layout{grid-template-columns:minmax(0,1fr)}.sidebar{grid-template-columns:1fr}.boardwrap{padding:7px}.board{border-width:3px;border-radius:7px}.boardhead{padding:10px 11px}.players{grid-template-columns:1fr 1fr}.chatlog{height:160px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .hidden{display:none!important}
+
+/* Mobile-friendly game setup, lobby, invite, and sign-in dialogs. */
+@media(max-width:600px){
+ .overlay{place-items:end center;padding:8px max(8px,env(safe-area-inset-right,0px)) max(8px,env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));overflow-y:auto;overscroll-behavior:contain}
+ .dialog{width:100%;max-width:none;max-height:calc(100dvh - 16px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));padding:19px 15px calc(18px + env(safe-area-inset-bottom,0px));border-radius:22px 22px 14px 14px;overscroll-behavior:contain}
+ .dialog h2{font-size:clamp(22px,6.5vw,29px);line-height:1.12}
+ .dialog p{font-size:14px;line-height:1.55}
+ .xbtn{width:44px;height:44px;min-width:44px;font-size:24px}
+ .dialog .row{align-items:stretch;gap:8px}
+ .dialog .row>.btn,.dialog button.btn{min-height:44px}
+ .tabrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+ .tabrow button{min-height:44px;padding:9px 5px;font-size:11px}
+ .gameslist{max-height:38dvh;overflow-y:auto;overscroll-behavior:contain}
+ .gameitem{align-items:flex-start;flex-wrap:wrap}
+ .gameitem .grow{flex:1 1 140px;min-width:0}
+ .dialog input,.dialog textarea,.dialog select{font-size:16px;max-width:100%}
+ .inviteurl{min-height:96px;font-size:12px;line-height:1.5}
+ .loginlayer{align-items:flex-end;padding:8px max(8px,env(safe-area-inset-right,0px)) max(8px,env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+ .loginlayer iframe{width:100%;height:min(78dvh,680px);max-height:calc(100dvh - 16px)}
+}
+@media(max-height:560px) and (orientation:landscape){
+ .overlay{place-items:center}
+ .dialog{max-height:calc(100dvh - 12px);padding:14px;border-radius:14px}
+ .loginlayer{align-items:center}
+ .loginlayer iframe{height:calc(100dvh - 20px)}
+}
+
 </style>
 </head>
 <body>
