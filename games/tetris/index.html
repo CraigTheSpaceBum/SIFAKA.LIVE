@@ -186,30 +186,117 @@ button{font:inherit}
 
 </style>
 <script src="../../scripts/theme-manager.js?v=0.9.9" defer></script>
+<script id="sifaka-game-header-identity">
+(function(){
+  function safePicture(value){value=String(value||'').trim();return value.indexOf('https://')===0||value.indexOf('http://')===0?value:'';}
+  function setAvatar(el,name,picture,verified){
+    if(!el)return;
+    el.classList.toggle('nip05-square',!!verified);
+    el.replaceChildren();
+    var src=safePicture(picture);
+    if(src){
+      var img=document.createElement('img');
+      img.src=src;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
+      img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+      el.appendChild(img);
+    }else{
+      el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';
+    }
+    el.setAttribute('aria-label',name||'Sifaka user');
+  }
+  window.sifakaGameHeaderSyncIdentity=function(pubkey,profile,verified){
+    var logged=!!String(pubkey||'').trim(),p=profile&&typeof profile==='object'?profile:{};
+    var name=String(p.display_name||p.displayName||p.name||'').trim(),key=String(pubkey||'');
+    if(!name)name=key?(key.length>18?key.slice(0,10)+'…'+key.slice(-6):key):'Sifaka user';
+    var nip=String(p.nip05||'').trim(),valid=!!verified&&!!nip;
+    var loggedIn=document.getElementById('navLoggedIn'),loggedOut=document.getElementById('navLoggedOut');
+    if(loggedIn)loggedIn.classList.toggle('on',logged);
+    if(loggedOut)loggedOut.classList.toggle('off',logged);
+    var identity=document.getElementById('identityLabel');
+    if(identity)identity.textContent=logged?name:'Not connected';
+    var shownName=document.getElementById('pdNameText');
+    if(shownName)shownName.textContent=name;
+    var sub=document.getElementById('pdSub');
+    if(sub)sub.textContent=nip||key||'Nostr account';
+    setAvatar(document.getElementById('navAvatar'),name,p.picture,valid);
+    setAvatar(document.getElementById('pdAvLg'),name,p.picture,valid);
+    [['navNip05Badge',valid],['pdBadge',valid]].forEach(function(pair){
+      var badge=document.getElementById(pair[0]);
+      if(badge){badge.textContent='✓';badge.style.display=pair[1]?'inline-flex':'none';}
+    });
+    var pill=document.getElementById('navUserPill');
+    if(pill)pill.setAttribute('aria-label',logged?'Open account menu for '+name:'Open account menu');
+  };
+})();
+</script>
+<style id="sifaka-game-shared-nav-layout">body{padding-top:68px!important}.game-nav-popup{position:fixed;inset:0;z-index:20000;background:transparent}.game-nav-popup[hidden]{display:none!important}.game-nav-popup-frame{display:block;width:100%;height:100%;border:0;background:transparent}.game-nav-popup-close{position:absolute;top:12px;right:14px;z-index:20002;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:rgba(16,12,24,.94);color:#fff;font:700 26px/1 sans-serif;cursor:pointer;box-shadow:0 5px 20px rgba(0,0,0,.45)}.game-nav-popup-close:hover{border-color:var(--accent);color:var(--accent)}@media(max-width:700px){body{padding-top:56px!important}}</style>
 </head>
 <body>
-<header class="topbar game-site-topbar">
-  <div class="game-site-logo-wrap">
-    <button class="game-site-logo" id="gameSiteLogoBtn" type="button" aria-label="Open Sifaka navigation" aria-expanded="false" aria-controls="gameSiteMenu">
-      <img src="../../logo.webp" alt="Sifaka" class="game-site-logo-img" width="42" height="42" decoding="async">
-      <span class="game-site-logo-text">Sifaka</span><span class="game-site-live-pill">LIVE</span>
+<nav class="game-site-nav" id="gameSiteNav">
+  <div class="logo-wrap">
+    <button class="logo" id="logoBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="logoDropdown" aria-label="Open Sifaka navigation">
+      <img src="../../logo.webp" alt="Sifaka" class="nav-logo-img" width="52" height="52" decoding="async">
+      <span class="logo-text-8bit">Sifaka</span>
+      <span class="logo-live-pill">LIVE</span>
     </button>
-    <div class="game-site-menu" id="gameSiteMenu" aria-hidden="true">
-      <a href="/?chessAction=navigate&amp;page=home"><span>🔴</span>Live Now</a>
-      <a href="/?chessAction=navigate&amp;page=podcastRadio"><span>♫</span>Podcast Radio</a>
-      <a href="/?chessAction=navigate&amp;page=feed"><span>◉</span>Feed &amp; Videos</a>
-      <a href="/?chessAction=navigate&amp;page=games"><span>🎮</span>Games</a>
-      <a href="/?chessAction=navigate&amp;page=faq"><span>❔</span>FAQ &amp; Help</a>
+    <div class="nav-dropdown" id="logoDropdown" aria-hidden="true">
+      <button class="dd-item" type="button" data-game-route="home"><span class="ddi">&#128308;</span>Live Now <span class="dd-count">24</span></button>
+      <button class="dd-item" type="button" data-game-route="podcastRadio"><span class="ddi">&#127925;</span>Podcast Radio</button>
+      <button class="dd-item" type="button" data-game-route="feed"><span class="ddi">&#128225;</span>Feed &amp; Videos</button>
+      <button class="dd-item" type="button" id="sifakaGamesMenuBtn" data-game-route="games"><span class="ddi">&#127918;</span>Games</button>
+      <button class="dd-item" type="button" data-game-route="faq"><span class="ddi">&#10067;</span>FAQ &amp; Help</button>
     </div>
   </div>
-  <label class="game-site-search" for="gameSiteSearch">
-    <span class="game-site-search-icon" aria-hidden="true">⌕</span>
-    <input id="gameSiteSearch" type="search" placeholder="Search streams, npubs, posts, videos..." aria-label="Search streams, profiles, posts, and videos" autocomplete="off">
-  </label>
-  <a class="btn game-site-golive" href="/?chessAction=go-live">Go Live</a>
-  <span class="identity game-site-identity" id="identityLabel">Not connected</span>
-  <button class="btn primary" id="connectBtn" type="button">Connect Nostr</button>
-</header>
+  <div class="search-wrap">
+    <span class="search-icon" aria-hidden="true"></span>
+    <input id="siteSearchInput" name="siteSearch" class="search-input" type="search" placeholder="Search streams, npubs, posts, videos..." aria-label="Search streams, profiles, posts, and videos" autocomplete="off" aria-controls="searchResults" aria-expanded="false">
+    <div class="search-results" id="searchResults" aria-hidden="true">
+      <span class="sr-label">Sifaka.Live Search</span>
+      <div class="sr-item" id="gameSearchSubmit" role="button" tabindex="0">
+        <div class="sr-av">⌕</div>
+        <div><div class="sr-title" id="gameSearchTitle">Search Sifaka.Live</div><div class="sr-sub" id="gameSearchSubtitle">Press Enter to view results</div></div>
+      </div>
+    </div>
+  </div>
+  <button class="btn btn-ghost" id="goLiveBtn" type="button">Go Live</button>
+  <div class="nav-spacer"></div>
+  <div class="nav-logged-out" id="navLoggedOut">
+    <button class="btn btn-primary" id="connectBtn" type="button">Login with Nostr</button>
+  </div>
+  <div class="nav-logged-in" id="navLoggedIn">
+    <button class="nav-notif-btn" id="navNotifBtn" type="button" title="Notifications" aria-label="Open notifications">
+      <span class="nav-notif-icon">&#128276;</span>
+    </button>
+    <div class="nav-profile">
+      <div class="nav-user-pill" id="navUserPill" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-controls="profileDropdown" aria-label="Open account menu">
+        <div class="nav-avatar" id="navAvatar"></div>
+        <span class="nip05-badge" id="navNip05Badge" style="display:none" aria-label="Verified NIP-05">✓</span>
+      </div>
+      <div class="nav-dropdown" id="profileDropdown" aria-hidden="true">
+        <div class="pd-header">
+          <div class="pd-av-lg" id="pdAvLg"></div>
+          <div>
+            <div class="pd-name"><span id="pdNameText">Sifaka user</span> <span class="nip05-badge" id="pdBadge" style="display:none" aria-label="Verified NIP-05">✓</span></div>
+            <div class="pd-sub" id="pdSub">Nostr account</div>
+          </div>
+        </div>
+        <button class="pd-item" type="button" data-game-route="profile">&#128100; My Profile</button>
+        <button class="pd-item" type="button" data-game-route="messages">&#128172; Messages</button>
+        <button class="pd-item" type="button" data-game-route="myStreams">&#128250; My Streams</button>
+        <button class="pd-item" type="button" data-game-route="wallet">&#128155; Wallet</button>
+        <button class="pd-item" type="button" data-game-route="widgets">&#129513; Widgets</button>
+        <button class="pd-item" type="button" data-game-route="settings">&#9881;&#65039; Settings</button>
+        <div class="dd-sep"></div>
+        <button class="pd-item pd-signout" type="button" data-game-route="signout">Sign Out</button>
+      </div>
+    </div>
+  </div>
+  <span id="identityLabel" hidden>Not connected</span>
+</nav>
+<div class="game-nav-popup" id="gameNavPopup" hidden>
+  <iframe class="game-nav-popup-frame" id="gameNavPopupFrame" title="Sifaka Go Live" src="about:blank" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" allow="clipboard-read; clipboard-write"></iframe>
+  <button class="game-nav-popup-close" id="gameNavPopupClose" type="button" aria-label="Close Go Live window">×</button>
+</div>
 <main class="page">
   <section class="headline">
     <div><div class="eyebrow">SIFAKA GAMES / 04</div><h1>TETRIS<span style="color:var(--gold)">.</span></h1><p>Classic falling blocks. Play without an account, save your best score on this device, and sign a high score to publish it to Nostr. Invalid or deleted score events are excluded from the public board.</p></div>
@@ -285,7 +372,7 @@ var $=function(id){return document.getElementById(id);};
 var HEX=/^[0-9a-f]{64}$/i, SIG=/^[0-9a-f]{128}$/i, SCORE_TAG="sifaka-tetris-score";
 var DEFAULT_RELAYS=["wss://nos.lol","wss://relay.damus.io","wss://relay.primal.net","wss://relay.nostr.band"];
 var LOCAL_KEY="sifaka_tetris_best_v1",PENDING_KEY="sifaka_tetris_pending_v1";
-var signerPk="",signerProfile={},signerBridgePromise=null,loginPopupObserver=null,postAfterLogin=false,toastTimer=null;
+var signerPk="",signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,postAfterLogin=false,toastTimer=null;
 var profileCache=new Map(),nip05Cache=new Map(),verifiedEventCache=new Map(),nostrToolsPromise=null;
 var board=[],piece=null,nextQueue=[],holdType=null,canHold=true,bag=[],score=0,lines=0,level=1,combo=-1,backToBack=false,lockElapsed=0,lockResets=0,dropCounter=0,lastTime=0,raf=0,started=false,paused=false,gameOver=false,localBest=loadLocalBest(),pendingScore=loadPendingScore(),leaderboardBusy=false,leaderboardSnapshot=[],soundEnabled=loadSoundSetting(),audioContext=null,flashTimer=0;
 var LOCK_DELAY=500,MAX_LOCK_RESETS=15;
@@ -330,7 +417,7 @@ async function loadProfiles(pubkeys,forceRefresh){var keys=Array.from(new Set(pu
 async function verifyNip05(profile){var nip=String(profile&&profile.nip05||"").trim(),pk=safeHex(profile&&profile.pubkey);if(!nip||!pk)return false;var at=nip.lastIndexOf("@");if(at<=0||at===nip.length-1)return false;var user=nip.slice(0,at).trim(),domain=nip.slice(at+1).trim().toLowerCase(),key=user.toLowerCase()+"@"+domain+"|"+pk;if(nip05Cache.has(key))return nip05Cache.get(key);var valid=false;try{if(!/^[a-z0-9._-]+$/i.test(user)||!/^[a-z0-9.-]+$/i.test(domain)||domain.includes(".."))throw new Error("bad NIP-05");var r=await fetch("https://"+domain+"/.well-known/nostr.json?name="+encodeURIComponent(user),{mode:"cors",credentials:"omit",cache:"no-store",headers:{Accept:"application/json"}});if(r.ok){var data=await r.json(),names=data&&data.names||{};valid=String(names[user]||names[user.toLowerCase()]||"").toLowerCase()===pk;}}catch(_){}nip05Cache.set(key,valid);return valid;}
 function renderLeaderboard(){var list=$("leaderboardList");list.textContent="";if(!leaderboardSnapshot.length){list.innerHTML='<div class="score-empty"><strong>No verified scores yet</strong>Be the first to finish a run and post a score to Nostr.</div>';return;}var shown=leaderboardSnapshot.slice();shown.forEach(function(row,index){var profileItem=profileCache.get(row.pubkey),profile=profileItem&&profileItem.profile||{pubkey:row.pubkey,name:shortPk(row.pubkey)},verified=!!(profileItem&&profileItem.verified);var item=document.createElement("div");item.className="score-row";var rank=document.createElement("span");rank.className="rank"+(index<3?" top":"");rank.textContent=String(index+1).padStart(2,"0");var avatar=avatarNode(profile,row.pubkey,verified);var person=document.createElement("div");person.className="score-person";var name=document.createElement("div");name.className="score-name";var link=document.createElement("a");link.href="https://njump.me/"+row.pubkey;link.target="_blank";link.rel="noopener noreferrer";link.textContent=profileDisplayName(profile,row.pubkey);link.title=row.pubkey;name.appendChild(link);if(verified){var check=document.createElement("span");check.className="nip-check";check.textContent="✓";check.title="Verified NIP-05";name.appendChild(check);}var detail=document.createElement("div");detail.className="score-detail";detail.textContent=verified?String(profile.nip05):tetrisNpub(row.pubkey);detail.title=verified?String(profile.nip05):tetrisNpub(row.pubkey);person.appendChild(name);person.appendChild(detail);var value=document.createElement("div");value.className="score-value";var points=document.createElement("strong");points.textContent=numberFmt(row.score);var time=document.createElement("time");time.dateTime=new Date(row.created_at*1000).toISOString();time.textContent=formatEventTime(row.created_at);time.title="Signed event created at "+formatEventTime(row.created_at);value.appendChild(points);value.appendChild(time);item.appendChild(rank);item.appendChild(avatar);item.appendChild(person);item.appendChild(value);list.appendChild(item);});}
 function updatePostControls(preserveStatus){var btn=$("postScoreBtn"),status=$("postStatus"),posting=btn.dataset.posting==="1",posted=!!(pendingScore&&pendingScore.postedEventId);btn.disabled=!gameOver||!pendingScore||posting||posted;if(posted)btn.textContent="✓ Score posted";else btn.textContent="♧ Post score to Nostr";if(preserveStatus)return;if(posted){status.className="post-status good";status.textContent="This run has already been published to Nostr. You can start a new game."; }else if(gameOver&&pendingScore){status.className="post-status";status.textContent="Post your final score to Nostr, or start a new game. Signing in is only required if you choose to post."; }else{status.className="post-status";status.textContent="Score submission becomes available after game over.";}}
-function updateIdentity(){if(signerPk){var p=signerProfile||{};$("identityLabel").textContent=p.display_name||p.displayName||p.name||shortPk(signerPk);$("connectBtn").textContent="Nostr connected";}else{$("identityLabel").textContent="Not connected";$("connectBtn").textContent="Connect Nostr";}}
+function updateIdentity(){if(signerPk){var p=signerProfile||{};$("identityLabel").textContent=p.display_name||p.displayName||p.name||shortPk(signerPk);$("connectBtn").textContent="Nostr connected";}else{$("identityLabel").textContent="Not connected";$("connectBtn").textContent="Login with Nostr";}if(window.sifakaGameHeaderSyncIdentity)window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified);}
 function installSigner(frame,expected){try{var context=frame&&frame.__SIFAKA_CONTEXT,user=context&&typeof context.getUser==="function"?context.getUser():null;if(!user||!safeHex(user.pubkey)||typeof context.signEvent!=="function")return"";var pk=String(user.pubkey).toLowerCase();if(expected&&expected!==pk)return"";window.sifakaTetrisSigner={getPublicKey:async function(){var u=context.getUser();return u&&String(u.pubkey||"").toLowerCase()===pk?pk:"";},signEvent:async function(ev){var u=context.getUser();if(!u||String(u.pubkey||"").toLowerCase()!==pk)throw new Error("The active Sifaka account changed. Reconnect Tetris.");var signed=await context.signEvent(Number(ev.kind),String(ev.content||""),Array.isArray(ev.tags)?ev.tags:[],{createdAt:Number(ev.created_at)||Math.floor(Date.now()/1000)});if(!signed||!signed.id||!signed.sig)throw new Error("Sifaka did not return a signed event.");return signed;}};return pk;}catch(_){return"";}}
 function connectLocalSigner(){if(signerBridgePromise)return signerBridgePromise;signerBridgePromise=new Promise(function(resolve){var frame=$("signerBridge"),ended=false;function done(v){if(ended)return;ended=true;signerBridgePromise=null;resolve(v||"");}if(!frame){done("");return;}try{if(!String(frame.src||"").includes("sifakaChessSignerBridge=1"))frame.src="/?sifakaChessSignerBridge=1";}catch(_){done("");return;}var start=Date.now();function check(){var pk=installSigner(frame.contentWindow,"");if(pk){done(pk);return;}if(Date.now()-start>8000){done("");return;}setTimeout(check,120);}setTimeout(check,100);});return signerBridgePromise;}
 async function getSignerKey(){var app=window.sifakaTetrisSigner;if(app&&typeof app.getPublicKey==="function"&&typeof app.signEvent==="function"){try{var pk=String(await app.getPublicKey()||"").toLowerCase();if(safeHex(pk))return pk;}catch(_){}}var ext=window.nostr;if(ext&&typeof ext.getPublicKey==="function"&&typeof ext.signEvent==="function"){try{var epk=String(await ext.getPublicKey()||"").toLowerCase();if(safeHex(epk))return epk;}catch(_){}}try{var localPk=await connectLocalSigner();if(safeHex(localPk))return localPk;}catch(_){}return"";}
@@ -338,7 +425,7 @@ async function signEvent(event){var pk=String(event.pubkey||await getSignerKey()
 function openLogin(){var layer=$("loginLayer"),frame=$("loginFrame");if(!layer.hidden)return;layer.hidden=false;frame.onload=function(){var attempt=0;function prepare(){var doc,win;try{doc=frame.contentDocument;win=frame.contentWindow;}catch(_){}if(!doc||!win||!doc.head||!doc.body){if(attempt++<200){setTimeout(prepare,50);return;}toast("The Sifaka sign-in window did not load. Please retry.");return;}try{if(win.nostr===undefined&&window.nostr&&typeof window.nostr.getPublicKey==="function"){try{Object.defineProperty(win,"nostr",{configurable:true,value:window.nostr});}catch(_){}}var ctx=win.__SIFAKA_CONTEXT,user=ctx&&typeof ctx.getUser==="function"?ctx.getUser():null;if(user&&user.pubkey&&ctx&&typeof ctx.signEvent==="function"){installSigner(win,"");closeLogin(true);return;}var modal=doc.getElementById("loginModal");if(modal&&typeof win.openLogin==="function"){var style=doc.getElementById("tetrisLoginIsolateStyle");if(!style){style=doc.createElement("style");style.id="tetrisLoginIsolateStyle";doc.head.appendChild(style);}style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}if(!modal.classList.contains("open"))win.openLogin();if(!modal.classList.contains("open")){if(attempt++<200){setTimeout(prepare,50);return;}toast("The Sifaka sign-in form could not be opened.");return;}var Observer=win.MutationObserver;if(Observer){loginPopupObserver=new Observer(function(){if(!modal.classList.contains("open")){var live=win.__SIFAKA_CONTEXT,acct=live&&live.getUser&&live.getUser();if(acct&&acct.pubkey&&live.signEvent){installSigner(win,"");closeLogin(true);}else closeLogin(false);}});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:["class"]});}var close=doc.querySelector("#loginModal [data-close],#loginModal .close,#loginModal .xbtn");if(close)close.addEventListener("click",function(){setTimeout(function(){if(!modal.classList.contains("open"))closeLogin(false);},0);},{once:true});return;}if(attempt++<200){setTimeout(prepare,50);return;}toast("The Sifaka sign-in form is unavailable.");}catch(err){if(attempt++<200){setTimeout(prepare,50);return;}toast("Could not prepare sign-in: "+String(err&&err.message||"please retry."));}}prepare();};frame.src="/?chessLoginPopup=1&chessAction=login";}
 function closeLogin(signedIn){if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}var layer=$("loginLayer");layer.hidden=true;try{$("loginFrame").onload=null;$("loginFrame").src="about:blank";}catch(_){}if(signedIn){connect().catch(function(err){toast(err.message);});}else{postAfterLogin=false;}}
 async function lookupOwnProfile(pk){if(!safeHex(pk))return null;await loadProfiles([pk]);var item=profileCache.get(pk);return item&&item.profile||null;}
-async function connect(){var pk=await getSignerKey();if(!safeHex(pk)){openLogin();toast("Sign in or connect a Nostr signer to publish your score. Playing does not require an account.");return false;}signerPk=pk;var profile=await lookupOwnProfile(pk);signerProfile=profile||{};updateIdentity();toast("Connected as "+(signerProfile.display_name||signerProfile.name||shortPk(pk))+".");if(postAfterLogin){postAfterLogin=false;if(pendingScore)postPendingScore();}return true;}
+async function connect(){var pk=await getSignerKey();if(!safeHex(pk)){openLogin();toast("Sign in or connect a Nostr signer to publish your score. Playing does not require an account.");return false;}signerPk=pk;var profile=await lookupOwnProfile(pk);signerProfile=profile||{};signerVerified=false;updateIdentity();if(signerProfile.nip05){verifyNip05(signerProfile).then(function(valid){signerVerified=!!valid;updateIdentity();}).catch(function(){signerVerified=false;updateIdentity();});}toast("Connected as "+(signerProfile.display_name||signerProfile.name||shortPk(pk))+".");if(postAfterLogin){postAfterLogin=false;if(pendingScore)postPendingScore();}return true;}
 async function postPendingScore(){if(!gameOver||!pendingScore){toast("Finish a run before posting a score.");return;}if(pendingScore.postedEventId){toast("This run has already been posted to Nostr.");return;}if($("postScoreBtn").dataset.posting==="1")return;var pk=await getSignerKey();if(!safeHex(pk)){postAfterLogin=true;openLogin();toast("Sign in to post your score. Your score will not be published until you complete sign-in.");return;}signerPk=pk;$("postScoreBtn").dataset.posting="1";$("postScoreBtn").disabled=true;$("postStatus").className="post-status";$("postStatus").textContent="Preparing and signing your score…";try{await getNostrTools();var now=Math.floor(Date.now()/1000),run=pendingScore;var content="Sifaka Tetris high score: "+String(run.score)+" points · Level "+run.level+" · "+run.lines+" lines.";var tags=[["t",SCORE_TAG],["game","tetris"],["score",String(run.score)],["lines",String(run.lines)],["level",String(run.level)],["alt","Sifaka Tetris high score"]];var signed=await signEvent({kind:1,created_at:now,tags:tags,content:content,pubkey:pk});if(!signed||!safeHex(signed.pubkey)||String(signed.pubkey).toLowerCase()!==pk||signed.kind!==1||signed.content!==content||JSON.stringify(signed.tags)!==JSON.stringify(tags)||Number(signed.created_at)!==now||!HEX.test(String(signed.id||""))||!SIG.test(String(signed.sig||""))||!(await verifyNostrEvent(signed)))throw new Error("The signer returned an event that did not match the score or failed signature verification.");var sent=await publishEvent(signed);if(!sent.ok)throw new Error(sent.error||"No Nostr relay confirmed your score.");pendingScore.postedEventId=signed.id;pendingScore.postedAt=now;pendingScore.postedRelay=sent.relay;persistPendingScore();$("postStatus").className="post-status good";$("postStatus").textContent="Score published and accepted by "+sent.relay+" at "+formatEventTime(signed.created_at)+". The public board will update as relays propagate it.";toast("Tetris score posted to Nostr.");loadLeaderboard();}catch(err){$("postStatus").className="post-status bad";$("postStatus").textContent="Could not post score: "+String(err&&err.message||"check the signer and relay connection.");toast("Score not posted. "+String(err&&err.message||"Check your connection."));}finally{$("postScoreBtn").dataset.posting="";updatePostControls(true);}}
 async function sendEventToRelay(url,ev){return new Promise(function(resolve){var ws,done=false,timer=null;function finish(ok,reason){if(done)return;done=true;if(timer)clearTimeout(timer);try{if(ws)ws.close();}catch(_){}resolve({ok:!!ok,relay:url,error:reason||""});}timer=setTimeout(function(){finish(false,"Timed out waiting for relay confirmation.");},6500);try{ws=new WebSocket(url);ws.onopen=function(){try{ws.send(JSON.stringify(["EVENT",ev]));}catch(err){finish(false,String(err&&err.message||err));}};ws.onmessage=function(msg){try{var d=JSON.parse(msg.data);if(d[0]==="OK"&&d[1]===ev.id){if(d[2])finish(true,"");else finish(false,String(d[3]||"Relay rejected the event."));}}catch(_){} };ws.onerror=function(){finish(false,"WebSocket error.");};ws.onclose=function(){if(!done)finish(false,"Relay closed before confirming the event.");};}catch(err){finish(false,String(err&&err.message||err));}});}
 async function publishEvent(ev){var relays=currentRelayList();if(!relays.length)return{ok:false,error:"No Nostr relay URLs are configured."};return new Promise(function(resolve){var remaining=relays.length,accepted=false,failures=[];relays.forEach(function(url){sendEventToRelay(url,ev).then(function(result){if(result.ok&&!accepted){accepted=true;resolve(result);}if(!result.ok)failures.push(result);remaining--;if(remaining===0&&!accepted)resolve({ok:false,error:"No configured Nostr relay confirmed the event. "+failures.slice(0,3).map(function(r){return r.relay+": "+r.error;}).join(" | ")});}).catch(function(err){failures.push({relay:url,error:String(err&&err.message||err)});remaining--;if(remaining===0&&!accepted)resolve({ok:false,error:"No configured Nostr relay confirmed the event. "+failures.slice(0,3).map(function(r){return r.relay+": "+r.error;}).join(" | ")});});});});}
@@ -376,28 +463,121 @@ connectLocalSigner().then(async function(pk){if(safeHex(pk)){signerPk=pk;var pro
 
 <script id="sifaka-game-site-navigation">
 (function(){
-  var button=document.getElementById('gameSiteLogoBtn');
-  var menu=document.getElementById('gameSiteMenu');
-  var search=document.getElementById('gameSiteSearch');
-  if(button&&menu){
-    function setOpen(open){
-      menu.classList.toggle('open',!!open);
-      menu.setAttribute('aria-hidden',open?'false':'true');
-      button.setAttribute('aria-expanded',open?'true':'false');
+  'use strict';
+  var $=function(id){return document.getElementById(id);};
+  var nav=$('gameSiteNav'),logo=$('logoBtn'),logoMenu=$('logoDropdown'),pill=$('navUserPill'),profileMenu=$('profileDropdown');
+  var search=$('siteSearchInput'),results=$('searchResults'),searchTitle=$('gameSearchTitle'),searchSubtitle=$('gameSearchSubtitle'),searchSubmit=$('gameSearchSubmit');
+  var popup=$('gameNavPopup'),popupFrame=$('gameNavPopupFrame'),popupClose=$('gameNavPopupClose');
+  var popupToken=0,popupObserver=null;
+  function setMenu(menu,button,open){
+    if(!menu||!button)return;
+    menu.classList.toggle('open',!!open);
+    menu.setAttribute('aria-hidden',open?'false':'true');
+    button.setAttribute('aria-expanded',open?'true':'false');
+    button.classList.toggle('dd-open',!!open);
+  }
+  function closeMenus(){
+    setMenu(logoMenu,logo,false);setMenu(profileMenu,pill,false);
+    if(results){results.classList.remove('open');results.setAttribute('aria-hidden','true');}
+    if(search)search.setAttribute('aria-expanded','false');
+  }
+  function toggleMenu(menu,button){
+    var open=!!menu&&!menu.classList.contains('open');closeMenus();
+    if(open)setMenu(menu,button,true);
+  }
+  function route(action,page){
+    closeMenus();
+    var url='/?chessAction='+encodeURIComponent(action);
+    if(page)url+='&page='+encodeURIComponent(page);
+    window.location.href=url;
+  }
+  function searchNow(){
+    var query=String(search&&search.value||'').trim();closeMenus();
+    window.location.href=query?'/?search='+encodeURIComponent(query):'/?chessAction=navigate&page=feed';
+  }
+  function updateSearchDropdown(){
+    if(!search||!results)return;
+    var query=search.value.trim();
+    searchTitle.textContent=query?'Search for “'+query+'”':'Search Sifaka.Live';
+    searchSubtitle.textContent=query?'Press Enter to view matching results':'Press Enter to view results';
+    results.classList.toggle('open',!!query);results.setAttribute('aria-hidden',query?'false':'true');
+    search.setAttribute('aria-expanded',query?'true':'false');
+    if(query){
+      setMenu(logoMenu,logo,false);setMenu(profileMenu,pill,false);
     }
-    button.addEventListener('click',function(event){event.stopPropagation();setOpen(button.getAttribute('aria-expanded')!=='true');});
-    document.addEventListener('click',function(event){if(!menu.contains(event.target)&&!button.contains(event.target))setOpen(false);});
-    document.addEventListener('keydown',function(event){if(event.key==='Escape')setOpen(false);});
-    menu.querySelectorAll('a').forEach(function(link){link.addEventListener('click',function(){setOpen(false);});});
+  }
+  if(logo&&logoMenu)logo.addEventListener('click',function(event){event.stopPropagation();toggleMenu(logoMenu,logo);});
+  if(pill&&profileMenu){
+    pill.addEventListener('click',function(event){event.stopPropagation();toggleMenu(profileMenu,pill);});
+    pill.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleMenu(profileMenu,pill);}});
   }
   if(search){
+    search.addEventListener('input',updateSearchDropdown);
+    search.addEventListener('focus',function(){if(search.value.trim())updateSearchDropdown();});
     search.addEventListener('keydown',function(event){
-      if(event.key!=='Enter')return;
-      event.preventDefault();
-      var query=search.value.trim();
-      window.location.href=query?'/?search='+encodeURIComponent(query):'/?chessAction=navigate&page=feed';
+      if(event.key==='Enter'){event.preventDefault();searchNow();}
+      else if(event.key==='Escape'){closeMenus();search.blur();}
     });
   }
+  if(searchSubmit){
+    searchSubmit.addEventListener('click',searchNow);
+    searchSubmit.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();searchNow();}});
+    searchSubmit.addEventListener('mousedown',function(event){event.preventDefault();});
+  }
+  if(nav)nav.querySelectorAll('[data-game-route]').forEach(function(item){
+    item.addEventListener('click',function(){
+      var page=item.getAttribute('data-game-route')||'home';
+      if(page==='signout')route('signout');
+      else route('navigate',page);
+    });
+  });
+  var goLive=$('goLiveBtn');
+  if(goLive)goLive.addEventListener('click',openGoLivePopup);
+  var notifications=$('navNotifBtn');
+  if(notifications)notifications.addEventListener('click',function(){route('navigate','notifications');});
+  document.addEventListener('click',function(event){if(nav&&!nav.contains(event.target))closeMenus();});
+  document.addEventListener('keydown',function(event){if(event.key==='Escape'){closeMenus();if(popup&&!popup.hidden)closeGoLivePopup(true);}});
+
+  function closeGoLivePopup(closeInner){
+    popupToken++;
+    if(popupObserver){try{popupObserver.disconnect();}catch(_){}popupObserver=null;}
+    if(popup)popup.hidden=true;
+    if(popupFrame){
+      popupFrame.onload=null;
+      if(closeInner){try{var d=popupFrame.contentDocument,w=popupFrame.contentWindow,m=d&&d.getElementById('goLiveModal');if(m&&m.classList.contains('open')&&w&&typeof w.closeGoLive==='function')w.closeGoLive();}catch(_){}}
+      try{popupFrame.src='about:blank';}catch(_){}
+    }
+  }
+  function openGoLivePopup(){
+    if(!popup||!popupFrame||!popup.hidden)return;
+    popup.hidden=false;
+    var token=++popupToken;
+    popupFrame.onload=function(){
+      function attach(attempt){
+        if(token!==popupToken||popup.hidden)return;
+        var doc,win;
+        try{doc=popupFrame.contentDocument;win=popupFrame.contentWindow;}catch(_){closeGoLivePopup(false);return;}
+        if(!doc||!doc.head||!doc.body){if(attempt<160){window.setTimeout(function(){attach(attempt+1);},50);return;}closeGoLivePopup(false);return;}
+        try{
+          var modal=doc.getElementById('goLiveModal');
+          if(!modal||!win||typeof win.openGoLive!=='function'){if(attempt<160){window.setTimeout(function(){attach(attempt+1);},50);return;}closeGoLivePopup(false);return;}
+          var isolate=doc.getElementById('gameNavPopupIsolate');
+          if(!isolate){isolate=doc.createElement('style');isolate.id='gameNavPopupIsolate';doc.head.appendChild(isolate);}
+          isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#goLiveModal){display:none!important;visibility:hidden!important}body>#goLiveModal{display:flex!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}#goLiveModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+          if(!modal.classList.contains('open'))win.openGoLive();
+          if(!modal.classList.contains('open')){closeGoLivePopup(false);return;}
+          if(typeof win.MutationObserver==='function'){
+            popupObserver=new win.MutationObserver(function(){if(!modal.classList.contains('open'))closeGoLivePopup(false);});
+            popupObserver.observe(modal,{attributes:true,attributeFilter:['class']});
+          }
+        }catch(_){if(attempt<160){window.setTimeout(function(){attach(attempt+1);},50);return;}closeGoLivePopup(false);}
+      }
+      attach(0);
+    };
+    popupFrame.src='/?chessLoginPopup=1&chessAction=go-live';
+  }
+  if(popupClose)popupClose.addEventListener('click',function(){closeGoLivePopup(true);});
+  if(popup)popup.addEventListener('click',function(event){if(event.target===popup)closeGoLivePopup(true);});
 })();
 </script>
 
