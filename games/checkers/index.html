@@ -61,7 +61,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 'use strict';
 const $=id=>document.getElementById(id),HEX=/^[0-9a-f]{64}$/i,APP='sifaka-checkers',PUB_KIND=30078,PRIV_KIND=30079,CHAT_KIND=1;
 const DEFAULT_RELAYS=['wss://nos.lol','wss://relay.damus.io','wss://relay.primal.net'];
-let signerPk='',signerProfile={},signerBridgePromise=null,loginPopupObserver=null,game=null,local=true,engineMode=false,engineLevel=2,engineTimer=null,engineRequestId=0,flipped=false,selected=-1,selectedPath=[],pathCandidates=[],busy=false,turns=[],state=null,terminal=null,gameSockets=[],reconnectTimer=null,publishChain=Promise.resolve(),seenChat=new Set(),lobbyTab='open',lobbyBusy=false,pendingInvite=null,toastTimer=null,inviteSearchRequest=0;const playerVersions={red:0,black:0},ENGINE_NAMES=['','Novice','Adept','Master'];
+let signerPk='',signerProfile={},signerBridgePromise=null,loginPopupObserver=null,game=null,local=true,engineMode=false,engineLevel=2,engineTimer=null,engineRequestId=0,flipped=false,selected=-1,selectedPath=[],pathCandidates=[],busy=false,turns=[],state=null,terminal=null,gameSockets=[],reconnectTimer=null,publishChain=Promise.resolve(),seenChat=new Set(),lobbyTab='open',lobbyBusy=false,pendingInvite=null,toastTimer=null,inviteSearchRequest=0,accountRelayUrls=[],relayDiscoveryFor='';const playerVersions={red:0,black:0},ENGINE_NAMES=['','Novice','Adept','Master'];
 const pieceName=p=>p==='r'?'Red':p==='b'?'Black':'',other=c=>c==='r'?'b':'r';
 function say(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3200)}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -223,7 +223,7 @@ function completeTurn(path){
 }
 function resetLocal(vsEngine=false,level=2){leaveGame();local=true;engineMode=!!vsEngine;engineLevel=Math.max(1,Math.min(3,Number(level)||2));turns=[];state=newBoard();terminal=null;selected=-1;selectedPath=[];pathCandidates=[];busy=false;$('redName').textContent=engineMode?'You':(signerProfile.display_name||signerProfile.name||'Red');$('redIdentity').textContent=signerPk?shortPk(signerPk):'Local player';$('blackName').textContent=engineMode?'Sifaka Checkers Engine':'Black';$('blackIdentity').textContent=engineMode?ENGINE_NAMES[engineLevel]+' difficulty':'Local player';$('chatStatus').textContent='· local only';$('chatLog').replaceChildren();addChatSystem(engineMode?'Single-player game started. You are Red; the Checkers engine is Black ('+ENGINE_NAMES[engineLevel]+').':'Local two-player game started. Red moves first.');renderBoard()}
 function shortPk(pk){return pk&&pk.length===64?pk.slice(0,8)+'…'+pk.slice(-6):String(pk||'Not connected')}
-function currentRelayList(extra){let candidates=(Array.isArray(extra)?extra:[extra]).concat(DEFAULT_RELAYS);try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}}catch(_){}const out=[];candidates.forEach(u=>{u=String(u||'').trim();if(/^wss:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,6)}
+function currentRelayList(extra){let candidates=(Array.isArray(extra)?extra:[extra]).concat(accountRelayUrls);try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}if(signerPk){const saved=JSON.parse(localStorage.getItem('sifaka_checkers_relays_'+signerPk)||'[]');if(Array.isArray(saved))candidates=candidates.concat(saved)}}catch(_){}candidates=candidates.concat(DEFAULT_RELAYS);const out=[];candidates.forEach(u=>{u=String(u||'').trim();if(/^wss:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,8)}
 function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
 function storedKey(){try{for(const k of ['sifaka_chess_pubkey','sifaka_pubkey','nostr_pubkey','pubkey']){const v=String(localStorage.getItem(k)||'').toLowerCase();if(HEX.test(v))return v}}catch(_){}return ''}
@@ -236,8 +236,8 @@ function connectLocalSigner(){
 }
 async function getSignerKey(){
  const app=window.sifakaCheckersMainSigner;
- if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{const pk=String(await app.getPublicKey()||'').toLowerCase();if(HEX.test(pk)){signerPk=pk;return pk}}catch(_){}}
- const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){try{const epk=String(await ext.getPublicKey()||'').toLowerCase();if(HEX.test(epk)){signerPk=epk;return epk}}catch(_){}}
+ if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{const pk=String(await app.getPublicKey()||'').toLowerCase();if(HEX.test(pk)){return rememberSigner(pk)}}catch(_){}}
+ const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){try{const epk=String(await ext.getPublicKey()||'').toLowerCase();if(HEX.test(epk)){return rememberSigner(epk)}}catch(_){}}
  try{const localPk=await connectLocalSigner();if(HEX.test(localPk)){signerPk=localPk;return localPk}}catch(_){}
  return '';
 }
@@ -299,6 +299,8 @@ function requestEvents(url,filter,ms=4800){
  });
 }
 async function queryRelays(filter,extra){const relays=currentRelayList(extra);const results=await Promise.all(relays.map(url=>requestEvents(url,filter,5300)));const map=new Map();results.flat().forEach(ev=>{if(ev&&ev.id)map.set(ev.id,ev)});return [...map.values()]}
+async function discoverAccountRelays(pk){if(!HEX.test(String(pk||'')))return;try{const saved=JSON.parse(localStorage.getItem('sifaka_checkers_relays_'+pk)||'[]');if(Array.isArray(saved))accountRelayUrls=saved.filter(u=>/^wss:\/\//i.test(String(u||'')))}catch(_){}const chunks=await Promise.all(DEFAULT_RELAYS.map(url=>requestEvents(url,{kinds:[10002],authors:[pk],limit:10},3600).catch(()=>[])));const events=chunks.flat().filter(e=>e&&e.kind===10002&&String(e.pubkey||'').toLowerCase()===pk).sort((a,b)=>Number(b.created_at||0)-Number(a.created_at||0));if(!events.length)return;const tags=events[0].tags||[],rank=t=>t[2]==='write'?0:t[2]==='read'?2:1,urls=tags.filter(t=>t[0]==='r'&&/^wss:\/\//i.test(String(t[1]||''))).sort((a,b)=>rank(a)-rank(b)).map(t=>String(t[1]).trim()),unique=[];urls.forEach(u=>{if(!unique.includes(u))unique.push(u)});if(unique.length){accountRelayUrls=unique.slice(0,12);try{localStorage.setItem('sifaka_checkers_relays_'+pk,JSON.stringify(accountRelayUrls))}catch(_){}}}
+function rememberSigner(pk){signerPk=pk;if(HEX.test(pk)&&relayDiscoveryFor!==pk){relayDiscoveryFor=pk;discoverAccountRelays(pk).catch(()=>{})}return pk}
 function bytesToB64(bytes){let s='';bytes.forEach(b=>s+=String.fromCharCode(b));return btoa(s)}
 function b64ToBytes(s){const v=atob(s);return Uint8Array.from(v,c=>c.charCodeAt(0))}
 async function privateKey(secret,id){if(!crypto||!crypto.subtle)throw new Error('Private games require HTTPS and Web Crypto.');const raw=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(APP+':'+id+':'+secret));return crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt'])}
@@ -543,7 +545,7 @@ function updateIdentity(){
 }
 async function connect(){
  const pk=await getSignerKey();if(!pk){openLogin();say('Sign in to Sifaka.Live or connect a Nostr signer to continue.');return}
- signerPk=pk;const result=await lookupProfile(pk);signerProfile=result&&result.profile||{};updateIdentity();say('Connected to Nostr. Game events will be signed with this identity.');
+ rememberSigner(pk);const result=await lookupProfile(pk);signerProfile=result&&result.profile||{};updateIdentity();refreshIncomingInviteControls();say('Connected to Nostr. Game events will be signed with this identity.');
 }
 function openLogin(){
  const layer=$('loginLayer'),frame=$('loginFrame');if(layer.classList.contains('open'))return;layer.hidden=false;layer.classList.add('open');
