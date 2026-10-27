@@ -27,7 +27,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 <body>
 <header class="topbar">
 <a class="brand" href="/" aria-label="Sifaka.Live home"><span class="mark">♟</span><span><strong>SIFAKA.LIVE</strong><small>NOSTR GAME ROOM</small></span></a>
-<nav class="toplinks" aria-label="Main navigation"><a href="/">Live Now</a><a href="/nest/">Nest</a><a href="/feed/">Feed</a><a href="/videos/">Videos</a><a class="active" href="/games/chess/">Games</a></nav>
+<nav class="toplinks" aria-label="Main navigation"><a href="/">Live Now</a><a href="/?chessAction=navigate&page=nest">Nest</a><a href="/?chessAction=navigate&page=feed">Feed</a><a href="/?chessAction=navigate&page=videos">Videos</a><a class="active" href="/games/chess/">Games</a></nav>
 <div class="topspacer"></div><span class="identity" id="identityLabel">Not connected</span><button class="btn primary" id="connectBtn" type="button">Connect Nostr</button>
 </header>
 <main class="page">
@@ -134,7 +134,7 @@ function renderBoard(){
  $('boardHint').textContent=terminal?terminal.text:(selected>=0&&selectedPath.length>1?'Continue the jump sequence; you must complete every available capture.':legal.some(m=>m.capture)?'A capture is available and must be taken. Select a highlighted destination.':'Select a piece, then a highlighted destination.');
 }
 function clickSquare(i){
- if(busy||terminal)return;if(!local&&game&&!game.black){say('Waiting for an opponent to join before moving.');return}const p=state.b[i];
+ if(busy||terminal)return;if(!local&&game&&!game.black){say('Waiting for an opponent to join before moving.');return}if(!local&&game&&game.myColor!==state.turn){say('It is your opponent’s turn. The board is read-only until your turn.');return}const p=state.b[i];
  if(selected>=0&&pathCandidates.length){
   const nextLen=selectedPath.length+1,matching=pathCandidates.filter(t=>t.path.length>=nextLen&&t.path.slice(0,nextLen).every((v,j)=>v===selectedPath.concat(i)[j]));
   if(matching.length){selectedPath.push(i);pathCandidates=matching;const finished=matching.find(t=>t.path.length===selectedPath.length);const canContinue=matching.some(t=>t.path.length>selectedPath.length);
@@ -142,10 +142,12 @@ function clickSquare(i){
    renderBoard();return;
   }
  }
+ if(selected>=0&&selectedPath.length>1){say('Complete the current jump sequence before choosing another piece.');return}
  if(colorOf(p)===state.turn){selected=i;selectedPath=[i];pathCandidates=legalTurns(state).filter(t=>t.path[0]===i);renderBoard();return}
  selected=-1;selectedPath=[];pathCandidates=[];renderBoard();
 }
 function completeTurn(path){
+ if(!local&&game&&game.myColor!==state.turn)return;
  const result=applyTurn(state,path);if(!result){selected=-1;selectedPath=[];pathCandidates=[];renderBoard();return}
  turns.push({path:path.slice()});state=result.state;if(!local&&game)game.moves=turns.map(t=>({path:t.path.slice()}));selected=-1;selectedPath=[];pathCandidates=[];terminal=getTerminal(state,turns);renderBoard();
  if(result.captured)say('Capture! '+result.captured+' piece'+(result.captured===1?'':'s')+' taken.');
@@ -219,7 +221,7 @@ function isNewer(incoming){if(!game)return true;const n=incoming.moves.length,c=
 function writeRecent(g){if(!signerPk||!g)return;try{const k='sifaka_checkers_recent_'+signerPk,raw=JSON.parse(localStorage.getItem(k)||'[]'),entry={id:g.id,relay:g.relay,private:!!g.private,secret:g.secret||'',red:g.red,black:g.black||'',status:g.status||'active',updatedAt:Date.now()};const next=[entry].concat(raw.filter(x=>x&&x.id!==g.id)).slice(0,30);localStorage.setItem(k,JSON.stringify(next))}catch(_){}}
 async function publishSnapshot(status){
  const g=game;if(!g||!signerPk)throw new Error('Connect your Nostr signer before publishing game moves.');
- const thisId=g.id,body=gamePayload(g,status),created=Math.max(Math.floor(Date.now()/1000),Number(g.lastEventTime||0)+1,Number(g.lastPublishTime||0)+1);
+ const thisId=g.id,body=gamePayload(g,status),created=Math.max(Math.floor(Date.now()/1000),Number(g.lastEventTime||0)+1,Number(g.lastPublishTime||0)+1);g.lastPublishTime=created;
  const job=publishChain.then(async()=>{if(!game||game.id!==thisId)return false;const signed=await signEvent({kind:g.private?PRIV_KIND:PUB_KIND,pubkey:signerPk,created_at:created,tags:g.private?[['d',g.id]]:[['d',g.id],['p',g.red],...(g.black?[['p',g.black]]:[]),['t',APP],['mode','sifaka-checkers-open'],['status',status],['alt','Sifaka Nostr Checkers #'+g.id.slice(0,8)],['relay',g.relay]],content:g.private?await encryptPayload(body,g.secret,g.id):JSON.stringify(body)});
  await publishEvent(signed,g.relay);g.lastEventTime=created;g.lastPublishTime=created;g.lastEventId=signed.id;g.status=status;writeRecent(g);return true});
  publishChain=job.then(()=>{},()=>{});return job;
