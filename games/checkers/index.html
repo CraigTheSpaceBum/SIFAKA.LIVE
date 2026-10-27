@@ -114,12 +114,14 @@ function coord(i){return 'abcdefgh'[col(i)]+(8-row(i))}
 function turnSummary(t,idx){return (idx+1)+'. '+coord(t.path[0])+'-'+t.path.slice(1).map(coord).join('x')}
 function currentTurns(){return turns.map(t=>t.path)}
 function renderBoard(){
- const b=$('board');b.replaceChildren();const s=state||newBoard(),legal=terminal?[]:legalTurns(s),options=selected>=0?pathCandidates.filter(t=>t.path[0]===selected):[];
+ const b=$('board');b.replaceChildren();const base=state||newBoard();let s=base;
+ if(selectedPath.length>1){s=boardClone(base);let piece=s.b[selectedPath[0]],at=selectedPath[0];for(let k=1;k<selectedPath.length;k++){const to=selectedPath[k];if(Math.abs(row(to)-row(at))===2){const mid=((row(to)+row(at))/2)*8+(col(to)+col(at))/2;s.b[mid]=null} s.b[at]=null;if(!isKing(piece)&&((piece==='r'&&row(to)===0)||(piece==='b'&&row(to)===7)))piece=piece.toUpperCase();s.b[to]=piece;at=to}}
+ const legal=terminal?[]:legalTurns(s),options=selected>=0?pathCandidates.filter(t=>t.path[0]===selected):[];
  let destinations=new Set(),captureDest=new Set();options.forEach(t=>{if(t.path.length>selectedPath.length){const d=t.path[selectedPath.length];destinations.add(d);if(Math.abs(row(d)-row(selectedPath[selectedPath.length-1]))===2)captureDest.add(d)}});
  const order=Array.from({length:64},(_,i)=>flipped?63-i:i);
  order.forEach(i=>{
   const sq=document.createElement('button');sq.type='button';sq.className='square '+((row(i)+col(i))%2?'dark':'light');sq.setAttribute('role','gridcell');sq.setAttribute('aria-label',coord(i)+(s.b[i]?', '+(colorOf(s.b[i])==='r'?'red':'black')+(isKing(s.b[i])?' king':''):' empty'));
-  if(i===selected)sq.classList.add('selected');if(destinations.has(i))sq.classList.add(captureDest.has(i)?'capture-destination':'destination');sq.dataset.square=String(i);
+  if(i===(selectedPath.length>1?selectedPath[selectedPath.length-1]:selected))sq.classList.add('selected');if(destinations.has(i))sq.classList.add(captureDest.has(i)?'capture-destination':'destination');sq.dataset.square=String(i);
   if(col(i)===0){const cr=document.createElement('span');cr.className='coords';cr.textContent=String(8-row(i));sq.appendChild(cr)}
   if(row(i)===7){const cc=document.createElement('span');cc.className='coords';cc.style.left='auto';cc.style.right='4px';cc.style.top='auto';cc.style.bottom='2px';cc.textContent='abcdefgh'[col(i)];sq.appendChild(cc)}
   if(s.b[i]){const p=document.createElement('span');p.className='piece '+(colorOf(s.b[i])==='r'?'red':'black')+(isKing(s.b[i])?' king':'');sq.appendChild(p)}
@@ -229,8 +231,9 @@ async function publishSnapshot(status){
 function closeSockets(){if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null}gameSockets.forEach(ws=>{try{if(ws._sub&&ws.readyState===1)ws.send(JSON.stringify(['CLOSE',ws._sub]));ws.close()}catch(_){} });gameSockets=[]}
 function leaveGame(){closeSockets();game=null;publishChain=Promise.resolve();seenChat.clear()}
 function subscribeGame(){
- closeSockets();if(!game)return;const id=game.id,priv=game.private,gen={};gameSockets= [];
+ closeSockets();if(!game)return;const id=game.id,priv=game.private;gameSockets=[];
  const relays=currentRelayList(game.relay);
+ function scheduleReconnect(){if(!game||game.id!==id||reconnectTimer)return;if(gameSockets.some(ws=>ws.readyState===0||ws.readyState===1))return;reconnectTimer=setTimeout(()=>{reconnectTimer=null;if(game&&game.id===id)subscribeGame()},3500)}
  function handle(ev){if(!game||game.id!==id)return;if(ev.kind===CHAT_KIND){receiveChat(ev).catch(()=>{});return}eventToGame(ev,game.relay,game.secret).then(incoming=>{if(!incoming||incoming.id!==id||!game)return;const author=String(ev.pubkey||'').toLowerCase();if(author!==incoming.red&&author!==incoming.black)return;
  if(priv){if(!incoming.private||author===signerPk)return}
  else if(incoming.private)return;
@@ -245,7 +248,7 @@ function subscribeGame(){
  if(terminal&&incoming.status==='forfeit')addChatSystem(terminal.text);else if(author!==signerPk&&turns.length)appendChat('system','Game state synchronized from Nostr.');
  }).catch(()=>{})}
  const subs=[];
- relays.forEach((url,i)=>{let ws;const sub='sifaka-checkers-live-'+id.slice(0,12)+'-'+i;try{ws=new WebSocket(url);ws._sub=sub;gameSockets.push(ws);ws.onopen=()=>{const f=priv?{kinds:[PRIV_KIND,CHAT_KIND],'#d':[id],limit:100}:{kinds:[PUB_KIND,CHAT_KIND],'#d':[id],limit:100};try{ws.send(JSON.stringify(['REQ',sub,f]))}catch(_){try{ws.close()}catch(__){}}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub)handle(d[2])}catch(_){}};ws.onerror=()=>{try{ws.close()}catch(_){}};ws.onclose=()=>{if(game&&game.id===id&&!reconnectTimer)reconnectTimer=setTimeout(()=>{reconnectTimer=null;if(game&&game.id===id)subscribeGame()},3500)}}catch(_){}});
+ relays.forEach((url,i)=>{let ws;const sub='sifaka-checkers-live-'+id.slice(0,12)+'-'+i;try{ws=new WebSocket(url);ws._sub=sub;gameSockets.push(ws);ws.onopen=()=>{const f=priv?{kinds:[PRIV_KIND,CHAT_KIND],'#d':[id],limit:100}:{kinds:[PUB_KIND,CHAT_KIND],'#d':[id],limit:100};try{ws.send(JSON.stringify(['REQ',sub,f]))}catch(_){try{ws.close()}catch(__){}}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub)handle(d[2])}catch(_){}};ws.onerror=()=>{try{ws.close()}catch(_){}};ws.onclose=()=>{scheduleReconnect()}}catch(_){}});
 }
 function currentOther(){return game?(game.myColor==='r'?game.black:game.red):''}
 function updatePlayers(){
@@ -287,7 +290,7 @@ async function sendChat(){
 async function createOnline(privateMode){
  const pk=await getSignerKey();if(!pk){openLogin();throw new Error('Connect a Nostr account before creating an online game.')}
  const id=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)),secret=privateMode?bytesToB64(crypto.getRandomValues(new Uint8Array(32))):'',relay=preferredRelay();
- leaveGame();local=false;turns=[];state=newBoard();terminal=null;selected=-1;pathCandidates=[];selectedPath=[];
+ leaveGame();local=false;turns=[];state=newBoard();terminal=null;selected=-1;pathCandidates=[];selectedPath=[];$('chatLog').replaceChildren();$('chatStatus').textContent=privateMode?'· private Nostr chat':'· Nostr relay chat';
  game={id:id,private:!!privateMode,secret:secret,relay:relay,red:pk,black:'',myPk:pk,myColor:'r',moves:[],status:privateMode?'invite':'open',lastEventTime:0,lastPublishTime:0,lastEventId:''};
  signerPk=pk;updatePlayers();renderBoard();
  const ok=await publishSnapshot(privateMode?'invite':'open');if(!ok)throw new Error('The game could not be confirmed by a relay.');
@@ -298,7 +301,7 @@ async function joinOnline(g,secret){
  if(g.private&&!secret)throw new Error('The private invite key is missing. Copy the full invitation URL.');
  const claimingSeat=!g.black;
  if(g.red===pk||g.black===pk){g.myPk=pk;g.myColor=g.red===pk?'r':'b'}else if(!g.black){g.black=pk;g.myPk=pk;g.myColor='b';g.status='active'}else throw new Error('This match already has two players.');
- leaveGame();local=false;game=g;game.secret=secret||g.secret||'';game.myPk=pk;game.myColor=pk===game.red?'r':'b';game.moves=g.moves||[];const s=replay(game.moves);if(!s)throw new Error('Game history failed validation.');turns=game.moves.map(t=>({path:t.path.slice()}));state=s;terminal=getTerminal(state,turns);selected=-1;pathCandidates=[];selectedPath=[];signerPk=pk;updatePlayers();renderBoard();subscribeGame();writeRecent(game);
+ leaveGame();local=false;$('chatLog').replaceChildren();$('chatStatus').textContent=g.private?'· private Nostr chat':'· Nostr relay chat';game=g;game.secret=secret||g.secret||'';game.myPk=pk;game.myColor=pk===game.red?'r':'b';game.moves=g.moves||[];const s=replay(game.moves);if(!s)throw new Error('Game history failed validation.');turns=game.moves.map(t=>({path:t.path.slice()}));state=s;terminal=getTerminal(state,turns);selected=-1;pathCandidates=[];selectedPath=[];signerPk=pk;updatePlayers();renderBoard();subscribeGame();writeRecent(game);
  if(claimingSeat&&game.black&&game.status!=='finished'&&game.myColor==='b'){await publishSnapshot('active')}
  closeOverlay('incomingOverlay');closeOverlay('lobbyOverlay');say('Connected to the Checkers match over Nostr.');
 }
