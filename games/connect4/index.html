@@ -54,13 +54,74 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{
  .dialog,.dialog.wide-dialog{max-height:calc(100dvh - 12px);border-radius:14px;padding:14px}
 }
 
+
+/* Shared Sifaka-style game header: logo menu, global search, Go Live and account control. */
+.game-site-topbar{position:sticky;top:0;z-index:500;display:flex;align-items:center;flex-wrap:nowrap;gap:.6rem;min-height:68px;padding:8px clamp(10px,2vw,20px);background:rgba(22,26,31,.97);border-bottom:1px solid var(--line,rgba(255,255,255,.1));backdrop-filter:blur(16px)}
+.game-site-logo-wrap{position:relative;flex:0 0 auto}
+.game-site-logo{display:flex;align-items:center;gap:.45rem;padding:.25rem .4rem;border:0;border-radius:10px;background:transparent;color:var(--ink,#f5f1ff);cursor:pointer;white-space:nowrap}
+.game-site-logo:hover,.game-site-logo[aria-expanded="true"]{background:rgba(255,255,255,.07)}
+.game-site-logo-img{display:block;width:42px;height:42px;object-fit:contain;flex:0 0 auto}
+.game-site-logo-text{font-family:"Press Start 2P","VT323","DM Mono",monospace;font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.game-site-live-pill{display:inline-flex;align-items:center;justify-content:center;padding:.18rem .38rem;border-radius:4px;border:1px solid rgba(255,255,255,.25);background:#c42121;color:#fff;font:700 .58rem/1 "DM Mono",monospace;letter-spacing:.08em;box-shadow:0 0 0 1px rgba(0,0,0,.28) inset}
+.game-site-menu{position:absolute;top:calc(100% + 7px);left:0;z-index:600;display:none;min-width:205px;max-width:calc(100vw - 20px);padding:.5rem;border:1px solid rgba(255,255,255,.13);border-radius:12px;background:rgba(17,20,26,.98);box-shadow:0 20px 60px rgba(0,0,0,.65);backdrop-filter:blur(16px)}
+.game-site-menu.open{display:block}
+.game-site-menu[aria-hidden="true"]{pointer-events:none}
+.game-site-menu a{display:flex;align-items:center;gap:.7rem;width:100%;padding:.65rem .75rem;border-radius:8px;color:var(--ink,#f5f1ff);font-size:.82rem;font-weight:650;text-decoration:none}
+.game-site-menu a:hover,.game-site-menu a:focus-visible{background:rgba(139,92,246,.17);outline:none}
+.game-site-menu a span{width:1.25rem;text-align:center;flex:0 0 auto}
+.game-site-search{position:relative;display:block;flex:1 1 auto;min-width:80px;max-width:540px;margin:0 auto}
+.game-site-search-icon{position:absolute;top:50%;left:.75rem;transform:translateY(-50%);font-size:1.15rem;line-height:1;color:var(--mut, #9ca3af);pointer-events:none}
+.game-site-search input{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:39px;padding:.5rem .75rem .5rem 2.1rem;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.055);color:var(--ink,#f5f1ff);font:400 .82rem "DM Sans",system-ui,sans-serif;outline:none}
+.game-site-search input::placeholder{color:var(--mut,#9ca3af);opacity:1}
+.game-site-search input:focus{border-color:rgba(167,139,250,.7);box-shadow:0 0 0 3px rgba(139,92,246,.14)}
+.game-site-golive{flex:0 0 auto;text-decoration:none;white-space:nowrap}
+.game-site-identity{flex:0 1 auto;max-width:155px}
+.game-site-topbar #connectBtn{flex:0 0 auto;min-height:39px;white-space:nowrap}
+@media(max-width:700px){
+ .game-site-topbar{gap:.45rem;min-height:56px;padding:.4rem .55rem}
+ .game-site-logo{gap:.3rem;padding:.2rem .25rem}
+ .game-site-logo-img{width:32px;height:32px}
+ .game-site-logo-text{display:none}
+ .game-site-live-pill{font-size:.52rem;padding:.14rem .28rem}
+ .game-site-search{min-width:40px}
+ .game-site-search input{font-size:.78rem;min-height:38px;padding:.5rem .5rem .5rem 1.8rem}
+ .game-site-search-icon{left:.55rem}
+ .game-site-golive,.game-site-identity{display:none}
+ .game-site-topbar #connectBtn{padding:.52rem .62rem;font-size:.7rem}
+ .game-site-menu{max-width:calc(100vw - 16px)}
+}
+@media(max-width:370px){
+ .game-site-topbar{gap:.3rem;padding:.4rem}
+ .game-site-logo-img{width:28px;height:28px}
+ .game-site-live-pill{display:none}
+ .game-site-search input{font-size:.72rem}
+ .game-site-topbar #connectBtn{padding:.45rem .5rem;font-size:.66rem}
+}
+@media(prefers-reduced-motion:reduce){.game-site-menu a,.game-site-logo{transition:none!important}}
+
 </style>
 </head>
 <body>
-<header class="topbar">
-<a class="brand" href="/" aria-label="Sifaka.Live home"><span class="brand-mark">●</span><span><strong>SIFAKA.LIVE</strong><small>NOSTR GAME ROOM</small></span></a>
-<nav class="navlinks" aria-label="Main navigation"><a href="/">Live Now</a><a href="/?chessAction=navigate&page=nest">Nest</a><a href="/?chessAction=navigate&page=feed">Feed</a><a href="/?chessAction=navigate&page=videos">Videos</a><a class="active" href="/games/connect4/">Connect Four</a></nav>
-<button class="btn" id="connectBtn" type="button">Connect Nostr</button>
+<header class="topbar game-site-topbar">
+  <div class="game-site-logo-wrap">
+    <button class="game-site-logo" id="gameSiteLogoBtn" type="button" aria-label="Open Sifaka navigation" aria-expanded="false" aria-controls="gameSiteMenu">
+      <img src="../../logo.webp" alt="Sifaka" class="game-site-logo-img" width="42" height="42" decoding="async">
+      <span class="game-site-logo-text">Sifaka</span><span class="game-site-live-pill">LIVE</span>
+    </button>
+    <div class="game-site-menu" id="gameSiteMenu" aria-hidden="true">
+      <a href="/?chessAction=navigate&amp;page=home"><span>🔴</span>Live Now</a>
+      <a href="/?chessAction=navigate&amp;page=podcastRadio"><span>♫</span>Podcast Radio</a>
+      <a href="/?chessAction=navigate&amp;page=feed"><span>◉</span>Feed &amp; Videos</a>
+      <a href="/?chessAction=navigate&amp;page=games"><span>🎮</span>Games</a>
+      <a href="/?chessAction=navigate&amp;page=faq"><span>❔</span>FAQ &amp; Help</a>
+    </div>
+  </div>
+  <label class="game-site-search" for="gameSiteSearch">
+    <span class="game-site-search-icon" aria-hidden="true">⌕</span>
+    <input id="gameSiteSearch" type="search" placeholder="Search streams, npubs, posts, videos..." aria-label="Search streams, profiles, posts, and videos" autocomplete="off">
+  </label>
+  <a class="btn game-site-golive" href="/?chessAction=go-live">Go Live</a>
+  <button class="btn primary" id="connectBtn" type="button">Connect Nostr</button>
 </header>
 <main class="page">
 <section class="headline"><div><div class="eyebrow">SIFAKA GAMES / 03 · NOSTR ARCADE</div><h1>Connect Four</h1><p>Drop four in a row. Play locally, challenge the Sifaka AI, or meet another player over Nostr relays. Public matches, private invite links, profile identities, and game chat are supported.</p></div><div class="head-actions"><button class="btn" id="localBtn" type="button">Choose opponent</button><button class="btn" id="newGameBtn" type="button">New game</button><button class="btn primary" id="lobbyBtn" type="button">Open / Current Games</button></div></section>
@@ -300,4 +361,32 @@ window.addEventListener('beforeunload',closeSockets);
 })();
 </script>
 <script src="../../scripts/theme-manager.js?v=0.9.9" defer></script>
+
+<script id="sifaka-game-site-navigation">
+(function(){
+  var button=document.getElementById('gameSiteLogoBtn');
+  var menu=document.getElementById('gameSiteMenu');
+  var search=document.getElementById('gameSiteSearch');
+  if(button&&menu){
+    function setOpen(open){
+      menu.classList.toggle('open',!!open);
+      menu.setAttribute('aria-hidden',open?'false':'true');
+      button.setAttribute('aria-expanded',open?'true':'false');
+    }
+    button.addEventListener('click',function(event){event.stopPropagation();setOpen(button.getAttribute('aria-expanded')!=='true');});
+    document.addEventListener('click',function(event){if(!menu.contains(event.target)&&!button.contains(event.target))setOpen(false);});
+    document.addEventListener('keydown',function(event){if(event.key==='Escape')setOpen(false);});
+    menu.querySelectorAll('a').forEach(function(link){link.addEventListener('click',function(){setOpen(false);});});
+  }
+  if(search){
+    search.addEventListener('keydown',function(event){
+      if(event.key!=='Enter')return;
+      event.preventDefault();
+      var query=search.value.trim();
+      window.location.href=query?'/?search='+encodeURIComponent(query):'/?chessAction=navigate&page=feed';
+    });
+  }
+})();
+</script>
+
 </body></html>
