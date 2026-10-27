@@ -331,7 +331,7 @@ function writeRecent(g){if(!signerPk||!g)return;try{const k='sifaka_checkers_rec
 async function publishSnapshot(status){
  const g=game;if(!g||!signerPk)throw new Error('Connect your Nostr signer before publishing game moves.');
  const thisId=g.id,body=gamePayload(g,status),created=Math.max(Math.floor(Date.now()/1000),Number(g.lastEventTime||0)+1,Number(g.lastPublishTime||0)+1);g.lastPublishTime=created;
- const job=publishChain.then(async()=>{if(!game||game.id!==thisId)return false;const signed=await signEvent({kind:g.private?PRIV_KIND:PUB_KIND,pubkey:signerPk,created_at:created,tags:g.private?[['d',g.id]]:[['d',g.id],['p',g.red],...(g.black?[['p',g.black]]:[]),['t',APP],['mode','sifaka-checkers-open'],['status',status],['alt','Sifaka Nostr Checkers #'+g.id.slice(0,8)],['relay',g.relay]],content:g.private?await encryptPayload(body,g.secret,g.id):JSON.stringify(body)});
+ const job=publishChain.then(async()=>{if(!game||game.id!==thisId)return false;const signer=await getSignerKey();if(!signer||signer!==g.myPk||(signer!==g.red&&signer!==g.black))throw new Error('The connected Nostr account is not a player in this game. Reconnect the account that joined the match.');const signed=await signEvent({kind:g.private?PRIV_KIND:PUB_KIND,pubkey:signer,created_at:created,tags:g.private?[['d',g.id]]:[['d',g.id],['p',g.red],...(g.black?[['p',g.black]]:[]),['t',APP],['mode','sifaka-checkers-open'],['status',status],['alt','Sifaka Nostr Checkers #'+g.id.slice(0,8)],['relay',g.relay]],content:g.private?await encryptPayload(body,g.secret,g.id):JSON.stringify(body)});
  await publishEvent(signed,g.relay);g.lastEventTime=created;g.lastPublishTime=created;g.lastEventId=signed.id;g.status=status;writeRecent(g);return true});
  publishChain=job.then(()=>{},()=>{});return job;
 }
@@ -351,7 +351,10 @@ function subscribeGame(){
  if(!isNewer(incoming)&&incoming.eventId!==game.lastEventId)return;
  if(incoming.moves.length<game.moves.length)return;
  const rebuilt=replay(incoming.moves);if(!rebuilt)return;
- game.red=incoming.red;game.black=incoming.black||game.black;game.moves=incoming.moves;game.lastEventTime=incoming.created_at;game.lastEventId=incoming.eventId;game.status=incoming.status;turns=incoming.moves.map(t=>({path:t.path.slice()}));state=rebuilt;terminal=getTerminal(state,turns)||(['finished','forfeit'].includes(incoming.status)?{status:incoming.status,text:incoming.status==='forfeit'?'The opponent forfeited the match.':'Game finished.',winner:incoming.status==='forfeit'?other(game.myColor):''}:null);writeRecent(game);renderBoard();updatePlayers();
+ const calculatedTerminal=getTerminal(rebuilt,incoming.moves);if(incoming.status==='finished'&&!calculatedTerminal)return;if(calculatedTerminal&&incoming.status==='active')return;
+ game.red=incoming.red;game.black=incoming.black||game.black;game.moves=incoming.moves;game.lastEventTime=incoming.created_at;game.lastEventId=incoming.eventId;game.status=incoming.status;turns=incoming.moves.map(t=>({path:t.path.slice()}));state=rebuilt;
+ if(incoming.status==='forfeit'){const forfeiter=author===incoming.red?'r':'b';const weWon=forfeiter!==game.myColor;terminal={status:'forfeit',text:weWon?'Your opponent forfeited the match.':'You forfeited the match.',winner:other(forfeiter)}}else terminal=calculatedTerminal||null;
+ writeRecent(game);renderBoard();updatePlayers();
  if(terminal&&incoming.status==='forfeit')addChatSystem(terminal.text);else if(author!==signerPk&&turns.length)appendChat('system','Game state synchronized from Nostr.');
  }).catch(()=>{})}
  const subs=[];
@@ -397,7 +400,7 @@ async function sendChat(){
  const input=$('chatInput'),message=input.value.trim();if(!message)return;
  if(local){appendChat(signerPk?'You':'Local player',message);input.value='';return}
  if(!game||!game.black){say('Wait for an opponent to join before using game chat.');return}
- try{const pk=await getSignerKey();if(!pk||pk!==signerPk)throw new Error('Reconnect the game owner account to chat.');const content=game.private?await encryptPayload({app:APP,version:1,id:game.id,type:'chat',message:message},game.secret,game.id):message;const created=Math.floor(Date.now()/1000),ev=await signEvent({kind:CHAT_KIND,pubkey:pk,created_at:created,tags:[['t','sifaka-checkers-chat'],['d',game.id],['p',currentOther()]],content:content});await publishEvent(ev,game.relay);appendChat('You',message);input.value=''}catch(e){say('Could not send chat: '+e.message)}
+ try{const pk=await getSignerKey();if(!pk||pk!==signerPk||pk!==game.myPk||(pk!==game.red&&pk!==game.black))throw new Error('Reconnect the Nostr account that joined this game before sending chat.');const content=game.private?await encryptPayload({app:APP,version:1,id:game.id,type:'chat',message:message},game.secret,game.id):message;const created=Math.floor(Date.now()/1000),ev=await signEvent({kind:CHAT_KIND,pubkey:pk,created_at:created,tags:[['t','sifaka-checkers-chat'],['d',game.id],['p',currentOther()]],content:content});await publishEvent(ev,game.relay);appendChat('You',message);input.value=''}catch(e){say('Could not send chat: '+e.message)}
 }
 
 const BECH32='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
