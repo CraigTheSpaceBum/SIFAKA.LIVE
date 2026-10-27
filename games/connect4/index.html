@@ -117,7 +117,7 @@ async function lookupProfile(pk,force=false){
 }
 async function setPlayer(which,pk,label){
  const avatar=$(which+'Avatar'),name=$(which+'Name'),identity=$(which+'Identity');avatar.classList.remove('verified');
- if(!pk){avatar.removeAttribute('src');avatar.textContent=which==='red'?'🔴':'🟡';name.textContent=label||colorName(which==='red'?'r':'y');identity.textContent=label==='Sifaka AI'?(['','Novice','Adept','Master'][engineLevel]+' difficulty'):'Local player';return}
+ if(!pk){avatar.removeAttribute('src');avatar.textContent=which==='red'?'🔴':'🟡';name.textContent=label||colorName(which==='red'?'r':'y');identity.textContent=label==='Sifaka AI'?(['','Novice','Adept','Master'][engineLevel]+' difficulty'):label==='Waiting for opponent'?'Waiting for opponent':'Local player';return}
  const normalized=String(pk).toLowerCase(),result=await lookupProfile(normalized),p=result&&result.profile||{pubkey:normalized},nm=String(p.display_name||p.displayName||p.name||shortPk(normalized)).trim()||shortPk(normalized),verified=!!(result&&result.verified);
  name.textContent=nm;identity.textContent=verified&&p.nip05?String(p.nip05):p.nip05?'Unverified: '+String(p.nip05):shortPk(normalized);avatar.removeAttribute('src');avatar.textContent=which==='red'?'🔴':'🟡';
  if(p.picture&&/^https?:\/\//i.test(String(p.picture))){const img=document.createElement('img');img.src=String(p.picture);img.alt='';img.referrerPolicy='no-referrer';img.loading='lazy';img.addEventListener('error',()=>{avatar.removeAttribute('src');avatar.textContent=String(nm[0]||'S').toUpperCase()},{once:true});avatar.replaceChildren(img)}
