@@ -238,7 +238,7 @@ async function getSignerKey(){
  const app=window.sifakaCheckersMainSigner;
  if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{const pk=String(await app.getPublicKey()||'').toLowerCase();if(HEX.test(pk)){return rememberSigner(pk)}}catch(_){}}
  const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){try{const epk=String(await ext.getPublicKey()||'').toLowerCase();if(HEX.test(epk)){return rememberSigner(epk)}}catch(_){}}
- try{const localPk=await connectLocalSigner();if(HEX.test(localPk)){signerPk=localPk;return localPk}}catch(_){}
+ try{const localPk=await connectLocalSigner();if(HEX.test(localPk)){return rememberSigner(localPk)}}catch(_){}
  return '';
 }
 async function signEvent(event){
