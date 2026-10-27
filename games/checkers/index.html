@@ -60,7 +60,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 'use strict';
 const $=id=>document.getElementById(id),HEX=/^[0-9a-f]{64}$/i,APP='sifaka-checkers',PUB_KIND=30078,PRIV_KIND=30079,CHAT_KIND=1;
 const DEFAULT_RELAYS=['wss://nos.lol','wss://relay.damus.io','wss://relay.primal.net'];
-let signerPk='',signerProfile={},signerBridgePromise=null,game=null,local=true,flipped=false,selected=-1,selectedPath=[],pathCandidates=[],busy=false,turns=[],state=null,terminal=null,gameSockets=[],reconnectTimer=null,publishChain=Promise.resolve(),seenChat=new Set(),lobbyTab='open',lobbyBusy=false,pendingInvite=null,toastTimer=null;const playerVersions={red:0,black:0};
+let signerPk='',signerProfile={},signerBridgePromise=null,loginPopupObserver=null,game=null,local=true,flipped=false,selected=-1,selectedPath=[],pathCandidates=[],busy=false,turns=[],state=null,terminal=null,gameSockets=[],reconnectTimer=null,publishChain=Promise.resolve(),seenChat=new Set(),lobbyTab='open',lobbyBusy=false,pendingInvite=null,toastTimer=null;const playerVersions={red:0,black:0};
 const pieceName=p=>p==='r'?'Red':p==='b'?'Black':'',other=c=>c==='r'?'b':'r';
 function say(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3200)}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -347,9 +347,36 @@ async function connect(){
  signerPk=pk;const result=await lookupProfile(pk);signerProfile=result&&result.profile||{};updateIdentity();say('Connected to Nostr. Game events will be signed with this identity.');
 }
 function openLogin(){
- const layer=$('loginLayer'),frame=$('loginFrame');layer.hidden=false;layer.classList.add('open');frame.src='/?chessLoginPopup=1&chessAction=login';
+ const layer=$('loginLayer'),frame=$('loginFrame');if(layer.classList.contains('open'))return;layer.hidden=false;layer.classList.add('open');
+ frame.onload=function(){
+  let attempt=0;
+  const prepare=function(){
+   let doc,win;try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){}
+   if(!doc||!win||!doc.head||!doc.body){if(attempt++<200){setTimeout(prepare,50);return}say('The Sifaka sign-in window did not load. Please retry.');return}
+   try{
+    if(win.nostr===undefined&&window.nostr&&typeof window.nostr.getPublicKey==='function'){try{Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr})}catch(_){}}
+    const ctx=win.__SIFAKA_CONTEXT,user=ctx&&typeof ctx.getUser==='function'?ctx.getUser():null;
+    if(user&&user.pubkey&&ctx&&typeof ctx.signEvent==='function'){installSigner(win,'');closeLogin();return}
+    const modal=doc.getElementById('loginModal');
+    if(modal&&typeof win.openLogin==='function'){
+     let style=doc.getElementById('checkersLoginIsolateStyle');if(!style){style=doc.createElement('style');style.id='checkersLoginIsolateStyle';doc.head.appendChild(style)}
+     style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+     if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}
+     if(!modal.classList.contains('open'))win.openLogin();
+     if(!modal.classList.contains('open')){if(attempt++<200){setTimeout(prepare,50);return}say('The Sifaka sign-in form could not be opened.');return}
+     const Observer=win.MutationObserver;if(Observer){loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open'))closeLogin()});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']})}
+     try{doc.querySelectorAll('video,audio').forEach(el=>{try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(t=>t.stop());el.removeAttribute('src');el.querySelectorAll('source').forEach(x=>x.removeAttribute('src'));el.load()}catch(_){}})}catch(_){}
+     return;
+    }
+   }catch(_){}
+   if(attempt++<200){setTimeout(prepare,50);return}
+   say('The Sifaka sign-in form did not load. Please refresh and try again.');
+  };
+  prepare();
+ };
+ frame.src='/?chessLoginPopup=1&chessAction=login';
 }
-function closeLogin(){const layer=$('loginLayer');layer.classList.remove('open');layer.hidden=true;try{$('loginFrame').src='about:blank'}catch(_){}connect().catch(()=>{})}
+function closeLogin(){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}connect().catch(()=>{})}
 function bindEvents(){
  $('connectBtn').addEventListener('click',()=>connect().catch(e=>say(e.message)));
  $('closeLoginBtn').addEventListener('click',closeLogin);
