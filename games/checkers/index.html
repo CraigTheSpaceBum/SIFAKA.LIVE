@@ -332,7 +332,7 @@ function validateCheckersPayload(data,author,isPrivate,eventId){
  const red=String(data.red||'').toLowerCase(),black=String(data.black||'').toLowerCase();
  if(!HEX.test(red)||(black&&!HEX.test(black))||(black&&black===red))return null;
  if(author!==red&&author!==black)return null;
- if(!Array.isArray(data.moves)||data.moves.length>150||!['open','invite','active','finished','forfeit'].includes(data.status))return null;
+ if(!Array.isArray(data.moves)||data.moves.length>2500||!['open','invite','active','finished','forfeit'].includes(data.status))return null;
  if(!isPrivate&&data.status==='invite')return null;
  if(data.status==='invite'&&!isPrivate)return null;
  const moves=data.moves.map(t=>({path:Array.isArray(t)?t.map(Number):[]}));
