@@ -327,24 +327,51 @@ function urlSecret(){try{return new URLSearchParams(location.hash.slice(1)).get(
 function getLink(g){const u=new URL(location.pathname,location.origin);u.searchParams.set('game',g.id);u.searchParams.set('relay',g.relay||preferredRelay());if(g.private&&g.secret)u.hash='key='+encodeURIComponent(g.secret);return u.toString()}
 function modeStatus(g){return g.status||(!g.black?'open':'active')}
 function gamePayload(g,status){return {app:APP,version:1,id:g.id,mode:g.private?'private':'public',status:status,red:g.red,black:g.black||'',moves:(g.moves||[]).map(t=>Array.isArray(t)?t.slice():Array.isArray(t.path)?t.path.slice():[]),relay:g.relay,updatedAt:Date.now()}}
+function validateCheckersPayload(data,author,isPrivate,eventId){
+ if(!data||data.app!==APP||data.version!==1||typeof data.id!=='string'||data.id!==eventId||data.mode!==(isPrivate?'private':'public'))return null;
+ const red=String(data.red||'').toLowerCase(),black=String(data.black||'').toLowerCase();
+ if(!HEX.test(red)||(black&&!HEX.test(black))||(black&&black===red))return null;
+ if(author!==red&&author!==black)return null;
+ if(!Array.isArray(data.moves)||data.moves.length>150||!['open','invite','active','finished','forfeit'].includes(data.status))return null;
+ if(!isPrivate&&data.status==='invite')return null;
+ if(data.status==='invite'&&!isPrivate)return null;
+ const moves=data.moves.map(t=>({path:Array.isArray(t)?t.map(Number):[]}));
+ if(moves.some(t=>t.path.length<2||t.path.some(x=>!Number.isInteger(x)||x<0||x>63)))return null;
+ const state=replay(moves);if(!state)return null;
+ const terminal=getTerminal(state,moves),hasMoves=moves.length>0;
+ if(['open','invite'].includes(data.status)&&(black||hasMoves||author!==red))return null;
+ if(data.status==='active'&&(!black||terminal))return null;
+ if(data.status==='finished'&&!terminal)return null;
+ if(data.status==='forfeit'&&(!black||terminal))return null;
+ if(hasMoves&&data.status!=='forfeit'&&!['open','invite'].includes(data.status)){
+  const lastMover=moves.length%2===1?red:black;
+  if(!lastMover||author!==lastMover)return null;
+ }
+ return {id:data.id,private:!!isPrivate,red:red,black:black,moves:moves,state:state,terminal:terminal,status:data.status};
+}
 function eventFromPayload(ev,relayFallback){
- if(!ev||!Array.isArray(ev.tags)||!HEX.test(String(ev.pubkey||'')))return null;
- const d=ev.tags.find(t=>t[0]==='d'&&t[1]);if(!d)return null;const privateMode=ev.kind===PRIV_KIND; if(ev.kind!==PUB_KIND&&!privateMode)return null;
- if(!privateMode&&!ev.tags.some(t=>t[0]==='t'&&t[1]===APP))return null;
- let data;try{data=privateMode?null:JSON.parse(ev.content)}catch(_){return null}
- if(privateMode)return {id:d[1],private:true,secret:urlSecret(),event:ev,author:ev.pubkey,relay:relayFallback||preferredRelay(),created_at:Number(ev.created_at)||0};
- if(!data||data.app!==APP||data.version!==1||data.id!==d[1]||data.mode!=='public'||!HEX.test(String(data.red||''))||(data.black&&!HEX.test(String(data.black))))return null;
- const author=String(ev.pubkey||'').toLowerCase();if(author!==String(data.red||'').toLowerCase()&&author!==String(data.black||'').toLowerCase())return null;
- if(!Array.isArray(data.moves)||!['open','active','finished','forfeit'].includes(data.status))return null;
- const moves=data.moves.map(t=>({path:Array.isArray(t)?t.map(Number):[]}));if(moves.some(t=>t.path.length<2||t.path.some(x=>!Number.isInteger(x)||x<0||x>63)))return null;
- if(!replay(moves))return null;
- return {id:data.id,private:false,red:data.red.toLowerCase(),black:String(data.black||'').toLowerCase(),moves:moves,relay:data.relay||relayFallback||preferredRelay(),status:data.status,eventId:ev.id,lastEventId:String(ev.id||''),lastEventTime:Number(ev.created_at)||0,lastPublishTime:Number(ev.created_at)||0,author:String(ev.pubkey).toLowerCase(),created_at:Number(ev.created_at)||0,content:ev.content};
+ if(!ev||!Array.isArray(ev.tags)||!HEX.test(String(ev.pubkey||''))||ev.kind!==PUB_KIND)return null;
+ const d=ev.tags.find(t=>t[0]==='d'&&t[1]);if(!d||!ev.tags.some(t=>t[0]==='t'&&t[1]===APP))return null;
+ let data;try{data=JSON.parse(ev.content||'{}')}catch(_){return null}
+ const author=String(ev.pubkey||'').toLowerCase(),checked=validateCheckersPayload(data,author,false,String(d[1]));
+ if(!checked)return null;
+ if(!ev.tags.some(t=>t[0]==='p'&&String(t[1]||'').toLowerCase()===checked.red))return null;
+ if(checked.black&&!ev.tags.some(t=>t[0]==='p'&&String(t[1]||'').toLowerCase()===checked.black))return null;
+ const taggedStatus=ev.tags.find(t=>t[0]==='status');if(taggedStatus&&taggedStatus[1]!==checked.status)return null;
+ return {id:checked.id,private:false,red:checked.red,black:checked.black,moves:checked.moves,relay:data.relay||relayFallback||preferredRelay(),status:checked.status,eventId:String(ev.id||''),lastEventId:String(ev.id||''),lastEventTime:Number(ev.created_at)||0,lastPublishTime:Number(ev.created_at)||0,author:author,created_at:Number(ev.created_at)||0,content:ev.content};
 }
 async function eventToGame(ev,relayFallback,secret){
- if(!ev||!Array.isArray(ev.tags)||!HEX.test(String(ev.pubkey||'')))return null;const d=ev.tags.find(t=>t[0]==='d'&&t[1]);if(!d)return null;
- if(ev.kind===PRIV_KIND){const k=secret||urlSecret();const data=await decryptPayload(ev.content,k,d[1]);if(!data||data.mode!=='private'||!HEX.test(String(data.red||''))||(data.black&&!HEX.test(String(data.black)))||!Array.isArray(data.moves)||!['invite','open','active','finished','forfeit'].includes(data.status))return null;const author=String(ev.pubkey||'').toLowerCase();if(author!==String(data.red||'').toLowerCase()&&author!==String(data.black||'').toLowerCase())return null;const moves=data.moves.map(t=>({path:Array.isArray(t)?t.map(Number):[]}));if(moves.some(t=>t.path.length<2||t.path.some(x=>!Number.isInteger(x)||x<0||x>63))||!replay(moves))return null;return {id:data.id,private:true,secret:k,red:data.red.toLowerCase(),black:String(data.black||'').toLowerCase(),moves:moves,relay:data.relay||relayFallback||preferredRelay(),status:data.status,eventId:ev.id,lastEventId:String(ev.id||''),lastEventTime:Number(ev.created_at)||0,lastPublishTime:Number(ev.created_at)||0,author:String(ev.pubkey).toLowerCase(),created_at:Number(ev.created_at)||0,content:data};}
+ if(!ev||!Array.isArray(ev.tags)||!HEX.test(String(ev.pubkey||'')))return null;
+ const d=ev.tags.find(t=>t[0]==='d'&&t[1]);if(!d)return null;
+ if(ev.kind===PRIV_KIND){
+  const k=secret||urlSecret(),data=await decryptPayload(ev.content,k,d[1]);if(!data)return null;
+  const author=String(ev.pubkey||'').toLowerCase(),checked=validateCheckersPayload(data,author,true,String(d[1]));
+  if(!checked)return null;
+  return {id:checked.id,private:true,secret:k,red:checked.red,black:checked.black,moves:checked.moves,relay:data.relay||relayFallback||preferredRelay(),status:checked.status,eventId:String(ev.id||''),lastEventId:String(ev.id||''),lastEventTime:Number(ev.created_at)||0,lastPublishTime:Number(ev.created_at)||0,author:author,created_at:Number(ev.created_at)||0,content:data};
+ }
  return eventFromPayload(ev,relayFallback);
 }
+
 function isNewer(incoming){if(!game)return true;const n=incoming.moves.length,c=game.moves.length;if(n!==c)return n>c;if(incoming.created_at!==game.lastEventTime)return incoming.created_at>game.lastEventTime;return String(incoming.eventId||'')>String(game.lastEventId||'')}
 function writeRecent(g){if(!signerPk||!g)return;try{const k='sifaka_checkers_recent_'+signerPk,raw=JSON.parse(localStorage.getItem(k)||'[]'),entry={id:g.id,relay:g.relay,private:!!g.private,secret:g.secret||'',red:g.red,black:g.black||'',status:g.status||'active',updatedAt:Date.now()};const next=[entry].concat(raw.filter(x=>x&&x.id!==g.id)).slice(0,30);localStorage.setItem(k,JSON.stringify(next))}catch(_){}}
 async function publishSnapshot(status){
