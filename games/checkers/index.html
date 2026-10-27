@@ -185,10 +185,38 @@ async function signEvent(event){
  const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){const epk=String(await ext.getPublicKey()||'').toLowerCase();if(epk===pk){const ev=await ext.signEvent(request);if(ev&&ev.id&&ev.sig&&String(ev.pubkey||'').toLowerCase()===pk)return ev}}
  throw new Error('No signer could sign this event with the currently connected account.');
 }
-function sendEventToRelay(url,ev){
- return new Promise(resolve=>{let ws,done=false,timer;const finish=ok=>{if(done)return;done=true;clearTimeout(timer);try{if(ws){if(ws.readyState===1)ws.close()}}catch(_){}resolve(!!ok)};timer=setTimeout(()=>finish(false),6500);try{ws=new WebSocket(url);ws.onopen=()=>{try{ws.send(JSON.stringify(['EVENT',ev]))}catch(_){finish(false)}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='OK'&&d[1]===ev.id)finish(!!d[2])}catch(_){}};ws.onerror=()=>finish(false);ws.onclose=()=>{if(!done)finish(false)}}catch(_){finish(false)}});
+async function signRelayAuth(url,challenge){
+ const pk=String(signerPk||await getSignerKey()||'').toLowerCase();if(!HEX.test(pk))throw new Error('Connect your Nostr signer to authenticate with this relay.');
+ return signEvent({kind:22242,pubkey:pk,created_at:Math.floor(Date.now()/1000),tags:[['relay',url],['challenge',String(challenge||'')]],content:''});
 }
-async function publishEvent(ev,relay){const relays=currentRelayList(relay);const results=await Promise.all(relays.map(u=>sendEventToRelay(u,ev)));if(!results.some(Boolean))throw new Error('No configured Nostr relay confirmed the event. Check your relay settings and connection.');return true}
+function sendEventToRelay(url,ev){
+ return new Promise(resolve=>{let ws,done=false,timer,authAttempts=0,authEventId='',sent=false;const finish=(ok,reason)=>{if(done)return;done=true;clearTimeout(timer);try{if(ws&&ws.readyState===1)ws.close()}catch(_){}resolve({ok:!!ok,url:url,reason:String(reason||'')})};
+ timer=setTimeout(()=>finish(false,'Connection or acknowledgement timed out.'),12000);
+ try{
+  ws=new WebSocket(url);
+  ws.onopen=()=>{try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(e){finish(false,'Could not send event: '+String(e.message||e))}};
+  ws.onmessage=e=>{try{const d=JSON.parse(e.data);
+   if(d[0]==='AUTH'){
+    const challenge=String(d[1]||'');if(!challenge){finish(false,'Relay sent an empty NIP-42 challenge.');return}
+    if(authAttempts++){finish(false,'Relay requested authentication more than once.');return}
+    signRelayAuth(url,challenge).then(auth=>{if(done)return;authEventId=String(auth.id||'');ws.send(JSON.stringify(['AUTH',auth]))}).catch(err=>finish(false,'NIP-42 authentication failed: '+String(err.message||err)));return;
+   }
+   if(d[0]==='OK'&&authEventId&&d[1]===authEventId){authEventId='';if(d[2]){try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(err){finish(false,'Could not retry event after authentication: '+String(err.message||err))}}else finish(false,'Relay rejected NIP-42 authentication: '+String(d[3]||'no reason provided'));return}
+   if(d[0]==='OK'&&d[1]===ev.id){if(d[2])finish(true,'');else if(/auth(?:entication)?-required|auth required|must authenticate/i.test(String(d[3]||''))){/* Wait for the relay's AUTH challenge. */}else finish(false,String(d[3]||'Relay rejected the event.'))}
+  }catch(_){}};
+  ws.onerror=()=>finish(false,'WebSocket error.');
+  ws.onclose=()=>{if(!done)finish(false,sent?'Relay closed before confirming the event.':'Relay closed before the event was sent.')};
+ }catch(err){finish(false,String(err.message||err))}
+ });
+}
+async function publishEvent(ev,relay){
+ const relays=currentRelayList(relay),results=await Promise.all(relays.map(u=>sendEventToRelay(u,ev)));
+ if(!results.some(r=>r.ok)){
+  const details=results.filter(r=>r.reason).slice(0,3).map(r=>r.url+': '+r.reason).join(' | ');
+  throw new Error('No configured Nostr relay confirmed the event. '+(details||'Check your relay settings and connection.'));
+ }
+ return true;
+}
 function requestEvents(url,filter,ms=4800){
  return new Promise(resolve=>{let ws,done=false,timer;const events=new Map(),sub='sifaka-checkers-'+Math.random().toString(36).slice(2,10);const finish=()=>{if(done)return;done=true;clearTimeout(timer);try{if(ws){if(ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close()}}}catch(_){}resolve([...events.values()])};timer=setTimeout(finish,ms);try{ws=new WebSocket(url);ws.onopen=()=>{try{ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){finish()}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&d[2].id)events.set(d[2].id,d[2]);if(d[0]==='EOSE'&&d[1]===sub)finish()}catch(_) {}};ws.onerror=finish;ws.onclose=()=>{if(!done)finish()}}catch(_){finish()}});
 }
