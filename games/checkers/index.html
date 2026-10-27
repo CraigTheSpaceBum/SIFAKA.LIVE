@@ -399,11 +399,26 @@ function setPlayer(side,pk){
 const profileCache=new Map();
 async function queryOne(url,filter,ms=2600){const got=await requestEvents(url,filter,ms);return got}
 async function lookupProfile(pk){
- if(!HEX.test(String(pk||'')))return null;const old=profileCache.get(pk);if(old&&Date.now()-old.at<120000)return old.value;
- const events=await queryRelays({kinds:[0],authors:[pk],limit:10});let best=null;events.forEach(e=>{if(e.pubkey===pk&&(!best||e.created_at>best.created_at))best=e});let profile={};try{if(best)profile=JSON.parse(best.content)||{}}catch(_){}
- let verified=false;if(profile.nip05){try{const nip=String(profile.nip05),at=nip.lastIndexOf('@'),user=at<0?'_':nip.slice(0,at)||'_',domain=at<0?nip:nip.slice(at+1);if(/^[a-z0-9._-]+$/i.test(user)&&/^[a-z0-9.-]+$/i.test(domain)){const r=await fetch('https://'+domain.toLowerCase()+'/.well-known/nostr.json?name='+encodeURIComponent(user),{credentials:'omit',mode:'cors'});if(r.ok){const d=await r.json();verified=String(d&&d.names&&(d.names[user]||d.names[user.toLowerCase()])||'').toLowerCase()===pk.toLowerCase()}}}catch(_){}}
- const value={pubkey:pk,profile:profile,verified:verified};profileCache.set(pk,{at:Date.now(),value});return value;
+ pk=String(pk||'').trim().toLowerCase();if(!HEX.test(pk))return null;
+ const old=profileCache.get(pk);if(old&&Date.now()-old.at<120000)return old.value;
+ const events=await queryRelays({kinds:[0],authors:[pk],limit:20});
+ let best=null;
+ events.forEach(e=>{if(e&&Number(e.kind)===0&&String(e.pubkey||'').toLowerCase()===pk&&(!best||Number(e.created_at||0)>Number(best.created_at||0)))best=e});
+ let profile={pubkey:pk,name:'',display_name:'',picture:'',nip05:'',about:''};
+ try{if(best){const parsed=JSON.parse(best.content||'{}');if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed))profile=Object.assign({},profile,parsed,{pubkey:pk})}}catch(_){}
+ let verified=false;
+ if(profile.nip05){
+  try{
+   const nip=String(profile.nip05).trim(),at=nip.lastIndexOf('@'),user=at<0?'_':nip.slice(0,at)||'_',domain=at<0?nip:nip.slice(at+1);
+   if(/^[a-z0-9._-]+$/i.test(user)&&/^[a-z0-9.-]+$/i.test(domain)&&!domain.includes('..')){
+    const r=await fetch('https://'+domain.toLowerCase()+'/.well-known/nostr.json?name='+encodeURIComponent(user),{credentials:'omit',mode:'cors',cache:'no-store',headers:{Accept:'application/json'}});
+    if(r.ok){const d=await r.json();verified=String(d&&d.names&&(d.names[user]||d.names[user.toLowerCase()])||'').toLowerCase()===pk}
+   }
+  }catch(_){}
+ }
+ const value={pubkey:pk,profile:profile,event:best,verified:verified};profileCache.set(pk,{at:Date.now(),value});return value;
 }
+
 function addChatSystem(text){appendChat('system',text)}
 function appendChat(name,text,pk,eventId){
  const el=document.createElement('div');el.className='chatmsg'+(name==='system'?' system':'');if(name==='system'){el.textContent=text}else{const t=document.createElement('span');t.className='time';t.textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});const b=document.createElement('strong');b.textContent=name;el.append(t,b,document.createTextNode(': '+text))}$('chatLog').appendChild(el);$('chatLog').scrollTop=$('chatLog').scrollHeight;
@@ -575,7 +590,7 @@ async function refreshLobby(){
 async function openLobby(tab){lobbyTab=tab||'open';$('lobbyTabs').querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===lobbyTab));openOverlay('lobbyOverlay');await refreshLobby()}
 function updateIdentity(){
  $('identityLabel').textContent=signerPk?(signerProfile.display_name||signerProfile.name||shortPk(signerPk)):'Not connected';$('connectBtn').textContent=signerPk?'Nostr connected':'Connect Nostr';
- if(signerPk){$('redName').textContent=signerProfile.display_name||signerProfile.name||shortPk(signerPk);$('redIdentity').textContent=signerProfile.nip05||shortPk(signerPk);setPlayer('red',signerPk)}
+ if(signerPk){$('redName').textContent=signerProfile.display_name||signerProfile.displayName||signerProfile.name||shortPk(signerPk);$('redIdentity').textContent=shortPk(signerPk);setPlayer('red',signerPk)}
 }
 async function connect(){
  const pk=await getSignerKey();if(!pk){openLogin();say('Sign in to Sifaka.Live or connect a Nostr signer to continue.');return}
@@ -591,7 +606,7 @@ function openLogin(){
    try{
     if(win.nostr===undefined&&window.nostr&&typeof window.nostr.getPublicKey==='function'){try{Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr})}catch(_){}}
     const ctx=win.__SIFAKA_CONTEXT,user=ctx&&typeof ctx.getUser==='function'?ctx.getUser():null;
-    if(user&&user.pubkey&&ctx&&typeof ctx.signEvent==='function'){installSigner(win,'');closeLogin();return}
+    if(user&&user.pubkey&&ctx&&typeof ctx.signEvent==='function'){installSigner(win,'');closeLogin(true);return}
     const modal=doc.getElementById('loginModal');
     if(modal&&typeof win.openLogin==='function'){
      let style=doc.getElementById('checkersLoginIsolateStyle');if(!style){style=doc.createElement('style');style.id='checkersLoginIsolateStyle';doc.head.appendChild(style)}
@@ -599,7 +614,7 @@ function openLogin(){
      if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}
      if(!modal.classList.contains('open'))win.openLogin();
      if(!modal.classList.contains('open')){if(attempt++<200){setTimeout(prepare,50);return}say('The Sifaka sign-in form could not be opened.');return}
-     const Observer=win.MutationObserver;if(Observer){loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open'))closeLogin()});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']})}
+     const Observer=win.MutationObserver;if(Observer){loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open')){const authCtx=win.__SIFAKA_CONTEXT,authUser=authCtx&&typeof authCtx.getUser==='function'?authCtx.getUser():null,signed=!!(authUser&&authUser.pubkey&&authCtx&&typeof authCtx.signEvent==='function');if(signed)installSigner(win,'');closeLogin(signed)}});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']})}
      try{doc.querySelectorAll('video,audio').forEach(el=>{try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(t=>t.stop());el.removeAttribute('src');el.querySelectorAll('source').forEach(x=>x.removeAttribute('src'));el.load()}catch(_){}})}catch(_){}
      return;
     }
@@ -611,7 +626,7 @@ function openLogin(){
  };
  frame.src='/?chessLoginPopup=1&chessAction=login';
 }
-function closeLogin(){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}connect().catch(()=>{})}
+function closeLogin(signedIn=false){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}if(signedIn===true)connect().catch(()=>{})}
 function setupStep(step){const first=step==='opponents';$('setupOpponents').classList.toggle('hidden',!first);$('setupDifficulty').classList.toggle('hidden',step!=='engine');$('setupHumanOptions').classList.toggle('hidden',step!=='human');$('setupBack').classList.toggle('hidden',first);$('setupHelp').textContent=first?'Choose whether to play against the engine or another person. Human games can be local or synchronized through Nostr.':step==='engine'?'Choose the Checkers engine difficulty. You play Red; the engine plays Black.':'Choose local play or create/join a match over Nostr.'}function openSetup(){setupStep('opponents');openOverlay('setupOverlay')}
  function bindEvents(){
  $('connectBtn').addEventListener('click',()=>connect().catch(e=>say(e.message)));
