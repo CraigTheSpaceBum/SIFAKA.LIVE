@@ -275,12 +275,27 @@ function sendEventToRelay(url,ev){
  });
 }
 async function publishEvent(ev,relay){
- const relays=currentRelayList(relay),results=await Promise.all(relays.map(u=>sendEventToRelay(u,ev)));
- if(!results.some(r=>r.ok)){
-  const details=results.filter(r=>r.reason).slice(0,3).map(r=>r.url+': '+r.reason).join(' | ');
-  throw new Error('No configured Nostr relay confirmed the event. '+(details||'Check your relay settings and connection.'));
- }
- return true;
+ const relays=currentRelayList(relay),results=[];
+ if(!relays.length)throw new Error('No configured Nostr relay URLs are available.');
+ let remaining=relays.length,acknowledged=false;
+ return new Promise((resolve,reject)=>{
+  relays.forEach(url=>{
+   sendEventToRelay(url,ev).then(result=>{
+    results.push(result);remaining--;
+    if(result.ok&&!acknowledged){acknowledged=true;resolve(true)}
+    if(remaining===0&&!acknowledged){
+     const details=results.filter(r=>r.reason).slice(0,3).map(r=>r.url+': '+r.reason).join(' | ');
+     reject(new Error('No configured Nostr relay confirmed the event. '+(details||'Check your relay settings and connection.')));
+    }
+   }).catch(err=>{
+    results.push({ok:false,url:url,reason:String(err&&err.message||err)});remaining--;
+    if(remaining===0&&!acknowledged){
+     const details=results.filter(r=>r.reason).slice(0,3).map(r=>r.url+': '+r.reason).join(' | ');
+     reject(new Error('No configured Nostr relay confirmed the event. '+(details||'Check your relay settings and connection.')));
+    }
+   });
+  });
+ });
 }
 function requestEvents(url,filter,ms=4800){
  return new Promise(resolve=>{let ws,done=false,timer,authAttempts=0,authEventId='';const events=new Map(),sub='sifaka-checkers-'+Math.random().toString(36).slice(2,10);
@@ -439,8 +454,9 @@ async function searchCheckersPlayers(){
  if(!q){status.textContent='Enter a display name, npub, public key, or NIP-05 address.';renderInviteResults([]);return}
  status.textContent='Searching Nostr profiles…';$('inviteSearchBtn').disabled=true;$('inviteResults').replaceChildren();
  try{
-  let keys=[];const exact=decodeNpub(q);
+  let keys=[];const exact=decodeNpub(q),hexPk=q.toLowerCase();
   if(exact)keys=[exact];
+  else if(HEX.test(hexPk))keys=[hexPk];
   else if(q.includes('@')){const pk=await resolveCheckersNip05(q);if(pk)keys=[pk]}
   if(!keys.length){
    const results=await Promise.all(['wss://relay.nostr.band','wss://search.nos.today'].map(url=>requestEvents(url,{kinds:[0],search:q,limit:30},5000)));
@@ -532,9 +548,25 @@ function renderLobby(games){
 async function activateExisting(g){const pk=await getSignerKey();if(!pk)throw new Error('Connect your Nostr identity first.');const found=await eventToGame(g.raw||g.event,g.relay,g.secret);const item=found||g;if(item.private&&!item.secret)throw new Error('Open the original private invite URL to restore this game.');leaveGame();local=false;engineMode=false;game=item;game.myPk=pk;game.myColor=pk===game.red?'r':'b';signerPk=pk;turns=item.moves.map(t=>({path:t.path.slice()}));state=replay(turns);if(!state)throw new Error('Saved game history failed validation.');terminal=terminalForGame(state,turns,item);renderBoard();updatePlayers();subscribeGame();closeOverlay('lobbyOverlay')}
 async function refreshLobby(){
  if(lobbyBusy)return;lobbyBusy=true;$('refreshLobbyBtn').disabled=true;$('gamesList').innerHTML='<div class="muted">Querying Checkers events from Nostr relays…</div>';
- try{const [publicEvents,privRecent]=await Promise.all([queryRelays({kinds:[PUB_KIND],'#t':[APP],limit:500}),Promise.resolve([])]),map=new Map();
+ try{
+  const publicEvents=await queryRelays({kinds:[PUB_KIND],'#t':[APP],limit:500}),map=new Map();
   for(const ev of publicEvents){const g=eventFromPayload(ev,preferredRelay());if(g){g.raw=ev;const old=map.get(g.id);if(!old||g.created_at>old.created_at||(g.created_at===old.created_at&&g.moves.length>old.moves.length))map.set(g.id,g)}}
-  if(signerPk){try{const raw=JSON.parse(localStorage.getItem('sifaka_checkers_recent_'+signerPk)||'[]');for(const r of raw.filter(x=>x&&x.private&&x.secret).slice(0,12)){const evs=await queryRelays({kinds:[PRIV_KIND],'#d':[r.id],limit:50},r.relay);let found=null;for(const ev of evs){const g=await eventToGame(ev,r.relay,r.secret);if(g&&g.id===r.id&&(!found||g.created_at>found.created_at)){g.secret=r.secret;g.raw=ev;found=g}}if(found)map.set(found.id,found)}}catch(_){}}
+  renderLobby([...map.values()]);
+  if(signerPk){
+   try{
+    const raw=JSON.parse(localStorage.getItem('sifaka_checkers_recent_'+signerPk)||'[]'),recent=raw.filter(x=>x&&x.private&&x.secret).slice(0,12);
+    for(let offset=0;offset<recent.length;offset+=4){
+     const batch=recent.slice(offset,offset+4);
+     const foundBatch=await Promise.all(batch.map(async r=>{
+      const evs=await queryRelays({kinds:[PRIV_KIND],'#d':[r.id],limit:50},r.relay);let found=null;
+      for(const ev of evs){const g=await eventToGame(ev,r.relay,r.secret);if(g&&g.id===r.id&&(!found||g.created_at>found.created_at)){g.secret=r.secret;g.raw=ev;found=g}}
+      return found;
+     }));
+     foundBatch.filter(Boolean).forEach(found=>map.set(found.id,found));
+     renderLobby([...map.values()]);
+    }
+   }catch(_){}
+  }
   renderLobby([...map.values()]);
  }catch(e){$('gamesList').textContent='Could not load the lobby: '+e.message}
  finally{lobbyBusy=false;$('refreshLobbyBtn').disabled=false}
