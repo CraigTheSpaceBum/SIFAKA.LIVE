@@ -717,14 +717,14 @@ function setupStep(step){const first=step==='opponents';$('setupOpponents').clas
  document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>closeOverlay(b.dataset.close)));
  document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)closeOverlay(el.id)}));
  document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.overlay.open').forEach(el=>el.classList.remove('open'))});
- window.addEventListener('storage',()=>{if(!signerPk)connect().catch(()=>{})});
+ window.addEventListener('storage',()=>{if(!signerPk){const pk=storedKey();if(pk){signerPk=pk;updateIdentity()}}});
 }
 function addMovePieceSounds(){/* Kept deliberately quiet to avoid autoplay restrictions. */}
 function restoreStoredIdentity(){connect().catch(()=>{const pk=storedKey();if(pk){signerPk=pk;updateIdentity()}})}
 function bootstrap(){
  bindEvents();state=newBoard();renderBoard();updateIdentity();
  const params=new URLSearchParams(location.search);if(params.get('game'))loadIncomingInvite().catch(e=>{$('incomingStatus').textContent=e.message});else openSetup();
- connectLocalSigner().then(pk=>{if(pk&&!signerPk)connect().then(()=>refreshIncomingInviteControls()).catch(()=>{});else if(pk){signerPk=pk;refreshIncomingInviteControls()}}).catch(()=>{});
+ connectLocalSigner().then(pk=>{if(pk&&!signerPk){signerPk=pk;updateIdentity();refreshIncomingInviteControls()}}).catch(()=>{});
 }
 bootstrap();
 })();
