@@ -393,14 +393,25 @@ function subscribeGame(){
  else if(incoming.private)return;
  if(incoming.red!==game.red)return;
  if(['finished','forfeit'].includes(game.status)&&!['finished','forfeit'].includes(incoming.status))return;
- if(incoming.black&&game.black&&incoming.black!==game.black&&author!==game.red){if(game.myColor==='b'){terminal={status:'forfeit',text:'Another player claimed this seat first. Return to the lobby and join another game.'};busy=true;renderBoard();say(terminal.text)}return}
+ if(incoming.black&&game.black&&incoming.black!==game.black){
+  const currentClaim=Number(game.seatClaimAt||game.lastEventTime||0),incomingClaim=Number(incoming.seatClaimAt||incoming.created_at||0);
+  const incomingWins=incomingClaim<currentClaim||(incomingClaim===currentClaim&&String(incoming.black).toLowerCase()<String(game.black).toLowerCase());
+  if(!incomingWins)return;
+  const previousBlack=String(game.black||'').toLowerCase();
+  const lostSeat=!!game.conflicted||(game.myColor==='b'&&String(game.myPk||signerPk||'').toLowerCase()===previousBlack);
+  const rebuiltClaim=replay(incoming.moves);if(!rebuiltClaim)return;
+  game.black=incoming.black;game.seatClaimAt=incoming.seatClaimAt||incoming.created_at;game.moves=incoming.moves;game.lastEventTime=incoming.created_at;game.lastEventId=incoming.eventId;game.status=incoming.status;
+  turns=incoming.moves.map(t=>({path:t.path.slice()}));state=rebuiltClaim;
+  if(lostSeat){game.myPk='';game.myColor='';game.conflicted=true;terminal={status:'forfeit',text:'Another player won the simultaneous seat claim. Return to the lobby and join another game.'};busy=true;say(terminal.text)}else terminal=terminalForGame(state,turns,game);
+  writeRecent(game);renderBoard();updatePlayers();return;
+ }
  if(!incoming.black&&game.black)return;
  if(!isNewer(incoming)&&incoming.eventId!==game.lastEventId)return;
  if(incoming.moves.length<game.moves.length)return;
  const rebuilt=replay(incoming.moves);if(!rebuilt)return;
  const calculatedTerminal=getTerminal(rebuilt,incoming.moves);if(incoming.status==='finished'&&!calculatedTerminal)return;if(calculatedTerminal&&incoming.status==='active')return;
- game.red=incoming.red;game.black=incoming.black||game.black;game.moves=incoming.moves;game.lastEventTime=incoming.created_at;game.lastEventId=incoming.eventId;game.status=incoming.status;turns=incoming.moves.map(t=>({path:t.path.slice()}));state=rebuilt;
- if(incoming.status==='forfeit'){const forfeiter=author===incoming.red?'r':'b';const weWon=forfeiter!==game.myColor;terminal={status:'forfeit',text:weWon?'Your opponent forfeited the match.':'You forfeited the match.',winner:other(forfeiter)}}else terminal=calculatedTerminal||null;
+ game.red=incoming.red;game.black=incoming.black||game.black;game.seatClaimAt=incoming.seatClaimAt||game.seatClaimAt||0;game.moves=incoming.moves;game.lastEventTime=incoming.created_at;game.lastEventId=incoming.eventId;game.status=incoming.status;turns=incoming.moves.map(t=>({path:t.path.slice()}));state=rebuilt;
+ if(game.conflicted){terminal={status:'forfeit',text:'Another player won the simultaneous seat claim. Return to the lobby and join another game.'};busy=true}else if(incoming.status==='forfeit'){const forfeiter=author===incoming.red?'r':'b';const weWon=forfeiter!==game.myColor;terminal={status:'forfeit',text:weWon?'Your opponent forfeited the match.':'You forfeited the match.',winner:other(forfeiter)}}else terminal=calculatedTerminal||null;
  writeRecent(game);renderBoard();updatePlayers();
  if(terminal&&incoming.status==='forfeit')addChatSystem(terminal.text);else if(author!==signerPk&&turns.length)appendChat('system','Game state synchronized from Nostr.');
  }).catch(()=>{})}
