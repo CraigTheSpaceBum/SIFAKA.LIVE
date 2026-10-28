@@ -280,7 +280,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 const $=id=>document.getElementById(id),HEX=/^[0-9a-f]{64}$/i,APP='sifaka-chinese-checkers',PUB_KIND=30078,PRIV_KIND=30079,CHAT_KIND=1;
 const DEFAULT_RELAYS=['wss://nos.lol','wss://relay.damus.io','wss://relay.primal.net'];
 let selectedPlayerCount=2,signerPk='',signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,pendingOnlineAction=null,game=null,local=true,engineMode=false,engineLevel=2,engineTimer=null,engineRequestId=0,flipped=false,selected=-1,selectedPath=[],pathCandidates=[],busy=false,turns=[],state=null,terminal=null,gameSockets=[],reconnectTimer=null,publishChain=Promise.resolve(),seenChat=new Set(),lobbyTab='open',lobbyBusy=false,pendingInvite=null,toastTimer=null,inviteSearchRequest=0,accountRelayUrls=[],relayDiscoveryFor='';const playerVersions={},ENGINE_NAMES=['','Novice','Adept','Master'];
-const pieceName=p=>p==='r'?'Red':p==='b'?'Blue':'',other=c=>c==='r'?'b':'r';
+
 function say(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3200)}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 const DIRS=[[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
@@ -428,7 +428,7 @@ function syncGameOverOverlay(){
  $('gameOverTitle').textContent=terminal.winner?pieceName(terminal.winner)+' wins!':isDraw?'Draw':'Game over';
  $('gameOverSummary').textContent=terminal.text;overlay.classList.add('open');
 }
-function updatePlayers(){
+function renderPlayerCards(){
  const root=$('playerCards');if(!root||!state)return;
  const seats=state.players||['r','b'],active=new Set(seats);
  Array.from(root.querySelectorAll('.player')).forEach(el=>{if(!active.has(el.dataset.color))el.remove()});
@@ -482,7 +482,7 @@ function renderBoard(){
  });
  const whose=pieceName(base.turn),mode=local?(engineMode?'Single player · '+ENGINE_NAMES[engineLevel]+' · '+base.players.length+' players':'Local multiplayer · '+base.players.length+' players'):'Nostr two-player '+(game&&game.private?'private':'public')+' game';
  $('statusLine').textContent=terminal?terminal.text:mode+' · '+whose+' to move'+(busy?' · Engine thinking…':'');
- updatePlayers();
+ renderPlayerCards();
  $('undoBtn').disabled=!local||!turns.length||busy;
  $('finishHopBtn').disabled=busy||terminal||selectedPath.length<2||!isHopStep(selectedPath[selectedPath.length-2],selectedPath[selectedPath.length-1])||!pathCandidates.some(t=>samePath(t.path,selectedPath));
  $('shareBtn').disabled=local||!game;
@@ -740,11 +740,8 @@ function subscribeGame(){
  }catch(_){}};ws.onerror=()=>{try{ws.close()}catch(_){}};ws.onclose=()=>{scheduleReconnect()}}catch(_){}});
 }
 function currentOther(){return game?(game.myColor==='r'?game.black:game.red):''}
-function updatePlayers(){
- const red=game&&game.red,black=game&&game.black;
- if(red){setPlayer('red',red)}else setPlayer('red',signerPk);
- if(black){setPlayer('black',black)}else{setPlayer('black','');$('blackName').textContent=game&&game.private?'Awaiting invite':'Waiting for player';$('blackIdentity').textContent='No opponent yet';$('blackAvatar').textContent='🔵'}
-}
+function updatePlayers(){renderPlayerCards()}
+
 function setPlayer(side,pk){
  const version=playerVersions[side]=(Number(playerVersions[side])||0)+1,meta=PLAYER_META[side]||PLAYER_META.r;
  const av=$(side+'Avatar'),name=$(side+'Name'),id=$(side+'Identity');
@@ -989,8 +986,9 @@ async function refreshLobby(){
 }
 async function openLobby(tab){lobbyTab=tab||'open';$('lobbyTabs').querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===lobbyTab));openOverlay('lobbyOverlay');await refreshLobby()}
 function updateIdentity(){
- $('identityLabel').textContent=signerPk?(signerProfile.display_name||signerProfile.name||shortPk(signerPk)):'Not connected';$('connectBtn').textContent=signerPk?'Nostr connected':'Login with Nostr';
- if(signerPk){$('redName').textContent=signerProfile.display_name||signerProfile.displayName||signerProfile.name||shortPk(signerPk);$('redIdentity').textContent=shortPk(signerPk);setPlayer('red',signerPk)}
+ $('identityLabel').textContent=signerPk?(signerProfile.display_name||signerProfile.name||shortPk(signerPk)):'Not connected';
+ $('connectBtn').textContent=signerPk?'Nostr connected':'Login with Nostr';
+ renderPlayerCards();
  if(window.sifakaGameHeaderSyncIdentity)window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified);
 }
 async function connect(){
