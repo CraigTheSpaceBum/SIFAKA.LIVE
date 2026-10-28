@@ -746,10 +746,23 @@ function updatePlayers(){
  if(black){setPlayer('black',black)}else{setPlayer('black','');$('blackName').textContent=game&&game.private?'Awaiting invite':'Waiting for player';$('blackIdentity').textContent='No opponent yet';$('blackAvatar').textContent='🔵'}
 }
 function setPlayer(side,pk){
- const version=++playerVersions[side];const av=$(side+'Avatar'),name=$(side+'Name'),id=$(side+'Identity');
- if(!pk){name.textContent=side==='red'?'Red':'Black';id.textContent='Not joined';av.textContent=side==='red'?'🔴':'🔵';av.classList.remove('verified');return}
- const fallback=shortPk(pk);name.textContent=fallback;id.textContent=fallback;av.textContent=side==='red'?'🔴':'⚫';av.classList.remove('verified');
- lookupProfile(pk).then(result=>{if(!result||version!==playerVersions[side]||!$(side+'Avatar').isConnected)return;const p=result.profile||{},nm=String(p.display_name||p.displayName||p.name||fallback).trim()||fallback;name.textContent=nm;id.textContent=result.verified&&p.nip05?p.nip05:(p.nip05?'Unverified: '+p.nip05:fallback);if(result.verified)av.classList.add('verified');av.replaceChildren();const pic=String(p.picture||'');if(/^https?:\/\//i.test(pic)){const img=document.createElement('img');img.src=pic;img.alt='';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>{av.textContent=side==='red'?'🔴':'⚫'},{once:true});av.appendChild(img)}else av.textContent=String(nm[0]||'S').toUpperCase()}).catch(()=>{});
+ const version=playerVersions[side]=(Number(playerVersions[side])||0)+1,meta=PLAYER_META[side]||PLAYER_META.r;
+ const av=$(side+'Avatar'),name=$(side+'Name'),id=$(side+'Identity');
+ if(!av||!name||!id)return;
+ av.className='avatar '+meta.className;av.replaceChildren();
+ if(!pk){av.textContent=meta.emoji;name.textContent=meta.name;id.textContent='Open seat';av.classList.remove('verified');return}
+ const fallback=shortPk(pk);name.textContent=fallback;id.textContent=fallback;av.textContent=meta.emoji;
+ lookupProfile(pk).then(result=>{
+  if(!result||version!==playerVersions[side]||!av.isConnected)return;
+  const profile=result.profile||{},nm=String(profile.display_name||profile.displayName||profile.name||fallback).trim()||fallback;
+  name.textContent=nm;id.textContent=result.verified&&profile.nip05?profile.nip05:(profile.nip05?'Unverified: '+profile.nip05:fallback);
+  av.classList.toggle('verified',!!result.verified);
+  const pic=String(profile.picture||'');
+  if(/^https?:\/\//i.test(pic)){
+   const img=document.createElement('img');img.src=pic;img.alt='';img.referrerPolicy='no-referrer';
+   img.addEventListener('error',()=>{av.replaceChildren();av.textContent=meta.emoji},{once:true});av.replaceChildren(img);
+  }else{av.replaceChildren();av.textContent=String(nm[0]||meta.emoji).toUpperCase()}
+ }).catch(()=>{});
 }
 const profileCache=new Map();
 async function queryOne(url,filter,ms=2600){const got=await requestEvents(url,filter,ms);return got}
