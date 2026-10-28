@@ -688,7 +688,7 @@ function validateCheckersPayload(data,author,isPrivate,eventId,createdAt){
  if(data.status==='active'&&(!full||terminal))return null;
  if(data.status==='finished'&&!terminal)return null;
  if(data.status==='forfeit'&&pubkeys.length<2)return null;
- if(hasMoves){
+ if(hasMoves&&data.status!=='forfeit'){
   const lastColor=state.players[(moves.length-1)%state.players.length],lastSeat=seats.find(seat=>seat.color===lastColor);
   if(!lastSeat||lastSeat.pubkey!==author)return null;
  }
