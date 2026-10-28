@@ -269,7 +269,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 </select>
 <div id="setupOpponents" style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:14px 0"><button class="btn primary" id="setupEngineChoice" type="button">Engine</button><button class="btn" id="setupHumanChoice" type="button">Human</button></div>
 <div id="setupDifficulty" class="hidden"><div class="eyebrow">ENGINE DIFFICULTY</div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0 14px"><button class="btn" id="setupEngineNovice" type="button">Novice</button><button class="btn primary" id="setupEngineAdept" type="button">Adept</button><button class="btn purple" id="setupEngineMaster" type="button">Master</button></div><p class="muted">You play Red. The engine controls every other seat.</p></div>
-<div id="setupHumanOptions" class="hidden" style="display:grid;gap:9px"><button class="btn primary" id="setupLocal" type="button">Local multiplayer (2–6 players)</button><button class="btn" id="setupPublic" type="button">Create public Nostr match · 2 players</button><button class="btn purple" id="setupPrivate" type="button">Create private Nostr match · 2 players</button><button class="btn" id="setupJoin" type="button">Open / Current Games</button><p class="muted" style="margin:0">Player count applies to local and engine games. Online Nostr invitations currently support two players per match.</p></div>
+<div id="setupHumanOptions" class="hidden" style="display:grid;gap:9px"><button class="btn primary" id="setupLocal" type="button">Local multiplayer (2–6 players)</button><button class="btn" id="setupPublic" type="button">Create public Nostr match</button><button class="btn purple" id="setupPrivate" type="button">Create private Nostr match</button><button class="btn" id="setupJoin" type="button">Open / Current Games</button><p class="muted" style="margin:0">Online games fill the selected seats one by one. All players must join before the first move.</p></div>
 <div class="ruleline"></div><div style="display:flex;justify-content:flex-start"><button class="btn hidden" id="setupBack" type="button">Back</button></div></div></div>
 <div class="loginlayer" id="loginLayer" hidden><iframe id="loginFrame" title="Sifaka.Live sign-in" src="about:blank" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" allow="clipboard-read; clipboard-write"></iframe><button class="btn" id="closeLoginBtn" type="button">Close sign-in</button></div>
 <iframe id="signerBridge" title="Sifaka account connection" aria-hidden="true" tabindex="-1" src="about:blank" style="position:fixed;width:1px;height:1px;left:-10000px;top:0;opacity:0;pointer-events:none;border:0"></iframe>
@@ -454,7 +454,7 @@ function renderPlayerCards(){
    nameEl.textContent=engineMode?(color==='r'?'You':'Sifaka Engine · '+meta.name):(idx===0?(signerProfile.display_name||signerProfile.name||'Player 1'):'Player '+(idx+1));
    identity.textContent=engineMode?(color==='r'?(signerPk?shortPk(signerPk):'You'):(ENGINE_NAMES[engineLevel]+' difficulty')):(idx===0&&signerPk?shortPk(signerPk):'Local player');
   }else{
-   const pk=game&&(color==='r'?game.red:color==='b'?game.black:'')||'';
+   const seat=game&&Array.isArray(game.seats)?game.seats.find(item=>item.color===color):null;const pk=seat&&seat.pubkey||'';
    if(pk)setPlayer(color,pk);else{avatar.className='avatar '+meta.className;avatar.textContent=meta.emoji;nameEl.textContent=(game&&game.private&&idx===1?'Awaiting invite':'Waiting for '+meta.name);identity.textContent='Open seat'}
   }
  });
@@ -501,7 +501,7 @@ function isHopStep(from,to){
 function clickSquare(i){
  if(busy||terminal)return;
  if(engineMode&&state.turn!=='r'){say('The engine is thinking.');return}
- if(!local&&game&&!game.black){say('Waiting for an opponent to join before moving.');return}
+ if(!local&&game&&!seatsFull(game)){say('Waiting for all selected players to join before the first move.');return}
  if(!local&&game&&game.myColor!==state.turn){say('It is your opponent’s turn. The board is read-only until your turn.');return}
  const piece=state.b[i];
  if(selected>=0&&pathCandidates.length){
@@ -541,6 +541,28 @@ function resetLocal(vsEngine=false,level=2,count=selectedPlayerCount){
  closeOverlay('gameOverOverlay');renderBoard();
 }
 function shortPk(pk){return pk&&pk.length===64?pk.slice(0,8)+'…'+pk.slice(-6):String(pk||'Not connected')}
+
+function normalizeSeats(value,count,legacyRed,legacyBlack,createdAt){
+ const n=[2,3,4,6].includes(Number(count))?Number(count):2,colors=newBoard(n).players;
+ const raw=Array.isArray(value)?value:[];
+ return colors.map((color,index)=>{
+  const old=raw.find(seat=>seat&&seat.color===color)||raw[index]||{};
+  let pubkey=String(old.pubkey||old.pk||'').toLowerCase();
+  if(!HEX.test(pubkey))pubkey=index===0?String(legacyRed||'').toLowerCase():index===1?String(legacyBlack||'').toLowerCase():'';
+  if(!HEX.test(pubkey))pubkey='';
+  return {color:color,pubkey:pubkey,claimedAt:pubkey?(index===0?Number(old.claimedAt||0):Number(old.claimedAt||createdAt||0)):0};
+ });
+}
+function syncGameSeats(g){
+ if(!g)return [];
+ const count=[2,3,4,6].includes(Number(g.playerCount))?Number(g.playerCount):2;
+ g.playerCount=count;g.seats=normalizeSeats(g.seats,count,g.red,g.black,g.lastEventTime);
+ g.red=g.seats[0]&&g.seats[0].pubkey||'';g.black=g.seats[1]&&g.seats[1].pubkey||'';
+ return g.seats;
+}
+function seatsFull(g){const seats=syncGameSeats(g);return seats.length>=2&&seats.every(seat=>HEX.test(String(seat.pubkey||'')))}
+function colorForPubkey(g,pk){return syncGameSeats(g).find(seat=>seat.pubkey===String(pk||'').toLowerCase())?.color||''}
+function filledSeatCount(g){return syncGameSeats(g).filter(seat=>HEX.test(String(seat.pubkey||''))).length}
 function currentRelayList(extra){let candidates=(Array.isArray(extra)?extra:[extra]).concat(accountRelayUrls);try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}if(signerPk){const saved=JSON.parse(localStorage.getItem('sifaka_chinese_checkers_relays_'+signerPk)||'[]');if(Array.isArray(saved))candidates=candidates.concat(saved)}}catch(_){}candidates=candidates.concat(DEFAULT_RELAYS);const out=[];candidates.forEach(u=>{u=String(u||'').trim();if(/^wss:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,8)}
 function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
@@ -1034,7 +1056,7 @@ function setupStep(step){
  $('setupDifficulty').classList.toggle('hidden',step!=='engine');
  $('setupHumanOptions').classList.toggle('hidden',step!=='human');
  $('setupBack').classList.toggle('hidden',first);
- $('setupHelp').textContent=first?'Choose Engine for a human-versus-computers game, or Human for local/online play. Select 2, 3, 4, or 6 total players.':step==='engine'?'Choose the engine difficulty. You play Red; the engine controls every other seat.':'Choose local multiplayer (2–6 seats) or a two-player match over Nostr.';
+ $('setupHelp').textContent=first?'Choose Engine for a human-versus-computers game, or Human for local/online play. Select 2, 3, 4, or 6 total players.':step==='engine'?'Choose the engine difficulty. You play Red; the engine controls every other seat.':'Choose local multiplayer or a public/private Nostr match. Online games wait until every selected seat is filled.';
 }
 function openSetup(){$('playerCountSelect').value=String(selectedPlayerCount||2);setupStep('opponents');openOverlay('setupOverlay')}
 function bindEvents(){
