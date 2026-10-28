@@ -581,5 +581,15 @@ connectLocalSigner().then(async function(pk){if(safeHex(pk)){signerPk=pk;var pro
 })();
 </script>
 
+<script id="sifaka-game-media-guard">
+(function(){
+"use strict";
+function allowedFrame(f){return f.id==="loginFrame"||f.id==="signerBridge"||f.title==="Sifaka account connection"||f.title==="Sifaka.Live sign-in";}
+function stopMedia(root){if(!root)return;var media=[];try{if(root.nodeType===1&&root.matches&&root.matches("video,audio"))media.push(root)}catch(_){}try{if(root.querySelectorAll)Array.prototype.forEach.call(root.querySelectorAll("video,audio"),function(el){media.push(el)})}catch(_){}media.forEach(function(el){try{el.autoplay=false;el.loop=false;el.pause();if(el.srcObject&&typeof el.srcObject.getTracks==="function"){el.srcObject.getTracks().forEach(function(t){try{t.stop()}catch(_){}});el.srcObject=null;}el.removeAttribute("src");el.querySelectorAll("source").forEach(function(x){x.removeAttribute("src")});el.load()}catch(_){}});var frames=[];try{if(root.nodeType===1&&root.tagName==="IFRAME")frames.push(root)}catch(_){}try{if(root.querySelectorAll)Array.prototype.forEach.call(root.querySelectorAll("iframe"),function(f){frames.push(f)})}catch(_){}frames.forEach(function(f){if(allowedFrame(f))return;try{f.src="about:blank";f.removeAttribute("srcdoc")}catch(_){}})}
+stopMedia(document);document.addEventListener("play",function(e){var el=e.target;if(el&&/^(VIDEO|AUDIO)$/.test(el.tagName)){try{el.pause()}catch(_){}}},true);
+if(typeof MutationObserver!=="undefined"&&document.documentElement){var observer=new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){stopMedia(n)})})});observer.observe(document.documentElement,{childList:true,subtree:true})}
+try{if(document.pictureInPictureElement&&document.exitPictureInPicture){var exit=document.exitPictureInPicture();if(exit&&exit.catch)exit.catch(function(){})}}catch(_){}
+})();
+</script>
 </body>
 </html>
