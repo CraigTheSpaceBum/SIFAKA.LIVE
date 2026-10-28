@@ -1,0 +1,1128 @@
+<!doctype html>
+<html lang="en" data-theme="lavender">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a0810">
+<title>Sifaka Chinese Checkers — Star-board strategy on Nostr</title>
+<meta name="description" content="Play Chinese Checkers on Sifaka.Live. Challenge the engine, play locally with a friend, or share public and private Nostr matches.">
+<link rel="canonical" href="https://sifaka.live/games/chinese-checkers/">
+<link rel="icon" href="../../sifaka.ico"><link rel="stylesheet" href="../../styles/themes.css?v=0.9.6"><link rel="stylesheet" href="../../styles/chess-daily-themes.css?v=20261014"><link rel="stylesheet" href="../../styles/daily-theme-polish.css?v=20261014"><link rel="stylesheet" href="../../styles/site-navigation.css?v=0.9.19">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0810;--ink:#f3ecdd;--mut:#c4bdd3;--gold:#d6b264;--gold2:#f2dca0;--line:rgba(255,255,255,.18);--glass:rgba(255,255,255,.07);--surface:#1d232b;--surface2:#252d37;--accent:#8f5bff;--purple:#8f5bff;--nip05:#8f5bff;color-scheme:dark;font-family:'DM Sans',sans-serif}
+*{box-sizing:border-box}html{min-height:100%;background:var(--bg)}body{margin:0;min-height:100vh;background:radial-gradient(70% 60% at 8% 0%,rgba(139,92,246,.21),transparent 68%),radial-gradient(55% 55% at 100% 100%,rgba(214,178,100,.12),transparent 70%),var(--bg);color:var(--ink);font:15px/1.5 'DM Sans',system-ui,sans-serif}
+button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.42;cursor:not-allowed;transform:none!important}
+.topbar{display:flex;align-items:center;gap:14px;padding:16px clamp(12px,4vw,44px);border-bottom:1px solid rgba(255,255,255,.08);background:rgba(8,6,14,.65);backdrop-filter:blur(18px);position:sticky;top:0;z-index:8}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none;min-width:0}.mark{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:50%;color:#1a1224;background:linear-gradient(145deg,var(--gold2),var(--gold) 56%,#8a6a2c);box-shadow:0 0 24px rgba(214,178,100,.28);font-size:22px}.brand strong{font-size:20px;letter-spacing:.04em;line-height:1.1}.brand small{display:block;margin-top:4px;color:var(--gold);font:700 9px 'DM Mono',monospace;letter-spacing:.22em}
+.toplinks{display:flex;gap:8px;margin-left:16px;flex-wrap:wrap}.toplinks a{color:var(--mut);text-decoration:none;font-size:12px;padding:7px 10px;border-radius:9px}.toplinks a:hover,.toplinks a.active{color:var(--ink);background:rgba(139,92,246,.15)}.topspacer{flex:1}.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:var(--glass);color:var(--ink);font-weight:600;font-size:12px;transition:.18s;white-space:normal}.btn:hover{border-color:var(--gold);box-shadow:0 0 18px rgba(214,178,100,.12);transform:translateY(-1px)}.btn.primary{color:#21172b;border:0;background:linear-gradient(135deg,var(--gold2),var(--gold))}.btn.purple{border-color:rgba(143,91,255,.55);background:rgba(143,91,255,.13)}.btn.small{padding:7px 10px;font-size:11px}.identity{font-size:11px;color:var(--mut);max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.page{width:min(1480px,100%);margin:auto;padding:24px clamp(12px,3vw,34px) 44px}.headline{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin:2px 0 20px}.eyebrow{font:700 10px 'DM Mono',monospace;letter-spacing:.19em;color:var(--gold);text-transform:uppercase}.headline h1{margin:5px 0 4px;font-size:clamp(28px,4.4vw,46px);line-height:1.06;letter-spacing:-.04em}.headline p{margin:0;color:var(--mut);max-width:700px;font-size:13px}.headline-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,360px);gap:18px;align-items:start}.boardcard,.card{background:var(--glass);border:1px solid var(--line);border-radius:20px;backdrop-filter:blur(14px);overflow:hidden}.boardhead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,.08)}.boardhead strong{font-size:13px}.statusline{font-size:12px;color:var(--gold2)}.boardwrap{padding:clamp(8px,2vw,18px);display:grid;place-items:center}.board{width:min(100%,760px);aspect-ratio:1;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));border:5px solid rgba(214,178,100,.7);border-radius:12px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.45),0 0 35px rgba(143,91,255,.10);touch-action:manipulation}.square{position:relative;min-width:0;min-height:0;border:0;padding:0;display:grid;place-items:center;aspect-ratio:1}.light{background:#e6d7bd}.dark{background:#5c466e}.square:focus-visible{outline:3px solid #f5e29d;outline-offset:-4px;z-index:2}.square.selected{box-shadow:inset 0 0 0 4px #f5e29d}.square.destination:after{content:'';position:absolute;width:24%;height:24%;border-radius:50%;background:rgba(32,151,91,.75);box-shadow:0 0 0 3px rgba(255,255,255,.28)}.square.capture-destination:after{content:'';position:absolute;inset:8%;border:3px solid rgba(255,232,135,.95);border-radius:50%}.piece{width:78%;height:78%;border-radius:50%;position:relative;display:grid;place-items:center;box-shadow:inset 0 3px 4px rgba(255,255,255,.27),inset 0 -7px 7px rgba(0,0,0,.5),0 5px 7px rgba(0,0,0,.43);border:2px solid rgba(255,255,255,.18);pointer-events:none}.piece.red{background:radial-gradient(circle at 33% 25%,#ff8d9e,#c51e49 57%,#650e2a)}.piece.black{background:radial-gradient(circle at 33% 25%,#8f93a2,#292b39 58%,#090a12)}.piece.king:after{content:'♛';font-size:clamp(14px,3vw,32px);color:#f4dba0;text-shadow:0 2px 3px #38274a,0 0 8px rgba(255,220,120,.3)}.piece:not(.king):after{content:'';position:absolute;inset:12%;border-radius:50%;border:1px solid rgba(255,255,255,.22)}.coords{position:absolute;font:700 9px 'DM Mono',monospace;opacity:.6;left:4px;top:2px;color:#20162b;pointer-events:none}.boardfoot{padding:0 16px 14px;color:var(--mut);font-size:11px}.sidebar{display:grid;gap:12px;min-width:0}.players{display:grid;grid-template-columns:1fr 1fr;gap:9px}.player{padding:13px;background:var(--glass);border:1px solid var(--line);border-radius:16px;min-width:0;position:relative}.player.turn{border-color:var(--gold);box-shadow:0 0 22px rgba(214,178,100,.12)}.player .row{display:flex;align-items:center;gap:9px;min-width:0}.avatar{width:38px;height:38px;flex:none;border-radius:11px;border:1px solid var(--line);display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#2a2040,#150f22);font-size:20px}.avatar img{width:100%;height:100%;object-fit:cover}.avatar.verified{border-radius:7px;box-shadow:0 0 0 2px rgba(143,91,255,.65),0 0 20px rgba(143,91,255,.4)}.player strong{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.player small{display:block;font-size:10px;color:var(--mut);overflow-wrap:anywhere}.player .turntag{font:700 9px 'DM Mono',monospace;color:var(--gold);margin-top:6px;letter-spacing:.06em}.card{padding:14px}.card h2,.card h3{font-size:14px;margin:0 0 10px}.controlgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.controlgrid .wide{grid-column:1/-1}.move-list{display:flex;flex-wrap:wrap;gap:6px;max-height:108px;overflow:auto}.move-chip{border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.14);color:var(--mut);border-radius:8px;padding:4px 7px;font-size:10px}.chatlog{height:200px;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:6px 0 12px;scrollbar-width:thin}.chatmsg{font-size:12px;color:var(--mut);overflow-wrap:anywhere}.chatmsg strong{color:var(--ink)}.chatmsg .time{font:10px 'DM Mono',monospace;color:#938aa5;margin-right:5px}.chatmsg.system{color:var(--gold2);font-style:italic}.chatentry{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.chatentry textarea{min-width:0;resize:vertical;min-height:44px;max-height:120px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.2);color:var(--ink);padding:10px;font-size:12px}.muted{font-size:11px;color:var(--mut)}.ruleline{height:1px;background:rgba(255,255,255,.09);margin:12px 0}
+.overlay{position:fixed;inset:0;z-index:20;display:none;place-items:center;padding:18px;background:rgba(3,3,12,.78);backdrop-filter:blur(12px)}.overlay.open{display:grid}.dialog{width:min(580px,100%);max-height:min(90vh,900px);overflow:auto;position:relative;border-radius:21px;background:linear-gradient(145deg,#211831,#0d0b16);border:1px solid rgba(143,91,255,.46);box-shadow:0 26px 100px rgba(0,0,0,.62);padding:clamp(18px,4vw,28px)}.dialog h2{margin:3px 40px 8px 0;font-size:clamp(24px,5vw,34px);line-height:1.12}.dialog p{color:var(--mut);font-size:12px;line-height:1.6}.dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.xbtn{width:35px;height:35px;flex:none;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--ink);border-radius:10px;font-size:20px}.tabrow{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}.tabrow .active{border-color:var(--gold);color:var(--gold2)}.gameslist{display:grid;gap:9px;max-height:45vh;overflow:auto}.gameitem{display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.035)}.gameitem .grow{flex:1;min-width:0}.gameitem strong{display:block;font-size:12px}.gameitem small{display:block;color:var(--mut);font-size:10px;overflow-wrap:anywhere}.inviteurl{width:100%;min-height:65px;resize:vertical;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.25);color:var(--ink);padding:10px;font:11px 'DM Mono',monospace;overflow-wrap:anywhere}.toast{position:fixed;z-index:40;left:50%;bottom:22px;transform:translate(-50%,20px);opacity:0;pointer-events:none;transition:.2s;background:#211831;border:1px solid var(--gold);padding:11px 16px;border-radius:12px;max-width:90vw;font-size:12px;text-align:center}.toast.show{opacity:1;transform:translate(-50%,0)}.loginlayer{position:fixed;z-index:50;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;padding:12px}.loginlayer.open{display:flex}.loginlayer iframe{width:min(680px,96vw);height:min(760px,92vh);border:1px solid rgba(143,91,255,.55);border-radius:16px;background:#0d0b16}.loginlayer button{position:absolute;top:18px;right:18px}
+@media(max-width:990px){.layout{grid-template-columns:minmax(0,1fr) 300px}.toplinks{display:none}.headline{align-items:flex-start;flex-direction:column}.headline-actions{justify-content:flex-start}}
+@media(max-width:720px){.topbar{padding:10px 12px;gap:8px}.brand strong{font-size:16px}.mark{width:36px;height:36px}.identity{display:none}.page{padding-top:17px}.layout{grid-template-columns:minmax(0,1fr)}.sidebar{grid-template-columns:1fr}.boardwrap{padding:7px}.board{border-width:3px;border-radius:7px}.boardhead{padding:10px 11px}.players{grid-template-columns:1fr 1fr}.chatlog{height:160px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.hidden{display:none!important}
+
+/* Mobile-friendly game setup, lobby, invite, and sign-in dialogs. */
+@media(max-width:600px){
+ .overlay{place-items:end center;padding:8px max(8px,env(safe-area-inset-right,0px)) max(8px,env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));overflow-y:auto;overscroll-behavior:contain}
+ .dialog{width:100%;max-width:none;max-height:calc(100dvh - 16px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));padding:19px 15px calc(18px + env(safe-area-inset-bottom,0px));border-radius:22px 22px 14px 14px;overscroll-behavior:contain}
+ .dialog h2{font-size:clamp(22px,6.5vw,29px);line-height:1.12}
+ .dialog p{font-size:14px;line-height:1.55}
+ .xbtn{width:44px;height:44px;min-width:44px;font-size:24px}
+ .dialog .row{align-items:stretch;gap:8px}
+ .dialog .row>.btn,.dialog button.btn{min-height:44px}
+ .tabrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+ .tabrow button{min-height:44px;padding:9px 5px;font-size:11px}
+ .gameslist{max-height:38dvh;overflow-y:auto;overscroll-behavior:contain}
+ .gameitem{align-items:flex-start;flex-wrap:wrap}
+ .gameitem .grow{flex:1 1 140px;min-width:0}
+ .dialog input,.dialog textarea,.dialog select{font-size:16px;max-width:100%}
+ .inviteurl{min-height:96px;font-size:12px;line-height:1.5}
+ .loginlayer{align-items:flex-end;padding:8px max(8px,env(safe-area-inset-right,0px)) max(8px,env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+ .loginlayer iframe{width:100%;height:min(78dvh,680px);max-height:calc(100dvh - 16px)}
+}
+@media(max-height:560px) and (orientation:landscape){
+ .overlay{place-items:center}
+ .dialog{max-height:calc(100dvh - 12px);padding:14px;border-radius:14px}
+ .loginlayer{align-items:center}
+ .loginlayer iframe{height:calc(100dvh - 20px)}
+}
+
+
+/* Shared Sifaka-style game header: logo menu, global search, Go Live and account control. */
+.game-site-topbar{position:sticky;top:0;z-index:500;display:flex;align-items:center;flex-wrap:nowrap;gap:.6rem;min-height:68px;padding:8px clamp(10px,2vw,20px);background:rgba(22,26,31,.97);border-bottom:1px solid var(--line,rgba(255,255,255,.1));backdrop-filter:blur(16px)}
+.game-site-logo-wrap{position:relative;flex:0 0 auto}
+.game-site-logo{display:flex;align-items:center;gap:.45rem;padding:.25rem .4rem;border:0;border-radius:10px;background:transparent;color:var(--ink,#f5f1ff);cursor:pointer;white-space:nowrap}
+.game-site-logo:hover,.game-site-logo[aria-expanded="true"]{background:rgba(255,255,255,.07)}
+.game-site-logo-img{display:block;width:42px;height:42px;object-fit:contain;flex:0 0 auto}
+.game-site-logo-text{font-family:"Press Start 2P","VT323","DM Mono",monospace;font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.game-site-live-pill{display:inline-flex;align-items:center;justify-content:center;padding:.18rem .38rem;border-radius:4px;border:1px solid rgba(255,255,255,.25);background:#c42121;color:#fff;font:700 .58rem/1 "DM Mono",monospace;letter-spacing:.08em;box-shadow:0 0 0 1px rgba(0,0,0,.28) inset}
+.game-site-menu{position:absolute;top:calc(100% + 7px);left:0;z-index:600;display:none;min-width:205px;max-width:calc(100vw - 20px);padding:.5rem;border:1px solid rgba(255,255,255,.13);border-radius:12px;background:rgba(17,20,26,.98);box-shadow:0 20px 60px rgba(0,0,0,.65);backdrop-filter:blur(16px)}
+.game-site-menu.open{display:block}
+.game-site-menu[aria-hidden="true"]{pointer-events:none}
+.game-site-menu a{display:flex;align-items:center;gap:.7rem;width:100%;padding:.65rem .75rem;border-radius:8px;color:var(--ink,#f5f1ff);font-size:.82rem;font-weight:650;text-decoration:none}
+.game-site-menu a:hover,.game-site-menu a:focus-visible{background:rgba(139,92,246,.17);outline:none}
+.game-site-menu a span{width:1.25rem;text-align:center;flex:0 0 auto}
+.game-site-search{position:relative;display:block;flex:1 1 auto;min-width:80px;max-width:540px;margin:0 auto}
+.game-site-search-icon{position:absolute;top:50%;left:.75rem;transform:translateY(-50%);font-size:1.15rem;line-height:1;color:var(--mut, #9ca3af);pointer-events:none}
+.game-site-search input{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:39px;padding:.5rem .75rem .5rem 2.1rem;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.055);color:var(--ink,#f5f1ff);font:400 .82rem "DM Sans",system-ui,sans-serif;outline:none}
+.game-site-search input::placeholder{color:var(--mut,#9ca3af);opacity:1}
+.game-site-search input:focus{border-color:rgba(167,139,250,.7);box-shadow:0 0 0 3px rgba(139,92,246,.14)}
+.game-site-golive{flex:0 0 auto;text-decoration:none;white-space:nowrap}
+.game-site-identity{flex:0 1 auto;max-width:155px}
+.game-site-topbar #connectBtn{flex:0 0 auto;min-height:39px;white-space:nowrap}
+@media(max-width:700px){
+ .game-site-topbar{gap:.45rem;min-height:56px;padding:.4rem .55rem}
+ .game-site-logo{gap:.3rem;padding:.2rem .25rem}
+ .game-site-logo-img{width:32px;height:32px}
+ .game-site-logo-text{display:none}
+ .game-site-live-pill{font-size:.52rem;padding:.14rem .28rem}
+ .game-site-search{min-width:40px}
+ .game-site-search input{font-size:.78rem;min-height:38px;padding:.5rem .5rem .5rem 1.8rem}
+ .game-site-search-icon{left:.55rem}
+ .game-site-golive,.game-site-identity{display:none}
+ .game-site-topbar #connectBtn{padding:.52rem .62rem;font-size:.7rem}
+ .game-site-menu{max-width:calc(100vw - 16px)}
+}
+@media(max-width:370px){
+ .game-site-topbar{gap:.3rem;padding:.4rem}
+ .game-site-logo-img{width:28px;height:28px}
+ .game-site-live-pill{display:none}
+ .game-site-search input{font-size:.72rem}
+ .game-site-topbar #connectBtn{padding:.45rem .5rem;font-size:.66rem}
+}
+@media(prefers-reduced-motion:reduce){.game-site-menu a,.game-site-logo{transition:none!important}}
+
+.gameover-overlay{z-index:120}.gameover-dialog{width:min(460px,100%)}.gameover-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.gameover-actions .btn{flex:1;min-width:130px}
+/* Chinese Checkers star-board geometry and marble styles. */
+.boardwrap{display:grid;place-items:center;overflow:visible;padding:clamp(5px,1.3vw,16px)}
+.board{display:block;position:relative;width:min(100%,900px);aspect-ratio:1.1547;grid-template-columns:none;grid-template-rows:none;overflow:visible;border:0;border-radius:0;background:radial-gradient(ellipse at center,rgba(143,91,255,.12),transparent 68%);box-shadow:none;touch-action:manipulation}
+.hole{position:absolute;display:grid;place-items:center;transform:translate(-50%,-50%);width:4.0%;height:auto;aspect-ratio:1;padding:0;border:1px solid rgba(255,255,255,.18);border-radius:50%;background:radial-gradient(circle at 34% 28%,#433850,#191423 72%);box-shadow:inset 0 1px 2px rgba(255,255,255,.08),0 2px 4px rgba(0,0,0,.32);color:var(--ink);transition:background .12s,border-color .12s,box-shadow .12s}
+.hole.goal-red{border-color:rgba(255,108,130,.62);box-shadow:0 0 0 1px rgba(255,108,130,.12),inset 0 1px 2px rgba(255,255,255,.06)}
+.hole.goal-blue{border-color:rgba(96,165,250,.68);box-shadow:0 0 0 1px rgba(96,165,250,.12),inset 0 1px 2px rgba(255,255,255,.06)}
+.hole.selected{z-index:2;border:3px solid #f5e29d;box-shadow:0 0 0 3px rgba(245,226,157,.17),0 0 18px rgba(245,226,157,.45)}
+.hole.destination{z-index:1;background:radial-gradient(circle,#42d392,#146b53 78%);border:2px solid #a5f3c4;box-shadow:0 0 14px rgba(52,211,153,.45)}
+.hole:focus-visible{outline:3px solid #f5e29d;outline-offset:3px;z-index:3}
+.piece{position:absolute;inset:8%;width:84%;height:84%;border-radius:50%;border:1.4px solid rgba(255,255,255,.34);box-shadow:inset 0 3px 4px rgba(255,255,255,.34),inset 0 -5px 7px rgba(0,0,0,.5),0 3px 6px rgba(0,0,0,.48);pointer-events:none}
+.piece.red{background:radial-gradient(circle at 32% 24%,#ff9cab,#e52d58 58%,#7e1536)}
+.piece.black{background:radial-gradient(circle at 32% 24%,#a4d4ff,#387bc7 58%,#153969)}
+.piece:after{display:none!important}
+@media(max-width:720px){.board{width:100%}.hole{width:4.3%}.piece{inset:8%;width:84%;height:84%}.boardwrap{padding:6px 2px}.boardhead{align-items:flex-start;flex-wrap:wrap}}
+@media(max-width:390px){.hole{width:4.5%}.piece{border-width:1px}}
+</style>
+<script id="sifaka-game-header-identity">
+(function(){
+  function safePicture(value){value=String(value||'').trim();return value.indexOf('https://')===0||value.indexOf('http://')===0?value:'';}
+  function setAvatar(el,name,picture,verified){
+    if(!el)return;
+    el.classList.toggle('nip05-square',!!verified);
+    el.replaceChildren();
+    var src=safePicture(picture);
+    if(src){
+      var img=document.createElement('img');
+      img.src=src;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
+      img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+      el.appendChild(img);
+    }else{
+      el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';
+    }
+    el.setAttribute('aria-label',name||'Sifaka user');
+  }
+  window.sifakaGameHeaderSyncIdentity=function(pubkey,profile,verified){
+    var logged=!!String(pubkey||'').trim(),p=profile&&typeof profile==='object'?profile:{};
+    var name=String(p.display_name||p.displayName||p.name||'').trim(),key=String(pubkey||'');
+    if(!name)name=key?(key.length>18?key.slice(0,10)+'…'+key.slice(-6):key):'Sifaka user';
+    var nip=String(p.nip05||'').trim(),valid=!!verified&&!!nip;
+    var loggedIn=document.getElementById('navLoggedIn'),loggedOut=document.getElementById('navLoggedOut');
+    if(loggedIn)loggedIn.classList.toggle('on',logged);
+    if(loggedOut)loggedOut.classList.toggle('off',logged);
+    var identity=document.getElementById('identityLabel');
+    if(identity)identity.textContent=logged?name:'Not connected';
+    var shownName=document.getElementById('pdNameText');
+    if(shownName)shownName.textContent=name;
+    var sub=document.getElementById('pdSub');
+    if(sub)sub.textContent=nip||key||'Nostr account';
+    setAvatar(document.getElementById('navAvatar'),name,p.picture,valid);
+    setAvatar(document.getElementById('pdAvLg'),name,p.picture,valid);
+    [['navNip05Badge',valid],['pdBadge',valid]].forEach(function(pair){
+      var badge=document.getElementById(pair[0]);
+      if(badge){badge.textContent='✓';badge.style.display=pair[1]?'inline-flex':'none';}
+    });
+    var pill=document.getElementById('navUserPill');
+    if(pill)pill.setAttribute('aria-label',logged?'Open account menu for '+name:'Open account menu');
+  };
+})();
+</script>
+<style id="sifaka-game-shared-nav-layout">body{padding-top:68px!important}.game-nav-popup{position:fixed;inset:0;z-index:20000;background:transparent}.game-nav-popup[hidden]{display:none!important}.game-nav-popup-frame{display:block;width:100%;height:100%;border:0;background:transparent}.game-nav-popup-close{position:absolute;top:12px;right:14px;z-index:20002;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:rgba(16,12,24,.94);color:#fff;font:700 26px/1 sans-serif;cursor:pointer;box-shadow:0 5px 20px rgba(0,0,0,.45)}.game-nav-popup-close:hover{border-color:var(--accent);color:var(--accent)}@media(max-width:700px){body{padding-top:56px!important}}</style>
+</head>
+<body>
+<nav class="game-site-nav" id="gameSiteNav">
+  <div class="logo-wrap">
+    <button class="logo" id="logoBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="logoDropdown" aria-label="Open Sifaka navigation">
+      <img src="../../logo.webp" alt="Sifaka" class="nav-logo-img" width="52" height="52" decoding="async">
+      <span class="logo-text-8bit">Sifaka</span>
+      <span class="logo-live-pill">LIVE</span>
+    </button>
+    <div class="nav-dropdown" id="logoDropdown" aria-hidden="true">
+      <button class="dd-item" type="button" data-game-route="home"><span class="ddi">&#128308;</span>Live Now <span class="dd-count">24</span></button>
+      <button class="dd-item" type="button" data-game-route="podcastRadio"><span class="ddi">&#127925;</span>Podcast Radio</button>
+      <button class="dd-item" type="button" data-game-route="feed"><span class="ddi">&#128225;</span>Feed &amp; Videos</button>
+      <button class="dd-item" type="button" id="sifakaGamesMenuBtn" data-game-route="games"><span class="ddi">&#127918;</span>Games</button>
+      <button class="dd-item" type="button" data-game-route="faq"><span class="ddi">&#10067;</span>FAQ &amp; Help</button>
+    </div>
+  </div>
+  <div class="search-wrap">
+    <span class="search-icon" aria-hidden="true"></span>
+    <input id="siteSearchInput" name="siteSearch" class="search-input" type="search" placeholder="Search streams, npubs, posts, videos..." aria-label="Search streams, profiles, posts, and videos" autocomplete="off" aria-controls="searchResults" aria-expanded="false">
+    <div class="search-results" id="searchResults" aria-hidden="true">
+      <span class="sr-label">Sifaka.Live Search</span>
+      <div class="sr-item" id="gameSearchSubmit" role="button" tabindex="0">
+        <div class="sr-av">⌕</div>
+        <div><div class="sr-title" id="gameSearchTitle">Search Sifaka.Live</div><div class="sr-sub" id="gameSearchSubtitle">Press Enter to view results</div></div>
+      </div>
+    </div>
+  </div>
+  <button class="btn btn-ghost" id="goLiveBtn" type="button">Go Live</button>
+  <div class="nav-spacer"></div>
+  <div class="nav-logged-out" id="navLoggedOut">
+    <button class="btn btn-primary" id="connectBtn" type="button">Login with Nostr</button>
+  </div>
+  <div class="nav-logged-in" id="navLoggedIn">
+    <button class="nav-notif-btn" id="navNotifBtn" type="button" title="Notifications" aria-label="Open notifications">
+      <span class="nav-notif-icon">&#128276;</span>
+    </button>
+    <div class="nav-profile">
+      <div class="nav-user-pill" id="navUserPill" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-controls="profileDropdown" aria-label="Open account menu">
+        <div class="nav-avatar" id="navAvatar"></div>
+        <span class="nip05-badge" id="navNip05Badge" style="display:none" aria-label="Verified NIP-05">✓</span>
+      </div>
+      <div class="nav-dropdown" id="profileDropdown" aria-hidden="true">
+        <div class="pd-header">
+          <div class="pd-av-lg" id="pdAvLg"></div>
+          <div>
+            <div class="pd-name"><span id="pdNameText">Sifaka user</span> <span class="nip05-badge" id="pdBadge" style="display:none" aria-label="Verified NIP-05">✓</span></div>
+            <div class="pd-sub" id="pdSub">Nostr account</div>
+          </div>
+        </div>
+        <button class="pd-item" type="button" data-game-route="profile">&#128100; My Profile</button>
+        <button class="pd-item" type="button" data-game-route="messages">&#128172; Messages</button>
+        <button class="pd-item" type="button" data-game-route="myStreams">&#128250; My Streams</button>
+        <button class="pd-item" type="button" data-game-route="wallet">&#128155; Wallet</button>
+        <button class="pd-item" type="button" data-game-route="widgets">&#129513; Widgets</button>
+        <button class="pd-item" type="button" data-game-route="settings">&#9881;&#65039; Settings</button>
+        <div class="dd-sep"></div>
+        <button class="pd-item pd-signout" type="button" data-game-route="signout">Sign Out</button>
+      </div>
+    </div>
+  </div>
+  <span id="identityLabel" hidden>Not connected</span>
+</nav>
+<div class="game-nav-popup" id="gameNavPopup" hidden>
+  <iframe class="game-nav-popup-frame" id="gameNavPopupFrame" title="Sifaka Go Live" src="about:blank" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" allow="clipboard-read; clipboard-write"></iframe>
+  <button class="game-nav-popup-close" id="gameNavPopupClose" type="button" aria-label="Close Go Live window">×</button>
+</div>
+<main class="page">
+<section class="headline"><div><div class="eyebrow">SIFAKA GAMES / 05</div><h1>Nostr Chinese Checkers</h1><p>A classic star-board strategy game. Play against the engine, share the board locally, or challenge another player in a public or encrypted private Nostr match.</p></div>
+<div class="headline-actions"><button class="btn" id="localBtn" type="button">Local two-player</button><button class="btn purple" id="lobbyBtn" type="button">Open / Current Games</button><button class="btn primary" id="newGameBtn" type="button">New game</button></div></section>
+<div class="layout">
+<section class="boardcard"><div class="boardhead"><strong>CHINESE CHECKERS BOARD</strong><span class="statusline" id="statusLine">Local game · Red to move</span></div><div class="boardwrap"><div class="board" id="board" role="grid" aria-label="Chinese Checkers star board"></div></div><div class="boardfoot" id="boardHint">Select a marble, then choose a highlighted hole. Move one adjacent space or make a chain of hops over any marble; jumped marbles stay on the board.</div></section>
+<aside class="sidebar">
+<div class="players">
+<div class="player turn" id="redCard"><div class="row"><div class="avatar" id="redAvatar">🔴</div><div style="min-width:0"><strong id="redName">Red</strong><small id="redIdentity">Local player</small></div></div><div class="turntag" id="redTurn">RED TO MOVE</div></div>
+<div class="player" id="blackCard"><div class="row"><div class="avatar" id="blackAvatar">🔵</div><div style="min-width:0"><strong id="blackName">Blue</strong><small id="blackIdentity">Local player</small></div></div><div class="turntag" id="blackTurn">WAITING</div></div>
+</div>
+<section class="card"><h2>Game controls</h2><div class="controlgrid">
+<button class="btn" id="flipBtn" type="button">Flip board</button><button class="btn" id="shareBtn" type="button" disabled>Share invite</button>
+<button class="btn" id="undoBtn" type="button" disabled>Undo local move</button><button class="btn" id="finishHopBtn" type="button" disabled>Finish hop move</button><button class="btn" id="forfeitBtn" type="button" disabled>Forfeit</button>
+<button class="btn wide" id="invitePlayerBtn" type="button">Invite a Nostr player</button><button class="btn wide" id="lobbyBtn2" type="button">Open / Current Games</button>
+</div><div class="ruleline"></div><div class="muted">Rules: each turn moves one marble to an adjacent hole or chains hops over occupied holes. Hopped marbles stay put. First to move all 10 marbles into the opposite triangle wins.</div></section>
+<section class="card"><h2>Move history</h2><div class="move-list" id="moveList"><span class="muted">Moves will appear here.</span></div></section>
+<section class="card"><h2>Game chat <span class="muted" id="chatStatus">· local only</span></h2><div class="chatlog" id="chatLog" aria-live="polite"><div class="chatmsg system">Welcome to Sifaka Chinese Checkers. Play locally or connect Nostr to create or join an online match.</div></div><div class="chatentry"><textarea id="chatInput" rows="2" maxlength="800" placeholder="Message your opponent…" aria-label="Game chat message"></textarea><button class="btn primary" id="sendChatBtn" type="button">Send</button></div><div class="muted" style="margin-top:7px">Online chat is published to Nostr relays. Private match chat is encrypted using the invitation key.</div></section>
+</aside></div></main>
+<div class="overlay gameover-overlay" id="gameOverOverlay" role="dialog" aria-modal="true" aria-labelledby="gameOverTitle"><div class="dialog gameover-dialog"><div class="dialog-head"><div><div class="eyebrow">SIFAKA CHINESE CHECKERS</div><h2 id="gameOverTitle">Game over</h2></div></div><p id="gameOverSummary" role="status" aria-live="polite">The match has ended.</p><div class="gameover-actions"><button class="btn primary" id="gameOverAgainBtn" type="button">Play again</button><button class="btn" id="gameOverModeBtn" type="button">Choose another mode</button></div></div></div>
+<div class="overlay" id="lobbyOverlay" role="dialog" aria-modal="true" aria-labelledby="lobbyTitle"><div class="dialog"><div class="dialog-head"><div><div class="eyebrow">NOSTR CHINESE CHECKERS</div><h2 id="lobbyTitle">Open / Current Games</h2></div><button class="xbtn" data-close="lobbyOverlay" aria-label="Close">×</button></div><p id="lobbyHelp">Find open public matches, return to your own games, or inspect recent matches published to Nostr.</p><div class="tabrow" id="lobbyTabs"><button class="btn active" data-tab="open">Open</button><button class="btn" data-tab="current">Current</button><button class="btn" data-tab="all">All / Recent</button><button class="btn" id="refreshLobbyBtn">Refresh</button></div><div class="gameslist" id="gamesList"><div class="muted">Press Refresh to query Nostr relays.</div></div><div class="ruleline"></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="lobbyCreatePublic">Create public game</button><button class="btn" id="lobbyCreatePrivate">Create private invite</button></div></div></div>
+<div class="overlay" id="shareOverlay" role="dialog" aria-modal="true" aria-labelledby="shareTitle"><div class="dialog"><div class="dialog-head"><div><div class="eyebrow">MATCH LINK</div><h2 id="shareTitle">Share your game</h2></div><button class="xbtn" data-close="shareOverlay" aria-label="Close">×</button></div><p id="shareHelp">Copy the complete link and send it to your opponent. Private links include an encryption key in the URL fragment.</p><textarea id="inviteUrl" class="inviteurl" readonly spellcheck="false"></textarea><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn primary" id="copyInviteBtn">Copy invite link</button><button class="btn" id="shareContinueBtn">Continue playing</button></div></div></div>
+<div class="overlay" id="inviteOverlay" role="dialog" aria-modal="true" aria-labelledby="inviteTitle"><div class="dialog"><div class="dialog-head"><div><div class="eyebrow">NOSTR INVITATION</div><h2 id="inviteTitle">Invite a Nostr player</h2></div><button class="xbtn" data-close="inviteOverlay" aria-label="Close">×</button></div><p>Search by display name, npub, hexadecimal public key, or NIP-05 address. Invitations are sent as encrypted NIP-04 direct messages when your connected signer supports encryption. Your private game key stays in the invitation link.</p><div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px"><input id="inviteSearchInput" type="search" autocomplete="off" spellcheck="false" placeholder="name, npub, hex pubkey, or name@domain" aria-label="Search Nostr players" style="min-width:0;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.24);color:var(--ink);padding:11px;font-size:12px"><button class="btn primary" id="inviteSearchBtn" type="button">Search</button></div><p id="inviteSearchStatus" role="status" aria-live="polite">Connect a Nostr identity and search for the person you want to invite.</p><div id="inviteResults" class="gameslist" style="max-height:40vh;margin-bottom:14px"></div><div class="ruleline"></div><button class="btn" id="inviteCopyLinkBtn" type="button">Copy game link instead</button></div></div>
+<div class="overlay" id="incomingOverlay" role="dialog" aria-modal="true" aria-labelledby="incomingTitle"><div class="dialog"><div class="eyebrow">NOSTR INVITATION</div><h2 id="incomingTitle">Chinese Checkers invitation</h2><p id="incomingDescription">A player has invited you to a Chinese Checkers match.</p><p id="incomingStatus" role="status">Checking the invitation…</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="acceptInviteBtn" disabled>Accept invitation</button><button class="btn" id="declineInviteBtn">Decline</button></div></div></div>
+<div class="overlay" id="setupOverlay" role="dialog" aria-modal="true" aria-labelledby="setupTitle"><div class="dialog"><div class="dialog-head"><div><div class="eyebrow">SIFAKA CHINESE CHECKERS</div><h2 id="setupTitle">Choose your opponent</h2></div><button class="xbtn" data-close="setupOverlay" aria-label="Close">×</button></div><p id="setupHelp">Choose the Chinese Checkers engine or another player. Play locally or synchronize a two-player match through Nostr.</p><div id="setupOpponents" style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:14px 0"><button class="btn primary" id="setupEngineChoice" type="button">Engine · Single player</button><button class="btn" id="setupHumanChoice" type="button">Human · Two player</button></div><div id="setupDifficulty" class="hidden"><div class="eyebrow">ENGINE DIFFICULTY</div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0 14px"><button class="btn" id="setupEngineNovice" type="button">Novice</button><button class="btn primary" id="setupEngineAdept" type="button">Adept</button><button class="btn purple" id="setupEngineMaster" type="button">Master</button></div><p class="muted">You play Red. The engine plays Blue.</p></div><div id="setupHumanOptions" class="hidden" style="display:grid;gap:9px"><button class="btn" id="setupLocal" type="button">Local two-player</button><button class="btn primary" id="setupPublic" type="button">Create public Nostr game</button><button class="btn purple" id="setupPrivate" type="button">Create private invite</button><button class="btn" id="setupJoin" type="button">Open / Current Games</button></div><div class="ruleline"></div><div style="display:flex;justify-content:flex-start"><button class="btn hidden" id="setupBack" type="button">Back</button></div></div></div>
+<div class="loginlayer" id="loginLayer" hidden><iframe id="loginFrame" title="Sifaka.Live sign-in" src="about:blank" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" allow="clipboard-read; clipboard-write"></iframe><button class="btn" id="closeLoginBtn" type="button">Close sign-in</button></div>
+<iframe id="signerBridge" title="Sifaka account connection" aria-hidden="true" tabindex="-1" src="about:blank" style="position:fixed;width:1px;height:1px;left:-10000px;top:0;opacity:0;pointer-events:none;border:0"></iframe>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id),HEX=/^[0-9a-f]{64}$/i,APP='sifaka-chinese-checkers',PUB_KIND=30078,PRIV_KIND=30079,CHAT_KIND=1;
+const DEFAULT_RELAYS=['wss://nos.lol','wss://relay.damus.io','wss://relay.primal.net'];
+let signerPk='',signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,pendingOnlineAction=null,game=null,local=true,engineMode=false,engineLevel=2,engineTimer=null,engineRequestId=0,flipped=false,selected=-1,selectedPath=[],pathCandidates=[],busy=false,turns=[],state=null,terminal=null,gameSockets=[],reconnectTimer=null,publishChain=Promise.resolve(),seenChat=new Set(),lobbyTab='open',lobbyBusy=false,pendingInvite=null,toastTimer=null,inviteSearchRequest=0,accountRelayUrls=[],relayDiscoveryFor='';const playerVersions={red:0,black:0},ENGINE_NAMES=['','Novice','Adept','Master'];
+const pieceName=p=>p==='r'?'Red':p==='b'?'Blue':'',other=c=>c==='r'?'b':'r';
+function say(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3200)}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+const DIRS=[[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+const BASE_ARM=[];for(let k=1;k<=4;k++)for(let r=-4;r<=-k;r++)BASE_ARM.push([4+k,r]);
+function rotateHex(p){return [-p[1],p[0]+p[1]]}
+function rotateArm(arm,count){let a=arm.map(p=>p.slice());for(let n=0;n<count;n++)a=a.map(rotateHex);return a}
+const WINGS=Array.from({length:6},(_,n)=>rotateArm(BASE_ARM,n));
+const ALL_COORDS=[];
+for(let q=-4;q<=4;q++)for(let r=-4;r<=4;r++)if(Math.max(Math.abs(q),Math.abs(r),Math.abs(q+r))<=4)ALL_COORDS.push([q,r]);
+WINGS.forEach(w=>w.forEach(p=>ALL_COORDS.push(p.slice())));
+const COORDS=Array.from(new Map(ALL_COORDS.map(p=>[p[0]+','+p[1],p])).values()).sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+const COORD_INDEX=new Map(COORDS.map((p,i)=>[p[0]+','+p[1],i]));
+const WING_CELLS=WINGS.map(w=>w.map(p=>COORD_INDEX.get(p[0]+','+p[1])));
+const GOALS={r:new Set(WING_CELLS[3]),b:new Set(WING_CELLS[0])};
+const XY=COORDS.map(p=>({x:1.5*p[0],y:Math.sqrt(3)*(p[1]+p[0]/2)}));
+const MAX_X=Math.max.apply(null,XY.map(p=>Math.abs(p.x)));
+const MAX_Y=Math.max.apply(null,XY.map(p=>Math.abs(p.y)));
+function colorOf(p){return p?(p.toLowerCase()==='r'?'r':'b'):''}
+function row(i){return COORDS[i]&&COORDS[i][1]}
+function col(i){return COORDS[i]&&COORDS[i][0]}
+function inside(q,r){return COORD_INDEX.has(q+','+r)}
+function coordIndex(q,r){const i=COORD_INDEX.get(q+','+r);return i===undefined?-1:i}
+function isKing(p){return false}
+function directions(){return DIRS}
+function newBoard(){
+ const b=Array(COORDS.length).fill(null);
+ WING_CELLS[0].forEach(i=>b[i]='r');WING_CELLS[3].forEach(i=>b[i]='b');
+ return {b:b,turn:'r',quiet:0};
+}
+function boardClone(s){return {b:s.b.slice(),turn:s.turn,quiet:Number(s.quiet||0)}}
+function samePath(a,b){return Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((v,i)=>v===b[i])}
+function hopPathsFrom(s,origin,piece,path,visited,out){
+ const p=COORDS[origin];
+ for(const d of DIRS){
+  const mid=coordIndex(p[0]+d[0],p[1]+d[1]),to=coordIndex(p[0]+2*d[0],p[1]+2*d[1]);
+  if(mid<0||to<0||!s.b[mid]||s.b[to]||visited.has(to))continue;
+  const n=boardClone(s);n.b[origin]=null;n.b[to]=piece;
+  const nextPath=path.concat(to);out.push({path:nextPath,capture:false,jumps:nextPath.length-2});
+  visited.add(to);hopPathsFrom(n,to,piece,nextPath,visited,out);visited.delete(to);
+ }
+}
+function legalTurns(s){
+ const out=[];
+ for(let i=0;i<COORDS.length;i++){
+  const piece=s.b[i];if(colorOf(piece)!==s.turn)continue;
+  const p=COORDS[i];
+  for(const d of DIRS){const to=coordIndex(p[0]+d[0],p[1]+d[1]);if(to>=0&&!s.b[to])out.push({path:[i,to],capture:false,jumps:0})}
+  const hops=[];hopPathsFrom(s,i,piece,[i],new Set([i]),hops);out.push.apply(out,hops);
+ }
+ return out;
+}
+function applyLegalTurn(s,path){
+ const n=boardClone(s),from=path[0],to=path[path.length-1],piece=n.b[from];
+ if(!piece||to<0||to>=n.b.length||n.b[to])return null;
+ n.b[from]=null;n.b[to]=piece;n.turn=other(s.turn);n.quiet=(n.quiet||0)+1;
+ return {state:n,captured:0,from:from,to:to,jumps:Math.max(0,path.length-2)};
+}
+function applyTurn(s,path){
+ const legal=legalTurns(s).find(m=>samePath(m.path,path));return legal?applyLegalTurn(s,legal.path):null;
+}
+function replay(all){
+ let s=newBoard();
+ for(const turn of all){const path=turn&&Array.isArray(turn.path)?turn.path:[];const res=applyTurn(s,path);if(!res)return null;s=res.state}
+ return s;
+}
+function boardKey(s){return s.b.map(p=>p||'-').join('')+':'+s.turn}
+function goalDistance(index,side){
+ const goals=GOALS[side],p=COORDS[index];let best=Infinity;
+ goals.forEach(j=>{const t=COORDS[j],dq=p[0]-t[0],dr=p[1]-t[1];best=Math.min(best,Math.max(Math.abs(dq),Math.abs(dr),Math.abs(dq+dr)))});
+ return best;
+}
+const GOAL_DIST={r:COORDS.map((p,i)=>goalDistance(i,'r')),b:COORDS.map((p,i)=>goalDistance(i,'b'))};
+function getTerminal(s,all){
+ const red=[],blue=[];
+ s.b.forEach((p,i)=>{if(colorOf(p)==='r')red.push(i);else if(colorOf(p)==='b')blue.push(i)});
+ if(red.length===10&&red.every(i=>GOALS.r.has(i)))return {status:'finished',text:'Red wins — all 10 marbles reached the opposite triangle.',winner:'r'};
+ if(blue.length===10&&blue.every(i=>GOALS.b.has(i)))return {status:'finished',text:'Blue wins — all 10 marbles reached the opposite triangle.',winner:'b'};
+ if(!legalTurns(s).length)return {status:'finished',text:pieceName(other(s.turn))+' wins — no legal moves remain.',winner:other(s.turn)};
+ return null;
+}
+function evaluateEnginePosition(s,root){
+ let score=0,rootGoal=0,enemyGoal=0;
+ s.b.forEach((piece,i)=>{
+  const side=colorOf(piece);if(!side)return;
+  const d=GOAL_DIST[side][i],goal=GOALS[side].has(i);
+  if(side===root){score-=d*28;if(goal){score+=85;rootGoal++}}
+  else{score+=d*28;if(goal){score-=85;enemyGoal++}}
+ });
+ score+=(rootGoal-enemyGoal)*8;
+ return score;
+}
+function chooseEngineMove(position,level){
+ const difficulty=Math.max(1,Math.min(3,Number(level)||2)),root=position.turn;
+ const scored=legalTurns(position).map(m=>({move:m,state:applyLegalTurn(position,m.path).state,score:0}));
+ if(!scored.length)return null;
+ scored.forEach(x=>x.score=evaluateEnginePosition(x.state,root));
+ scored.sort((a,b)=>b.score-a.score);
+ if(difficulty===1){const pool=scored.slice(0,Math.min(8,scored.length));return pool[Math.floor(Math.random()*pool.length)].move.path.slice()}
+ if(difficulty===2)return scored[0].move.path.slice();
+ let best=scored[0],bestScore=-Infinity,n=0;
+ for(const candidate of scored.slice(0,Math.min(18,scored.length))){
+  let worst=Infinity;const replies=legalTurns(candidate.state);
+  if(!replies.length)worst=evaluateEnginePosition(candidate.state,root);
+  else for(const reply of replies){
+   const after=applyLegalTurn(candidate.state,reply.path).state;
+   let value=evaluateEnginePosition(after,root),end=getTerminal(after,[]);
+   if(end&&end.winner)value=end.winner===root?100000:-100000;
+   if(value<worst)worst=value;if(++n>4200)break;
+  }
+  if(worst>bestScore){bestScore=worst;best=candidate}
+  if(n>4200)break;
+ }
+ return best.move.path.slice();
+}
+function queueEngineMove(){
+ if(!engineMode||!local||terminal||!state||state.turn!=='b'||engineTimer)return;
+ const token=++engineRequestId;busy=true;renderBoard();
+ engineTimer=setTimeout(function(){
+  engineTimer=null;
+  if(token!==engineRequestId||!engineMode||!local||terminal||!state||state.turn!=='b'){busy=false;return}
+  try{const choice=chooseEngineMove(state,engineLevel),fallback=legalTurns(state)[0],path=choice||(fallback&&fallback.path);busy=false;if(path)completeTurn(path);else{terminal=getTerminal(state,turns)||{status:'finished',text:'The engine has no legal moves.',winner:'r'};renderBoard()}}
+  catch(err){const fallback=legalTurns(state)[0];busy=false;if(fallback){say('The engine recovered with a legal move.');completeTurn(fallback.path)}else{terminal=getTerminal(state,turns)||{status:'finished',text:'The engine has no legal moves.',winner:'r'};renderBoard()}}
+ },80);
+}
+function terminalForGame(s,history,g){
+ const result=getTerminal(s,history);if(result)return result;
+ if(g&&g.status==='forfeit')return {status:'forfeit',text:'This game was forfeited.',winner:''};
+ if(g&&g.status==='finished')return {status:'finished',text:'This game has ended.',winner:''};
+ return null;
+}
+function coord(i){const p=COORDS[i]||[0,0];return '('+p[0]+','+p[1]+')'}
+function turnSummary(t,idx){
+ const from=COORDS[t.path[0]]||[0,0],to=COORDS[t.path[t.path.length-1]]||[0,0];
+ return (idx+1)+'. '+(idx%2===0?'Red':'Blue')+' '+coord(COORD_INDEX.get(from[0]+','+from[1]))+' → '+coord(COORD_INDEX.get(to[0]+','+to[1]))+(t.path.length>2?' · '+(t.path.length-2)+' hops':'');
+}
+function currentTurns(){return turns.map(t=>t.path)}
+function syncGameOverOverlay(){
+ const overlay=$('gameOverOverlay');if(!overlay)return;
+ if(!terminal){overlay.classList.remove('open');return}
+ const isDraw=/\bdraw\b/i.test(terminal.text);
+ $('gameOverTitle').textContent=terminal.winner?pieceName(terminal.winner)+' wins!':isDraw?'Draw':'Game over';
+ $('gameOverSummary').textContent=terminal.text;overlay.classList.add('open');
+}
+function renderBoard(){
+ const b=$('board');b.replaceChildren();const base=state||newBoard(),s=boardClone(base);
+ if(selectedPath.length>1){
+  const piece=s.b[selectedPath[0]];let at=selectedPath[0];
+  s.b[at]=null;
+  for(let k=1;k<selectedPath.length;k++){const to=selectedPath[k];s.b[to]=piece;at=to;if(k<selectedPath.length-1)s.b[at]=null}
+ }
+ const options=selected>=0?pathCandidates.filter(t=>t.path[0]===selected):[];
+ const nextSteps=new Set(),destinations=new Set(options.filter(t=>t.path.length>selectedPath.length).map(t=>t.path[selectedPath.length]));
+ options.forEach(t=>{if(t.path.length>selectedPath.length)nextSteps.add(t.path[selectedPath.length])});
+ const cells=flipped?COORDS.map((p,i)=>({p:p,i:i})).reverse():COORDS.map((p,i)=>({p:p,i:i}));
+ cells.forEach(({p,i})=>{
+  const hole=document.createElement('button');hole.type='button';hole.className='hole';
+  if(GOALS.r.has(i))hole.classList.add('goal-red');if(GOALS.b.has(i))hole.classList.add('goal-blue');
+  if(s.b[i])hole.classList.add('occupied');
+  if(i===(selectedPath.length>1?selectedPath[selectedPath.length-1]:selected))hole.classList.add('selected');
+  if(destinations.has(i))hole.classList.add('destination');
+  let x=XY[i].x,y=XY[i].y;if(flipped){x=-x;y=-y}
+  hole.style.left=(50+x/MAX_X*46)+'%';hole.style.top=(50+y/MAX_Y*46)+'%';
+  const piece=s.b[i],pieceLabel=piece?(piece==='r'?'red':'blue')+' marble':'empty hole';
+  hole.setAttribute('role','gridcell');hole.setAttribute('aria-label',coord(i)+', '+pieceLabel+(GOALS.r.has(i)?', Red goal':GOALS.b.has(i)?', Blue goal':''));
+  hole.addEventListener('click',()=>clickSquare(i));
+  if(piece){const marble=document.createElement('span');marble.className='piece '+(piece==='r'?'red':'black');marble.setAttribute('aria-hidden','true');hole.appendChild(marble)}
+  b.appendChild(hole);
+ });
+ const whose=pieceName(base.turn),mode=local?(engineMode?'Single player · '+ENGINE_NAMES[engineLevel]:'Local two-player'):'Nostr '+(game&&game.private?'private':'public')+' game';
+ $('statusLine').textContent=terminal?terminal.text:mode+' · '+whose+' to move'+(busy?' · Engine thinking…':'');
+ $('redCard').classList.toggle('turn',!terminal&&base.turn==='r');$('blackCard').classList.toggle('turn',!terminal&&base.turn==='b');
+ $('redTurn').textContent=terminal?'FINISHED':base.turn==='r'?'RED TO MOVE':'READY';
+ $('blackTurn').textContent=terminal?'FINISHED':base.turn==='b'?'BLUE TO MOVE':'READY';
+ $('undoBtn').disabled=!local||!turns.length||busy;
+ $('finishHopBtn').disabled=busy||terminal||selectedPath.length<2||!isHopStep(selectedPath[selectedPath.length-2],selectedPath[selectedPath.length-1])||!pathCandidates.some(t=>samePath(t.path,selectedPath));
+ $('shareBtn').disabled=local||!game;
+ $('forfeitBtn').disabled=local||!game||!game.black||!!terminal;
+ $('boardHint').textContent=terminal?terminal.text:(busy?'The engine is choosing its move…':selectedPath.length>1&&isHopStep(selectedPath[selectedPath.length-2],selectedPath[selectedPath.length-1])?'Choose another highlighted hole to keep hopping, or Finish hop move to end your turn.':'Select one of your marbles, then choose a highlighted hole. Hops may chain; jumped marbles stay in place.');
+ const list=$('moveList');list.replaceChildren();
+ if(!turns.length){const empty=document.createElement('span');empty.className='muted';empty.textContent='Moves will appear here.';list.appendChild(empty)}
+ else turns.slice(-40).forEach((t,i)=>{const chip=document.createElement('span');chip.className='move-chip';chip.textContent=turnSummary(t,Math.max(0,turns.length-Math.min(40,turns.length)+i));list.appendChild(chip)});
+ syncGameOverOverlay();
+}
+function isHopStep(from,to){
+ if(from<0||to<0||!COORDS[from]||!COORDS[to])return false;
+ const dq=COORDS[to][0]-COORDS[from][0],dr=COORDS[to][1]-COORDS[from][1];
+ return DIRS.some(d=>dq===2*d[0]&&dr===2*d[1]);
+}
+function clickSquare(i){
+ if(busy||terminal)return;
+ if(engineMode&&state.turn==='b'){say('The engine is thinking.');return}
+ if(!local&&game&&!game.black){say('Waiting for an opponent to join before moving.');return}
+ if(!local&&game&&game.myColor!==state.turn){say('It is your opponent’s turn. The board is read-only until your turn.');return}
+ const piece=state.b[i];
+ if(selected>=0&&pathCandidates.length){
+  const prefix=selectedPath.concat(i);
+  const matching=pathCandidates.filter(t=>t.path.length>=prefix.length&&prefix.every((v,j)=>t.path[j]===v));
+  if(matching.length){
+   const from=selectedPath[selectedPath.length-1];selectedPath.push(i);pathCandidates=matching;
+   const canContinue=matching.some(t=>t.path.length>selectedPath.length);
+   if(isHopStep(from,i)&&canContinue){renderBoard();return}
+   completeTurn(selectedPath.slice());return;
+  }
+ }
+ if(selectedPath.length>1){
+  if(i===selectedPath[selectedPath.length-1]&&pathCandidates.some(t=>samePath(t.path,selectedPath))){completeTurn(selectedPath.slice());return}
+  say('Finish this hop move before selecting another marble.');return;
+ }
+ if(colorOf(piece)===state.turn){selected=i;selectedPath=[i];pathCandidates=legalTurns(state).filter(t=>t.path[0]===i);renderBoard();return}
+ selected=-1;selectedPath=[];pathCandidates=[];renderBoard();
+}
+function completeTurn(path){
+ if(!local&&game&&game.myColor!==state.turn)return;
+ const result=applyTurn(state,path);
+ if(!result){selected=-1;selectedPath=[];pathCandidates=[];renderBoard();return}
+ turns.push({path:path.slice()});state=result.state;
+ if(!local&&game)game.moves=turns.map(t=>({path:t.path.slice()}));
+ selected=-1;selectedPath=[];pathCandidates=[];terminal=getTerminal(state,turns);renderBoard();
+ if(terminal){addChatSystem(terminal.text);if(!local)publishSnapshot('finished').catch(e=>say(e.message))}
+ else if(!local)publishSnapshot('active').catch(e=>say('Move updated locally, but Nostr publishing failed: '+e.message));
+ else if(engineMode&&state.turn==='b')queueEngineMove();
+}
+function resetLocal(vsEngine=false,level=2){
+ leaveGame();local=true;engineMode=!!vsEngine;engineLevel=Math.max(1,Math.min(3,Number(level)||2));turns=[];state=newBoard();terminal=null;selected=-1;selectedPath=[];pathCandidates=[];busy=false;flipped=false;
+ $('redName').textContent=engineMode?'You':(signerProfile.display_name||signerProfile.name||'Red');$('redIdentity').textContent=signerPk?shortPk(signerPk):'Local player';$('redAvatar').textContent='🔴';$('redAvatar').classList.remove('verified');
+ $('blackName').textContent=engineMode?'Sifaka Chinese Checkers Engine':'Blue';$('blackIdentity').textContent=engineMode?ENGINE_NAMES[engineLevel]+' difficulty':'Local player';$('blackAvatar').textContent='🔵';$('blackAvatar').classList.remove('verified');
+ $('chatStatus').textContent='· local only';$('chatLog').replaceChildren();addChatSystem(engineMode?'Single-player game started. You are Red; the Chinese Checkers engine is Blue ('+ENGINE_NAMES[engineLevel]+').':'Local two-player game started. Red moves first.');
+ closeOverlay('gameOverOverlay');renderBoard();
+}
+function shortPk(pk){return pk&&pk.length===64?pk.slice(0,8)+'…'+pk.slice(-6):String(pk||'Not connected')}
+function currentRelayList(extra){let candidates=(Array.isArray(extra)?extra:[extra]).concat(accountRelayUrls);try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}if(signerPk){const saved=JSON.parse(localStorage.getItem('sifaka_chinese_checkers_relays_'+signerPk)||'[]');if(Array.isArray(saved))candidates=candidates.concat(saved)}}catch(_){}candidates=candidates.concat(DEFAULT_RELAYS);const out=[];candidates.forEach(u=>{u=String(u||'').trim();if(/^wss:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,8)}
+function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
+function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
+function storedKey(){try{for(const k of ['sifaka_chess_pubkey','sifaka_pubkey','nostr_pubkey','pubkey']){const v=String(localStorage.getItem(k)||'').toLowerCase();if(HEX.test(v))return v}}catch(_){}return ''}
+function installSigner(frame,expected){
+ try{const context=frame&&frame.__SIFAKA_CONTEXT,user=context&&typeof context.getUser==='function'?context.getUser():null;if(!user||!HEX.test(String(user.pubkey||''))||typeof context.signEvent!=='function')return '';const pk=String(user.pubkey).toLowerCase();if(expected&&expected!==pk)return '';window.sifakaCheckersMainSigner={getPublicKey:async()=>{const u=context.getUser();return u&&String(u.pubkey||'').toLowerCase()===pk?pk:''},signEvent:async ev=>{const u=context.getUser();if(!u||String(u.pubkey||'').toLowerCase()!==pk)throw new Error('The active Sifaka account changed. Reconnect Checkers.');const signed=await context.signEvent(Number(ev.kind),String(ev.content||''),Array.isArray(ev.tags)?ev.tags:[],{createdAt:Number(ev.created_at)||Math.floor(Date.now()/1000)});if(!signed||!signed.id||!signed.sig)throw new Error('Sifaka did not return a signed event.');return signed}};try{if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(pk,user.profile||{})}catch(_){}return pk}catch(_){return ''}
+}
+function connectLocalSigner(){
+ if(signerBridgePromise)return signerBridgePromise;
+ signerBridgePromise=new Promise(resolve=>{const frame=$('signerBridge');let ended=false;const done=v=>{if(ended)return;ended=true;signerBridgePromise=null;resolve(v||'')};try{if(!String(frame.src||'').includes('sifakaChessSignerBridge=1'))frame.src='/?sifakaChessSignerBridge=1'}catch(_){done('');return}const start=Date.now(),check=()=>{const pk=installSigner(frame.contentWindow,'');if(pk){done(pk);return}if(Date.now()-start>8000){done('');return}setTimeout(check,120)};setTimeout(check,100)});return signerBridgePromise;
+}
+async function getSignerKey(){
+ const app=window.sifakaCheckersMainSigner;
+ if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{const pk=String(await app.getPublicKey()||'').toLowerCase();if(HEX.test(pk)){return rememberSigner(pk)}}catch(_){}}
+ const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){try{const epk=String(await ext.getPublicKey()||'').toLowerCase();if(HEX.test(epk)){return rememberSigner(epk)}}catch(_){}}
+ try{const localPk=await connectLocalSigner();if(HEX.test(localPk)){return rememberSigner(localPk)}}catch(_){}
+ return '';
+}
+async function signEvent(event){
+ const pk=String(event.pubkey||await getSignerKey()||'').toLowerCase();if(!HEX.test(pk))throw new Error('Connect your Sifaka account or Nostr signer first.');
+ const request=Object.assign({},event,{pubkey:pk});
+ const app=window.sifakaCheckersMainSigner;
+ if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{if(String(await app.getPublicKey()||'').toLowerCase()===pk){const ev=await app.signEvent(request);if(ev&&ev.id&&ev.sig&&String(ev.pubkey||'').toLowerCase()===pk)return ev}}catch(e){if(!window.nostr)throw e}}
+ const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){const epk=String(await ext.getPublicKey()||'').toLowerCase();if(epk===pk){const ev=await ext.signEvent(request);if(ev&&ev.id&&ev.sig&&String(ev.pubkey||'').toLowerCase()===pk)return ev}}
+ throw new Error('No signer could sign this event with the currently connected account.');
+}
+async function signRelayAuth(url,challenge){
+ const pk=String(signerPk||await getSignerKey()||'').toLowerCase();if(!HEX.test(pk))throw new Error('Connect your Nostr signer to authenticate with this relay.');
+ return signEvent({kind:22242,pubkey:pk,created_at:Math.floor(Date.now()/1000),tags:[['relay',url],['challenge',String(challenge||'')]],content:''});
+}
+function sendEventToRelay(url,ev){
+ return new Promise(resolve=>{let ws,done=false,timer,authAttempts=0,authEventId='',sent=false;const finish=(ok,reason)=>{if(done)return;done=true;clearTimeout(timer);try{if(ws&&ws.readyState===1)ws.close()}catch(_){}resolve({ok:!!ok,url:url,reason:String(reason||'')})};
+ timer=setTimeout(()=>finish(false,'Connection or acknowledgement timed out.'),12000);
+ try{
+  ws=new WebSocket(url);
+  ws.onopen=()=>{try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(e){finish(false,'Could not send event: '+String(e.message||e))}};
+  ws.onmessage=e=>{try{const d=JSON.parse(e.data);
+   if(d[0]==='AUTH'){
+    const challenge=String(d[1]||'');if(!challenge){finish(false,'Relay sent an empty NIP-42 challenge.');return}
+    if(authAttempts++){finish(false,'Relay requested authentication more than once.');return}
+    signRelayAuth(url,challenge).then(auth=>{if(done)return;authEventId=String(auth.id||'');ws.send(JSON.stringify(['AUTH',auth]))}).catch(err=>finish(false,'NIP-42 authentication failed: '+String(err.message||err)));return;
+   }
+   if(d[0]==='OK'&&authEventId&&d[1]===authEventId){authEventId='';if(d[2]){try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(err){finish(false,'Could not retry event after authentication: '+String(err.message||err))}}else finish(false,'Relay rejected NIP-42 authentication: '+String(d[3]||'no reason provided'));return}
+   if(d[0]==='OK'&&d[1]===ev.id){if(d[2])finish(true,'');else if(/auth(?:entication)?-required|auth required|must authenticate/i.test(String(d[3]||''))){/* Wait for the relay's AUTH challenge. */}else finish(false,String(d[3]||'Relay rejected the event.'))}
+  }catch(_){}};
+  ws.onerror=()=>finish(false,'WebSocket error.');
+  ws.onclose=()=>{if(!done)finish(false,sent?'Relay closed before confirming the event.':'Relay closed before the event was sent.')};
+ }catch(err){finish(false,String(err.message||err))}
+ });
+}
+async function publishEvent(ev,relay){
+ const relays=currentRelayList(relay),results=[];
+ if(!relays.length)throw new Error('No configured Nostr relay URLs are available.');
+ let remaining=relays.length,acknowledged=false;
+ return new Promise((resolve,reject)=>{
+  relays.forEach(url=>{
+   sendEventToRelay(url,ev).then(result=>{
+    results.push(result);remaining--;
+    if(result.ok&&!acknowledged){acknowledged=true;resolve(true)}
+    if(remaining===0&&!acknowledged){
+     const details=results.filter(r=>r.reason).slice(0,3).map(r=>r.url+': '+r.reason).join(' | ');
+     reject(new Error('No configured Nostr relay confirmed the event. '+(details||'Check your relay settings and connection.')));
+    }
+   }).catch(err=>{
+    results.push({ok:false,url:url,reason:String(err&&err.message||err)});remaining--;
+    if(remaining===0&&!acknowledged){
+     const details=results.filter(r=>r.reason).slice(0,3).map(r=>r.url+': '+r.reason).join(' | ');
+     reject(new Error('No configured Nostr relay confirmed the event. '+(details||'Check your relay settings and connection.')));
+    }
+   });
+  });
+ });
+}
+function requestEvents(url,filter,ms=4800){
+ return new Promise(resolve=>{let ws,done=false,timer,authAttempts=0,authEventId='';const events=new Map(),sub='sifaka-chinese-checkers-'+Math.random().toString(36).slice(2,10);
+ const finish=()=>{if(done)return;done=true;clearTimeout(timer);try{if(ws){if(ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close()}}}catch(_){}resolve([...events.values()])};
+ const request=()=>{try{ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){finish()}};
+ timer=setTimeout(finish,ms);
+ try{ws=new WebSocket(url);ws.onopen=request;ws.onmessage=e=>{try{const d=JSON.parse(e.data);
+  if(d[0]==='AUTH'){
+   if(authAttempts++||!signerPk){finish();return}
+   signRelayAuth(url,String(d[1]||'')).then(auth=>{if(done)return;authEventId=String(auth.id||'');ws.send(JSON.stringify(['AUTH',auth]))}).catch(()=>finish());return;
+  }
+  if(d[0]==='OK'&&authEventId&&d[1]===authEventId){authEventId='';if(d[2])request();else finish();return}
+  if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&d[2].id)events.set(d[2].id,d[2]);
+  if(d[0]==='EOSE'&&d[1]===sub)finish();
+ }catch(_){}};
+ ws.onerror=finish;ws.onclose=()=>{if(!done)finish()}}catch(_){finish()}
+ });
+}
+async function queryRelays(filter,extra){const relays=currentRelayList(extra);const results=await Promise.all(relays.map(url=>requestEvents(url,filter,5300)));const map=new Map();results.flat().forEach(ev=>{if(ev&&ev.id)map.set(ev.id,ev)});return [...map.values()]}
+async function discoverAccountRelays(pk){if(!HEX.test(String(pk||'')))return;try{const saved=JSON.parse(localStorage.getItem('sifaka_chinese_checkers_relays_'+pk)||'[]');if(Array.isArray(saved))accountRelayUrls=saved.filter(u=>/^wss:\/\//i.test(String(u||'')))}catch(_){}const chunks=await Promise.all(DEFAULT_RELAYS.map(url=>requestEvents(url,{kinds:[10002],authors:[pk],limit:10},3600).catch(()=>[])));const events=chunks.flat().filter(e=>e&&e.kind===10002&&String(e.pubkey||'').toLowerCase()===pk).sort((a,b)=>Number(b.created_at||0)-Number(a.created_at||0));if(!events.length)return;const tags=events[0].tags||[],rank=t=>t[2]==='write'?0:t[2]==='read'?2:1,urls=tags.filter(t=>t[0]==='r'&&/^wss:\/\//i.test(String(t[1]||''))).sort((a,b)=>rank(a)-rank(b)).map(t=>String(t[1]).trim()),unique=[];urls.forEach(u=>{if(!unique.includes(u))unique.push(u)});if(unique.length){accountRelayUrls=unique.slice(0,12);try{localStorage.setItem('sifaka_chinese_checkers_relays_'+pk,JSON.stringify(accountRelayUrls))}catch(_){}}}
+function rememberSigner(pk){signerPk=pk;if(HEX.test(pk)&&relayDiscoveryFor!==pk){relayDiscoveryFor=pk;discoverAccountRelays(pk).catch(()=>{})}return pk}
+function bytesToB64(bytes){let s='';bytes.forEach(b=>s+=String.fromCharCode(b));return btoa(s)}
+function b64ToBytes(s){const v=atob(s);return Uint8Array.from(v,c=>c.charCodeAt(0))}
+async function privateKey(secret,id){if(!crypto||!crypto.subtle)throw new Error('Private games require HTTPS and Web Crypto.');const raw=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(APP+':'+id+':'+secret));return crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt'])}
+async function encryptPayload(data,secret,id){const key=await privateKey(secret,id),iv=crypto.getRandomValues(new Uint8Array(12)),plain=new TextEncoder().encode(JSON.stringify(data)),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,plain);return 'SIFAKA_CHINESE_CHECKERS_V1.'+bytesToB64(iv)+'.'+bytesToB64(new Uint8Array(cipher))}
+async function decryptPayload(content,secret,id){try{const p=String(content||'').split('.');if(p.length!==3||p[0]!=='SIFAKA_CHINESE_CHECKERS_V1'||!secret)return null;const key=await privateKey(secret,id),plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64ToBytes(p[1])},key,b64ToBytes(p[2])),data=JSON.parse(new TextDecoder().decode(plain));if(!data||data.app!==APP||data.id!==id||data.version!==1)return null;return data}catch(_){return null}}
+function urlSecret(){try{return new URLSearchParams(location.hash.slice(1)).get('key')||''}catch(_){return ''}}
+function getLink(g){const u=new URL(location.pathname,location.origin);u.searchParams.set('game',g.id);u.searchParams.set('relay',g.relay||preferredRelay());if(g.private&&g.secret)u.hash='key='+encodeURIComponent(g.secret);return u.toString()}
+function modeStatus(g){return g.status||(!g.black?'open':'active')}
+function gamePayload(g,status){return {app:APP,version:1,id:g.id,mode:g.private?'private':'public',status:status,red:g.red,black:g.black||'',seatClaimAt:Number(g.seatClaimAt||0),moves:(g.moves||[]).map(t=>Array.isArray(t)?t.slice():Array.isArray(t.path)?t.path.slice():[]),relay:g.relay,updatedAt:Date.now()}}
+function validateCheckersPayload(data,author,isPrivate,eventId,createdAt){
+ if(!data||data.app!==APP||data.version!==1||typeof data.id!=='string'||data.id!==eventId||data.mode!==(isPrivate?'private':'public'))return null;
+ const red=String(data.red||'').toLowerCase(),black=String(data.black||'').toLowerCase();
+  const claimedAt=black?Number(data.seatClaimAt||createdAt||0):0;if(black&&(!Number.isSafeInteger(claimedAt)||claimedAt<=0))return null;
+ if(!HEX.test(red)||(black&&!HEX.test(black))||(black&&black===red))return null;
+ if(author!==red&&author!==black)return null;
+ if(!Array.isArray(data.moves)||data.moves.length>2500||!['open','invite','active','finished','forfeit'].includes(data.status))return null;
+ if(!isPrivate&&data.status==='invite')return null;
+ if(data.status==='invite'&&!isPrivate)return null;
+ const moves=data.moves.map(t=>({path:Array.isArray(t)?t.map(Number):[]}));
+ if(moves.some(t=>t.path.length<2||t.path.some(x=>!Number.isInteger(x)||x<0||x>120)))return null;
+ const state=replay(moves);if(!state)return null;
+ const terminal=getTerminal(state,moves),hasMoves=moves.length>0;
+ if(['open','invite'].includes(data.status)&&(black||hasMoves||author!==red))return null;
+ if(data.status==='active'&&(!black||terminal))return null;
+ if(data.status==='finished'&&!terminal)return null;
+ if(data.status==='forfeit'&&(!black||terminal))return null;
+ if(hasMoves&&data.status!=='forfeit'&&!['open','invite'].includes(data.status)){
+  const lastMover=moves.length%2===1?red:black;
+  if(!lastMover||author!==lastMover)return null;
+ }
+ return {id:data.id,private:!!isPrivate,red:red,black:black,seatClaimAt:claimedAt,moves:moves,state:state,terminal:terminal,status:data.status};
+}
+function eventFromPayload(ev,relayFallback){
+ if(!ev||!Array.isArray(ev.tags)||!HEX.test(String(ev.pubkey||''))||ev.kind!==PUB_KIND)return null;
+ const d=ev.tags.find(t=>t[0]==='d'&&t[1]);if(!d||!ev.tags.some(t=>t[0]==='t'&&t[1]===APP))return null;
+ let data;try{data=JSON.parse(ev.content||'{}')}catch(_){return null}
+ const author=String(ev.pubkey||'').toLowerCase(),checked=validateCheckersPayload(data,author,false,String(d[1]),Number(ev.created_at)||0);
+ if(!checked)return null;
+ if(!ev.tags.some(t=>t[0]==='p'&&String(t[1]||'').toLowerCase()===checked.red))return null;
+ if(checked.black&&!ev.tags.some(t=>t[0]==='p'&&String(t[1]||'').toLowerCase()===checked.black))return null;
+ const taggedStatus=ev.tags.find(t=>t[0]==='status');if(taggedStatus&&taggedStatus[1]!==checked.status)return null;
+ return {id:checked.id,private:false,red:checked.red,black:checked.black,seatClaimAt:checked.seatClaimAt,moves:checked.moves,relay:data.relay||relayFallback||preferredRelay(),status:checked.status,eventId:String(ev.id||''),lastEventId:String(ev.id||''),lastEventTime:Number(ev.created_at)||0,lastPublishTime:Number(ev.created_at)||0,author:author,created_at:Number(ev.created_at)||0,content:ev.content};
+}
+async function eventToGame(ev,relayFallback,secret){
+ if(!ev||!Array.isArray(ev.tags)||!HEX.test(String(ev.pubkey||'')))return null;
+ const d=ev.tags.find(t=>t[0]==='d'&&t[1]);if(!d)return null;
+ if(ev.kind===PRIV_KIND){
+  const k=secret||urlSecret(),data=await decryptPayload(ev.content,k,d[1]);if(!data)return null;
+  const author=String(ev.pubkey||'').toLowerCase(),checked=validateCheckersPayload(data,author,true,String(d[1]),Number(ev.created_at)||0);
+  if(!checked)return null;
+  return {id:checked.id,private:true,secret:k,red:checked.red,black:checked.black,seatClaimAt:checked.seatClaimAt,moves:checked.moves,relay:data.relay||relayFallback||preferredRelay(),status:checked.status,eventId:String(ev.id||''),lastEventId:String(ev.id||''),lastEventTime:Number(ev.created_at)||0,lastPublishTime:Number(ev.created_at)||0,author:author,created_at:Number(ev.created_at)||0,content:data};
+ }
+ return eventFromPayload(ev,relayFallback);
+}
+
+function isNewer(incoming){if(!game)return true;const n=incoming.moves.length,c=game.moves.length;if(n!==c)return n>c;if(incoming.created_at!==game.lastEventTime)return incoming.created_at>game.lastEventTime;return String(incoming.eventId||'')>String(game.lastEventId||'')}
+function writeRecent(g){if(!signerPk||!g)return;try{const k='sifaka_chinese_checkers_recent_'+signerPk,raw=JSON.parse(localStorage.getItem(k)||'[]'),entry={id:g.id,relay:g.relay,private:!!g.private,secret:g.secret||'',red:g.red,black:g.black||'',status:g.status||'active',updatedAt:Date.now()};const next=[entry].concat(raw.filter(x=>x&&x.id!==g.id)).slice(0,30);localStorage.setItem(k,JSON.stringify(next))}catch(_){}}
+async function publishSnapshot(status){
+ const g=game;if(!g||!signerPk)throw new Error('Connect your Nostr signer before publishing game moves.');
+ const thisId=g.id,body=gamePayload(g,status),created=Math.max(Math.floor(Date.now()/1000),Number(g.lastEventTime||0)+1,Number(g.lastPublishTime||0)+1);g.lastPublishTime=created;
+ const job=publishChain.then(async()=>{if(!game||game.id!==thisId)return false;const signer=await getSignerKey();if(!signer||signer!==g.myPk||(signer!==g.red&&signer!==g.black))throw new Error('The connected Nostr account is not a player in this game. Reconnect the account that joined the match.');const signed=await signEvent({kind:g.private?PRIV_KIND:PUB_KIND,pubkey:signer,created_at:created,tags:g.private?[['d',g.id]]:[['d',g.id],['p',g.red],...(g.black?[['p',g.black]]:[]),['t',APP],['mode','sifaka-chinese-checkers-open'],['status',status],['alt','Sifaka Nostr Chinese Checkers #'+g.id.slice(0,8)],['relay',g.relay]],content:g.private?await encryptPayload(body,g.secret,g.id):JSON.stringify(body)});
+ await publishEvent(signed,g.relay);g.lastEventTime=created;g.lastPublishTime=created;g.lastEventId=signed.id;g.status=status;writeRecent(g);return true});
+ publishChain=job.then(()=>{},()=>{});return job;
+}
+function closeSockets(){if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null}gameSockets.forEach(ws=>{try{if(ws._sub&&ws.readyState===1)ws.send(JSON.stringify(['CLOSE',ws._sub]));ws.close()}catch(_){} });gameSockets=[]}
+function leaveGame(){if(engineTimer){clearTimeout(engineTimer);engineTimer=null}engineRequestId++;closeSockets();game=null;publishChain=Promise.resolve();seenChat.clear();busy=false;}
+function subscribeGame(){
+ closeSockets();if(!game)return;const id=game.id,priv=game.private;gameSockets=[];
+ const relays=currentRelayList(game.relay);
+ function scheduleReconnect(){if(!game||game.id!==id||reconnectTimer)return;if(gameSockets.some(ws=>ws.readyState===0||ws.readyState===1))return;reconnectTimer=setTimeout(()=>{reconnectTimer=null;if(game&&game.id===id)subscribeGame()},3500)}
+ function handle(ev){if(!game||game.id!==id)return;if(ev.kind===CHAT_KIND){receiveChat(ev).catch(()=>{});return}eventToGame(ev,game.relay,game.secret).then(incoming=>{if(!incoming||incoming.id!==id||!game)return;const author=String(ev.pubkey||'').toLowerCase();if(author!==incoming.red&&author!==incoming.black)return;
+ if(priv){if(!incoming.private||author===signerPk)return}
+ else if(incoming.private)return;
+ if(incoming.red!==game.red)return;
+ if(['finished','forfeit'].includes(game.status)&&!['finished','forfeit'].includes(incoming.status))return;
+ if(incoming.black&&game.black&&incoming.black!==game.black){
+  const currentClaim=Number(game.seatClaimAt||game.lastEventTime||0),incomingClaim=Number(incoming.seatClaimAt||incoming.created_at||0);
+  const incomingWins=incomingClaim<currentClaim||(incomingClaim===currentClaim&&String(incoming.black).toLowerCase()<String(game.black).toLowerCase());
+  if(!incomingWins)return;
+  const previousBlack=String(game.black||'').toLowerCase();
+  const lostSeat=!!game.conflicted||(game.myColor==='b'&&String(game.myPk||signerPk||'').toLowerCase()===previousBlack);
+  const rebuiltClaim=replay(incoming.moves);if(!rebuiltClaim)return;
+  game.black=incoming.black;game.seatClaimAt=incoming.seatClaimAt||incoming.created_at;game.moves=incoming.moves;game.lastEventTime=incoming.created_at;game.lastEventId=incoming.eventId;game.status=incoming.status;
+  turns=incoming.moves.map(t=>({path:t.path.slice()}));state=rebuiltClaim;
+  if(lostSeat){game.myPk='';game.myColor='';game.conflicted=true;terminal={status:'forfeit',text:'Another player won the simultaneous seat claim. Return to the lobby and join another game.'};busy=true;say(terminal.text)}else terminal=terminalForGame(state,turns,game);
+  writeRecent(game);renderBoard();updatePlayers();return;
+ }
+ if(!incoming.black&&game.black)return;
+ if(!isNewer(incoming)&&incoming.eventId!==game.lastEventId)return;
+ if(incoming.moves.length<game.moves.length)return;
+ const rebuilt=replay(incoming.moves);if(!rebuilt)return;
+ const calculatedTerminal=getTerminal(rebuilt,incoming.moves);if(incoming.status==='finished'&&!calculatedTerminal)return;if(calculatedTerminal&&incoming.status==='active')return;
+ game.red=incoming.red;game.black=incoming.black||game.black;game.seatClaimAt=incoming.seatClaimAt||game.seatClaimAt||0;game.moves=incoming.moves;game.lastEventTime=incoming.created_at;game.lastEventId=incoming.eventId;game.status=incoming.status;turns=incoming.moves.map(t=>({path:t.path.slice()}));state=rebuilt;
+ if(game.conflicted){terminal={status:'forfeit',text:'Another player won the simultaneous seat claim. Return to the lobby and join another game.'};busy=true}else if(incoming.status==='forfeit'){const forfeiter=author===incoming.red?'r':'b';const weWon=forfeiter!==game.myColor;terminal={status:'forfeit',text:weWon?'Your opponent forfeited the match.':'You forfeited the match.',winner:other(forfeiter)}}else terminal=calculatedTerminal||null;
+ writeRecent(game);renderBoard();updatePlayers();
+ if(terminal&&incoming.status==='forfeit')addChatSystem(terminal.text);else if(author!==signerPk&&turns.length)appendChat('system','Game state synchronized from Nostr.');
+ }).catch(()=>{})}
+ const subs=[];
+ relays.forEach((url,i)=>{let ws,authAttempts=0,authEventId='';const sub='sifaka-chinese-checkers-live-'+id.slice(0,12)+'-'+i,filter=priv?{kinds:[PRIV_KIND,CHAT_KIND],'#d':[id],limit:100}:{kinds:[PUB_KIND,CHAT_KIND],'#d':[id],limit:100};
+ try{ws=new WebSocket(url);ws._sub=sub;gameSockets.push(ws);ws.onopen=()=>{try{ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){try{ws.close()}catch(__){}}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);
+  if(d[0]==='AUTH'){if(authAttempts++||!signerPk){try{ws.close()}catch(_){}return}signRelayAuth(url,String(d[1]||'')).then(auth=>{if(!game||game.id!==id)return;authEventId=String(auth.id||'');ws.send(JSON.stringify(['AUTH',auth]))}).catch(()=>{try{ws.close()}catch(_){}});return}
+  if(d[0]==='OK'&&authEventId&&d[1]===authEventId){authEventId='';if(d[2]){try{ws.send(JSON.stringify(['REQ',sub,filter]))}catch(_){try{ws.close()}catch(__){}}}else{try{ws.close()}catch(_){}}return}
+  if(d[0]==='EVENT'&&d[1]===sub)handle(d[2]);
+ }catch(_){}};ws.onerror=()=>{try{ws.close()}catch(_){}};ws.onclose=()=>{scheduleReconnect()}}catch(_){}});
+}
+function currentOther(){return game?(game.myColor==='r'?game.black:game.red):''}
+function updatePlayers(){
+ const red=game&&game.red,black=game&&game.black;
+ if(red){setPlayer('red',red)}else setPlayer('red',signerPk);
+ if(black){setPlayer('black',black)}else{setPlayer('black','');$('blackName').textContent=game&&game.private?'Awaiting invite':'Waiting for player';$('blackIdentity').textContent='No opponent yet';$('blackAvatar').textContent='🔵'}
+}
+function setPlayer(side,pk){
+ const version=++playerVersions[side];const av=$(side+'Avatar'),name=$(side+'Name'),id=$(side+'Identity');
+ if(!pk){name.textContent=side==='red'?'Red':'Black';id.textContent='Not joined';av.textContent=side==='red'?'🔴':'🔵';av.classList.remove('verified');return}
+ const fallback=shortPk(pk);name.textContent=fallback;id.textContent=fallback;av.textContent=side==='red'?'🔴':'⚫';av.classList.remove('verified');
+ lookupProfile(pk).then(result=>{if(!result||version!==playerVersions[side]||!$(side+'Avatar').isConnected)return;const p=result.profile||{},nm=String(p.display_name||p.displayName||p.name||fallback).trim()||fallback;name.textContent=nm;id.textContent=result.verified&&p.nip05?p.nip05:(p.nip05?'Unverified: '+p.nip05:fallback);if(result.verified)av.classList.add('verified');av.replaceChildren();const pic=String(p.picture||'');if(/^https?:\/\//i.test(pic)){const img=document.createElement('img');img.src=pic;img.alt='';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>{av.textContent=side==='red'?'🔴':'⚫'},{once:true});av.appendChild(img)}else av.textContent=String(nm[0]||'S').toUpperCase()}).catch(()=>{});
+}
+const profileCache=new Map();
+async function queryOne(url,filter,ms=2600){const got=await requestEvents(url,filter,ms);return got}
+async function lookupProfile(pk){
+ pk=String(pk||'').trim().toLowerCase();if(!HEX.test(pk))return null;
+ const old=profileCache.get(pk);if(old&&Date.now()-old.at<120000)return old.value;
+ const events=await queryRelays({kinds:[0],authors:[pk],limit:20});
+ let best=null;
+ events.forEach(e=>{if(e&&Number(e.kind)===0&&String(e.pubkey||'').toLowerCase()===pk&&(!best||Number(e.created_at||0)>Number(best.created_at||0)))best=e});
+ let profile={pubkey:pk,name:'',display_name:'',picture:'',nip05:'',about:''};
+ try{if(best){const parsed=JSON.parse(best.content||'{}');if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed))profile=Object.assign({},profile,parsed,{pubkey:pk})}}catch(_){}
+ let verified=false;
+ if(profile.nip05){
+  try{
+   const nip=String(profile.nip05).trim(),at=nip.lastIndexOf('@'),user=at<0?'_':nip.slice(0,at)||'_',domain=at<0?nip:nip.slice(at+1);
+   if(/^[a-z0-9._-]+$/i.test(user)&&/^[a-z0-9.-]+$/i.test(domain)&&!domain.includes('..')){
+    const r=await fetch('https://'+domain.toLowerCase()+'/.well-known/nostr.json?name='+encodeURIComponent(user),{credentials:'omit',mode:'cors',cache:'no-store',headers:{Accept:'application/json'}});
+    if(r.ok){const d=await r.json();verified=String(d&&d.names&&(d.names[user]||d.names[user.toLowerCase()])||'').toLowerCase()===pk}
+   }
+  }catch(_){}
+ }
+ const value={pubkey:pk,profile:profile,event:best,verified:verified};profileCache.set(pk,{at:Date.now(),value});return value;
+}
+
+function addChatSystem(text){appendChat('system',text)}
+function appendChat(name,text,pk,eventId){
+ const el=document.createElement('div');el.className='chatmsg'+(name==='system'?' system':'');if(name==='system'){el.textContent=text}else{const t=document.createElement('span');t.className='time';t.textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});const b=document.createElement('strong');b.textContent=name;el.append(t,b,document.createTextNode(': '+text))}$('chatLog').appendChild(el);$('chatLog').scrollTop=$('chatLog').scrollHeight;
+}
+async function receiveChat(ev){
+ if(!game||ev.kind!==CHAT_KIND||!Array.isArray(ev.tags)||!ev.id||seenChat.has(ev.id)||!ev.tags.some(t=>t[0]==='t'&&t[1]==='sifaka-chinese-checkers-chat')||!ev.tags.some(t=>t[0]==='d'&&t[1]===game.id))return;
+ const author=String(ev.pubkey||'').toLowerCase();if(author!==game.red&&author!==game.black)return;
+ let message=String(ev.content||'');if(game.private){const data=await decryptPayload(ev.content,game.secret,game.id);if(!data||data.type!=='chat'||typeof data.message!=='string')return;message=data.message}
+ message=message.trim().slice(0,800);if(!message)return;seenChat.add(ev.id);if(author===signerPk)return;
+ const profile=await lookupProfile(author);appendChat(String(profile&&profile.profile&&(profile.profile.display_name||profile.profile.name)||shortPk(author)),message,author,ev.id);
+}
+async function sendChat(){
+ const input=$('chatInput'),message=input.value.trim();if(!message)return;
+ if(local){appendChat(signerPk?'You':'Local player',message);input.value='';return}
+ if(!game||!game.black){say('Wait for an opponent to join before using game chat.');return}
+ try{const pk=await getSignerKey();if(!pk||pk!==signerPk||pk!==game.myPk||(pk!==game.red&&pk!==game.black))throw new Error('Reconnect the Nostr account that joined this game before sending chat.');const content=game.private?await encryptPayload({app:APP,version:1,id:game.id,type:'chat',message:message},game.secret,game.id):message;const created=Math.floor(Date.now()/1000),ev=await signEvent({kind:CHAT_KIND,pubkey:pk,created_at:created,tags:[['t','sifaka-chinese-checkers-chat'],['d',game.id],['p',currentOther()]],content:content});await publishEvent(ev,game.relay);appendChat('You',message);input.value=''}catch(e){say('Could not send chat: '+e.message)}
+}
+
+const BECH32='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function decodeNpub(value){
+ const v=String(value||'').trim().toLowerCase();if(HEX.test(v))return v;
+ const sep=v.lastIndexOf('1');if(sep!==4||v.slice(0,sep)!=='npub'||v.length>90)return '';
+ const words=v.slice(sep+1).split('').map(c=>BECH32.indexOf(c));if(words.length<7||words.some(n=>n<0))return '';
+ const hrp=[...v.slice(0,sep)].map(c=>c.charCodeAt(0)>>5).concat([0],[...v.slice(0,sep)].map(c=>c.charCodeAt(0)&31)),gen=[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3];let check=1;
+ hrp.concat(words).forEach(n=>{const top=check>>>25;check=((check&0x1ffffff)<<5)^n;for(let i=0;i<5;i++)if((top>>>i)&1)check^=gen[i]});if(check!==1)return '';
+ const data=words.slice(0,-6),bytes=[];let acc=0,bits=0;data.forEach(n=>{acc=(acc<<5)|n;bits+=5;if(bits>=8){bits-=8;bytes.push((acc>>bits)&255)}});if(bits>=5||((acc<<(8-bits))&255)!==0||bytes.length!==32)return '';
+ return bytes.map(n=>n.toString(16).padStart(2,'0')).join('');
+}
+async function resolveCheckersNip05(query){
+ const m=String(query||'').trim().match(/^([a-z0-9._-]+)@([a-z0-9.-]+)$/i);if(!m)return '';
+ const user=m[1],domain=m[2].toLowerCase();if(!domain.includes('.')||domain.includes('..')||domain.length>253)return '';
+ try{const res=await fetch('https://'+domain+'/.well-known/nostr.json?name='+encodeURIComponent(user),{mode:'cors',credentials:'omit',cache:'no-store',headers:{Accept:'application/json'}});if(!res.ok)return '';const data=await res.json(),pk=String(data&&data.names&&(data.names[user]||data.names[user.toLowerCase()])||'').toLowerCase();if(!HEX.test(pk))return '';const p=await lookupProfile(pk),profile=p&&p.profile||{};if(String(profile.nip05||'').trim().toLowerCase()!==(user+'@'+domain).toLowerCase()||!p.verified)return '';return pk}catch(_){return ''}
+}
+function renderInviteResults(items,empty){
+ const root=$('inviteResults');root.replaceChildren();
+ if(!items.length){const e=document.createElement('div');e.className='muted';e.textContent=empty||'No matching Nostr profiles found.';root.appendChild(e);return}
+ items.slice(0,30).forEach(user=>{
+  const rowEl=document.createElement('div');rowEl.className='gameitem';
+  const av=document.createElement('span');av.className='avatar';av.style.width='38px';av.style.height='38px';av.style.fontSize='16px';av.textContent=String(user.name||user.display_name||'N')[0].toUpperCase();
+  if(/^https?:\/\//i.test(String(user.picture||''))){const img=document.createElement('img');img.src=user.picture;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.style.cssText='width:100%;height:100%;object-fit:cover';img.addEventListener('error',()=>{av.textContent=String(user.name||'N')[0].toUpperCase()},{once:true});av.replaceChildren(img)}
+  const details=document.createElement('div');details.className='grow';const name=document.createElement('strong');name.textContent=String(user.display_name||user.name||shortPk(user.pk));const identity=document.createElement('small');identity.textContent=user.nip05?user.nip05:shortPk(user.pk);identity.title=user.pk;details.append(name,identity);
+  const invite=document.createElement('button');invite.type='button';invite.className='btn small primary';invite.textContent='Send DM';invite.addEventListener('click',()=>sendCheckersDirectInvite(user,invite).catch(err=>say('Could not send encrypted invite: '+String(err&&err.message||err))));
+  rowEl.append(av,details,invite);root.appendChild(rowEl);
+  lookupProfile(user.pk).then(result=>{if(!rowEl.isConnected)return;const p=result&&result.profile||{};name.textContent=String(p.display_name||p.displayName||p.name||user.name||shortPk(user.pk));if(result&&result.verified&&p.nip05){identity.textContent='✓ '+p.nip05;av.classList.add('verified')}else if(p.nip05)identity.textContent='Claimed, not verified: '+p.nip05;if(p.picture&&!/^https?:\/\//i.test(String(user.picture||''))){av.textContent=String(name.textContent||'N')[0].toUpperCase();if(/^https?:\/\//i.test(p.picture)){const img=document.createElement('img');img.src=p.picture;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.style.cssText='width:100%;height:100%;object-fit:cover';av.replaceChildren(img)}}}).catch(()=>{});
+ });
+}
+async function searchCheckersPlayers(){
+ const input=$('inviteSearchInput'),status=$('inviteSearchStatus'),q=input.value.trim();const token=++inviteSearchRequest;
+ if(!q){status.textContent='Enter a display name, npub, public key, or NIP-05 address.';renderInviteResults([]);return}
+ status.textContent='Searching Nostr profiles…';$('inviteSearchBtn').disabled=true;$('inviteResults').replaceChildren();
+ try{
+  let keys=[];const exact=decodeNpub(q),hexPk=q.toLowerCase();
+  if(exact)keys=[exact];
+  else if(HEX.test(hexPk))keys=[hexPk];
+  else if(q.includes('@')){const pk=await resolveCheckersNip05(q);if(pk)keys=[pk]}
+  if(!keys.length){
+   const results=await Promise.all(['wss://relay.nostr.band','wss://search.nos.today'].map(url=>requestEvents(url,{kinds:[0],search:q,limit:30},5000)));
+   const profiles=new Map();
+   results.flat().forEach(ev=>{if(!ev||ev.kind!==0||!HEX.test(String(ev.pubkey||'')))return;let profile={};try{profile=JSON.parse(ev.content||'{}')}catch(_){}const pk=String(ev.pubkey).toLowerCase(),old=profiles.get(pk);if(!old||Number(ev.created_at)>Number(old.created_at))profiles.set(pk,{pk,profile,created_at:Number(ev.created_at)||0})});
+   const needle=q.toLowerCase();
+   keys=[...profiles.values()].filter(x=>[x.profile.name,x.profile.display_name,x.profile.displayName,x.profile.nip05,x.profile.about,x.pk].filter(Boolean).join(' ').toLowerCase().includes(needle)).slice(0,30).map(x=>x.pk);
+  }
+  if(token!==inviteSearchRequest)return;
+  const list=[];
+  for(const pk of keys.slice(0,20)){const res=await lookupProfile(pk);if(token!==inviteSearchRequest)return;const p=res&&res.profile||{};list.push({pk:pk,name:String(p.name||''),display_name:String(p.display_name||p.displayName||''),picture:String(p.picture||''),nip05:String(p.nip05||''),verified:!!(res&&res.verified)})}
+  if(token!==inviteSearchRequest)return;
+  status.textContent=list.length?'Found '+list.length+' Nostr profile'+(list.length===1?'':'s')+'. Sending a DM requires a connected signer with NIP-04 encryption.':'No profiles matched. Search relays may not support global search; try an npub, hex key, or NIP-05 address.';
+  renderInviteResults(list,list.length?'':'Try a more specific name or verify the identifier.');
+ }catch(err){if(token===inviteSearchRequest){status.textContent='Profile search failed: '+String(err&&err.message||err);renderInviteResults([],'Search relay or NIP-05 lookup failed. You can still copy the game link.')}}finally{if(token===inviteSearchRequest)$('inviteSearchBtn').disabled=false}
+}
+async function sendCheckersDirectInvite(user,button){
+ if(!game)throw new Error('Create a public game or private invite link before inviting a player.');
+ if(game.black)throw new Error('This game already has an opponent. Create another game to invite a different player.');
+ const peer=String(user&&user.pk||'').toLowerCase();if(!HEX.test(peer))throw new Error('The selected profile has no valid Nostr public key.');
+ const signer=await getSignerKey();if(!signer){openLogin();throw new Error('Connect your Nostr signer, then retry the invitation.')}
+ if(signer!==game.red||signer!==signerPk)throw new Error('Reconnect the Nostr account that created this game before inviting a player.');
+ if(peer===signer)throw new Error('Choose another player; you cannot invite your own account.');
+ let provider=null;
+ for(const candidate of [window.nostr,window.sifakaCheckersMainSigner]){
+  if(!candidate||typeof candidate.getPublicKey!=='function'||!candidate.nip04||typeof candidate.nip04.encrypt!=='function')continue;
+  try{if(String(await candidate.getPublicKey()||'').toLowerCase()===signer){provider=candidate.nip04;break}}catch(_){}
+ }
+ if(!provider)throw new Error('The active signer does not expose NIP-04 encryption. Your game link is still available through “Share invite”; no public mention was sent.');
+ if(button){button.disabled=true;button.textContent='Encrypting…'}
+ try{
+  const link=getLink(game),display=String(user.display_name||user.name||shortPk(peer));
+  const message='♟ SIFAKA.LIVE CHECKERS INVITATION\n\nHi '+display+', you are invited to play a Chinese Chinese Checkers match.\n\nJoin the match: '+link+'\n\nThis invitation was sent as an encrypted Nostr direct message. '+(game.private?'The URL fragment contains the private game key. Keep the complete link private.':'The match is public and appears in the Sifaka Chinese Checkers lobby.');
+  const encrypted=await provider.encrypt(peer,message);if(typeof encrypted!=='string'||!encrypted.trim())throw new Error('The signer did not return encrypted direct-message content.');
+  let targets=currentRelayList(game.relay);
+  try{const events=await queryRelays({kinds:[10002],authors:[peer],limit:5},game.relay);events.sort((a,b)=>Number(b.created_at||0)-Number(a.created_at||0));const relayEvent=events[0];if(relayEvent){const hints=(relayEvent.tags||[]).filter(t=>t[0]==='r'&&/^wss:\/\//i.test(String(t[1]||''))&&(!t[2]||t[2]==='write')).map(t=>String(t[1]).trim());targets=currentRelayList(hints.concat(targets))}}catch(_){}
+  const ev=await signEvent({kind:4,pubkey:signer,created_at:Math.max(Math.floor(Date.now()/1000),Number(game.lastEventTime||0)+1),tags:[['p',peer],['t','sifaka-chinese-checkers-invite']],content:encrypted});
+  await publishEvent(ev,targets);
+  if(button){button.textContent='Sent ✓';button.disabled=false}say('Encrypted Checkers invite sent by Nostr DM.');$('inviteSearchStatus').textContent='Encrypted invitation sent to '+display+'.';return true;
+ }catch(err){if(button){button.disabled=false;button.textContent='Send DM'}throw err}
+}
+function openInviteSearch(){
+ if(!game){say('Create a game first, then invite a player.');openOverlay('setupOverlay');return}
+ if(game.black){say('This match already has an opponent. Create a new game to invite another player.');return}
+ $('inviteSearchInput').value='';$('inviteSearchStatus').textContent='Search by name, npub, hexadecimal public key, or NIP-05.';$('inviteResults').replaceChildren();openOverlay('inviteOverlay');$('inviteSearchInput').focus();
+}
+
+async function createOnline(privateMode){
+ const pk=await getSignerKey();if(!pk){openLogin();throw new Error('Connect a Nostr account before creating an online game.')}
+ const id=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)),secret=privateMode?bytesToB64(crypto.getRandomValues(new Uint8Array(32))):'',relay=preferredRelay();
+ leaveGame();local=false;engineMode=false;turns=[];state=newBoard();terminal=null;selected=-1;pathCandidates=[];selectedPath=[];$('chatLog').replaceChildren();$('chatStatus').textContent=privateMode?'· private Nostr chat':'· Nostr relay chat';
+ game={id:id,private:!!privateMode,secret:secret,relay:relay,red:pk,black:'',myPk:pk,myColor:'r',moves:[],status:privateMode?'invite':'open',seatClaimAt:0,lastEventTime:0,lastPublishTime:0,lastEventId:''};
+ signerPk=pk;updatePlayers();renderBoard();
+ const ok=await publishSnapshot(privateMode?'invite':'open');if(!ok)throw new Error('The game could not be confirmed by a relay.');
+ $('shareTitle').textContent=privateMode?'Private Chinese Checkers invitation':'Public Chinese Checkers game';$('shareHelp').textContent=privateMode?'This link contains an encryption key in its URL fragment. Anyone with the complete link can open the invitation and access the private game.':'Share this link so another Sifaka/Nostr player can join the open game.';$('inviteUrl').value=getLink(game);openOverlay('shareOverlay');subscribeGame();writeRecent(game);say(privateMode?'Private game created and encrypted.':'Public game published to Nostr.');return game;
+}
+async function joinOnline(g,secret){
+ const inviteId=String(g&&g.id||''),relay=String(g&&g.relay||preferredRelay()),key=String(secret||(g&&g.secret)||'');
+ if(!inviteId)throw new Error('This invitation link does not identify a game.');
+ if(g&&g.private&&!key)throw new Error('The private invite key is missing. Copy the full invitation URL.');
+ let pk='';try{pk=await getSignerKey()}catch(_){}
+ if(!pk){
+  pendingOnlineAction=async()=>{
+   const events=await queryRelays({kinds:key?[PRIV_KIND]:[PUB_KIND],'#d':[inviteId],limit:80},relay);
+   let latest=null;
+   for(const ev of events){
+    const found=await eventToGame(ev,relay,key),created=Number(found&&found.created_at||0),oldCreated=Number(latest&&latest.created_at||0);
+    if(found&&found.id===inviteId&&(!latest||created>oldCreated||(created===oldCreated&&String(found.eventId||'')>String(latest.eventId||''))))latest=found;
+   }
+   if(!latest)throw new Error('The invitation could not be found on configured Nostr relays. Check the link and relay settings, then try again.');
+   await joinOnline(latest,key);
+  };
+  openLogin();say('Sign in to accept this game invitation. The join will resume after sign-in.');return;
+ }
+ const claimingSeat=!g.black;
+ const previous={black:g.black||'',status:g.status||(g.private?'invite':'open'),myPk:g.myPk||'',myColor:g.myColor||'',lastEventTime:Number(g.lastEventTime||0),lastPublishTime:Number(g.lastPublishTime||0),lastEventId:g.lastEventId||'',eventId:g.eventId||''};
+ if(g.red===pk||g.black===pk){g.myPk=pk;g.myColor=g.red===pk?'r':'b'}
+ else if(!g.black){g.black=pk;g.myPk=pk;g.myColor='b';g.status='active'}
+ else throw new Error('This match already has two players.');
+ leaveGame();local=false;engineMode=false;$('chatLog').replaceChildren();$('chatStatus').textContent=g.private?'· private Nostr chat':'· Nostr relay chat';game=g;game.secret=key;game.myPk=pk;game.myColor=pk===game.red?'r':'b';game.moves=g.moves||[];
+ const s=replay(game.moves);if(!s)throw new Error('Game history failed validation.');
+ turns=game.moves.map(t=>({path:t.path.slice()}));state=s;terminal=terminalForGame(state,turns,game);selected=-1;pathCandidates=[];selectedPath=[];signerPk=pk;updatePlayers();renderBoard();subscribeGame();writeRecent(game);
+ if(claimingSeat&&game.black&&game.status!=='finished'&&game.myColor==='b'){
+  try{const ok=await publishSnapshot('active');if(!ok)throw new Error('No relay acknowledged the join.')}
+  catch(err){
+   if(game&&game.id===inviteId){
+    game.black=previous.black;game.status=previous.status;game.myPk=previous.myPk;game.myColor=previous.myColor;
+    game.lastEventTime=previous.lastEventTime;game.lastPublishTime=previous.lastPublishTime;game.lastEventId=previous.lastEventId;game.eventId=previous.eventId;
+    turns=(game.moves||[]).map(t=>({path:t.path.slice()}));state=replay(turns);terminal=terminalForGame(state,turns,game);
+    updatePlayers();renderBoard();subscribeGame();writeRecent(game);
+   }
+   throw new Error('The Nostr relay did not confirm your join. Your seat was released; retry the invitation. '+String(err&&err.message||err));
+  }
+ }
+ closeOverlay('incomingOverlay');closeOverlay('lobbyOverlay');say('Connected to the Chinese Chinese Checkers match over Nostr.');
+}
+async function forfeitGame(){
+ if(local||!game||terminal)return;if(!confirm('Forfeit this Chinese Chinese Checkers game?'))return;
+ const resultText=(game.myColor==='r'?'Red':'Black')+' forfeited the match.';try{await publishSnapshot('forfeit');terminal={status:'forfeit',text:resultText,winner:other(game.myColor)};renderBoard();addChatSystem(resultText);say('Forfeit published to Nostr.')}catch(e){say('Forfeit was not confirmed. You can retry: '+e.message)}
+}
+function refreshIncomingInviteControls(){if(!pendingInvite||!pendingInvite.game)return;const g=pendingInvite.game,isParticipant=!!signerPk&&(g.red===signerPk||g.black===signerPk);$('incomingDescription').textContent=(g.private?'Private encrypted game':'Public game')+' hosted by '+shortPk(g.red)+'.';$('acceptInviteBtn').textContent=isParticipant?'Resume game':'Accept invitation';$('incomingStatus').textContent=isParticipant?'This is one of your games. Resume to synchronize the latest state.':g.black?'This match already has two players or has ended.':'The game history is valid. Connect your Nostr identity and accept to join.';$('acceptInviteBtn').disabled=(!isParticipant&&!!g.black)||(['finished','forfeit'].includes(g.status)&&!isParticipant)}
+async function loadIncomingInvite(){
+ const params=new URLSearchParams(location.search),id=params.get('game'),relay=params.get('relay')||preferredRelay(),secret=urlSecret();if(!id)return;
+ pendingInvite={id:id,relay:relay,secret:secret};$('incomingOverlay').classList.add('open');$('incomingStatus').textContent='Searching Nostr relays for the game…';
+ const filter={kinds:secret?[PRIV_KIND]:[PUB_KIND],'#d':[id],limit:60},evs=await queryRelays(filter,relay);let found=null;
+ for(const ev of evs){const g=await eventToGame(ev,relay,secret);if(g&&g.id===id){if(!found||g.created_at>found.created_at)found=g}}
+ if(!found){$('incomingDescription').textContent='The invitation event was not found or could not be decrypted. Make sure the complete link is intact and the relays are reachable.';$('incomingStatus').textContent='Invite could not be verified. Retry from the shared link after checking relay connectivity.';$('acceptInviteBtn').disabled=true;return}
+ pendingInvite.game=found;refreshIncomingInviteControls();
+}
+function openOverlay(id){$(id).classList.add('open')}function closeOverlay(id){$(id).classList.remove('open')}
+function lobbyStatus(g){if(g.status==='forfeit')return 'Forfeited';if(g.status==='finished')return 'Finished';if(!g.black)return 'Open';return 'In progress'}
+function gameSort(a,b){return (b.created_at||0)-(a.created_at||0)}
+function renderLobby(games){
+ const list=$('gamesList');list.replaceChildren();let shown=games;
+ if(lobbyTab==='open')shown=games.filter(g=>!g.black&&g.status!=='finished'&&g.status!=='forfeit'&&!g.private);
+ if(lobbyTab==='current')shown=games.filter(g=>signerPk&&(g.red===signerPk||g.black===signerPk)&&g.status!=='finished'&&g.status!=='forfeit');
+ if(!shown.length){const e=document.createElement('div');e.className='muted';e.textContent=lobbyTab==='open'?'No open games were found on the selected relays. Create a public game or refresh.':lobbyTab==='current'?'No current games for this Nostr account were found.':'No recent Chinese Chinese Checkers events were found.';list.appendChild(e);return}
+ shown.sort(gameSort).slice(0,80).forEach(g=>{const el=document.createElement('div');el.className='gameitem';const info=document.createElement('div');info.className='grow';const t=document.createElement('strong');t.textContent=shortPk(g.red)+' vs '+(g.black?shortPk(g.black):'Open seat');const m=document.createElement('small');m.textContent=(g.private?'Private':'Public')+' · '+lobbyStatus(g)+' · '+g.moves.length+' turns · '+new Date((g.created_at||0)*1000).toLocaleString();info.append(t,m);const b=document.createElement('button');b.className='btn small '+(!g.black?'primary':'');b.textContent=g.red===signerPk||g.black===signerPk?'Resume':!g.black?'Join':'View';b.disabled=!!g.private&&!g.secret||(!g.black&&g.red===signerPk)||(!!g.black&&g.red!==signerPk&&g.black!==signerPk)||(['finished','forfeit'].includes(g.status)&&g.red!==signerPk&&g.black!==signerPk);b.addEventListener('click',async()=>{b.disabled=true;try{if(g.red===signerPk||g.black===signerPk){await activateExisting(g)}else{await joinOnline(g,'')}}catch(e){say(e.message)}finally{b.disabled=false}});el.append(info,b);list.appendChild(el)})
+}
+async function activateExisting(g){const pk=await getSignerKey();if(!pk)throw new Error('Connect your Nostr identity first.');const found=await eventToGame(g.raw||g.event,g.relay,g.secret);const item=found||g;if(item.private&&!item.secret)throw new Error('Open the original private invite URL to restore this game.');leaveGame();local=false;engineMode=false;game=item;game.myPk=pk;game.myColor=pk===game.red?'r':'b';signerPk=pk;turns=item.moves.map(t=>({path:t.path.slice()}));state=replay(turns);if(!state)throw new Error('Saved game history failed validation.');terminal=terminalForGame(state,turns,item);renderBoard();updatePlayers();subscribeGame();closeOverlay('lobbyOverlay')}
+async function refreshLobby(){
+ if(lobbyBusy)return;lobbyBusy=true;$('refreshLobbyBtn').disabled=true;$('gamesList').innerHTML='<div class="muted">Querying Chinese Chinese Chinese Checkers events from Nostr relays…</div>';
+ try{
+  const publicEvents=await queryRelays({kinds:[PUB_KIND],'#t':[APP],limit:500}),map=new Map();
+  for(const ev of publicEvents){const g=eventFromPayload(ev,preferredRelay());if(g){g.raw=ev;const old=map.get(g.id);if(!old||g.created_at>old.created_at||(g.created_at===old.created_at&&g.moves.length>old.moves.length))map.set(g.id,g)}}
+  renderLobby([...map.values()]);
+  if(signerPk){
+   try{
+    const raw=JSON.parse(localStorage.getItem('sifaka_chinese_checkers_recent_'+signerPk)||'[]'),recent=raw.filter(x=>x&&x.private&&x.secret).slice(0,12);
+    for(let offset=0;offset<recent.length;offset+=4){
+     const batch=recent.slice(offset,offset+4);
+     const foundBatch=await Promise.all(batch.map(async r=>{
+      const evs=await queryRelays({kinds:[PRIV_KIND],'#d':[r.id],limit:50},r.relay);let found=null;
+      for(const ev of evs){const g=await eventToGame(ev,r.relay,r.secret);if(g&&g.id===r.id&&(!found||g.created_at>found.created_at)){g.secret=r.secret;g.raw=ev;found=g}}
+      return found;
+     }));
+     foundBatch.filter(Boolean).forEach(found=>map.set(found.id,found));
+     renderLobby([...map.values()]);
+    }
+   }catch(_){}
+  }
+  renderLobby([...map.values()]);
+ }catch(e){$('gamesList').textContent='Could not load the lobby: '+e.message}
+ finally{lobbyBusy=false;$('refreshLobbyBtn').disabled=false}
+}
+async function openLobby(tab){lobbyTab=tab||'open';$('lobbyTabs').querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===lobbyTab));openOverlay('lobbyOverlay');await refreshLobby()}
+function updateIdentity(){
+ $('identityLabel').textContent=signerPk?(signerProfile.display_name||signerProfile.name||shortPk(signerPk)):'Not connected';$('connectBtn').textContent=signerPk?'Nostr connected':'Login with Nostr';
+ if(signerPk){$('redName').textContent=signerProfile.display_name||signerProfile.displayName||signerProfile.name||shortPk(signerPk);$('redIdentity').textContent=shortPk(signerPk);setPlayer('red',signerPk)}
+ if(window.sifakaGameHeaderSyncIdentity)window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified);
+}
+async function connect(){
+ const pk=await getSignerKey();if(!pk){openLogin();say('Sign in to Sifaka.Live or connect a Nostr signer to continue.');return}
+ rememberSigner(pk);const result=await lookupProfile(pk);signerProfile=result&&result.profile||{};signerVerified=!!(result&&result.verified);updateIdentity();refreshIncomingInviteControls();say('Connected to Nostr. Game events will be signed with this identity.');
+ const action=pendingOnlineAction;pendingOnlineAction=null;
+ if(action)Promise.resolve().then(action).catch(e=>say('Could not resume the invitation: '+String(e&&e.message||e)));
+}
+function openLogin(){
+ const layer=$('loginLayer'),frame=$('loginFrame');if(layer.classList.contains('open'))return;layer.hidden=false;layer.classList.add('open');
+ frame.onload=function(){
+  let attempt=0;
+  const prepare=function(){
+   let doc,win;try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){}
+   if(!doc||!win||!doc.head||!doc.body){if(attempt++<200){setTimeout(prepare,50);return}say('The Sifaka sign-in window did not load. Please retry.');return}
+   try{
+    if(win.nostr===undefined&&window.nostr&&typeof window.nostr.getPublicKey==='function'){try{Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr})}catch(_){}}
+    const ctx=win.__SIFAKA_CONTEXT,user=ctx&&typeof ctx.getUser==='function'?ctx.getUser():null;
+    if(user&&user.pubkey&&ctx&&typeof ctx.signEvent==='function'){installSigner(win,'');closeLogin(true);return}
+    const modal=doc.getElementById('loginModal');
+    if(modal&&typeof win.openLogin==='function'){
+     let style=doc.getElementById('checkersLoginIsolateStyle');if(!style){style=doc.createElement('style');style.id='checkersLoginIsolateStyle';doc.head.appendChild(style)}
+     style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+     if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}
+     if(!modal.classList.contains('open'))win.openLogin();
+     if(!modal.classList.contains('open')){if(attempt++<200){setTimeout(prepare,50);return}say('The Sifaka sign-in form could not be opened.');return}
+     const Observer=win.MutationObserver;if(Observer){loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open')){const authCtx=win.__SIFAKA_CONTEXT,authUser=authCtx&&typeof authCtx.getUser==='function'?authCtx.getUser():null,signed=!!(authUser&&authUser.pubkey&&authCtx&&typeof authCtx.signEvent==='function');if(signed)installSigner(win,'');closeLogin(signed)}});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']})}
+     try{doc.querySelectorAll('video,audio').forEach(el=>{try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(t=>t.stop());el.removeAttribute('src');el.querySelectorAll('source').forEach(x=>x.removeAttribute('src'));el.load()}catch(_){}})}catch(_){}
+     return;
+    }
+   }catch(_){}
+   if(attempt++<200){setTimeout(prepare,50);return}
+   say('The Sifaka sign-in form did not load. Please refresh and try again.');
+  };
+  prepare();
+ };
+ frame.src='/?chessLoginPopup=1&chessAction=login';
+}
+function closeLogin(signedIn=false){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}if(signedIn===true)connect().catch(()=>{});else pendingOnlineAction=null}
+function setupStep(step){const first=step==='opponents';$('setupOpponents').classList.toggle('hidden',!first);$('setupDifficulty').classList.toggle('hidden',step!=='engine');$('setupHumanOptions').classList.toggle('hidden',step!=='human');$('setupBack').classList.toggle('hidden',first);$('setupHelp').textContent=first?'Choose the Chinese Checkers engine or another player. Human games can be local or synchronized through Nostr.':step==='engine'?'Choose the Chinese Checkers engine difficulty. You play Red; the engine plays Blue.':'Choose local play or create/join a match over Nostr.'}function openSetup(){setupStep('opponents');openOverlay('setupOverlay')}
+ function bindEvents(){
+ $('connectBtn').addEventListener('click',()=>connect().catch(e=>say(e.message)));
+ $('closeLoginBtn').addEventListener('click',closeLogin);
+ $('loginLayer').addEventListener('click',e=>{if(e.target===$('loginLayer'))closeLogin()});
+ $('localBtn').addEventListener('click',()=>resetLocal(false));$('setupEngineChoice').addEventListener('click',()=>setupStep('engine'));$('setupHumanChoice').addEventListener('click',()=>setupStep('human'));$('setupBack').addEventListener('click',()=>setupStep('opponents'));$('setupLocal').addEventListener('click',()=>{closeOverlay('setupOverlay');resetLocal(false)});$('setupEngineNovice').addEventListener('click',()=>{closeOverlay('setupOverlay');resetLocal(true,1)});$('setupEngineAdept').addEventListener('click',()=>{closeOverlay('setupOverlay');resetLocal(true,2)});$('setupEngineMaster').addEventListener('click',()=>{closeOverlay('setupOverlay');resetLocal(true,3)});
+ $('newGameBtn').addEventListener('click',openSetup);
+$('gameOverAgainBtn').addEventListener('click',()=>{closeOverlay('gameOverOverlay');if(local)resetLocal(engineMode,engineLevel);else openSetup();});$('gameOverModeBtn').addEventListener('click',()=>{closeOverlay('gameOverOverlay');openSetup();});$('setupPublic').addEventListener('click',()=>{closeOverlay('setupOverlay');createOnline(false).catch(e=>say(e.message))});$('setupPrivate').addEventListener('click',()=>{closeOverlay('setupOverlay');createOnline(true).catch(e=>say(e.message))});
+ $('setupJoin').addEventListener('click',()=>{closeOverlay('setupOverlay');openLobby('open')});$('lobbyCreatePublic').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(false).catch(e=>say(e.message))});$('lobbyCreatePrivate').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(true).catch(e=>say(e.message))});
+ $('lobbyBtn').addEventListener('click',()=>openLobby('open'));$('lobbyBtn2').addEventListener('click',()=>openLobby('open'));$('refreshLobbyBtn').addEventListener('click',refreshLobby);$('lobbyTabs').querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{lobbyTab=b.dataset.tab;$('lobbyTabs').querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));refreshLobby()}));
+ $('invitePlayerBtn').addEventListener('click',openInviteSearch);$('inviteSearchBtn').addEventListener('click',()=>searchCheckersPlayers().catch(e=>say(e.message)));$('inviteSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchCheckersPlayers().catch(err=>say(err.message))}});$('inviteCopyLinkBtn').addEventListener('click',async()=>{if(!game)return;const link=getLink(game);try{await navigator.clipboard.writeText(link);say('Game link copied.');$('inviteSearchStatus').textContent='Game link copied. It can be shared in a Nostr DM or another private channel.'}catch(_){$('inviteUrl').value=link;closeOverlay('inviteOverlay');openOverlay('shareOverlay');say('Select and copy the game link.')}});
+ $('flipBtn').addEventListener('click',()=>{flipped=!flipped;renderBoard()});$('finishHopBtn').addEventListener('click',()=>{if(!busy&&!terminal&&selectedPath.length>1&&isHopStep(selectedPath[selectedPath.length-2],selectedPath[selectedPath.length-1])&&pathCandidates.some(t=>samePath(t.path,selectedPath)))completeTurn(selectedPath.slice())});$('shareBtn').addEventListener('click',()=>{if(game){$('inviteUrl').value=getLink(game);openOverlay('shareOverlay')}});$('copyInviteBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('inviteUrl').value);say('Invite link copied.')}catch(_){$('inviteUrl').select();say('Select and copy the invitation link.')}});$('shareContinueBtn').addEventListener('click',()=>closeOverlay('shareOverlay'));
+ $('undoBtn').addEventListener('click',()=>{if(!local||!turns.length)return;const count=engineMode&&turns.length>=2&&turns.length%2===0?2:1;selected=-1;selectedPath=[];pathCandidates=[];for(let i=0;i<count;i++)turns.pop();state=replay(turns)||newBoard();terminal=getTerminal(state,turns);selected=-1;pathCandidates=[];selectedPath=[];busy=false;renderBoard()});
+ $('forfeitBtn').addEventListener('click',()=>forfeitGame().catch(e=>say(e.message)));
+ $('sendChatBtn').addEventListener('click',()=>sendChat().catch(e=>say(e.message)));$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat().catch(err=>say(err.message))}});
+ $('acceptInviteBtn').addEventListener('click',()=>{if(!pendingInvite||!pendingInvite.game)return;joinOnline(pendingInvite.game,pendingInvite.secret).catch(e=>say(e.message))});$('declineInviteBtn').addEventListener('click',()=>closeOverlay('incomingOverlay'));
+ document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>closeOverlay(b.dataset.close)));
+ document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)closeOverlay(el.id)}));
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.overlay.open').forEach(el=>el.classList.remove('open'))});
+ window.addEventListener('storage',()=>{if(!signerPk){const pk=storedKey();if(pk){signerPk=pk;updateIdentity()}}});
+}
+function addMovePieceSounds(){/* Kept deliberately quiet to avoid autoplay restrictions. */}
+function restoreStoredIdentity(){connect().catch(()=>{const pk=storedKey();if(pk){signerPk=pk;updateIdentity()}})}
+function bootstrap(){
+ bindEvents();state=newBoard();renderBoard();updateIdentity();
+ const params=new URLSearchParams(location.search);if(params.get('game'))loadIncomingInvite().catch(e=>{$('incomingStatus').textContent=e.message});else openSetup();
+ connectLocalSigner().then(pk=>{if(pk&&!signerPk){signerPk=pk;updateIdentity();refreshIncomingInviteControls()}}).catch(()=>{});
+}
+bootstrap();
+})();
+</script>
+<script src="../../scripts/theme-manager.js?v=0.9.9" defer></script>
+
+<script id="sifaka-game-site-navigation">
+(function(){
+  'use strict';
+  var $=function(id){return document.getElementById(id);};
+  var nav=$('gameSiteNav'),logo=$('logoBtn'),logoMenu=$('logoDropdown'),pill=$('navUserPill'),profileMenu=$('profileDropdown');
+  var search=$('siteSearchInput'),results=$('searchResults'),searchTitle=$('gameSearchTitle'),searchSubtitle=$('gameSearchSubtitle'),searchSubmit=$('gameSearchSubmit');
+  var popup=$('gameNavPopup'),popupFrame=$('gameNavPopupFrame'),popupClose=$('gameNavPopupClose');
+  var popupToken=0,popupObserver=null;
+  function setMenu(menu,button,open){
+    if(!menu||!button)return;
+    menu.classList.toggle('open',!!open);
+    menu.setAttribute('aria-hidden',open?'false':'true');
+    button.setAttribute('aria-expanded',open?'true':'false');
+    button.classList.toggle('dd-open',!!open);
+  }
+  function closeMenus(){
+    setMenu(logoMenu,logo,false);setMenu(profileMenu,pill,false);
+    if(results){results.classList.remove('open');results.setAttribute('aria-hidden','true');}
+    if(search)search.setAttribute('aria-expanded','false');
+  }
+  function toggleMenu(menu,button){
+    var open=!!menu&&!menu.classList.contains('open');closeMenus();
+    if(open)setMenu(menu,button,true);
+  }
+  function route(action,page){
+    closeMenus();
+    var url='/?chessAction='+encodeURIComponent(action);
+    if(page)url+='&page='+encodeURIComponent(page);
+    window.location.href=url;
+  }
+  function searchNow(){
+    var query=String(search&&search.value||'').trim();closeMenus();
+    window.location.href=query?'/?search='+encodeURIComponent(query):'/?chessAction=navigate&page=feed';
+  }
+  function updateSearchDropdown(){
+    if(!search||!results)return;
+    var query=search.value.trim();
+    searchTitle.textContent=query?'Search for “'+query+'”':'Search Sifaka.Live';
+    searchSubtitle.textContent=query?'Press Enter to view matching results':'Press Enter to view results';
+    results.classList.toggle('open',!!query);results.setAttribute('aria-hidden',query?'false':'true');
+    search.setAttribute('aria-expanded',query?'true':'false');
+    if(query){
+      setMenu(logoMenu,logo,false);setMenu(profileMenu,pill,false);
+    }
+  }
+  if(logo&&logoMenu)logo.addEventListener('click',function(event){event.stopPropagation();toggleMenu(logoMenu,logo);});
+  if(pill&&profileMenu){
+    pill.addEventListener('click',function(event){event.stopPropagation();toggleMenu(profileMenu,pill);});
+    pill.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleMenu(profileMenu,pill);}});
+  }
+  if(search){
+    search.addEventListener('input',updateSearchDropdown);
+    search.addEventListener('focus',function(){if(search.value.trim())updateSearchDropdown();});
+    search.addEventListener('keydown',function(event){
+      if(event.key==='Enter'){event.preventDefault();searchNow();}
+      else if(event.key==='Escape'){closeMenus();search.blur();}
+    });
+  }
+  if(searchSubmit){
+    searchSubmit.addEventListener('click',searchNow);
+    searchSubmit.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();searchNow();}});
+    searchSubmit.addEventListener('mousedown',function(event){event.preventDefault();});
+  }
+  if(nav)nav.querySelectorAll('[data-game-route]').forEach(function(item){
+    item.addEventListener('click',function(){
+      var page=item.getAttribute('data-game-route')||'home';
+      if(page==='signout')route('signout');
+      else route('navigate',page);
+    });
+  });
+  var goLive=$('goLiveBtn');
+  if(goLive)goLive.addEventListener('click',openGoLivePopup);
+  var notifications=$('navNotifBtn');
+  if(notifications)notifications.addEventListener('click',function(){route('navigate','notifications');});
+  document.addEventListener('click',function(event){if(nav&&!nav.contains(event.target))closeMenus();});
+  document.addEventListener('keydown',function(event){if(event.key==='Escape'){closeMenus();if(popup&&!popup.hidden)closeGoLivePopup(true);}});
+
+  function closeGoLivePopup(closeInner){
+    popupToken++;
+    if(popupObserver){try{popupObserver.disconnect();}catch(_){}popupObserver=null;}
+    if(popup)popup.hidden=true;
+    if(popupFrame){
+      popupFrame.onload=null;
+      if(closeInner){try{var d=popupFrame.contentDocument,w=popupFrame.contentWindow,m=d&&d.getElementById('goLiveModal');if(m&&m.classList.contains('open')&&w&&typeof w.closeGoLive==='function')w.closeGoLive();}catch(_){}}
+      try{popupFrame.src='about:blank';}catch(_){}
+    }
+  }
+  function openGoLivePopup(){
+    if(!popup||!popupFrame||!popup.hidden)return;
+    popup.hidden=false;
+    var token=++popupToken;
+    popupFrame.onload=function(){
+      function attach(attempt){
+        if(token!==popupToken||popup.hidden)return;
+        var doc,win;
+        try{doc=popupFrame.contentDocument;win=popupFrame.contentWindow;}catch(_){closeGoLivePopup(false);return;}
+        if(!doc||!doc.head||!doc.body){if(attempt<160){window.setTimeout(function(){attach(attempt+1);},50);return;}closeGoLivePopup(false);return;}
+        try{
+          var modal=doc.getElementById('goLiveModal');
+          if(!modal||!win||typeof win.openGoLive!=='function'){if(attempt<160){window.setTimeout(function(){attach(attempt+1);},50);return;}closeGoLivePopup(false);return;}
+          var isolate=doc.getElementById('gameNavPopupIsolate');
+          if(!isolate){isolate=doc.createElement('style');isolate.id='gameNavPopupIsolate';doc.head.appendChild(isolate);}
+          isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#goLiveModal){display:none!important;visibility:hidden!important}body>#goLiveModal{display:flex!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}#goLiveModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+          if(!modal.classList.contains('open'))win.openGoLive();
+          if(!modal.classList.contains('open')){closeGoLivePopup(false);return;}
+          if(typeof win.MutationObserver==='function'){
+            popupObserver=new win.MutationObserver(function(){if(!modal.classList.contains('open'))closeGoLivePopup(false);});
+            popupObserver.observe(modal,{attributes:true,attributeFilter:['class']});
+          }
+        }catch(_){if(attempt<160){window.setTimeout(function(){attach(attempt+1);},50);return;}closeGoLivePopup(false);}
+      }
+      attach(0);
+    };
+    popupFrame.src='/?chessLoginPopup=1&chessAction=go-live';
+  }
+  if(popupClose)popupClose.addEventListener('click',function(){closeGoLivePopup(true);});
+  if(popup)popup.addEventListener('click',function(event){if(event.target===popup)closeGoLivePopup(true);});
+})();
+</script>
+
+<script id="sifaka-game-media-guard">
+(function(){
+"use strict";
+function allowedFrame(f){return f.id==="loginFrame"||f.id==="signerBridge"||f.title==="Sifaka account connection"||f.title==="Sifaka.Live sign-in";}
+function stopMedia(root){if(!root)return;var media=[];try{if(root.nodeType===1&&root.matches&&root.matches("video,audio"))media.push(root)}catch(_){}try{if(root.querySelectorAll)Array.prototype.forEach.call(root.querySelectorAll("video,audio"),function(el){media.push(el)})}catch(_){}media.forEach(function(el){try{el.autoplay=false;el.loop=false;el.pause();if(el.srcObject&&typeof el.srcObject.getTracks==="function"){el.srcObject.getTracks().forEach(function(t){try{t.stop()}catch(_){}});el.srcObject=null;}el.removeAttribute("src");el.querySelectorAll("source").forEach(function(x){x.removeAttribute("src")});el.load()}catch(_){}});var frames=[];try{if(root.nodeType===1&&root.tagName==="IFRAME")frames.push(root)}catch(_){}try{if(root.querySelectorAll)Array.prototype.forEach.call(root.querySelectorAll("iframe"),function(f){frames.push(f)})}catch(_){}frames.forEach(function(f){if(allowedFrame(f))return;try{f.src="about:blank";f.removeAttribute("srcdoc")}catch(_){}})}
+stopMedia(document);document.addEventListener("play",function(e){var el=e.target;if(el&&/^(VIDEO|AUDIO)$/.test(el.tagName)){try{el.pause()}catch(_){}}},true);
+if(typeof MutationObserver!=="undefined"&&document.documentElement){var observer=new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){stopMedia(n)})})});observer.observe(document.documentElement,{childList:true,subtree:true})}
+try{if(document.pictureInPictureElement&&document.exitPictureInPicture){var exit=document.exitPictureInPicture();if(exit&&exit.catch)exit.catch(function(){})}}catch(_){}
+})();
+</script>
+</body></html>
