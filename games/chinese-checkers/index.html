@@ -1037,6 +1037,57 @@ function setupStep(step){
  $('setupHelp').textContent=first?'Choose Engine for a human-versus-computers game, or Human for local/online play. Select 2, 3, 4, or 6 total players.':step==='engine'?'Choose the engine difficulty. You play Red; the engine controls every other seat.':'Choose local multiplayer (2–6 seats) or a two-player match over Nostr.';
 }
 function openSetup(){$('playerCountSelect').value=String(selectedPlayerCount||2);setupStep('opponents');openOverlay('setupOverlay')}
+function bindEvents(){
+ $('connectBtn').addEventListener('click',()=>connect().catch(e=>say(e.message)));
+ $('closeLoginBtn').addEventListener('click',closeLogin);
+ $('loginLayer').addEventListener('click',e=>{if(e.target===$('loginLayer'))closeLogin()});
+ $('localBtn').addEventListener('click',openSetup);
+ $('playerCountSelect').addEventListener('change',()=>{const n=Number($('playerCountSelect').value);selectedPlayerCount=[2,3,4,6].includes(n)?n:2});
+ $('setupEngineChoice').addEventListener('click',()=>setupStep('engine'));
+ $('setupHumanChoice').addEventListener('click',()=>setupStep('human'));
+ $('setupBack').addEventListener('click',()=>setupStep('opponents'));
+ $('setupLocal').addEventListener('click',()=>{closeOverlay('setupOverlay');resetLocal(false,2,selectedPlayerCount)});
+ $('setupEngineNovice').addEventListener('click',()=>{closeOverlay('setupOverlay');resetLocal(true,1,selectedPlayerCount)});
+ $('setupEngineAdept').addEventListener('click',()=>{closeOverlay('setupOverlay');resetLocal(true,2,selectedPlayerCount)});
+ $('setupEngineMaster').addEventListener('click',()=>{closeOverlay('setupOverlay');resetLocal(true,3,selectedPlayerCount)});
+ $('newGameBtn').addEventListener('click',openSetup);
+ $('gameOverAgainBtn').addEventListener('click',()=>{closeOverlay('gameOverOverlay');if(local)resetLocal(engineMode,engineLevel,selectedPlayerCount);else openSetup()});
+ $('gameOverModeBtn').addEventListener('click',()=>{closeOverlay('gameOverOverlay');openSetup()});
+ $('setupPublic').addEventListener('click',()=>{closeOverlay('setupOverlay');createOnline(false).catch(e=>say(e.message))});
+ $('setupPrivate').addEventListener('click',()=>{closeOverlay('setupOverlay');createOnline(true).catch(e=>say(e.message))});
+ $('setupJoin').addEventListener('click',()=>{closeOverlay('setupOverlay');openLobby('open')});
+ $('lobbyCreatePublic').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(false).catch(e=>say(e.message))});
+ $('lobbyCreatePrivate').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(true).catch(e=>say(e.message))});
+ $('lobbyBtn').addEventListener('click',()=>openLobby('open'));
+ $('lobbyBtn2').addEventListener('click',()=>openLobby('open'));
+ $('refreshLobbyBtn').addEventListener('click',()=>refreshLobby().catch(e=>say(e.message)));
+ $('lobbyTabs').querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{lobbyTab=b.dataset.tab;$('lobbyTabs').querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));refreshLobby().catch(e=>say(e.message))}));
+ $('invitePlayerBtn').addEventListener('click',openInviteSearch);
+ $('inviteSearchBtn').addEventListener('click',()=>searchCheckersPlayers().catch(e=>say(e.message)));
+ $('inviteSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchCheckersPlayers().catch(err=>say(err.message))}});
+ $('inviteCopyLinkBtn').addEventListener('click',async()=>{if(!game)return;const link=getLink(game);try{await navigator.clipboard.writeText(link);say('Game link copied.');$('inviteSearchStatus').textContent='Game link copied. It can be shared in a Nostr DM or another private channel.'}catch(_){$('inviteUrl').value=link;closeOverlay('inviteOverlay');openOverlay('shareOverlay');say('Select and copy the game link.')}});
+ $('flipBtn').addEventListener('click',()=>{flipped=!flipped;renderBoard()});
+ $('finishHopBtn').addEventListener('click',()=>{if(!busy&&!terminal&&selectedPath.length>1&&isHopStep(selectedPath[selectedPath.length-2],selectedPath[selectedPath.length-1])&&pathCandidates.some(t=>samePath(t.path,selectedPath)))completeTurn(selectedPath.slice())});
+ $('shareBtn').addEventListener('click',()=>{if(game){$('inviteUrl').value=getLink(game);openOverlay('shareOverlay')}});
+ $('copyInviteBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('inviteUrl').value);say('Invite link copied.')}catch(_){$('inviteUrl').select();say('Select and copy the invitation link.')}});
+ $('shareContinueBtn').addEventListener('click',()=>closeOverlay('shareOverlay'));
+ $('undoBtn').addEventListener('click',()=>{
+  if(!local||!turns.length||busy)return;
+  const count=Math.min(turns.length,engineMode?selectedPlayerCount:1);
+  for(let i=0;i<count;i++)turns.pop();
+  state=replay(turns,selectedPlayerCount)||newBoard(selectedPlayerCount);
+  terminal=getTerminal(state,turns);selected=-1;selectedPath=[];pathCandidates=[];busy=false;renderBoard();
+ });
+ $('forfeitBtn').addEventListener('click',()=>forfeitGame().catch(e=>say(e.message)));
+ $('sendChatBtn').addEventListener('click',()=>sendChat().catch(e=>say(e.message)));
+ $('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat().catch(err=>say(err.message))}});
+ $('acceptInviteBtn').addEventListener('click',()=>{if(!pendingInvite||!pendingInvite.game)return;joinOnline(pendingInvite.game,pendingInvite.secret).catch(e=>say(e.message))});
+ $('declineInviteBtn').addEventListener('click',()=>closeOverlay('incomingOverlay'));
+ document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>closeOverlay(b.dataset.close)));
+ document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)closeOverlay(el.id)}));
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.overlay.open').forEach(el=>el.classList.remove('open'))});
+ window.addEventListener('storage',()=>{if(!signerPk){const pk=storedKey();if(pk){signerPk=pk;updateIdentity()}}});
+}
 function addMovePieceSounds(){/* Kept deliberately quiet to avoid autoplay restrictions. */}
 function restoreStoredIdentity(){connect().catch(()=>{const pk=storedKey();if(pk){signerPk=pk;updateIdentity()}})}
 function bootstrap(){
