@@ -480,7 +480,7 @@ function renderBoard(){
   if(piece){const marble=document.createElement('span');marble.className='piece '+(meta?meta.className:'red');marble.setAttribute('aria-hidden','true');hole.appendChild(marble)}
   b.appendChild(hole);
  });
- const whose=pieceName(base.turn),mode=local?(engineMode?'Single player · '+ENGINE_NAMES[engineLevel]+' · '+base.players.length+' players':'Local multiplayer · '+base.players.length+' players'):'Nostr two-player '+(game&&game.private?'private':'public')+' game';
+ const whose=pieceName(base.turn),mode=local?(engineMode?'Single player · '+ENGINE_NAMES[engineLevel]+' · '+base.players.length+' players':'Local multiplayer · '+base.players.length+' players'):'Nostr · '+base.players.length+' players · '+(game&&game.private?'private':'public')+' game';
  $('statusLine').textContent=terminal?terminal.text:mode+' · '+whose+' to move'+(busy?' · Engine thinking…':'');
  renderPlayerCards();
  $('undoBtn').disabled=!local||!turns.length||busy;
@@ -930,10 +930,9 @@ async function sendCheckersDirectInvite(user,button){
 }
 function openInviteSearch(){
  if(!game){say('Create a game first, then invite a player.');openOverlay('setupOverlay');return}
- if(game.black){say('This match already has an opponent. Create a new game to invite another player.');return}
+ if(seatsFull(game)){say('Every seat is already filled. Create a new match to invite more players.');return}
  $('inviteSearchInput').value='';$('inviteSearchStatus').textContent='Search by name, npub, hexadecimal public key, or NIP-05.';$('inviteResults').replaceChildren();openOverlay('inviteOverlay');$('inviteSearchInput').focus();
 }
-
 async function createOnline(privateMode){
  const count=[2,3,4,6].includes(Number(selectedPlayerCount))?Number(selectedPlayerCount):2;
  const pk=await getSignerKey();if(!pk){openLogin();throw new Error('Connect a Nostr account before creating an online game.')}
@@ -992,8 +991,11 @@ async function joinOnline(g,secret){
  say(seatsFull(game)?'All players joined. The Chinese Checkers match is ready.':'Seat claimed. Waiting for '+(count-filledSeatCount(game))+' more player'+(count-filledSeatCount(game)===1?'':'s')+'.');
 }
 async function forfeitGame(){
- if(local||!game||terminal)return;if(!confirm('Forfeit this Chinese Chinese Checkers game?'))return;
- const resultText=(game.myColor==='r'?'Red':'Black')+' forfeited the match.';try{await publishSnapshot('forfeit');terminal={status:'forfeit',text:resultText,winner:other(game.myColor)};renderBoard();addChatSystem(resultText);say('Forfeit published to Nostr.')}catch(e){say('Forfeit was not confirmed. You can retry: '+e.message)}
+ if(local||!game||terminal)return;
+ if(!confirm('Forfeit this Chinese Checkers game?'))return;
+ const resultText=pieceName(game.myColor)+' forfeited the match.';
+ try{await publishSnapshot('forfeit');terminal={status:'forfeit',text:resultText,winner:other(game.myColor)};renderBoard();addChatSystem(resultText);say('Forfeit published to Nostr.')}
+ catch(e){say('Forfeit was not confirmed. You can retry: '+e.message)}
 }
 function refreshIncomingInviteControls(){
  if(!pendingInvite||!pendingInvite.game)return;
