@@ -563,6 +563,22 @@ function syncGameSeats(g){
 function seatsFull(g){const seats=syncGameSeats(g);return seats.length>=2&&seats.every(seat=>HEX.test(String(seat.pubkey||'')))}
 function colorForPubkey(g,pk){return syncGameSeats(g).find(seat=>seat.pubkey===String(pk||'').toLowerCase())?.color||''}
 function filledSeatCount(g){return syncGameSeats(g).filter(seat=>HEX.test(String(seat.pubkey||''))).length}
+
+function mergeSeatClaims(current,incoming,count){
+ const colors=newBoard(count).players,oldSeats=Array.isArray(current)?current:[],newSeats=Array.isArray(incoming)?incoming:[];
+ return colors.map((color,index)=>{
+  const oldSeat=oldSeats.find(s=>s&&s.color===color)||oldSeats[index]||{color,pubkey:'',claimedAt:0};
+  const newSeat=newSeats.find(s=>s&&s.color===color)||newSeats[index]||{color,pubkey:'',claimedAt:0};
+  const oldPk=String(oldSeat.pubkey||'').toLowerCase(),newPk=String(newSeat.pubkey||'').toLowerCase();
+  if(!oldPk)return Object.assign({color:color},newSeat,{color:color,pubkey:newPk});
+  if(!newPk)return Object.assign({color:color},oldSeat,{color:color,pubkey:oldPk});
+  if(oldPk===newPk)return {color:color,pubkey:oldPk,claimedAt:Math.min(Number(oldSeat.claimedAt||0),Number(newSeat.claimedAt||0))};
+  const oldAt=Number(oldSeat.claimedAt||0),newAt=Number(newSeat.claimedAt||0);
+  if(oldAt!==newAt)return Object.assign({color:color},oldAt<newAt?oldSeat:newSeat,{color:color});
+  return Object.assign({color:color},oldPk<newPk?oldSeat:newSeat,{color:color});
+ });
+}
+
 function currentRelayList(extra){let candidates=(Array.isArray(extra)?extra:[extra]).concat(accountRelayUrls);try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}if(signerPk){const saved=JSON.parse(localStorage.getItem('sifaka_chinese_checkers_relays_'+signerPk)||'[]');if(Array.isArray(saved))candidates=candidates.concat(saved)}}catch(_){}candidates=candidates.concat(DEFAULT_RELAYS);const out=[];candidates.forEach(u=>{u=String(u||'').trim();if(/^wss:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,8)}
 function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
@@ -746,24 +762,41 @@ function subscribeGame(){
   const incoming=await eventToGame(ev,game.relay,game.secret);if(!incoming||incoming.id!==id||!game)return;
   if(priv&&!incoming.private||!priv&&incoming.private)return;
   const author=String(ev.pubkey||'').toLowerCase();if(!incoming.seats.some(seat=>seat.pubkey===author))return;
-  if(incoming.moves.length<game.moves.length)return;
-  const incomingFilled=filledSeatCount(incoming),currentFilled=filledSeatCount(game);
-  if(incoming.moves.length===game.moves.length&&incomingFilled<currentFilled)return;
-  if(incoming.moves.length===game.moves.length&&incomingFilled===currentFilled&&Number(incoming.created_at||0)<Number(game.lastEventTime||0))return;
-  const rebuilt=replay(incoming.moves,incoming.playerCount||2);if(!rebuilt)return;
+
+  const incomingCount=incoming.playerCount||2;
+  const mergedSeats=mergeSeatClaims(syncGameSeats(game),incoming.seats,incomingCount);
+  const mergedGame=Object.assign({},incoming,{playerCount:incomingCount,seats:mergedSeats});
+  mergedGame.red=mergedSeats[0].pubkey;mergedGame.black=mergedSeats[1].pubkey||'';
+  const seatMergeChanged=mergedSeats.some((seat,i)=>seat.pubkey!==incoming.seats[i].pubkey||Number(seat.claimedAt||0)!==Number(incoming.seats[i].claimedAt||0));
+
+  if(incoming.moves.length<game.moves.length){
+   if(seatMergeChanged){
+    game.playerCount=incomingCount;game.seats=mergedSeats;game.red=mergedGame.red;game.black=mergedGame.black;
+    if(seatsFull(game)&&['open','invite'].includes(game.status))game.status='active';
+    updatePlayers();renderBoard();writeRecent(game);
+    if(colorForPubkey(game,signerPk))publishSnapshot(game.status).catch(()=>{});
+   }
+   return;
+  }
+  const incomingFilled=mergedSeats.filter(seat=>HEX.test(String(seat.pubkey||''))).length,currentFilled=filledSeatCount(game);
+  if(incoming.moves.length===game.moves.length&&incomingFilled<currentFilled&&!seatMergeChanged)return;
+  if(incoming.moves.length===game.moves.length&&incomingFilled===currentFilled&&Number(incoming.created_at||0)<Number(game.lastEventTime||0)&&!seatMergeChanged)return;
+  const rebuilt=replay(incoming.moves,incomingCount);if(!rebuilt)return;
   const calculatedTerminal=getTerminal(rebuilt,incoming.moves);
   if(incoming.status==='finished'&&!calculatedTerminal)return;
   if(calculatedTerminal&&incoming.status==='active')return;
-  game.playerCount=incoming.playerCount;game.seats=incoming.seats;game.red=incoming.red;game.black=incoming.black||'';
+  game.playerCount=incomingCount;game.seats=mergedSeats;game.red=mergedGame.red;game.black=mergedGame.black;
   game.seatClaimAt=incoming.seatClaimAt||game.seatClaimAt||0;game.moves=incoming.moves;game.lastEventTime=incoming.created_at;game.lastEventId=incoming.eventId;game.status=incoming.status;
+  if(seatsFull(game)&&['open','invite'].includes(game.status)&&!incoming.moves.length)game.status='active';
   turns=incoming.moves.map(t=>({path:t.path.slice()}));state=rebuilt;
   const ownColor=colorForPubkey(game,signerPk);
-  if(!ownColor){game.conflicted=true;terminal={status:'forfeit',text:'Your seat is no longer assigned to this account. Return to the lobby and join another match.',winner:''};busy=true}
+  if(!ownColor){game.conflicted=true;terminal={status:'forfeit',text:'Your seat was claimed by another player. Return to the lobby and join an available match.',winner:''};busy=true}
   else{game.myColor=ownColor;game.myPk=signerPk;game.conflicted=false;
    if(incoming.status==='forfeit'){terminal={status:'forfeit',text:'This match was forfeited.',winner:''};busy=true}
    else terminal=calculatedTerminal||null;
   }
   writeRecent(game);renderBoard();updatePlayers();
+  if(seatMergeChanged&&ownColor)publishSnapshot(game.status).catch(()=>{});
  }
  relays.forEach((url,i)=>{
   let ws,authAttempts=0,authEventId='';
