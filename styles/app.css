@@ -11423,3 +11423,24 @@ body.feed-videos-workspace.feed-videos-show-library-mobile #videosPage .mobile-v
     z-index: 2;
   }
 }
+
+
+/* 0.9.26 Theater live-chat event avatars: square by default, purple glow only for verified NIP-05. */
+#videoPage .chat-scroll .cmsg.zap-ev .c-av,
+#videoPage .chat-scroll .cmsg.onchain-donation-ev .c-av,
+#videoPage .chat-scroll .cmsg.reaction-ev .c-av,
+#videoPage .chat-scroll .cmsg.boost-ev .c-av {
+  border-radius: 4px;
+}
+
+/* Keep verified NIP-05 purple glow above the per-event orange/red avatar accents. */
+#videoPage .chat-scroll .cmsg.zap-ev .c-av.nip05-square,
+#videoPage .chat-scroll .cmsg.onchain-donation-ev .c-av.nip05-square,
+#videoPage .chat-scroll .cmsg.reaction-ev .c-av.nip05-square,
+#videoPage .chat-scroll .cmsg.boost-ev .c-av.nip05-square {
+  border-radius: 4px;
+  border: 1.5px solid rgba(155,114,255,.7);
+  background: rgba(155,114,255,.13);
+  box-shadow: 0 0 6px rgba(155,114,255,.55), 0 0 14px rgba(155,114,255,.22);
+  animation: nip05Pulse 2.8s ease-in-out infinite;
+}
