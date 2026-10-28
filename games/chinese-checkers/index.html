@@ -833,7 +833,7 @@ function appendChat(name,text,pk,eventId){
 }
 async function receiveChat(ev){
  if(!game||ev.kind!==CHAT_KIND||!Array.isArray(ev.tags)||!ev.id||seenChat.has(ev.id)||!ev.tags.some(t=>t[0]==='t'&&t[1]==='sifaka-chinese-checkers-chat')||!ev.tags.some(t=>t[0]==='d'&&t[1]===game.id))return;
- const author=String(ev.pubkey||'').toLowerCase();if(author!==game.red&&author!==game.black)return;
+ const author=String(ev.pubkey||'').toLowerCase();if(!syncGameSeats(game).some(seat=>seat.pubkey===author))return;
  let message=String(ev.content||'');if(game.private){const data=await decryptPayload(ev.content,game.secret,game.id);if(!data||data.type!=='chat'||typeof data.message!=='string')return;message=data.message}
  message=message.trim().slice(0,800);if(!message)return;seenChat.add(ev.id);if(author===signerPk)return;
  const profile=await lookupProfile(author);appendChat(String(profile&&profile.profile&&(profile.profile.display_name||profile.profile.name)||shortPk(author)),message,author,ev.id);
@@ -841,11 +841,16 @@ async function receiveChat(ev){
 async function sendChat(){
  const input=$('chatInput'),message=input.value.trim();if(!message)return;
  if(local){appendChat(signerPk?'You':'Local player',message);input.value='';return}
- if(!game||!game.black){say('Wait for an opponent to join before using game chat.');return}
- try{const pk=await getSignerKey();if(!pk||pk!==signerPk||pk!==game.myPk||(pk!==game.red&&pk!==game.black))throw new Error('Reconnect the Nostr account that joined this game before sending chat.');const content=game.private?await encryptPayload({app:APP,version:1,id:game.id,type:'chat',message:message},game.secret,game.id):message;const created=Math.floor(Date.now()/1000),ev=await signEvent({kind:CHAT_KIND,pubkey:pk,created_at:created,tags:[['t','sifaka-chinese-checkers-chat'],['d',game.id],['p',currentOther()]],content:content});await publishEvent(ev,game.relay);appendChat('You',message);input.value=''}catch(e){say('Could not send chat: '+e.message)}
+ if(!game||!seatsFull(game)){say('Wait for all players to join before using game chat.');return}
+ try{
+  const pk=await getSignerKey();if(!pk||pk!==signerPk||pk!==game.myPk||!syncGameSeats(game).some(seat=>seat.pubkey===pk))throw new Error('Reconnect the Nostr account that joined this game before sending chat.');
+  const peer=currentOther(),content=game.private?await encryptPayload({app:APP,version:1,id:game.id,type:'chat',message:message},game.secret,game.id):message;
+  const created=Math.floor(Date.now()/1000),tags=[['t','sifaka-chinese-checkers-chat'],['d',game.id]];
+  if(peer)tags.push(['p',peer]);
+  const ev=await signEvent({kind:CHAT_KIND,pubkey:pk,created_at:created,tags:tags,content:content});
+  await publishEvent(ev,game.relay);appendChat('You',message);input.value='';
+ }catch(e){say('Could not send chat: '+e.message)}
 }
-
-const BECH32='qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 function decodeNpub(value){
  const v=String(value||'').trim().toLowerCase();if(HEX.test(v))return v;
  const sep=v.lastIndexOf('1');if(sep!==4||v.slice(0,sep)!=='npub'||v.length>90)return '';
@@ -899,11 +904,12 @@ async function searchCheckersPlayers(){
 }
 async function sendCheckersDirectInvite(user,button){
  if(!game)throw new Error('Create a public game or private invite link before inviting a player.');
- if(game.black)throw new Error('This game already has an opponent. Create another game to invite a different player.');
+ if(seatsFull(game))throw new Error('Every seat in this match is already claimed. Create another match to invite more players.');
  const peer=String(user&&user.pk||'').toLowerCase();if(!HEX.test(peer))throw new Error('The selected profile has no valid Nostr public key.');
  const signer=await getSignerKey();if(!signer){openLogin();throw new Error('Connect your Nostr signer, then retry the invitation.')}
- if(signer!==game.red||signer!==signerPk)throw new Error('Reconnect the Nostr account that created this game before inviting a player.');
+ if(signer!==signerPk||!syncGameSeats(game).some(seat=>seat.pubkey===signer))throw new Error('Reconnect the Nostr account that joined this game before inviting a player.');
  if(peer===signer)throw new Error('Choose another player; you cannot invite your own account.');
+ if(syncGameSeats(game).some(seat=>seat.pubkey===peer))throw new Error('That player already occupies a seat in this match.');
  let provider=null;
  for(const candidate of [window.nostr,window.sifakaCheckersMainSigner]){
   if(!candidate||typeof candidate.getPublicKey!=='function'||!candidate.nip04||typeof candidate.nip04.encrypt!=='function')continue;
@@ -913,13 +919,13 @@ async function sendCheckersDirectInvite(user,button){
  if(button){button.disabled=true;button.textContent='Encrypting…'}
  try{
   const link=getLink(game),display=String(user.display_name||user.name||shortPk(peer));
-  const message='♟ SIFAKA.LIVE CHECKERS INVITATION\n\nHi '+display+', you are invited to play a Chinese Chinese Checkers match.\n\nJoin the match: '+link+'\n\nThis invitation was sent as an encrypted Nostr direct message. '+(game.private?'The URL fragment contains the private game key. Keep the complete link private.':'The match is public and appears in the Sifaka Chinese Checkers lobby.');
+  const message='✦ SIFAKA.LIVE CHINESE CHECKERS INVITATION\n\nHi '+display+', you are invited to a Chinese Checkers match with '+game.playerCount+' seats.\n\nJoin the match: '+link+'\n\nThis invitation was sent as an encrypted Nostr direct message. '+(game.private?'The URL fragment contains the private game key. Keep the complete link private.':'The match is public and appears in the Sifaka Chinese Checkers lobby.');
   const encrypted=await provider.encrypt(peer,message);if(typeof encrypted!=='string'||!encrypted.trim())throw new Error('The signer did not return encrypted direct-message content.');
   let targets=currentRelayList(game.relay);
   try{const events=await queryRelays({kinds:[10002],authors:[peer],limit:5},game.relay);events.sort((a,b)=>Number(b.created_at||0)-Number(a.created_at||0));const relayEvent=events[0];if(relayEvent){const hints=(relayEvent.tags||[]).filter(t=>t[0]==='r'&&/^wss:\/\//i.test(String(t[1]||''))&&(!t[2]||t[2]==='write')).map(t=>String(t[1]).trim());targets=currentRelayList(hints.concat(targets))}}catch(_){}
   const ev=await signEvent({kind:4,pubkey:signer,created_at:Math.max(Math.floor(Date.now()/1000),Number(game.lastEventTime||0)+1),tags:[['p',peer],['t','sifaka-chinese-checkers-invite']],content:encrypted});
   await publishEvent(ev,targets);
-  if(button){button.textContent='Sent ✓';button.disabled=false}say('Encrypted Checkers invite sent by Nostr DM.');$('inviteSearchStatus').textContent='Encrypted invitation sent to '+display+'.';return true;
+  if(button){button.textContent='Sent ✓';button.disabled=false}say('Encrypted Chinese Checkers invite sent by Nostr DM.');$('inviteSearchStatus').textContent='Encrypted invitation sent to '+display+'.';return true;
  }catch(err){if(button){button.disabled=false;button.textContent='Send DM'}throw err}
 }
 function openInviteSearch(){
@@ -989,7 +995,14 @@ async function forfeitGame(){
  if(local||!game||terminal)return;if(!confirm('Forfeit this Chinese Chinese Checkers game?'))return;
  const resultText=(game.myColor==='r'?'Red':'Black')+' forfeited the match.';try{await publishSnapshot('forfeit');terminal={status:'forfeit',text:resultText,winner:other(game.myColor)};renderBoard();addChatSystem(resultText);say('Forfeit published to Nostr.')}catch(e){say('Forfeit was not confirmed. You can retry: '+e.message)}
 }
-function refreshIncomingInviteControls(){if(!pendingInvite||!pendingInvite.game)return;const g=pendingInvite.game,isParticipant=!!signerPk&&(g.red===signerPk||g.black===signerPk);$('incomingDescription').textContent=(g.private?'Private encrypted game':'Public game')+' hosted by '+shortPk(g.red)+'.';$('acceptInviteBtn').textContent=isParticipant?'Resume game':'Accept invitation';$('incomingStatus').textContent=isParticipant?'This is one of your games. Resume to synchronize the latest state.':g.black?'This match already has two players or has ended.':'The game history is valid. Connect your Nostr identity and accept to join.';$('acceptInviteBtn').disabled=(!isParticipant&&!!g.black)||(['finished','forfeit'].includes(g.status)&&!isParticipant)}
+function refreshIncomingInviteControls(){
+ if(!pendingInvite||!pendingInvite.game)return;
+ const g=pendingInvite.game,seats=syncGameSeats(g),isParticipant=!!signerPk&&seats.some(s=>s.pubkey===signerPk),hasRoom=filledSeatCount(g)<seats.length;
+ $('incomingDescription').textContent=(g.private?'Private encrypted game':'Public game')+' · '+filledSeatCount(g)+' of '+seats.length+' seats filled.';
+ $('acceptInviteBtn').textContent=isParticipant?'Resume game':'Accept invitation';
+ $('incomingStatus').textContent=isParticipant?'This is one of your games. Resume to synchronize the latest state.':hasRoom?'The game history is valid. Connect your Nostr identity and accept to claim an open seat.':'This match is full or has ended.';
+ $('acceptInviteBtn').disabled=(!isParticipant&&!hasRoom)||(['finished','forfeit'].includes(g.status)&&!isParticipant);
+}
 async function loadIncomingInvite(){
  const params=new URLSearchParams(location.search),id=params.get('game'),relay=params.get('relay')||preferredRelay(),secret=urlSecret();if(!id)return;
  pendingInvite={id:id,relay:relay,secret:secret};$('incomingOverlay').classList.add('open');$('incomingStatus').textContent='Searching Nostr relays for the game…';
@@ -999,14 +1012,23 @@ async function loadIncomingInvite(){
  pendingInvite.game=found;refreshIncomingInviteControls();
 }
 function openOverlay(id){$(id).classList.add('open')}function closeOverlay(id){$(id).classList.remove('open')}
-function lobbyStatus(g){if(g.status==='forfeit')return 'Forfeited';if(g.status==='finished')return 'Finished';if(!g.black)return 'Open';return 'In progress'}
+function lobbyStatus(g){if(g.status==='forfeit')return 'Forfeited';if(g.status==='finished')return 'Finished';if(!seatsFull(g))return 'Waiting for players';return 'In progress'}
 function gameSort(a,b){return (b.created_at||0)-(a.created_at||0)}
 function renderLobby(games){
  const list=$('gamesList');list.replaceChildren();let shown=games;
- if(lobbyTab==='open')shown=games.filter(g=>!g.black&&g.status!=='finished'&&g.status!=='forfeit'&&!g.private);
- if(lobbyTab==='current')shown=games.filter(g=>signerPk&&(g.red===signerPk||g.black===signerPk)&&g.status!=='finished'&&g.status!=='forfeit');
- if(!shown.length){const e=document.createElement('div');e.className='muted';e.textContent=lobbyTab==='open'?'No open games were found on the selected relays. Create a public game or refresh.':lobbyTab==='current'?'No current games for this Nostr account were found.':'No recent Chinese Chinese Checkers events were found.';list.appendChild(e);return}
- shown.sort(gameSort).slice(0,80).forEach(g=>{const el=document.createElement('div');el.className='gameitem';const info=document.createElement('div');info.className='grow';const t=document.createElement('strong');t.textContent=shortPk(g.red)+' vs '+(g.black?shortPk(g.black):'Open seat');const m=document.createElement('small');m.textContent=(g.private?'Private':'Public')+' · '+lobbyStatus(g)+' · '+g.moves.length+' turns · '+new Date((g.created_at||0)*1000).toLocaleString();info.append(t,m);const b=document.createElement('button');b.className='btn small '+(!g.black?'primary':'');b.textContent=g.red===signerPk||g.black===signerPk?'Resume':!g.black?'Join':'View';b.disabled=!!g.private&&!g.secret||(!g.black&&g.red===signerPk)||(!!g.black&&g.red!==signerPk&&g.black!==signerPk)||(['finished','forfeit'].includes(g.status)&&g.red!==signerPk&&g.black!==signerPk);b.addEventListener('click',async()=>{b.disabled=true;try{if(g.red===signerPk||g.black===signerPk){await activateExisting(g)}else{await joinOnline(g,'')}}catch(e){say(e.message)}finally{b.disabled=false}});el.append(info,b);list.appendChild(el)})
+ if(lobbyTab==='open')shown=games.filter(g=>!g.private&&!seatsFull(g)&&!['finished','forfeit'].includes(g.status));
+ if(lobbyTab==='current')shown=games.filter(g=>signerPk&&syncGameSeats(g).some(s=>s.pubkey===signerPk)&&!['finished','forfeit'].includes(g.status));
+ if(!shown.length){const e=document.createElement('div');e.className='muted';e.textContent=lobbyTab==='open'?'No open games were found on the selected relays. Create a public game or refresh.':lobbyTab==='current'?'No current games for this Nostr account were found.':'No recent Chinese Checkers events were found.';list.appendChild(e);return}
+ shown.sort(gameSort).slice(0,80).forEach(g=>{
+  const seats=syncGameSeats(g),filled=filledSeatCount(g),isPlayer=!!signerPk&&seats.some(s=>s.pubkey===signerPk),hasRoom=filled<seats.length;
+  const el=document.createElement('div');el.className='gameitem';const info=document.createElement('div');info.className='grow';
+  const t=document.createElement('strong');t.textContent=seats.map(s=>s.pubkey?((PLAYER_META[s.color]||PLAYER_META.r).name+' '+shortPk(s.pubkey)):((PLAYER_META[s.color]||PLAYER_META.r).name+' seat open')).join(' · ');
+  const m=document.createElement('small');m.textContent=(g.private?'Private':'Public')+' · '+lobbyStatus(g)+' · '+filled+'/'+seats.length+' players · '+g.moves.length+' turns · '+new Date((g.created_at||0)*1000).toLocaleString();info.append(t,m);
+  const b=document.createElement('button');b.className='btn small '+(hasRoom&&!isPlayer?'primary':'');b.textContent=isPlayer?'Resume':hasRoom?'Join seat':'View';
+  b.disabled=!!g.private&&!g.secret||(!hasRoom&&!isPlayer)||(['finished','forfeit'].includes(g.status)&&!isPlayer);
+  b.addEventListener('click',async()=>{b.disabled=true;try{if(isPlayer)await activateExisting(g);else await joinOnline(g,'')}catch(e){say(e.message)}finally{b.disabled=false}});
+  el.append(info,b);list.appendChild(el);
+ });
 }
 async function activateExisting(g){
  const pk=await getSignerKey();if(!pk)throw new Error('Connect your Nostr identity first.');
@@ -1018,10 +1040,10 @@ async function activateExisting(g){
  terminal=terminalForGame(state,turns,item);renderBoard();updatePlayers();subscribeGame();closeOverlay('lobbyOverlay');
 }
 async function refreshLobby(){
- if(lobbyBusy)return;lobbyBusy=true;$('refreshLobbyBtn').disabled=true;$('gamesList').innerHTML='<div class="muted">Querying Chinese Chinese Chinese Checkers events from Nostr relays…</div>';
+ if(lobbyBusy)return;lobbyBusy=true;$('refreshLobbyBtn').disabled=true;$('gamesList').innerHTML='<div class="muted">Querying Chinese Checkers events from Nostr relays…</div>';
  try{
   const publicEvents=await queryRelays({kinds:[PUB_KIND],'#t':[APP],limit:500}),map=new Map();
-  for(const ev of publicEvents){const g=eventFromPayload(ev,preferredRelay());if(g){g.raw=ev;const old=map.get(g.id);if(!old||g.created_at>old.created_at||(g.created_at===old.created_at&&g.moves.length>old.moves.length))map.set(g.id,g)}}
+  for(const ev of publicEvents){const g=eventFromPayload(ev,preferredRelay());if(g){g.raw=ev;const old=map.get(g.id);if(!old||g.created_at>old.created_at||(g.created_at===old.created_at&&g.moves.length>old.moves.length)||(!seatsFull(old)&&seatsFull(g)))map.set(g.id,g)}}
   renderLobby([...map.values()]);
   if(signerPk){
    try{
@@ -1029,12 +1051,11 @@ async function refreshLobby(){
     for(let offset=0;offset<recent.length;offset+=4){
      const batch=recent.slice(offset,offset+4);
      const foundBatch=await Promise.all(batch.map(async r=>{
-      const evs=await queryRelays({kinds:[PRIV_KIND],'#d':[r.id],limit:50},r.relay);let found=null;
+      const evs=await queryRelays({kinds:[PRIV_KIND],'#d':[r.id],limit:60},r.relay);let found=null;
       for(const ev of evs){const g=await eventToGame(ev,r.relay,r.secret);if(g&&g.id===r.id&&(!found||g.created_at>found.created_at)){g.secret=r.secret;g.raw=ev;found=g}}
       return found;
      }));
-     foundBatch.filter(Boolean).forEach(found=>map.set(found.id,found));
-     renderLobby([...map.values()]);
+     foundBatch.filter(Boolean).forEach(found=>map.set(found.id,found));renderLobby([...map.values()]);
     }
    }catch(_){}
   }
