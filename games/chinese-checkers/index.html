@@ -235,7 +235,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 </div>
 <section class="card"><h2>Game controls</h2><div class="controlgrid">
 <button class="btn" id="flipBtn" type="button">Flip board</button><button class="btn" id="shareBtn" type="button" disabled>Share invite</button>
-<button class="btn" id="undoBtn" type="button" disabled>Undo local move</button><button class="btn" id="forfeitBtn" type="button" disabled>Forfeit</button>
+<button class="btn" id="undoBtn" type="button" disabled>Undo local move</button><button class="btn" id="finishHopBtn" type="button" disabled>Finish hop move</button><button class="btn" id="forfeitBtn" type="button" disabled>Forfeit</button>
 <button class="btn wide" id="invitePlayerBtn" type="button">Invite a Nostr player</button><button class="btn wide" id="lobbyBtn2" type="button">Open / Current Games</button>
 </div><div class="ruleline"></div><div class="muted">Rules: each turn moves one marble to an adjacent hole or chains hops over occupied holes. Hopped marbles stay put. First to move all 10 marbles into the opposite triangle wins.</div></section>
 <section class="card"><h2>Move history</h2><div class="move-list" id="moveList"><span class="muted">Moves will appear here.</span></div></section>
@@ -401,14 +401,22 @@ function syncGameOverOverlay(){
  $('gameOverSummary').textContent=terminal.text;overlay.classList.add('open');
 }
 function renderBoard(){
- const b=$('board');b.replaceChildren();const s=state||newBoard();
+ const b=$('board');b.replaceChildren();const base=state||newBoard(),s=boardClone(base);
+ if(selectedPath.length>1){
+  const piece=s.b[selectedPath[0]];let at=selectedPath[0];
+  s.b[at]=null;
+  for(let k=1;k<selectedPath.length;k++){const to=selectedPath[k];s.b[to]=piece;at=to;if(k<selectedPath.length-1)s.b[at]=null}
+ }
  const options=selected>=0?pathCandidates.filter(t=>t.path[0]===selected):[];
- const destinations=new Set(options.map(t=>t.path[t.path.length-1]));
- COORDS.forEach((p,i)=>{
+ const nextSteps=new Set(),destinations=new Set(options.filter(t=>t.path.length>selectedPath.length).map(t=>t.path[selectedPath.length]));
+ options.forEach(t=>{if(t.path.length>selectedPath.length)nextSteps.add(t.path[selectedPath.length])});
+ const cells=flipped?COORDS.map((p,i)=>({p:p,i:i})).reverse():COORDS.map((p,i)=>({p:p,i:i}));
+ cells.forEach(({p,i})=>{
   const hole=document.createElement('button');hole.type='button';hole.className='hole';
   if(GOALS.r.has(i))hole.classList.add('goal-red');if(GOALS.b.has(i))hole.classList.add('goal-blue');
   if(s.b[i])hole.classList.add('occupied');
-  if(i===selected)hole.classList.add('selected');if(destinations.has(i))hole.classList.add('destination');
+  if(i===(selectedPath.length>1?selectedPath[selectedPath.length-1]:selected))hole.classList.add('selected');
+  if(destinations.has(i))hole.classList.add('destination');
   let x=XY[i].x,y=XY[i].y;if(flipped){x=-x;y=-y}
   hole.style.left=(50+x/MAX_X*46)+'%';hole.style.top=(50+y/MAX_Y*46)+'%';
   const piece=s.b[i],pieceLabel=piece?(piece==='r'?'red':'blue')+' marble':'empty hole';
@@ -417,19 +425,25 @@ function renderBoard(){
   if(piece){const marble=document.createElement('span');marble.className='piece '+(piece==='r'?'red':'black');marble.setAttribute('aria-hidden','true');hole.appendChild(marble)}
   b.appendChild(hole);
  });
- const whose=pieceName(s.turn),mode=local?(engineMode?'Single player · '+ENGINE_NAMES[engineLevel]:'Local two-player'):'Nostr '+(game&&game.private?'private':'public')+' game';
+ const whose=pieceName(base.turn),mode=local?(engineMode?'Single player · '+ENGINE_NAMES[engineLevel]:'Local two-player'):'Nostr '+(game&&game.private?'private':'public')+' game';
  $('statusLine').textContent=terminal?terminal.text:mode+' · '+whose+' to move'+(busy?' · Engine thinking…':'');
- $('redCard').classList.toggle('turn',!terminal&&s.turn==='r');$('blackCard').classList.toggle('turn',!terminal&&s.turn==='b');
- $('redTurn').textContent=terminal?'FINISHED':s.turn==='r'?'RED TO MOVE':'READY';
- $('blackTurn').textContent=terminal?'FINISHED':s.turn==='b'?'BLUE TO MOVE':'READY';
+ $('redCard').classList.toggle('turn',!terminal&&base.turn==='r');$('blackCard').classList.toggle('turn',!terminal&&base.turn==='b');
+ $('redTurn').textContent=terminal?'FINISHED':base.turn==='r'?'RED TO MOVE':'READY';
+ $('blackTurn').textContent=terminal?'FINISHED':base.turn==='b'?'BLUE TO MOVE':'READY';
  $('undoBtn').disabled=!local||!turns.length||busy;
+ $('finishHopBtn').disabled=busy||terminal||selectedPath.length<2||!isHopStep(selectedPath[selectedPath.length-2],selectedPath[selectedPath.length-1])||!pathCandidates.some(t=>samePath(t.path,selectedPath));
  $('shareBtn').disabled=local||!game;
  $('forfeitBtn').disabled=local||!game||!game.black||!!terminal;
- $('boardHint').textContent=terminal?terminal.text:(busy?'The engine is choosing its move…':'Select one of your marbles, then choose a highlighted hole. Hops may chain; jumped marbles stay in place.');
+ $('boardHint').textContent=terminal?terminal.text:(busy?'The engine is choosing its move…':selectedPath.length>1&&isHopStep(selectedPath[selectedPath.length-2],selectedPath[selectedPath.length-1])?'Choose another highlighted hole to keep hopping, or Finish hop move to end your turn.':'Select one of your marbles, then choose a highlighted hole. Hops may chain; jumped marbles stay in place.');
  const list=$('moveList');list.replaceChildren();
  if(!turns.length){const empty=document.createElement('span');empty.className='muted';empty.textContent='Moves will appear here.';list.appendChild(empty)}
  else turns.slice(-40).forEach((t,i)=>{const chip=document.createElement('span');chip.className='move-chip';chip.textContent=turnSummary(t,Math.max(0,turns.length-Math.min(40,turns.length)+i));list.appendChild(chip)});
  syncGameOverOverlay();
+}
+function isHopStep(from,to){
+ if(from<0||to<0||!COORDS[from]||!COORDS[to])return false;
+ const dq=COORDS[to][0]-COORDS[from][0],dr=COORDS[to][1]-COORDS[from][1];
+ return DIRS.some(d=>dq===2*d[0]&&dr===2*d[1]);
 }
 function clickSquare(i){
  if(busy||terminal)return;
@@ -438,12 +452,20 @@ function clickSquare(i){
  if(!local&&game&&game.myColor!==state.turn){say('It is your opponent’s turn. The board is read-only until your turn.');return}
  const piece=state.b[i];
  if(selected>=0&&pathCandidates.length){
-  const candidate=pathCandidates.find(t=>t.path[t.path.length-1]===i);
-  if(candidate){completeTurn(candidate.path);return}
+  const prefix=selectedPath.concat(i);
+  const matching=pathCandidates.filter(t=>t.path.length>=prefix.length&&prefix.every((v,j)=>t.path[j]===v));
+  if(matching.length){
+   const from=selectedPath[selectedPath.length-1];selectedPath.push(i);pathCandidates=matching;
+   const canContinue=matching.some(t=>t.path.length>selectedPath.length);
+   if(isHopStep(from,i)&&canContinue){renderBoard();return}
+   completeTurn(selectedPath.slice());return;
+  }
  }
- if(colorOf(piece)===state.turn){
-  selected=i;selectedPath=[i];pathCandidates=legalTurns(state).filter(t=>t.path[0]===i);renderBoard();return;
+ if(selectedPath.length>1){
+  if(i===selectedPath[selectedPath.length-1]&&pathCandidates.some(t=>samePath(t.path,selectedPath))){completeTurn(selectedPath.slice());return}
+  say('Finish this hop move before selecting another marble.');return;
  }
+ if(colorOf(piece)===state.turn){selected=i;selectedPath=[i];pathCandidates=legalTurns(state).filter(t=>t.path[0]===i);renderBoard();return}
  selected=-1;selectedPath=[];pathCandidates=[];renderBoard();
 }
 function completeTurn(path){
@@ -951,8 +973,8 @@ $('gameOverAgainBtn').addEventListener('click',()=>{closeOverlay('gameOverOverla
  $('setupJoin').addEventListener('click',()=>{closeOverlay('setupOverlay');openLobby('open')});$('lobbyCreatePublic').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(false).catch(e=>say(e.message))});$('lobbyCreatePrivate').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(true).catch(e=>say(e.message))});
  $('lobbyBtn').addEventListener('click',()=>openLobby('open'));$('lobbyBtn2').addEventListener('click',()=>openLobby('open'));$('refreshLobbyBtn').addEventListener('click',refreshLobby);$('lobbyTabs').querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{lobbyTab=b.dataset.tab;$('lobbyTabs').querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));refreshLobby()}));
  $('invitePlayerBtn').addEventListener('click',openInviteSearch);$('inviteSearchBtn').addEventListener('click',()=>searchCheckersPlayers().catch(e=>say(e.message)));$('inviteSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchCheckersPlayers().catch(err=>say(err.message))}});$('inviteCopyLinkBtn').addEventListener('click',async()=>{if(!game)return;const link=getLink(game);try{await navigator.clipboard.writeText(link);say('Game link copied.');$('inviteSearchStatus').textContent='Game link copied. It can be shared in a Nostr DM or another private channel.'}catch(_){$('inviteUrl').value=link;closeOverlay('inviteOverlay');openOverlay('shareOverlay');say('Select and copy the game link.')}});
- $('flipBtn').addEventListener('click',()=>{flipped=!flipped;renderBoard()});$('shareBtn').addEventListener('click',()=>{if(game){$('inviteUrl').value=getLink(game);openOverlay('shareOverlay')}});$('copyInviteBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('inviteUrl').value);say('Invite link copied.')}catch(_){$('inviteUrl').select();say('Select and copy the invitation link.')}});$('shareContinueBtn').addEventListener('click',()=>closeOverlay('shareOverlay'));
- $('undoBtn').addEventListener('click',()=>{if(!local||!turns.length)return;const count=engineMode&&turns.length>=2&&turns.length%2===0?2:1;for(let i=0;i<count;i++)turns.pop();state=replay(turns)||newBoard();terminal=getTerminal(state,turns);selected=-1;pathCandidates=[];selectedPath=[];busy=false;renderBoard()});
+ $('flipBtn').addEventListener('click',()=>{flipped=!flipped;renderBoard()});$('finishHopBtn').addEventListener('click',()=>{if(!busy&&!terminal&&selectedPath.length>1&&isHopStep(selectedPath[selectedPath.length-2],selectedPath[selectedPath.length-1])&&pathCandidates.some(t=>samePath(t.path,selectedPath)))completeTurn(selectedPath.slice())});$('shareBtn').addEventListener('click',()=>{if(game){$('inviteUrl').value=getLink(game);openOverlay('shareOverlay')}});$('copyInviteBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('inviteUrl').value);say('Invite link copied.')}catch(_){$('inviteUrl').select();say('Select and copy the invitation link.')}});$('shareContinueBtn').addEventListener('click',()=>closeOverlay('shareOverlay'));
+ $('undoBtn').addEventListener('click',()=>{if(!local||!turns.length)return;const count=engineMode&&turns.length>=2&&turns.length%2===0?2:1;selected=-1;selectedPath=[];pathCandidates=[];for(let i=0;i<count;i++)turns.pop();state=replay(turns)||newBoard();terminal=getTerminal(state,turns);selected=-1;pathCandidates=[];selectedPath=[];busy=false;renderBoard()});
  $('forfeitBtn').addEventListener('click',()=>forfeitGame().catch(e=>say(e.message)));
  $('sendChatBtn').addEventListener('click',()=>sendChat().catch(e=>say(e.message)));$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat().catch(err=>say(err.message))}});
  $('acceptInviteBtn').addEventListener('click',()=>{if(!pendingInvite||!pendingInvite.game)return;joinOnline(pendingInvite.game,pendingInvite.secret).catch(e=>say(e.message))});$('declineInviteBtn').addEventListener('click',()=>closeOverlay('incomingOverlay'));
