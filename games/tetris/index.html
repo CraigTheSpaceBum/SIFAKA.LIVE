@@ -551,8 +551,17 @@ function loadCachedScoreEvents(){
 }
 function saveCachedScoreEvents(rows){
  try{
+  // Merge with the prior verified cache. A partial/slow relay response must not
+  // replace the user's previously discovered leaderboard with only one player.
+  var combined=new Map();
+  loadCachedScoreEvents().forEach(function(ev){if(ev&&ev.id)combined.set(String(ev.id),ev);});
+  rows.forEach(function(row){if(row&&row.event&&row.event.id)combined.set(String(row.event.id),row.event);});
   var best=new Map();
-  rows.forEach(function(row){var old=best.get(row.pubkey);if(!old||row.score>old.score||(row.score===old.score&&row.created_at<old.created_at))best.set(row.pubkey,row);});
+  Array.from(combined.values()).forEach(function(ev){
+   var row=parseScoreEvent(ev);if(!row)return;
+   var old=best.get(row.pubkey);
+   if(!old||row.score>old.score||(row.score===old.score&&row.created_at<old.created_at))best.set(row.pubkey,row);
+  });
   var cached=Array.from(best.values()).sort(function(a,b){return b.score-a.score||a.created_at-b.created_at;}).slice(0,300).map(function(row){return row.event;});
   localStorage.setItem(SCORE_CACHE_KEY,JSON.stringify(cached));
  }catch(err){console.warn("Tetris could not save its verified score cache:",err);}
@@ -568,7 +577,7 @@ async function loadLeaderboard(){
   // cutoff often expired before slow relays returned any high-score events.
   var scoreFilter=[{kinds:[1],"#t":[SCORE_TAG,"tetris"],limit:1000},{kinds:[1],"#game":["tetris"],limit:1000},{kinds:[1],"#alt":["Sifaka Tetris high score"],limit:1000}];
   // Score events may be published to standard public relays outside the currently selected site/profile relay list. Include the public fallback set as well as configured relays so discovery does not silently omit players.
-  var scoreQuery=queryRelays(scoreFilter,DEFAULT_RELAYS,3800);
+  var scoreQuery=queryRelays(scoreFilter,DEFAULT_RELAYS,6500);
   var results=await Promise.all([getNostrTools(),scoreQuery]);
   var events=results[1];
   // Retry once with a longer window when every relay timed out or returned empty.
