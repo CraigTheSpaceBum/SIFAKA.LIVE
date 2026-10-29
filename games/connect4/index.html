@@ -249,7 +249,29 @@ function addChat(name,message,kind=''){const el=document.createElement('div');el
 function clearChat(text){$('chatLog').replaceChildren();if(text)addChat('',text,'system');chatSeen.clear()}
 function saveRecent(g){if(!signerPk||!g)return;try{const key='sifaka_connect4_recent_'+signerPk,raw=JSON.parse(localStorage.getItem(key)||'[]'),row={id:g.id,relay:g.relay,private:!!g.private,secret:g.secret||'',red:g.red,yellow:g.yellow||'',status:g.status||'active',updatedAt:Date.now()};localStorage.setItem(key,JSON.stringify([row].concat(raw.filter(x=>x&&x.id!==g.id)).slice(0,40)))}catch(_){}}
 function savedRecent(){try{const rows=JSON.parse(localStorage.getItem('sifaka_connect4_recent_'+signerPk)||'[]');return Array.isArray(rows)?rows.filter(x=>x&&typeof x.id==='string'&&x.private&&x.secret).slice(0,24):[]}catch(_){return []}}
-function currentRelayList(extra){let candidates=(Array.isArray(extra)?extra:[extra]).concat([]);try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}if(signerPk){const saved=JSON.parse(localStorage.getItem('sifaka_checkers_relays_'+signerPk)||'[]');if(Array.isArray(saved))candidates=candidates.concat(saved)}}catch(_){}candidates=candidates.concat(DEFAULT_RELAYS);const out=[];candidates.forEach(u=>{u=String(u||'').trim();if(/^wss:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,6)}
+function readSifakaMainRelayConfig(){
+ try{
+  var raw=localStorage.getItem("nostrflux_settings_v1");
+  if(!raw)return{configured:false,relays:[],blocked:[]};
+  var settings=JSON.parse(raw);
+  if(!settings||typeof settings!=="object"||!Array.isArray(settings.relays))return{configured:false,relays:[],blocked:[]};
+  var buckets=settings.relayBuckets&&typeof settings.relayBuckets==="object"?settings.relayBuckets:{};
+  return{configured:true,relays:settings.relays.map(function(x){return typeof x==="string"?x:x&&x.url||"";}),blocked:Array.isArray(buckets.blocked)?buckets.blocked.map(function(x){return String(x||"").trim().toLowerCase();}):[]};
+ }catch(_){return{configured:false,relays:[],blocked:[]};}
+}
+function currentRelayList(extra){
+ const main=readSifakaMainRelayConfig();
+ let candidates=(Array.isArray(extra)?extra:extra?[extra]:[]);
+ if(main.configured)candidates=candidates.concat(main.relays);
+ if(signerPk){try{const saved=JSON.parse(localStorage.getItem('sifaka_checkers_relays_'+signerPk)||'[]');if(Array.isArray(saved))candidates=candidates.concat(saved)}catch(_){}}
+ if(!main.configured){
+  try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}}catch(_){}
+  candidates=candidates.concat(DEFAULT_RELAYS);
+ }
+ const blocked=new Set(main.blocked),out=[];
+ candidates.forEach(u=>{u=String(u||'').trim();if(!/^wss:\/\//i.test(u)||blocked.has(u.toLowerCase())||out.includes(u))return;out.push(u)});
+ return main.configured?out:out.slice(0,6);
+}
 function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
 function profileValue(profile,keys){profile=profile&&typeof profile==="object"?profile:{};for(var i=0;i<keys.length;i++){var v=profile[keys[i]];if(v!==undefined&&v!==null&&String(v).trim()!=="")return v;}return "";}
