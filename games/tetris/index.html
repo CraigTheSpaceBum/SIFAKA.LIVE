@@ -254,12 +254,12 @@ button{font:inherit}
     var shownName=document.getElementById('pdNameText');
     if(shownName)shownName.textContent=name;
     var sub=document.getElementById('pdSub');
-    if(sub)sub.textContent=nip||key||'Nostr account';
+    if(sub)sub.textContent=valid?nip:(key||'Nostr account');
     setAvatar(document.getElementById('navAvatar'),avatarName,p,valid);
     setAvatar(document.getElementById('pdAvLg'),avatarName,p,valid);
     ['navNip05Badge','pdBadge'].forEach(function(id){
       var badge=document.getElementById(id);
-      if(badge){badge.textContent='';badge.style.display='none';}
+      if(badge){badge.textContent=valid?'✓':'';badge.style.display=valid?'inline-flex':'none';badge.title=valid?'Verified NIP-05: '+nip:'';badge.setAttribute('aria-label',valid?'Verified NIP-05: '+nip:'Verified NIP-05');}
     });
     var pill=document.getElementById('navUserPill');
     if(pill)pill.setAttribute('aria-label',logged?'Open account menu for '+name:'Open account menu');
@@ -506,13 +506,13 @@ function mergeProfileData(primary,fallback,pk){
  return merged;
 }
 function currentRelayList(extra){var list=Array.isArray(extra)?extra.slice():extra?[extra]:[];try{var raw=localStorage.getItem("sifaka_relays");if(raw){var parsed=JSON.parse(raw);if(Array.isArray(parsed))list=list.concat(parsed.map(function(x){return typeof x==="string"?x:x&&x.url||"";}));}if(signerPk){var own=JSON.parse(localStorage.getItem("sifaka_tetris_relays_"+signerPk)||"[]");if(Array.isArray(own))list=list.concat(own);}}catch(_){}list=list.concat(DEFAULT_RELAYS);var out=[];list.forEach(function(url){url=String(url||"").trim();if(/^wss:\/\//i.test(url)&&!out.includes(url))out.push(url);});return out;}
-function requestEvents(url,filter,waitMs){return new Promise(function(resolve){var ws=null,done=false,timer=null,events=new Map(),sub="sifaka-tetris-"+Math.random().toString(36).slice(2,11);function finish(){if(done)return;done=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(["CLOSE",sub]));ws.close();}}catch(_){}resolve(Array.from(events.values()));}timer=setTimeout(finish,waitMs||3000);try{ws=new WebSocket(url);ws.onopen=function(){try{ws.send(JSON.stringify(["REQ",sub,filter]));}catch(_){finish();}};ws.onmessage=function(msg){try{var d=JSON.parse(msg.data);if(d[0]==="EVENT"&&d[1]===sub&&d[2]&&d[2].id)events.set(String(d[2].id),d[2]);if(d[0]==="EOSE"&&d[1]===sub)finish();if(d[0]==="CLOSED"&&d[1]===sub)finish();}catch(_){}};ws.onerror=finish;ws.onclose=function(){if(!done)finish();};}catch(_){finish();}});}
+function requestEvents(url,filter,waitMs){return new Promise(function(resolve){var ws=null,done=false,timer=null,events=new Map(),sub="sifaka-tetris-"+Math.random().toString(36).slice(2,11);function finish(){if(done)return;done=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(["CLOSE",sub]));ws.close();}}catch(_){}resolve(Array.from(events.values()));}timer=setTimeout(finish,waitMs||3000);try{ws=new WebSocket(url);ws.onopen=function(){try{var filters=Array.isArray(filter)?filter:[filter];ws.send(JSON.stringify(["REQ",sub].concat(filters)));}catch(_){finish();}};ws.onmessage=function(msg){try{var d=JSON.parse(msg.data);if(d[0]==="EVENT"&&d[1]===sub&&d[2]&&d[2].id)events.set(String(d[2].id),d[2]);if(d[0]==="EOSE"&&d[1]===sub)finish();if(d[0]==="CLOSED"&&d[1]===sub)finish();}catch(_){}};ws.onerror=finish;ws.onclose=function(){if(!done)finish();};}catch(_){finish();}});}
 async function queryRelays(filter,extra,waitMs){var relays=currentRelayList(extra);var results=await Promise.all(relays.map(function(url){return requestEvents(url,filter,waitMs||2800).catch(function(){return[];});}));var merged=new Map();results.flat().forEach(function(ev){if(!ev||!ev.id)return;var key;try{key=JSON.stringify([String(ev.id),String(ev.pubkey||""),Number(ev.created_at),Number(ev.kind),ev.tags,ev.content,String(ev.sig||"")]);}catch(_){key=String(ev.id)+"|"+String(ev.sig||"");}merged.set(key,ev);});return Array.from(merged.values());}
 async function getNostrTools(){if(!nostrToolsPromise){nostrToolsPromise=Promise.race([import("https://esm.sh/nostr-tools@2.17.0?bundle"),new Promise(function(_,reject){setTimeout(function(){reject(new Error("Timed out loading Nostr signature verification."));},10000);})]).catch(function(err){nostrToolsPromise=null;throw err;});}return nostrToolsPromise;}
 async function verifyNostrEvent(ev){if(!ev||typeof ev!=="object"||!HEX.test(String(ev.id||""))||!HEX.test(String(ev.pubkey||""))||!SIG.test(String(ev.sig||""))||!Number.isSafeInteger(Number(ev.created_at))||!Number.isSafeInteger(Number(ev.kind))||!Array.isArray(ev.tags)||typeof ev.content!=="string")return false;var verificationKey=[String(ev.id),String(ev.pubkey),String(ev.sig),String(ev.created_at),String(ev.kind),JSON.stringify(ev.tags),String(ev.content)].join("|");var old=verifiedEventCache.get(verificationKey);if(old!==undefined)return old;var ok=false;try{var lib=await getNostrTools();ok=typeof lib.verifyEvent==="function"&&lib.verifyEvent(ev)===true;}catch(err){console.warn("Tetris could not load Nostr signature verification:",err);}verifiedEventCache.set(verificationKey,ok);return ok;}
 function tagsNamed(ev,name){return Array.isArray(ev.tags)?ev.tags.filter(function(t){return Array.isArray(t)&&t[0]===name;}):[];}
 function firstTag(ev,name){var t=tagsNamed(ev,name)[0];return t&&t.length>1?String(t[1]):"";}
-function parseScoreEvent(ev){if(!ev||ev.kind!==1||!safeHex(ev.pubkey)||firstTag(ev,"t")!==SCORE_TAG||firstTag(ev,"game")!=="tetris"||firstTag(ev,"alt")!=="Sifaka Tetris high score"||!Number.isSafeInteger(Number(ev.created_at))||Number(ev.created_at)<0||Number(ev.created_at)>Math.floor(Date.now()/1000)+600)return null;var scoreRaw=firstTag(ev,"score"),linesRaw=firstTag(ev,"lines"),levelRaw=firstTag(ev,"level");if(!/^(0|[1-9][0-9]*)$/.test(scoreRaw)||!/^(0|[1-9][0-9]*)$/.test(linesRaw)||!/^[1-9][0-9]*$/.test(levelRaw))return null;var sc=Number(scoreRaw),ln=Number(linesRaw),lv=Number(levelRaw);if(!Number.isSafeInteger(sc)||sc<0||sc>100000000||!Number.isSafeInteger(ln)||ln<0||ln>1000000||!Number.isSafeInteger(lv)||lv<1||lv>100000)return null;var content=String(ev.content||"");if(content.indexOf("Sifaka Tetris high score:")!==0||content.indexOf(String(sc)+" points")<0||content.indexOf("Level "+lv)<0||content.indexOf(ln+" lines")<0)return null;return{event:ev,pubkey:String(ev.pubkey).toLowerCase(),score:sc,lines:ln,level:lv,created_at:Number(ev.created_at),id:String(ev.id)};}
+function parseScoreEvent(ev){if(!ev||Number(ev.kind)!==1||!safeHex(ev.pubkey)||!Number.isSafeInteger(Number(ev.created_at))||Number(ev.created_at)<0||Number(ev.created_at)>Math.floor(Date.now()/1000)+600)return null;var tTags=tagsNamed(ev,"t").map(function(t){return String(t[1]||"").toLowerCase();}),gameTags=tagsNamed(ev,"game").map(function(t){return String(t[1]||"").toLowerCase();}),altTags=tagsNamed(ev,"alt").map(function(t){return String(t[1]||"").toLowerCase();});if(gameTags.some(function(v){return v!=="tetris";}))return null;var hasMarker=tTags.indexOf(SCORE_TAG)!==-1||tTags.indexOf("tetris")!==-1||gameTags.indexOf("tetris")!==-1||altTags.some(function(v){return /sifaka tetris high score/.test(v);});if(!hasMarker)return null;var scoreRaw=firstTag(ev,"score"),linesRaw=firstTag(ev,"lines"),levelRaw=firstTag(ev,"level");if(!/^(0|[1-9][0-9]*)$/.test(scoreRaw)||!/^(0|[1-9][0-9]*)$/.test(linesRaw)||!/^[1-9][0-9]*$/.test(levelRaw))return null;var sc=Number(scoreRaw),ln=Number(linesRaw),lv=Number(levelRaw);if(!Number.isSafeInteger(sc)||sc<0||sc>100000000||!Number.isSafeInteger(ln)||ln<0||ln>1000000||!Number.isSafeInteger(lv)||lv<1||lv>100000)return null;return{event:ev,pubkey:String(ev.pubkey).toLowerCase(),score:sc,lines:ln,level:lv,created_at:Number(ev.created_at),id:String(ev.id)};}
 function loadCachedScoreEvents(){
  try{
   var cached=JSON.parse(localStorage.getItem(SCORE_CACHE_KEY)||"[]");
@@ -536,7 +536,7 @@ async function loadLeaderboard(){
  try{
   // Query long enough for a normal relay handshake/response. The old 1.1-second
   // cutoff often expired before slow relays returned any high-score events.
-  var scoreFilter={kinds:[1],"#t":[SCORE_TAG],limit:300};
+  var scoreFilter=[{kinds:[1],"#t":[SCORE_TAG,"tetris"],limit:1000},{kinds:[1],"#game":["tetris"],limit:1000},{kinds:[1],"#alt":["Sifaka Tetris high score"],limit:1000}];
   var scoreQuery=queryRelays(scoreFilter,null,3800);
   var results=await Promise.all([getNostrTools(),scoreQuery]);
   var events=results[1];
@@ -548,9 +548,10 @@ async function loadLeaderboard(){
   var valid=[];
   for(var i=0;i<events.length;i++){
    var ev=events[i];
-   if(!(await verifyNostrEvent(ev)))continue;
    var entry=parseScoreEvent(ev);
-   if(entry)valid.push(entry);
+   if(!entry)continue;
+   if(!(await verifyNostrEvent(ev)))continue;
+   valid.push(entry);
   }
   // Preserve deletion checks, but cap this secondary relay wait so a slow relay
   // cannot keep an otherwise usable leaderboard blank for several more seconds.
@@ -805,22 +806,39 @@ async function loadProfiles(pubkeys,forceRefresh,waitMs){
  try{await queryPromise;}finally{if(profileLoadPromise===queryPromise)profileLoadPromise=null;}
 }
 async function verifyNip05(profile){
- var nip=String(profile&&profile.nip05||"").trim(),pk=safeHex(profile&&profile.pubkey);
- if(!nip||!pk)return false;
- var at=nip.lastIndexOf("@");if(at<=0||at===nip.length-1)return false;
- var user=nip.slice(0,at).trim(),domain=nip.slice(at+1).trim().toLowerCase(),key=user.toLowerCase()+"@"+domain+"|"+pk;
- var cached=nip05Cache.get(key),now=Date.now();
- // A failed network request must not poison NIP-05 status for the lifetime of the page.
- if(cached===true)return true;
- if(cached&&typeof cached==="object"&&Number(cached.checkedAt)&&now-Number(cached.checkedAt)<(cached.valid?86400000:30000))return !!cached.valid;
- var valid=false;
- try{
-  if(!/^[a-z0-9._-]+$/i.test(user)||!/^[a-z0-9.-]+$/i.test(domain)||domain.includes(".."))throw new Error("bad NIP-05");
-  var r=await fetch("https://"+domain+"/.well-known/nostr.json?name="+encodeURIComponent(user),{mode:"cors",credentials:"omit",cache:"no-store",headers:{Accept:"application/json"}});
-  if(r.ok){var data=await r.json(),names=data&&data.names||{};valid=String(names[user]||names[user.toLowerCase()]||"").toLowerCase()===pk;}
- }catch(_){}
- nip05Cache.set(key,{valid:valid,checkedAt:Date.now()});
- return valid;
+  var nip=String(profile&&profile.nip05||"").trim(),pk=safeHex(profile&&profile.pubkey);
+  if(!nip||!pk)return false;
+  var at=nip.lastIndexOf("@");if(at<=0||at===nip.length-1)return false;
+  var user=nip.slice(0,at).trim(),domain=nip.slice(at+1).trim().toLowerCase().replace(/\.$/,"");
+  var key=user.toLowerCase()+"@"+domain+"|"+pk,cached=nip05Cache.get(key),now=Date.now();
+  if(cached&&typeof cached==="object"&&Number(cached.checkedAt)&&now-Number(cached.checkedAt)<(cached.valid?86400000:15000))return !!cached.valid;
+  if(!/^[a-z0-9._-]+$/i.test(user)||!/^[a-z0-9.-]+$/i.test(domain)||domain.includes(".."))return false;
+  var url="https://"+domain+"/.well-known/nostr.json?name="+encodeURIComponent(user);
+  for(var attempt=0;attempt<2;attempt++){
+    var controller=typeof AbortController!=="undefined"?new AbortController():null,timer=null;
+    try{
+      var fetchPromise=fetch(url,{mode:"cors",credentials:"omit",cache:"no-store",headers:{Accept:"application/json"},signal:controller?controller.signal:undefined});
+      var timeoutPromise=new Promise(function(_,reject){timer=setTimeout(function(){try{if(controller)controller.abort()}catch(_){}reject(new Error("NIP-05 request timed out"));},4000);});
+      var response=await Promise.race([fetchPromise,timeoutPromise]);
+      if(!response.ok){
+        clearTimeout(timer);timer=null;
+        if(response.status===404||response.status===410){nip05Cache.set(key,{valid:false,checkedAt:Date.now()});return false;}
+        throw new Error("NIP-05 endpoint returned HTTP "+response.status);
+      }
+      var data=await Promise.race([response.json(),timeoutPromise]);
+      clearTimeout(timer);timer=null;
+      var names=data&&data.names&&typeof data.names==="object"?data.names:{},mapped="";
+      Object.keys(names).some(function(name){if(name.toLowerCase()===user.toLowerCase()){mapped=String(names[name]||"").toLowerCase();return true;}return false;});
+      var valid=safeHex(mapped)===pk;
+      nip05Cache.set(key,{valid:valid,checkedAt:Date.now()});
+      return valid;
+    }catch(_){
+      if(timer!==null)clearTimeout(timer);
+      if(attempt===0)await new Promise(function(resolve){setTimeout(resolve,180);});
+    }
+  }
+  // Network/CORS failures are not evidence that a previously verified identity is invalid.
+  return !!(cached&&cached.valid===true);
 }
 function safeProfileImageUrl(value){try{var url=new URL(String(value||""),location.href);return url.protocol==="https:"&&url.hostname?url.href:"";}catch(_){return "";}}
 function openLeaderboardProfile(row,profile){
@@ -987,8 +1005,9 @@ function openLogin(){
   if(!doc||!doc.head||!doc.body){closeLogin(false);toast('Could not open the Sifaka sign-in window.');return;}
   let isolate=doc.getElementById('sifakaGameLoginIsolationStyle');
   if(!isolate){isolate=doc.createElement('style');isolate.id='sifakaGameLoginIsolationStyle';doc.head.appendChild(isolate);}
-  function setIsolation(){
-   isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+  function setIsolation(modal){
+    try{if(modal&&modal.parentNode!==doc.body)doc.body.appendChild(modal);Array.prototype.forEach.call(doc.body.children,function(child){if(child!==modal){try{child.style.setProperty("display","none","important");child.style.setProperty("visibility","hidden","important");}catch(_){}}});}catch(_){}
+    isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
   }
   function currentUser(){
    let ctx=null,user=null;
@@ -1024,7 +1043,7 @@ function openLogin(){
     if(auth.signed){installSigner(win,'');closeLogin(true);return;}
     const modal=doc&&doc.getElementById('loginModal');
     if(modal&&typeof win.openLogin==='function'){
-     setIsolation();
+     setIsolation(modal);
      watchModal(modal);
      if(!modal.classList.contains('open')){try{win.openLogin();}catch(_){}}
      if(!modal.classList.contains('open')){
