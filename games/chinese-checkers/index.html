@@ -586,9 +586,66 @@ function storedKey(){try{for(const k of ['sifaka_chess_pubkey','sifaka_pubkey','
 function installSigner(frame,expected){
  try{const context=frame&&frame.__SIFAKA_CONTEXT,user=context&&typeof context.getUser==='function'?context.getUser():null;if(!user||!HEX.test(String(user.pubkey||''))||typeof context.signEvent!=='function')return '';const pk=String(user.pubkey).toLowerCase();if(expected&&expected!==pk)return '';window.sifakaCheckersMainSigner={getPublicKey:async()=>{const u=context.getUser();return u&&String(u.pubkey||'').toLowerCase()===pk?pk:''},signEvent:async ev=>{const u=context.getUser();if(!u||String(u.pubkey||'').toLowerCase()!==pk)throw new Error('The active Sifaka account changed. Reconnect Checkers.');const signed=await context.signEvent(Number(ev.kind),String(ev.content||''),Array.isArray(ev.tags)?ev.tags:[],{createdAt:Number(ev.created_at)||Math.floor(Date.now()/1000)});if(!signed||!signed.id||!signed.sig)throw new Error('Sifaka did not return a signed event.');return signed}};try{if(typeof window.sifakaChessSetNavIdentity==='function')window.sifakaChessSetNavIdentity(pk,user.profile||{})}catch(_){}return pk}catch(_){return ''}
 }
-function connectLocalSigner(){
+
+let sharedLoginPending=false;
+function sharedSifakaContext(){
+ const contexts=[];
+ try{contexts.push(window.__SIFAKA_CONTEXT)}catch(_){}
+ try{if(window.parent&&window.parent!==window)contexts.push(window.parent.__SIFAKA_CONTEXT)}catch(_){}
+ try{if(window.top&&window.top!==window&&window.top!==window.parent)contexts.push(window.top.__SIFAKA_CONTEXT)}catch(_){}
+ for(const ctx of contexts){if(ctx&&typeof ctx.getUser==='function'&&typeof ctx.signEvent==='function')return ctx}
+ return null;
+}
+function installSharedSifakaSigner(){
+ const ctx=sharedSifakaContext();
+ if(!ctx)return '';
+ return installSigner({__SIFAKA_CONTEXT:ctx},'');
+}
+function reportGameConnectError(error){
+ const message=String(error&&error.message||error||'Could not connect to Nostr.');
+ if(typeof say==='function')say(message);else if(typeof toast==='function')toast(message);
+}
+function openSharedSiteLogin(){
+ const ctx=sharedSifakaContext();
+ if(!ctx||window.parent===window||typeof ctx.openLogin!=='function')return false;
+ let user=null;try{user=ctx.getUser()}catch(_){}
+ if(user&&user.pubkey)return false;
+ try{ctx.openLogin()}catch(_){return false}
+ if(!sharedLoginPending){
+  sharedLoginPending=true;
+  const started=Date.now();
+  const poll=function(){
+   const live=sharedSifakaContext();
+   let current=null;try{current=live&&live.getUser()}catch(_){}
+   if(current&&current.pubkey&&installSigner({__SIFAKA_CONTEXT:live},'')){
+    sharedLoginPending=false;
+    connect().catch(reportGameConnectError);
+    return;
+   }
+   if(Date.now()-started<180000){window.setTimeout(poll,250);return}
+   sharedLoginPending=false;
+  };
+  window.setTimeout(poll,250);
+ }
+ return true;
+}
+function handleGameLoginClick(){
+ const ctx=sharedSifakaContext();
+ let user=null;try{user=ctx&&ctx.getUser()}catch(_){}
+ if(user&&user.pubkey){connect().catch(reportGameConnectError);return}
+ if(ctx&&window.parent!==window&&openSharedSiteLogin())return;
+ const app=window.sifakaCheckersMainSigner;
+ const ext=window.nostr;
+ if((app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function')||
+    (ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function')){
+  connect().catch(reportGameConnectError);
+  return;
+ }
+ openLogin();
+}
+function connectLocalSigner(){const sharedPk=installSharedSifakaSigner();if(sharedPk)return Promise.resolve(sharedPk);
  if(signerBridgePromise)return signerBridgePromise;
- signerBridgePromise=new Promise(resolve=>{const frame=$('signerBridge');let ended=false;const done=v=>{if(ended)return;ended=true;signerBridgePromise=null;resolve(v||'')};try{if(!String(frame.src||'').includes('sifakaChessSignerBridge=1'))frame.src='/?sifakaChessSignerBridge=1'}catch(_){done('');return}const start=Date.now(),check=()=>{const pk=installSigner(frame.contentWindow,'');if(pk){done(pk);return}if(Date.now()-start>8000){done('');return}setTimeout(check,120)};setTimeout(check,100)});return signerBridgePromise;
+ signerBridgePromise=new Promise(resolve=>{const frame=$('signerBridge');let ended=false;const done=v=>{if(ended)return;ended=true;signerBridgePromise=null;resolve(v||'')};try{if(!String(frame.src||'').includes('sifakaChessSignerBridge=1'))frame.src='/?sifakaChessSignerBridge=1'}catch(_){done('');return}const start=Date.now(),check=()=>{const livePk=installSharedSifakaSigner();if(livePk){done(livePk);return}const pk=installSigner(frame.contentWindow,'');if(pk){done(pk);return}if(Date.now()-start>8000){done('');return}setTimeout(check,120)};setTimeout(check,100)});return signerBridgePromise;
 }
 async function getSignerKey(){
  const app=window.sifakaCheckersMainSigner;
@@ -1112,6 +1169,7 @@ async function connect(){
  if(action)Promise.resolve().then(action).catch(e=>say('Could not resume the invitation: '+String(e&&e.message||e)));
 }
 function openLogin(){
+ if(openSharedSiteLogin())return;
  const layer=$('loginLayer'),frame=$('loginFrame');if(layer.classList.contains('open'))return;layer.hidden=false;layer.classList.add('open');
  frame.onload=function(){
   let attempt=0;
@@ -1152,7 +1210,7 @@ function setupStep(step){
 }
 function openSetup(){$('playerCountSelect').value=String(selectedPlayerCount||2);setupStep('opponents');openOverlay('setupOverlay')}
 function bindEvents(){
- $('connectBtn').addEventListener('click',()=>connect().catch(e=>say(e.message)));
+ $('connectBtn').addEventListener('click',handleGameLoginClick);
  $('closeLoginBtn').addEventListener('click',closeLogin);
  $('loginLayer').addEventListener('click',e=>{if(e.target===$('loginLayer'))closeLogin()});
  $('localBtn').addEventListener('click',openSetup);
@@ -1207,7 +1265,7 @@ function restoreStoredIdentity(){connect().catch(()=>{const pk=storedKey();if(pk
 function bootstrap(){
  bindEvents();state=newBoard();renderBoard();updateIdentity();
  const params=new URLSearchParams(location.search);if(params.get('game'))loadIncomingInvite().catch(e=>{$('incomingStatus').textContent=e.message});else openSetup();
- connectLocalSigner().then(pk=>{if(pk&&!signerPk){signerPk=pk;updateIdentity();refreshIncomingInviteControls()}}).catch(()=>{});
+ connectLocalSigner().then(async pk=>{if(pk&&!signerPk){signerPk=pk;const result=await lookupProfile(pk);signerProfile=result&&result.profile||{};signerVerified=!!(result&&result.verified);updateIdentity();refreshIncomingInviteControls()}}).catch(()=>{});
 }
 bootstrap();
 })();
@@ -1342,6 +1400,20 @@ function stopMedia(root){if(!root)return;var media=[];try{if(root.nodeType===1&&
 stopMedia(document);document.addEventListener("play",function(e){var el=e.target;if(el&&/^(VIDEO|AUDIO)$/.test(el.tagName)){try{el.pause()}catch(_){}}},true);
 if(typeof MutationObserver!=="undefined"&&document.documentElement){var observer=new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){stopMedia(n)})})});observer.observe(document.documentElement,{childList:true,subtree:true})}
 try{if(document.pictureInPictureElement&&document.exitPictureInPicture){var exit=document.exitPictureInPicture();if(exit&&exit.catch)exit.catch(function(){})}}catch(_){}
+})();
+</script>
+<script id="sifaka-game-auth-session-sync">
+(function(){
+ 'use strict';
+ try{
+  var saved=JSON.parse(localStorage.getItem('nostrflux_auth_session_v1')||'null');
+  var pubkey=String(saved&&saved.pubkey||'').toLowerCase();
+  var mode=String(saved&&saved.authMode||'');
+  if(!/^[0-9a-f]{64}$/.test(pubkey)||['local','remote','nip07'].indexOf(mode)<0)return;
+  if(typeof window.sifakaGameHeaderSyncIdentity!=='function')return;
+  var name=pubkey.slice(0,10)+'…'+pubkey.slice(-6);
+  window.sifakaGameHeaderSyncIdentity(pubkey,{name:name,display_name:name},false);
+ }catch(_){}
 })();
 </script>
 </body></html>
