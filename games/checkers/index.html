@@ -6,7 +6,7 @@
 <title>Sifaka Checkers — Checkers on Nostr</title>
 <meta name="description" content="Play checkers on Sifaka.Live with Nostr identity, public and private matches, invitations, and live game chat.">
 <link rel="canonical" href="https://sifaka.live/games/checkers/">
-<link rel="icon" href="../../sifaka.ico"><link rel="stylesheet" href="../../styles/themes.css?v=0.9.6"><link rel="stylesheet" href="../../styles/chess-daily-themes.css?v=20261014"><link rel="stylesheet" href="../../styles/daily-theme-polish.css?v=20261014"><link rel="stylesheet" href="../../styles/site-navigation.css?v=0.9.19">
+<link rel="icon" href="../../sifaka.ico"><link rel="stylesheet" href="../../styles/themes.css?v=0.9.6"><link rel="stylesheet" href="../../styles/chess-daily-themes.css?v=20261014"><link rel="stylesheet" href="../../styles/daily-theme-polish.css?v=20261014"><link rel="stylesheet" href="../../styles/site-navigation.css?v=0.9.20">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -130,9 +130,9 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
     if(sub)sub.textContent=nip||key||'Nostr account';
     setAvatar(document.getElementById('navAvatar'),name,p.picture,valid);
     setAvatar(document.getElementById('pdAvLg'),name,p.picture,valid);
-    [['navNip05Badge',valid],['pdBadge',valid]].forEach(function(pair){
-      var badge=document.getElementById(pair[0]);
-      if(badge){badge.textContent='✓';badge.style.display=pair[1]?'inline-flex':'none';}
+    ['navNip05Badge','pdBadge'].forEach(function(id){
+      var badge=document.getElementById(id);
+      if(badge){badge.textContent='';badge.style.display='none';}
     });
     var pill=document.getElementById('navUserPill');
     if(pill)pill.setAttribute('aria-label',logged?'Open account menu for '+name:'Open account menu');
