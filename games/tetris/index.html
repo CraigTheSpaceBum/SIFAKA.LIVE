@@ -557,7 +557,17 @@ async function loadLeaderboard(){
   else $("boardStatus").textContent=leaderboardSnapshot.length+" verified player"+(leaderboardSnapshot.length===1?"":"s")+" · top 10 · top score per player";
   if(events.length&&!leaderboardSnapshot.length)$("boardStatus").textContent="No valid, undeleted score events found";
   if(leaderboardSnapshot.length){
-   loadProfiles(leaderboardSnapshot.map(function(r){return r.pubkey;}),false).then(function(){renderLeaderboard();}).catch(function(err){console.warn("Tetris profile enrichment failed:",err);});
+   var profileKeys=leaderboardSnapshot.map(function(r){return r.pubkey;}),snapshotKey=profileKeys.join(",");
+   loadProfiles(profileKeys,false).then(function(){
+    renderLeaderboard();
+    var unresolved=profileKeys.filter(function(pk){var item=profileCache.get(pk);return !item||item.source!=="relay";});
+    // Some relays won't deliver kind:0 quickly; retry once off the critical path,
+    // and only if this is still the same displayed leaderboard.
+    if(unresolved.length)setTimeout(function(){
+     if(leaderboardSnapshot.map(function(r){return r.pubkey;}).join(",")!==snapshotKey)return;
+     loadProfiles(unresolved,false).then(function(){renderLeaderboard();}).catch(function(err){console.warn("Tetris profile retry failed:",err);});
+    },8500);
+   }).catch(function(err){console.warn("Tetris profile enrichment failed:",err);});
   }
  }catch(err){
   $("boardStatus").textContent="Score verification unavailable";
@@ -573,7 +583,7 @@ function formatEventTime(ts){var d=new Date(Number(ts)*1000);if(!Number.isFinite
 var TETRIS_BECH32_CHARS="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 function tetrisNpub(hex){hex=safeHex(hex);if(!hex)return "Nostr player";var bytes=hex.match(/../g).map(function(x){return parseInt(x,16)}),acc=0,bits=0,data=[];for(var i=0;i<bytes.length;i++){acc=(acc<<8|bytes[i])&0xfff;bits+=8;while(bits>=5){bits-=5;data.push(acc>>bits&31)}}if(bits)data.push(acc<<5-bits&31);var hrp="npub",generators=[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3],expanded=[...[...hrp].map(function(c){return c.charCodeAt()>>5}),0,...[...hrp].map(function(c){return c.charCodeAt()&31}),...data,0,0,0,0,0,0],check=1;for(var j=0;j<expanded.length;j++){var top=check>>25;check=(check&0x1ffffff)<<5^expanded[j];for(var k=0;k<5;k++)if((top>>k)&1)check^=generators[k]}check^=1;return hrp+"1"+[...data,...[0,1,2,3,4,5].map(function(n){return check>>5*(5-n)&31})].map(function(n){return TETRIS_BECH32_CHARS[n]}).join("");}
 function shortNpub(npub){npub=String(npub||"");return npub.length>19?npub.slice(0,9)+"...."+npub.slice(-6):npub;}
-function profileDisplayName(profile,pk){var p=profile||{};var name=String(p.display_name||p.displayName||p.name||"").trim();return name||"anonymous";}
+function profileDisplayName(profile,pk){var p=profile||{};var name=String(p.display_name||p.displayName||p.name||"").trim();return name||shortNpub(tetrisNpub(pk))||"Nostr player";}
 function avatarNode(profile,pk,verified){
  var outer=document.createElement("div");outer.className="profile-avatar"+(verified?" nip05-verified":"");outer.setAttribute("aria-label",profileDisplayName(profile,pk)+" profile picture"+(verified?", verified NIP-05":""));
  var pic=String(profile&&(profile.picture||profile.image||profile.avatar)||"").trim(),safePicture="";
@@ -597,6 +607,7 @@ async function loadProfiles(pubkeys,forceRefresh){
     verified:!!signerVerified,
     created_at:Number(activeItem&&activeItem.created_at)||0,
     fetched_at:Number(activeItem&&activeItem.fetched_at)||0,
+    attempted_at:Number(activeItem&&activeItem.attempted_at)||0,
     source:"session"
    });
   }
@@ -605,32 +616,39 @@ async function loadProfiles(pubkeys,forceRefresh){
  // leaderboard and account hydration calls from opening duplicate relay queries.
  keys.forEach(function(pk){
   if(!profileCache.has(pk))profileCache.set(pk,{
-   profile:{pubkey:pk,name:"",display_name:"",displayName:"",picture:"",nip05:""},
-   verified:false,created_at:0,fetched_at:0,source:"empty"
+   profile:{pubkey:pk,name:"",display_name:"",displayName:"",picture:"",image:"",avatar:"",nip05:""},
+   verified:false,created_at:0,fetched_at:0,attempted_at:0,source:"empty"
   });
  });
  var nowMs=Date.now(),nowSeconds=Math.floor(nowMs/1000);
  var missing=keys.filter(function(pk){
-  if(forceRefresh)return true;
   var item=profileCache.get(pk);
   if(!item)return true;
+  var lastAttempt=Number(item.attempted_at||0);
+  // Don't start overlapping relay lookups, but don't mark cached metadata fresh
+  // merely because a refresh was attempted.
+  if(!forceRefresh&&lastAttempt&&nowMs-lastAttempt<8000)return false;
+  if(forceRefresh)return true;
   var age=nowMs-Number(item.fetched_at||0);
-  // fetched_at uses milliseconds; created_at remains the Nostr event timestamp
-  // in seconds. Session/empty entries retry at most once per minute if relays fail.
   if(item.source==="session"||item.source==="empty")return !Number(item.fetched_at)||age>=60000;
   return !Number(item.created_at)||Number(item.created_at)>nowSeconds+60||age>=600000;
  });
  missing.forEach(function(pk){
   var item=profileCache.get(pk);
-  if(item)item.fetched_at=nowMs;
+  if(item)item.attempted_at=nowMs;
  });
  if(!missing.length)return;
  try{
   var events=await queryRelays({kinds:[0],authors:missing,limit:Math.min(200,missing.length*10)},null,900);
   var chosen=new Map();
+  // Verify metadata events concurrently instead of serially awaiting every
+  // signature check; malformed or unsigned profiles are still rejected.
+  var checks=await Promise.all(events.map(async function(ev){
+   try{return await verifyNostrEvent(ev);}catch(_){return false;}
+  }));
   for(var i=0;i<events.length;i++){
    var ev=events[i];
-   if(!(await verifyNostrEvent(ev)))continue;
+   if(!checks[i])continue;
    if(Number(ev.kind)!==0||!safeHex(ev.pubkey)||!missing.includes(String(ev.pubkey).toLowerCase()))continue;
    var pk=String(ev.pubkey).toLowerCase(),old=chosen.get(pk);
    if(!old||Number(ev.created_at)>Number(old.created_at))chosen.set(pk,ev);
@@ -646,6 +664,10 @@ async function loadProfiles(pubkeys,forceRefresh){
     if(!data||typeof data!=="object"||Array.isArray(data))return;
     base=Object.assign(base,data,{pubkey:pk});
     var freshPicture=String(data.picture||data.image||data.avatar||"").trim();
+    base.display_name=String(data.display_name||data.displayName||base.display_name||"").trim();
+    base.displayName=String(data.displayName||data.display_name||base.displayName||"").trim();
+    base.image=String(data.image||data.picture||base.image||"").trim();
+    base.avatar=String(data.avatar||data.picture||base.avatar||"").trim();
     base.picture=freshPicture||previousPicture||String(base.picture||"").trim();
    }catch(_){return;}
    base.name=String(base.name||"").trim();
@@ -653,7 +675,7 @@ async function loadProfiles(pubkeys,forceRefresh){
    base.displayName=String(base.displayName||"").trim();
    base.picture=String(base.picture||"").trim();
    base.nip05=String(base.nip05||"").trim();
-   profileCache.set(pk,{profile:base,verified:false,created_at:Number(event.created_at)||0,fetched_at:Date.now(),source:"relay"});
+   profileCache.set(pk,{profile:base,verified:false,created_at:Number(event.created_at)||0,fetched_at:Date.now(),attempted_at:Date.now(),source:"relay"});
   });
   if(leaderboardSnapshot.length)renderLeaderboard();
   var candidates=keys.map(function(pk){var item=profileCache.get(pk);return item&&item.profile;}).filter(function(p){return p&&p.nip05;});
@@ -667,17 +689,35 @@ async function loadProfiles(pubkeys,forceRefresh){
   });
  }catch(err){console.warn("Tetris could not refresh Nostr profile metadata:",err);}
 }
-async function verifyNip05(profile){var nip=String(profile&&profile.nip05||"").trim(),pk=safeHex(profile&&profile.pubkey);if(!nip||!pk)return false;var at=nip.lastIndexOf("@");if(at<=0||at===nip.length-1)return false;var user=nip.slice(0,at).trim(),domain=nip.slice(at+1).trim().toLowerCase(),key=user.toLowerCase()+"@"+domain+"|"+pk;if(nip05Cache.has(key))return nip05Cache.get(key);var valid=false;try{if(!/^[a-z0-9._-]+$/i.test(user)||!/^[a-z0-9.-]+$/i.test(domain)||domain.includes(".."))throw new Error("bad NIP-05");var r=await fetch("https://"+domain+"/.well-known/nostr.json?name="+encodeURIComponent(user),{mode:"cors",credentials:"omit",cache:"no-store",headers:{Accept:"application/json"}});if(r.ok){var data=await r.json(),names=data&&data.names||{};valid=String(names[user]||names[user.toLowerCase()]||"").toLowerCase()===pk;}}catch(_){}nip05Cache.set(key,valid);return valid;}
+async function verifyNip05(profile){
+ var nip=String(profile&&profile.nip05||"").trim(),pk=safeHex(profile&&profile.pubkey);
+ if(!nip||!pk)return false;
+ var at=nip.lastIndexOf("@");if(at<=0||at===nip.length-1)return false;
+ var user=nip.slice(0,at).trim(),domain=nip.slice(at+1).trim().toLowerCase(),key=user.toLowerCase()+"@"+domain+"|"+pk;
+ var cached=nip05Cache.get(key),now=Date.now();
+ // A failed network request must not poison NIP-05 status for the lifetime of the page.
+ if(cached===true)return true;
+ if(cached&&typeof cached==="object"&&Number(cached.checkedAt)&&now-Number(cached.checkedAt)<(cached.valid?86400000:30000))return !!cached.valid;
+ var valid=false;
+ try{
+  if(!/^[a-z0-9._-]+$/i.test(user)||!/^[a-z0-9.-]+$/i.test(domain)||domain.includes(".."))throw new Error("bad NIP-05");
+  var r=await fetch("https://"+domain+"/.well-known/nostr.json?name="+encodeURIComponent(user),{mode:"cors",credentials:"omit",cache:"no-store",headers:{Accept:"application/json"}});
+  if(r.ok){var data=await r.json(),names=data&&data.names||{};valid=String(names[user]||names[user.toLowerCase()]||"").toLowerCase()===pk;}
+ }catch(_){}
+ nip05Cache.set(key,{valid:valid,checkedAt:Date.now()});
+ return valid;
+}
 function safeProfileImageUrl(value){try{var url=new URL(String(value||""),location.href);return url.protocol==="https:"&&url.hostname?url.href:"";}catch(_){return "";}}
 function openLeaderboardProfile(row,profile){
- var params=new URLSearchParams();
- params.set("chessAction","profile");
- params.set("profileName",profileDisplayName(profile,row.pubkey));
- params.set("profilePicture",String(profile&&profile.picture||""));
- params.set("profileNpub",tetrisNpub(row.pubkey));
- params.set("profileNip05",String(profile&&profile.nip05||""));
- window.location.href="/?"+params.toString();
+ var pubkey=safeHex(row&&row.pubkey);
+ if(!pubkey)return;
+ // Use the main site's native profile route. Passing a picture URL as showProfile's
+ // fallback-label argument caused it to appear as text and opened preview mode.
+ var npub=tetrisNpub(pubkey);
+ if(!/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/i.test(npub))return;
+ window.location.href="/"+npub;
 }
+
 function renderLeaderboard(){
  var list=$("leaderboardList");list.textContent="";
  if(!leaderboardSnapshot.length){list.innerHTML='<div class="score-empty"><strong>No verified scores yet</strong>Be the first to finish a run and post a score to Nostr.</div>';return;}
