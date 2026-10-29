@@ -216,24 +216,26 @@ button{font:inherit}
 <script id="sifaka-game-header-identity">
 (function(){
   function safePicture(value){value=String(value||'').trim();return value.indexOf('https://')===0||value.indexOf('http://')===0?value:'';}
-  function setAvatar(el,name,picture,verified){
+  function setAvatar(el,name,profile,verified){
     if(!el)return;
     el.classList.toggle('nip05-square',!!verified);
     el.replaceChildren();
-    var src=safePicture(picture);
-    if(src){
+    var values=profile&&typeof profile==='object'?[profile.picture,profile.image,profile.avatar]:[profile];
+    var sources=[];
+    values.forEach(function(value){
+      try{var u=new URL(String(value||'').trim(),location.href);if((u.protocol==='https:'||u.protocol==='http:')&&u.hostname&&!sources.includes(u.href))sources.push(u.href);}catch(_){}
+    });
+    var fallback=function(){el.replaceChildren();el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';};
+    function trySource(index){
+      if(index>=sources.length){fallback();return;}
       var img=document.createElement('img');
-      img.src=src;img.alt='';img.loading='eager';img.decoding='async';
+      img.alt='';img.loading='eager';img.decoding='async';img.referrerPolicy='no-referrer';
       img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
-      img.onerror=function(){
-        if(!img.parentNode)return;
-        el.replaceChildren();
-        el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';
-      };
-      el.appendChild(img);
-    }else{
-      el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';
+      img.onerror=function(){if(img.parentNode)trySource(index+1);};
+      img.onload=function(){img.onerror=null;};
+      img.src=sources[index];el.replaceChildren(img);
     }
+    if(sources.length)trySource(0);else fallback();
     el.setAttribute('aria-label',name||'Sifaka user');
   }
   window.sifakaGameHeaderSyncIdentity=function(pubkey,profile,verified){
@@ -253,8 +255,8 @@ button{font:inherit}
     if(shownName)shownName.textContent=name;
     var sub=document.getElementById('pdSub');
     if(sub)sub.textContent=nip||key||'Nostr account';
-    setAvatar(document.getElementById('navAvatar'),avatarName,p.picture||p.image||p.avatar,valid);
-    setAvatar(document.getElementById('pdAvLg'),avatarName,p.picture||p.image||p.avatar,valid);
+    setAvatar(document.getElementById('navAvatar'),avatarName,p,valid);
+    setAvatar(document.getElementById('pdAvLg'),avatarName,p,valid);
     ['navNip05Badge','pdBadge'].forEach(function(id){
       var badge=document.getElementById(id);
       if(badge){badge.textContent='';badge.style.display='none';}
@@ -447,7 +449,7 @@ button{font:inherit}
 var $=function(id){return document.getElementById(id);};
 var HEX=/^[0-9a-f]{64}$/i, SIG=/^[0-9a-f]{128}$/i, SCORE_TAG="sifaka-tetris-score";
 var DEFAULT_RELAYS=["wss://nos.lol","wss://relay.damus.io","wss://relay.primal.net","wss://relay.nostr.band"];
-var LOCAL_KEY="sifaka_tetris_best_v1",PENDING_KEY="sifaka_tetris_pending_v1",SCORE_CACHE_KEY="sifaka_tetris_verified_score_events_v1";
+var LOCAL_KEY="sifaka_tetris_best_v1",PENDING_KEY="sifaka_tetris_pending_v1",SCORE_CACHE_KEY="sifaka_tetris_verified_score_events_v1",PROFILE_CACHE_KEY="sifaka_tetris_verified_profile_events_v1";
 var signerPk="",signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,loginPopupToken=0,postAfterLogin=false,toastTimer=null,identitySyncVersion=0;
 var profileCache=new Map(),profileLoadPromise=null,nip05Cache=new Map(),verifiedEventCache=new Map(),nostrToolsPromise=null;
 var board=[],piece=null,nextQueue=[],holdType=null,canHold=true,bag=[],score=0,lines=0,level=1,combo=-1,backToBack=false,lockElapsed=0,lockResets=0,dropCounter=0,lastTime=0,raf=0,started=false,paused=false,gameOver=false,localBest=loadLocalBest(),pendingScore=loadPendingScore(),leaderboardBusy=false,leaderboardRefreshRequested=false,publishedScoreEvents=new Map(),leaderboardSnapshot=[],soundEnabled=loadSoundSetting(),audioContext=null,flashTimer=0;
@@ -630,99 +632,165 @@ function shortNpub(npub){npub=String(npub||"");return npub.length>19?npub.slice(
 function profileDisplayName(profile,pk){var p=profile||{};var name=String(p.display_name||p.displayName||p.name||"").trim();return name||shortNpub(tetrisNpub(pk))||"Nostr player";}
 function avatarNode(profile,pk,verified){
  var outer=document.createElement("div");outer.className="profile-avatar"+(verified?" nip05-verified":"");outer.setAttribute("aria-label",profileDisplayName(profile,pk)+" profile picture"+(verified?", verified NIP-05":""));
- var pic=String(profile&&(profile.picture||profile.image||profile.avatar)||"").trim(),safePicture="";
- try{var url=new URL(pic,location.href);if((url.protocol==="https:"||url.protocol==="http:")&&url.hostname)safePicture=url.href;}catch(_){}
+ var sources=profilePictureCandidates(profile);
  var initial=String(profileDisplayName(profile,pk)||"S").trim().charAt(0).toUpperCase()||"S";
- if(!safePicture){outer.textContent=initial;return outer;}
- var img=document.createElement("img");img.src=safePicture;img.alt="";img.loading="eager";img.decoding="async";img.onerror=function(){if(img.parentNode)outer.replaceChildren(document.createTextNode(initial));};outer.appendChild(img);return outer;
+ if(!sources.length){outer.textContent=initial;return outer;}
+ function trySource(index){
+  if(index>=sources.length){outer.replaceChildren(document.createTextNode(initial));return;}
+  var img=document.createElement("img");img.src=sources[index];img.alt="";img.loading="eager";img.decoding="async";img.referrerPolicy="no-referrer";
+  img.onerror=function(){if(img.parentNode)trySource(index+1);};img.onload=function(){img.onerror=null;};outer.replaceChildren(img);
+ }
+ trySource(0);return outer;
 }
 
+function profilePictureCandidates(profile){
+ var p=profile&&typeof profile==="object"?profile:{},raw=[p.picture,p.image,p.avatar],out=[];
+ raw.forEach(function(value){
+  try{
+   var url=new URL(String(value||"").trim(),location.href);
+   if((url.protocol==="https:"||url.protocol==="http:")&&url.hostname&&!out.includes(url.href))out.push(url.href);
+  }catch(_){}
+ });
+ return out;
+}
 function profileHasName(profile){
  var p=profile&&typeof profile==="object"?profile:{};
  return !!String(p.display_name||p.displayName||p.name||"").trim();
 }
-function profileHasPicture(profile){
- var p=profile&&typeof profile==="object"?profile:{};
- return /^https?:\/\//i.test(String(p.picture||p.image||p.avatar||"").trim());
+function profileHasPicture(profile){return profilePictureCandidates(profile).length>0;}
+function profileCacheEventsFor(authors){
+ try{
+  var raw=JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY)||"[]");
+  if(!Array.isArray(raw))return [];
+  var keys=new Set(authors.map(safeHex).filter(Boolean)),latest=new Map();
+  raw.forEach(function(ev){
+   var pk=safeHex(ev&&ev.pubkey);
+   if(!pk||!keys.has(pk)||Number(ev.kind)!==0||!HEX.test(String(ev.id||""))||!Array.isArray(ev.tags)||typeof ev.content!=="string")return;
+   var old=latest.get(pk);
+   if(!old||Number(ev.created_at)>Number(old.created_at))latest.set(pk,ev);
+  });
+  return Array.from(latest.values());
+ }catch(_){return [];}
+}
+function saveProfileCacheEvent(ev){
+ try{
+  var pk=safeHex(ev&&ev.pubkey);
+  if(!pk||Number(ev.kind)!==0||!HEX.test(String(ev.id||"")))return;
+  var raw=JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY)||"[]");
+  if(!Array.isArray(raw))raw=[];
+  raw=raw.filter(function(item){return safeHex(item&&item.pubkey)!==pk;});
+  raw.push(ev);
+  raw.sort(function(a,b){return Number(b.created_at||0)-Number(a.created_at||0);});
+  localStorage.setItem(PROFILE_CACHE_KEY,JSON.stringify(raw.slice(0,150)));
+ }catch(err){console.warn("Tetris could not cache verified profile metadata:",err);}
+}
+function applyProfileEvent(ev,expectedAuthors,source,persist){
+ var pk=safeHex(ev&&ev.pubkey),created=Number(ev&&ev.created_at)||0;
+ if(Number(ev&&ev.kind)!==0||!pk||!expectedAuthors.has(pk))return false;
+ var data;
+ try{data=JSON.parse(ev.content||"{}");}catch(_){return false;}
+ if(!data||typeof data!=="object"||Array.isArray(data))return false;
+ var existing=profileCache.get(pk),existingCreated=Number(existing&&existing.created_at)||0;
+ if(existing&&existingCreated>created)return false;
+ if(existing&&existingCreated===created&&existing.source==="relay"){
+  existing.fetched_at=Date.now();
+  if(persist)saveProfileCacheEvent(ev);
+  return false;
+ }
+ var oldProfile=existing&&existing.profile||{},base=Object.assign({},oldProfile,data,{pubkey:pk});
+ var freshPicture=profilePictureCandidates(data)[0]||"";
+ var oldPictures=profilePictureCandidates(oldProfile);
+ // Some kind:0 events update the name/about without including an image. Retain
+ // an already-validated image only when the new event has no usable image field.
+ base.picture=freshPicture||oldPictures[0]||"";
+ base.image=profilePictureCandidates({image:data.image,avatar:data.avatar,picture:data.picture})[0]||oldPictures[0]||"";
+ base.avatar=profilePictureCandidates({avatar:data.avatar,picture:data.picture,image:data.image})[0]||oldPictures[0]||"";
+ base.name=String(data.name||oldProfile.name||"").trim();
+ base.display_name=String(data.display_name||data.displayName||oldProfile.display_name||oldProfile.displayName||"").trim();
+ base.displayName=String(data.displayName||data.display_name||oldProfile.displayName||oldProfile.display_name||"").trim();
+ base.nip05=String(data.nip05||"").trim();
+ profileCache.set(pk,{profile:base,verified:false,created_at:created,fetched_at:Date.now(),attempted_at:Date.now(),source:source||"relay"});
+ if(persist)saveProfileCacheEvent(ev);
+ if(leaderboardSnapshot.length)renderLeaderboard();
+ return true;
+}
+function queryProfilesProgressively(authors,waitMs){
+ var keys=new Set(authors.map(safeHex).filter(Boolean)),relays=currentRelayList();
+ if(!keys.size||!relays.length)return Promise.resolve();
+ var filter={kinds:[0],authors:Array.from(keys),limit:Math.min(300,Math.max(30,keys.size*10))};
+ return new Promise(function(resolve){
+  var active=relays.length,pendingChecks=0,settled=false;
+  function maybeResolve(){if(!settled&&active===0&&pendingChecks===0){settled=true;resolve();}}
+  relays.forEach(function(relay){
+   var ws=null,done=false,timer=null,sub="sifaka-tetris-profile-"+Math.random().toString(36).slice(2,11);
+   function finish(){
+    if(done)return;done=true;clearTimeout(timer);
+    try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(["CLOSE",sub]));ws.close();}}catch(_){}
+    active--;maybeResolve();
+   }
+   timer=setTimeout(finish,Number(waitMs)||2200);
+   try{
+    ws=new WebSocket(relay);
+    ws.onopen=function(){try{ws.send(JSON.stringify(["REQ",sub,filter]));}catch(_){finish();}};
+    ws.onmessage=function(message){
+     var payload;
+     try{payload=JSON.parse(message.data);}catch(_){return;}
+     if(payload[0]==="EOSE"&&payload[1]===sub){finish();return;}
+     if(payload[0]==="CLOSED"&&payload[1]===sub){finish();return;}
+     if(payload[0]!=="EVENT"||payload[1]!==sub||!payload[2])return;
+     var ev=payload[2],pk=safeHex(ev.pubkey);
+     if(Number(ev.kind)!==0||!keys.has(pk)||!HEX.test(String(ev.id||""))||!SIG.test(String(ev.sig||"")))return;
+     pendingChecks++;
+     verifyNostrEvent(ev).then(function(ok){if(ok)applyProfileEvent(ev,keys,"relay",true);})
+      .catch(function(err){console.warn("Tetris profile signature check failed:",err);})
+      .finally(function(){pendingChecks--;maybeResolve();});
+    };
+    ws.onerror=finish;ws.onclose=finish;
+   }catch(_){finish();}
+  });
+ });
 }
 async function loadProfiles(pubkeys,forceRefresh,waitMs){
  var keys=Array.from(new Set(pubkeys.map(safeHex).filter(Boolean)));
  if(!keys.length)return;
- // A second consumer (for example, account restoration while the leaderboard is
- // fetching the same player) must wait for the active lookup instead of mistaking
- // an in-flight request for an empty profile.
  if(profileLoadPromise){try{await profileLoadPromise;}catch(_){}}
  var activePk=safeHex(signerPk);
  if(activePk&&keys.indexOf(activePk)!==-1&&signerProfile&&typeof signerProfile==="object"&&Object.keys(signerProfile).length){
   var activeItem=profileCache.get(activePk);
   if(!activeItem||activeItem.source!=="relay"){
    var activeProfile=mergeProfileData(signerProfile,activeItem&&activeItem.profile,activePk);
-   profileCache.set(activePk,{
-    profile:activeProfile,verified:!!signerVerified,
-    created_at:Number(activeItem&&activeItem.created_at)||0,
-    fetched_at:Number(activeItem&&activeItem.fetched_at)||0,
-    attempted_at:Number(activeItem&&activeItem.attempted_at)||0,
-    source:"session"
-   });
+   profileCache.set(activePk,{profile:activeProfile,verified:!!signerVerified,created_at:Number(activeItem&&activeItem.created_at)||0,fetched_at:Number(activeItem&&activeItem.fetched_at)||0,attempted_at:Number(activeItem&&activeItem.attempted_at)||0,source:"session"});
   }
  }
- keys.forEach(function(pk){
-  if(!profileCache.has(pk))profileCache.set(pk,{
-   profile:{pubkey:pk,name:"",display_name:"",displayName:"",picture:"",image:"",avatar:"",nip05:""},
-   verified:false,created_at:0,fetched_at:0,attempted_at:0,source:"empty"
-  });
- });
- var nowMs=Date.now(),nowSeconds=Math.floor(nowMs/1000);
- var missing=keys.filter(function(pk){
-  var item=profileCache.get(pk);
-  if(!item)return true;
-  var lastAttempt=Number(item.attempted_at||0);
-  if(!forceRefresh&&lastAttempt&&nowMs-lastAttempt<8000)return false;
-  if(forceRefresh)return true;
-  var age=nowMs-Number(item.fetched_at||0);
-  if(item.source==="session"||item.source==="empty")return !Number(item.fetched_at)||age>=60000;
-  return !Number(item.created_at)||Number(item.created_at)>nowSeconds+60||age>=600000;
- });
- if(!missing.length)return;
- missing.forEach(function(pk){var item=profileCache.get(pk);if(item)item.attempted_at=nowMs;});
+ keys.forEach(function(pk){if(!profileCache.has(pk))profileCache.set(pk,{profile:{pubkey:pk,name:"",display_name:"",displayName:"",picture:"",image:"",avatar:"",nip05:""},verified:false,created_at:0,fetched_at:0,attempted_at:0,source:"empty"});});
  var queryPromise=(async function(){
+  var authorSet=new Set(keys);
   try{
-   // Give slow profile relays longer than the high-score query. A kind:0 lookup is
-   // non-critical UI enrichment, so wait for EOSE or a bounded 1.9–3.2s window.
-   var events=await queryRelays({kinds:[0],authors:missing,limit:Math.min(200,missing.length*10)},null,Number(waitMs)|| (forceRefresh?3000:1900));
-   var chosen=new Map();
-   var checks=await Promise.all(events.map(async function(ev){try{return await verifyNostrEvent(ev);}catch(_){return false;}}));
-   for(var i=0;i<events.length;i++){
-    var ev=events[i];
-    if(!checks[i])continue;
-    if(Number(ev.kind)!==0||!safeHex(ev.pubkey)||!missing.includes(String(ev.pubkey).toLowerCase()))continue;
-    var pk=String(ev.pubkey).toLowerCase(),old=chosen.get(pk);
-    if(!old||Number(ev.created_at)>Number(old.created_at))chosen.set(pk,ev);
+   // Hydrate signed metadata from this device first so repeated visits/refreshes
+   // can show avatars quickly, then refresh against relays for newer kind:0 events.
+   var cached=profileCacheEventsFor(keys);
+   if(cached.length){
+    var cacheChecks=await Promise.all(cached.map(async function(ev){try{return await verifyNostrEvent(ev);}catch(_){return false;}}));
+    for(var ci=0;ci<cached.length;ci++)if(cacheChecks[ci])applyProfileEvent(cached[ci],authorSet,"disk",false);
    }
-   missing.forEach(function(pk){
-    var event=chosen.get(pk);
-    if(!event)return;
-    var existing=profileCache.get(pk),existingProfile=existing&&existing.profile||{};
-    var previousPicture=String(existingProfile.picture||"").trim();
-    var base=Object.assign({pubkey:pk,name:"",display_name:"",displayName:"",picture:"",nip05:""},existingProfile);
-    try{
-     var data=JSON.parse(event.content||"{}");
-     if(!data||typeof data!=="object"||Array.isArray(data))return;
-     base=Object.assign(base,data,{pubkey:pk});
-     var freshPicture=String(data.picture||data.image||data.avatar||"").trim();
-     base.display_name=String(data.display_name||data.displayName||base.display_name||"").trim();
-     base.displayName=String(data.displayName||data.display_name||base.displayName||"").trim();
-     base.image=String(data.image||data.picture||base.image||"").trim();
-     base.avatar=String(data.avatar||data.picture||base.avatar||"").trim();
-     base.picture=freshPicture||previousPicture||String(base.picture||"").trim();
-    }catch(_){return;}
-    base.name=String(base.name||"").trim();
-    base.display_name=String(base.display_name||"").trim();
-    base.displayName=String(base.displayName||"").trim();
-    base.picture=String(base.picture||"").trim();
-    base.nip05=String(base.nip05||"").trim();
-    profileCache.set(pk,{profile:base,verified:false,created_at:Number(event.created_at)||0,fetched_at:Date.now(),attempted_at:Date.now(),source:"relay"});
+   var nowMs=Date.now(),nowSeconds=Math.floor(nowMs/1000);
+   var missing=keys.filter(function(pk){
+    var item=profileCache.get(pk);
+    if(!item)return true;
+    if(forceRefresh||item.source==="disk"||item.source==="empty")return true;
+    var lastAttempt=Number(item.attempted_at||0);
+    if(lastAttempt&&nowMs-lastAttempt<8000)return false;
+    var age=nowMs-Number(item.fetched_at||0);
+    if(item.source==="session")return !Number(item.fetched_at)||age>=60000;
+    return !Number(item.created_at)||Number(item.created_at)>nowSeconds+60||age>=600000||!profileHasName(item.profile)||!profileHasPicture(item.profile);
    });
+   if(missing.length){
+    missing.forEach(function(pk){var item=profileCache.get(pk);if(item)item.attempted_at=nowMs;});
+    // Each relay is consumed independently. As soon as any relay returns a valid
+    // kind:0 event, the relevant leaderboard row repaints without waiting for the
+    // slowest relay in the user's entire configured relay list.
+    await queryProfilesProgressively(missing,Number(waitMs)||(forceRefresh?2800:2100));
+   }
    if(leaderboardSnapshot.length)renderLeaderboard();
    var candidates=keys.map(function(pk){var item=profileCache.get(pk);return item&&item.profile;}).filter(function(p){return p&&p.nip05;});
    candidates.forEach(function(profile){
