@@ -99,24 +99,15 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 <script id="sifaka-game-header-identity">
 (function(){
   function safePicture(value){value=String(value||'').trim();return value.indexOf('https://')===0||value.indexOf('http://')===0?value:'';}
-  function setAvatar(el,name,picture,verified){
+  function setAvatar(el,name,profile,verified){
     if(!el)return;
     el.classList.toggle('nip05-square',!!verified);
     el.replaceChildren();
-    var src=safePicture(picture);
-    if(src){
-      var img=document.createElement('img');
-      img.src=src;img.alt='';img.loading='eager';img.decoding='async';
-      img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
-      img.onerror=function(){
-        if(!img.parentNode)return;
-        el.replaceChildren();
-        el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';
-      };
-      el.appendChild(img);
-    }else{
-      el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';
-    }
+    var values=profile&&typeof profile==='object'?[profile.picture,profile.image,profile.avatar]:[profile],sources=[];
+    values.forEach(function(value){try{var url=new URL(String(value||'').trim(),location.href);if((url.protocol==='https:'||url.protocol==='http:')&&url.hostname&&!sources.includes(url.href))sources.push(url.href);}catch(_){}});
+    function fallback(){el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';}
+    function trySource(index){if(index>=sources.length){fallback();return;}var img=document.createElement('img');img.src=sources[index];img.alt='';img.loading='eager';img.decoding='async';img.referrerPolicy='no-referrer';img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';img.onerror=function(){if(img.parentNode)trySource(index+1)};img.onload=function(){img.onerror=null};el.replaceChildren(img);}
+    if(sources.length)trySource(0);else fallback();
     el.setAttribute('aria-label',name||'Sifaka user');
   }
   window.sifakaGameHeaderSyncIdentity=function(pubkey,profile,verified){
@@ -132,12 +123,12 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
     var shownName=document.getElementById('pdNameText');
     if(shownName)shownName.textContent=name;
     var sub=document.getElementById('pdSub');
-    if(sub)sub.textContent=nip||key||'Nostr account';
-    setAvatar(document.getElementById('navAvatar'),name,p.picture||p.image||p.avatar,valid);
-    setAvatar(document.getElementById('pdAvLg'),name,p.picture||p.image||p.avatar,valid);
+    if(sub)sub.textContent=valid?nip:(key||'Nostr account');
+    setAvatar(document.getElementById('navAvatar'),name,p,valid);
+    setAvatar(document.getElementById('pdAvLg'),name,p,valid);
     ['navNip05Badge','pdBadge'].forEach(function(id){
       var badge=document.getElementById(id);
-      if(badge){badge.textContent='';badge.style.display='none';}
+      if(badge){badge.textContent=valid?'✓':'';badge.style.display=valid?'inline-flex':'none';badge.title=valid?'Verified NIP-05: '+nip:'';badge.setAttribute('aria-label',valid?'Verified NIP-05: '+nip:'Verified NIP-05');}
     });
     var pill=document.getElementById('navUserPill');
     if(pill)pill.setAttribute('aria-label',logged?'Open account menu for '+name:'Open account menu');
@@ -929,6 +920,7 @@ function openLogin(){
      say("The Sifaka sign-in form could not be found. Please refresh and try again.");
      return;
     }
+    try{if(modal.parentNode!==doc.body)doc.body.appendChild(modal);Array.prototype.forEach.call(doc.body.children,function(child){if(child!==modal){try{child.style.setProperty('display','none','important');child.style.setProperty('visibility','hidden','important')}catch(_){}}});}catch(_){}
     // Isolate the real site's login modal immediately. Never leave the whole
     // Live Now page visible in this game's sign-in frame while its API loads.
     let style=doc.getElementById('sifakaGameLoginIsolationStyle');
