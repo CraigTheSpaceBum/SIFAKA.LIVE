@@ -238,8 +238,11 @@ button{font:inherit}
   }
   window.sifakaGameHeaderSyncIdentity=function(pubkey,profile,verified){
     var logged=!!String(pubkey||'').trim(),p=profile&&typeof profile==='object'?profile:{};
-    var name=String(p.display_name||p.displayName||p.name||'').trim(),key=String(pubkey||'');
-    if(!name)name=key?(key.length>18?key.slice(0,10)+'…'+key.slice(-6):key):'Sifaka user';
+    var profileName=String(p.display_name||p.displayName||p.name||'').trim(),key=String(pubkey||'');
+    var name=profileName||(logged&&key?(key.length>18?key.slice(0,10)+'…'+key.slice(-6):key):'Sifaka user');
+    // Never derive the avatar fallback from a hexadecimal public key: when kind:0
+    // metadata is late, a key beginning with "2" looked like an incorrect profile image.
+    var avatarName=profileName||'Sifaka user';
     var nip=String(p.nip05||'').trim(),valid=!!verified&&!!nip;
     var loggedIn=document.getElementById('navLoggedIn'),loggedOut=document.getElementById('navLoggedOut');
     if(loggedIn)loggedIn.classList.toggle('on',logged);
@@ -250,8 +253,8 @@ button{font:inherit}
     if(shownName)shownName.textContent=name;
     var sub=document.getElementById('pdSub');
     if(sub)sub.textContent=nip||key||'Nostr account';
-    setAvatar(document.getElementById('navAvatar'),name,p.picture||p.image||p.avatar,valid);
-    setAvatar(document.getElementById('pdAvLg'),name,p.picture||p.image||p.avatar,valid);
+    setAvatar(document.getElementById('navAvatar'),avatarName,p.picture||p.image||p.avatar,valid);
+    setAvatar(document.getElementById('pdAvLg'),avatarName,p.picture||p.image||p.avatar,valid);
     ['navNip05Badge','pdBadge'].forEach(function(id){
       var badge=document.getElementById(id);
       if(badge){badge.textContent='';badge.style.display='none';}
@@ -445,8 +448,8 @@ var $=function(id){return document.getElementById(id);};
 var HEX=/^[0-9a-f]{64}$/i, SIG=/^[0-9a-f]{128}$/i, SCORE_TAG="sifaka-tetris-score";
 var DEFAULT_RELAYS=["wss://nos.lol","wss://relay.damus.io","wss://relay.primal.net","wss://relay.nostr.band"];
 var LOCAL_KEY="sifaka_tetris_best_v1",PENDING_KEY="sifaka_tetris_pending_v1";
-var signerPk="",signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,postAfterLogin=false,toastTimer=null,identitySyncVersion=0;
-var profileCache=new Map(),nip05Cache=new Map(),verifiedEventCache=new Map(),nostrToolsPromise=null;
+var signerPk="",signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,loginPopupToken=0,postAfterLogin=false,toastTimer=null,identitySyncVersion=0;
+var profileCache=new Map(),profileLoadPromise=null,nip05Cache=new Map(),verifiedEventCache=new Map(),nostrToolsPromise=null;
 var board=[],piece=null,nextQueue=[],holdType=null,canHold=true,bag=[],score=0,lines=0,level=1,combo=-1,backToBack=false,lockElapsed=0,lockResets=0,dropCounter=0,lastTime=0,raf=0,started=false,paused=false,gameOver=false,localBest=loadLocalBest(),pendingScore=loadPendingScore(),leaderboardBusy=false,leaderboardRefreshRequested=false,publishedScoreEvents=new Map(),leaderboardSnapshot=[],soundEnabled=loadSoundSetting(),audioContext=null,flashTimer=0;
 var LOCK_DELAY=500,MAX_LOCK_RESETS=15;
 var COLORS={I:"#59d9ed",O:"#f4d35e",T:"#b18cff",S:"#72df9a",Z:"#fb7185",J:"#6495ed",L:"#ffac66"};
@@ -560,13 +563,7 @@ async function loadLeaderboard(){
    var profileKeys=leaderboardSnapshot.map(function(r){return r.pubkey;}),snapshotKey=profileKeys.join(",");
    loadProfiles(profileKeys,false).then(function(){
     renderLeaderboard();
-    var unresolved=profileKeys.filter(function(pk){var item=profileCache.get(pk);return !item||item.source!=="relay";});
-    // Some relays won't deliver kind:0 quickly; retry once off the critical path,
-    // and only if this is still the same displayed leaderboard.
-    if(unresolved.length)setTimeout(function(){
-     if(leaderboardSnapshot.map(function(r){return r.pubkey;}).join(",")!==snapshotKey)return;
-     loadProfiles(unresolved,false).then(function(){renderLeaderboard();}).catch(function(err){console.warn("Tetris profile retry failed:",err);});
-    },8500);
+    scheduleLeaderboardProfileRetry(profileKeys,snapshotKey,0);
    }).catch(function(err){console.warn("Tetris profile enrichment failed:",err);});
   }
  }catch(err){
@@ -578,6 +575,22 @@ async function loadLeaderboard(){
   $("refreshBoardBtn").disabled=false;
   if(leaderboardRefreshRequested){leaderboardRefreshRequested=false;setTimeout(function(){loadLeaderboard();},0);}
  }
+}
+function scheduleLeaderboardProfileRetry(profileKeys,snapshotKey,attempt){
+ if(attempt>=3)return;
+ var delays=[3800,7800,14000];
+ setTimeout(function(){
+  if(leaderboardSnapshot.map(function(r){return r.pubkey;}).join(",")!==snapshotKey)return;
+  var unresolved=profileKeys.filter(function(pk){
+   var item=profileCache.get(pk),p=item&&item.profile;
+   return !item||item.source!=="relay"||!profileHasPicture(p)||!profileHasName(p);
+  });
+  if(!unresolved.length)return;
+  loadProfiles(unresolved,true,attempt===0?2600:3200).then(function(){
+   renderLeaderboard();
+   scheduleLeaderboardProfileRetry(profileKeys,snapshotKey,attempt+1);
+  }).catch(function(err){console.warn("Tetris profile retry failed:",err);});
+ },delays[attempt]);
 }
 function formatEventTime(ts){var d=new Date(Number(ts)*1000);if(!Number.isFinite(d.getTime()))return"Unknown date";try{return new Intl.DateTimeFormat(undefined,{dateStyle:"medium",timeStyle:"short"}).format(d);}catch(_){return d.toLocaleString();}}
 var TETRIS_BECH32_CHARS="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
@@ -593,18 +606,28 @@ function avatarNode(profile,pk,verified){
  var img=document.createElement("img");img.src=safePicture;img.alt="";img.loading="eager";img.decoding="async";img.onerror=function(){if(img.parentNode)outer.replaceChildren(document.createTextNode(initial));};outer.appendChild(img);return outer;
 }
 
-async function loadProfiles(pubkeys,forceRefresh){
+function profileHasName(profile){
+ var p=profile&&typeof profile==="object"?profile:{};
+ return !!String(p.display_name||p.displayName||p.name||"").trim();
+}
+function profileHasPicture(profile){
+ var p=profile&&typeof profile==="object"?profile:{};
+ return /^https?:\/\//i.test(String(p.picture||p.image||p.avatar||"").trim());
+}
+async function loadProfiles(pubkeys,forceRefresh,waitMs){
  var keys=Array.from(new Set(pubkeys.map(safeHex).filter(Boolean)));
+ if(!keys.length)return;
+ // A second consumer (for example, account restoration while the leaderboard is
+ // fetching the same player) must wait for the active lookup instead of mistaking
+ // an in-flight request for an empty profile.
+ if(profileLoadPromise){try{await profileLoadPromise;}catch(_){}}
  var activePk=safeHex(signerPk);
  if(activePk&&keys.indexOf(activePk)!==-1&&signerProfile&&typeof signerProfile==="object"&&Object.keys(signerProfile).length){
   var activeItem=profileCache.get(activePk);
-  // Keep a relay-fetched kind:0 profile authoritative. Session metadata is only
-  // a fallback; do not overwrite a good relay result with it on every lookup.
   if(!activeItem||activeItem.source!=="relay"){
    var activeProfile=mergeProfileData(signerProfile,activeItem&&activeItem.profile,activePk);
    profileCache.set(activePk,{
-    profile:activeProfile,
-    verified:!!signerVerified,
+    profile:activeProfile,verified:!!signerVerified,
     created_at:Number(activeItem&&activeItem.created_at)||0,
     fetched_at:Number(activeItem&&activeItem.fetched_at)||0,
     attempted_at:Number(activeItem&&activeItem.attempted_at)||0,
@@ -612,8 +635,6 @@ async function loadProfiles(pubkeys,forceRefresh){
    });
   }
  }
- // Seed missing keys before starting network work. This prevents concurrent
- // leaderboard and account hydration calls from opening duplicate relay queries.
  keys.forEach(function(pk){
   if(!profileCache.has(pk))profileCache.set(pk,{
    profile:{pubkey:pk,name:"",display_name:"",displayName:"",picture:"",image:"",avatar:"",nip05:""},
@@ -625,69 +646,64 @@ async function loadProfiles(pubkeys,forceRefresh){
   var item=profileCache.get(pk);
   if(!item)return true;
   var lastAttempt=Number(item.attempted_at||0);
-  // Don't start overlapping relay lookups, but don't mark cached metadata fresh
-  // merely because a refresh was attempted.
   if(!forceRefresh&&lastAttempt&&nowMs-lastAttempt<8000)return false;
   if(forceRefresh)return true;
   var age=nowMs-Number(item.fetched_at||0);
   if(item.source==="session"||item.source==="empty")return !Number(item.fetched_at)||age>=60000;
   return !Number(item.created_at)||Number(item.created_at)>nowSeconds+60||age>=600000;
  });
- missing.forEach(function(pk){
-  var item=profileCache.get(pk);
-  if(item)item.attempted_at=nowMs;
- });
  if(!missing.length)return;
- try{
-  var events=await queryRelays({kinds:[0],authors:missing,limit:Math.min(200,missing.length*10)},null,900);
-  var chosen=new Map();
-  // Verify metadata events concurrently instead of serially awaiting every
-  // signature check; malformed or unsigned profiles are still rejected.
-  var checks=await Promise.all(events.map(async function(ev){
-   try{return await verifyNostrEvent(ev);}catch(_){return false;}
-  }));
-  for(var i=0;i<events.length;i++){
-   var ev=events[i];
-   if(!checks[i])continue;
-   if(Number(ev.kind)!==0||!safeHex(ev.pubkey)||!missing.includes(String(ev.pubkey).toLowerCase()))continue;
-   var pk=String(ev.pubkey).toLowerCase(),old=chosen.get(pk);
-   if(!old||Number(ev.created_at)>Number(old.created_at))chosen.set(pk,ev);
-  }
-  missing.forEach(function(pk){
-   var event=chosen.get(pk);
-   if(!event)return;
-   var existing=profileCache.get(pk),existingProfile=existing&&existing.profile||{};
-   var previousPicture=String(existingProfile.picture||"").trim();
-   var base=Object.assign({pubkey:pk,name:"",display_name:"",displayName:"",picture:"",nip05:""},existingProfile);
-   try{
-    var data=JSON.parse(event.content||"{}");
-    if(!data||typeof data!=="object"||Array.isArray(data))return;
-    base=Object.assign(base,data,{pubkey:pk});
-    var freshPicture=String(data.picture||data.image||data.avatar||"").trim();
-    base.display_name=String(data.display_name||data.displayName||base.display_name||"").trim();
-    base.displayName=String(data.displayName||data.display_name||base.displayName||"").trim();
-    base.image=String(data.image||data.picture||base.image||"").trim();
-    base.avatar=String(data.avatar||data.picture||base.avatar||"").trim();
-    base.picture=freshPicture||previousPicture||String(base.picture||"").trim();
-   }catch(_){return;}
-   base.name=String(base.name||"").trim();
-   base.display_name=String(base.display_name||"").trim();
-   base.displayName=String(base.displayName||"").trim();
-   base.picture=String(base.picture||"").trim();
-   base.nip05=String(base.nip05||"").trim();
-   profileCache.set(pk,{profile:base,verified:false,created_at:Number(event.created_at)||0,fetched_at:Date.now(),attempted_at:Date.now(),source:"relay"});
-  });
-  if(leaderboardSnapshot.length)renderLeaderboard();
-  var candidates=keys.map(function(pk){var item=profileCache.get(pk);return item&&item.profile;}).filter(function(p){return p&&p.nip05;});
-  // NIP-05 lookups can depend on third-party HTTPS servers; run them without
-  // blocking the leaderboard or its refresh button.
-  candidates.forEach(function(profile){
-   verifyNip05(profile).then(function(valid){
-    var item=profileCache.get(String(profile.pubkey).toLowerCase());
-    if(item&&item.profile===profile){item.verified=valid;if(leaderboardSnapshot.length)renderLeaderboard();}
-   }).catch(function(){});
-  });
- }catch(err){console.warn("Tetris could not refresh Nostr profile metadata:",err);}
+ missing.forEach(function(pk){var item=profileCache.get(pk);if(item)item.attempted_at=nowMs;});
+ var queryPromise=(async function(){
+  try{
+   // Give slow profile relays longer than the high-score query. A kind:0 lookup is
+   // non-critical UI enrichment, so wait for EOSE or a bounded 1.9–3.2s window.
+   var events=await queryRelays({kinds:[0],authors:missing,limit:Math.min(200,missing.length*10)},null,Number(waitMs)|| (forceRefresh?3000:1900));
+   var chosen=new Map();
+   var checks=await Promise.all(events.map(async function(ev){try{return await verifyNostrEvent(ev);}catch(_){return false;}}));
+   for(var i=0;i<events.length;i++){
+    var ev=events[i];
+    if(!checks[i])continue;
+    if(Number(ev.kind)!==0||!safeHex(ev.pubkey)||!missing.includes(String(ev.pubkey).toLowerCase()))continue;
+    var pk=String(ev.pubkey).toLowerCase(),old=chosen.get(pk);
+    if(!old||Number(ev.created_at)>Number(old.created_at))chosen.set(pk,ev);
+   }
+   missing.forEach(function(pk){
+    var event=chosen.get(pk);
+    if(!event)return;
+    var existing=profileCache.get(pk),existingProfile=existing&&existing.profile||{};
+    var previousPicture=String(existingProfile.picture||"").trim();
+    var base=Object.assign({pubkey:pk,name:"",display_name:"",displayName:"",picture:"",nip05:""},existingProfile);
+    try{
+     var data=JSON.parse(event.content||"{}");
+     if(!data||typeof data!=="object"||Array.isArray(data))return;
+     base=Object.assign(base,data,{pubkey:pk});
+     var freshPicture=String(data.picture||data.image||data.avatar||"").trim();
+     base.display_name=String(data.display_name||data.displayName||base.display_name||"").trim();
+     base.displayName=String(data.displayName||data.display_name||base.displayName||"").trim();
+     base.image=String(data.image||data.picture||base.image||"").trim();
+     base.avatar=String(data.avatar||data.picture||base.avatar||"").trim();
+     base.picture=freshPicture||previousPicture||String(base.picture||"").trim();
+    }catch(_){return;}
+    base.name=String(base.name||"").trim();
+    base.display_name=String(base.display_name||"").trim();
+    base.displayName=String(base.displayName||"").trim();
+    base.picture=String(base.picture||"").trim();
+    base.nip05=String(base.nip05||"").trim();
+    profileCache.set(pk,{profile:base,verified:false,created_at:Number(event.created_at)||0,fetched_at:Date.now(),attempted_at:Date.now(),source:"relay"});
+   });
+   if(leaderboardSnapshot.length)renderLeaderboard();
+   var candidates=keys.map(function(pk){var item=profileCache.get(pk);return item&&item.profile;}).filter(function(p){return p&&p.nip05;});
+   candidates.forEach(function(profile){
+    verifyNip05(profile).then(function(valid){
+     var item=profileCache.get(String(profile.pubkey).toLowerCase());
+     if(item&&item.profile===profile){item.verified=valid;if(leaderboardSnapshot.length)renderLeaderboard();}
+    }).catch(function(){});
+   });
+  }catch(err){console.warn("Tetris profile enrichment failed:",err);}
+ })();
+ profileLoadPromise=queryPromise;
+ try{await queryPromise;}finally{if(profileLoadPromise===queryPromise)profileLoadPromise=null;}
 }
 async function verifyNip05(profile){
  var nip=String(profile&&profile.nip05||"").trim(),pk=safeHex(profile&&profile.pubkey);
@@ -824,13 +840,13 @@ function handleGameLoginClick(){
  }
  const app=window.sifakaTetrisSigner,ext=window.nostr;
  if((app&&typeof app.getPublicKey==="function"&&typeof app.signEvent==="function")||
-    (ext&&typeof ext.getPublicKey==="function"&&typeof ext.signEvent==="function")||
-    hasSavedSifakaAuthSession()){
+    (ext&&typeof ext.getPublicKey==="function"&&typeof ext.signEvent==="function")){
   connect().then(function(ok){if(!ok)openLogin();}).catch(function(err){reportGameConnectError(err);openLogin();});
   return;
  }
- // The shared app sign-in dialog is the fallback for guests, just like other
- // Sifaka pages. Never leave a failed signer probe without opening it.
+ // A saved localStorage session alone does not prove the hidden signer bridge is
+ // ready. Show the real Sifaka login modal immediately instead of waiting up to
+ // eight seconds for a stale bridge probe to fail.
  openLogin();
 }
 function connectLocalSigner(expected){
@@ -860,81 +876,113 @@ async function getSignerKey(){var app=window.sifakaTetrisSigner;if(app&&typeof a
 async function signEvent(event){var pk=String(event.pubkey||await getSignerKey()||"").toLowerCase();if(!safeHex(pk))throw new Error("Connect a Sifaka account or Nostr signer first.");var request=Object.assign({},event,{pubkey:pk}),failures=[];var app=window.sifakaTetrisSigner;if(app&&typeof app.getPublicKey==="function"&&typeof app.signEvent==="function"){try{if(String(await app.getPublicKey()||"").toLowerCase()===pk){var a=await app.signEvent(request);if(a&&a.id&&a.sig&&String(a.pubkey||"").toLowerCase()===pk)return a;}}catch(e){failures.push(e);}}var ext=window.nostr;if(ext&&typeof ext.getPublicKey==="function"&&typeof ext.signEvent==="function"){try{if(String(await ext.getPublicKey()||"").toLowerCase()===pk){var ev=await ext.signEvent(request);if(ev&&ev.id&&ev.sig&&String(ev.pubkey||"").toLowerCase()===pk)return ev;}}catch(e){failures.push(e);}}throw new Error("Could not sign with the active account"+(failures.length?": "+String(failures[failures.length-1].message||"signing was declined"):"; no compatible signer was found")+".");}
 function openLogin(){
  const layer=$('loginLayer'),frame=$('loginFrame');
- if(!layer||!frame||!layer.hidden&&layer.classList.contains('open'))return;
+ if(!layer||!frame||(!layer.hidden&&layer.classList.contains('open')))return;
+ const token=++loginPopupToken;
+ if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null;}
  layer.hidden=false;
  layer.classList.add('open');
  frame.onload=function(){
-  let attempt=0,observerReady=false;
-  const prepare=function(){
-   let doc,win;
-   try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){}
-   if(!doc||!win||!doc.head||!doc.body){
-    if(attempt++<160){setTimeout(prepare,50);return}
-    toast("The Sifaka sign-in window did not load. Please retry.");
-    return;
-   }
+  if(token!==loginPopupToken||layer.hidden)return;
+  let doc,win;
+  try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){closeLogin(false);toast('Could not open the Sifaka sign-in window.');return;}
+  if(!doc||!doc.head||!doc.body){closeLogin(false);toast('Could not open the Sifaka sign-in window.');return;}
+  let isolate=doc.getElementById('sifakaGameLoginIsolationStyle');
+  if(!isolate){isolate=doc.createElement('style');isolate.id='sifakaGameLoginIsolationStyle';doc.head.appendChild(isolate);}
+  function setIsolation(){
+   isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+  }
+  function currentUser(){
+   let ctx=null,user=null;
+   try{ctx=win.__SIFAKA_CONTEXT;user=ctx&&typeof ctx.getUser==='function'?ctx.getUser():null;}catch(_){}
+   return {ctx:ctx,user:user,signed:!!(user&&user.pubkey&&ctx&&typeof ctx.signEvent==='function')};
+  }
+  function watchModal(modal){
+   if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null;}
+   const Observer=win.MutationObserver;
+   if(!Observer)return;
+   loginPopupObserver=new Observer(function(){
+    if(token!==loginPopupToken||layer.hidden||modal.classList.contains('open'))return;
+    function finishAfterClose(attempt){
+     if(token!==loginPopupToken||layer.hidden)return;
+     const auth=currentUser();
+     if(auth.signed){installSigner(win,'');closeLogin(true);return;}
+     // Session hydration can complete just after the site's modal closes.
+     if(attempt<20){setTimeout(function(){finishAfterClose(attempt+1);},50);return;}
+     closeLogin(false);
+    }
+    finishAfterClose(0);
+   });
+   loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']});
+  }
+  function awaitLoginApi(attempt){
+   if(token!==loginPopupToken||layer.hidden)return;
    try{
-    if(win.nostr===undefined&&window.nostr&&typeof window.nostr.getPublicKey==='function'){
-     try{Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr})}catch(_){}
+    doc=frame.contentDocument;win=frame.contentWindow;
+    if(win&&!win.nostr&&window.nostr&&typeof window.nostr.getPublicKey==='function'){
+     try{Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr});}catch(_){}
     }
-    const ctx=win.__SIFAKA_CONTEXT;
-    const user=ctx&&typeof ctx.getUser==='function'?ctx.getUser():null;
-    if(user&&user.pubkey&&ctx&&typeof ctx.signEvent==='function'){
-     installSigner(win,'');
-     closeLogin(true);
-     return;
-    }
-    const modal=doc.getElementById('loginModal');
-    if(!modal){
-     if(attempt++<160){setTimeout(prepare,50);return}
-     toast("The Sifaka sign-in form could not be found. Please refresh and try again.");
-     return;
-    }
-    // Isolate the real site's login modal immediately. Never leave the whole
-    // Live Now page visible in this game's sign-in frame while its API loads.
-    let style=doc.getElementById('sifakaGameLoginIsolationStyle');
-    if(!style){style=doc.createElement('style');style.id='sifakaGameLoginIsolationStyle';doc.head.appendChild(style)}
-    style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
-    if(!observerReady){
-     if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}
-     const Observer=win.MutationObserver;
-     if(Observer){
-      loginPopupObserver=new Observer(function(){
-       if(!modal.classList.contains('open')){
-        let authCtx=null,authUser=null,signed=false;
-        try{authCtx=win.__SIFAKA_CONTEXT;authUser=authCtx&&typeof authCtx.getUser==='function'?authCtx.getUser():null;signed=!!(authUser&&authUser.pubkey&&authCtx&&typeof authCtx.signEvent==='function')}catch(_){}
-        if(signed)installSigner(win,'');
-        closeLogin(signed);
-       }
-      });
-      loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']});
-     }
-     observerReady=true;
-    }
-    if(!modal.classList.contains('open')){
-     if(typeof win.openLogin==='function'){
-      try{win.openLogin()}catch(_){}
-     }
+    const auth=currentUser();
+    if(auth.signed){installSigner(win,'');closeLogin(true);return;}
+    const modal=doc&&doc.getElementById('loginModal');
+    if(modal&&typeof win.openLogin==='function'){
+     setIsolation();
+     watchModal(modal);
+     if(!modal.classList.contains('open')){try{win.openLogin();}catch(_){}}
      if(!modal.classList.contains('open')){
-      // Give the main app's login initializer a brief chance to become ready.
-      if(attempt++<30){setTimeout(prepare,50);return}
-      // Fallback still displays the isolated modal if an app wrapper omitted
-      // the global opener; the modal's own site handlers remain in the frame.
-      modal.classList.add('open');
+      if(attempt<30){window.setTimeout(function(){awaitLoginApi(attempt+1);},50);return;}
+      closeLogin(false);toast('The Sifaka login modal did not open. Please try again.');return;
      }
+     try{doc.querySelectorAll('video,audio').forEach(function(el){try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(function(t){try{t.stop()}catch(_){}});el.removeAttribute('src');el.querySelectorAll('source').forEach(function(x){x.removeAttribute('src')});el.load()}catch(_){}})}catch(_){}
+     return;
     }
-    try{doc.querySelectorAll('video,audio').forEach(function(el){try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(function(t){try{t.stop()}catch(_){}});el.removeAttribute('src');el.querySelectorAll('source').forEach(function(x){x.removeAttribute('src')});el.load()}catch(_){}})}catch(_){}
-   }catch(err){
-    if(attempt++<160){setTimeout(prepare,50);return}
-    toast("Could not prepare sign-in. Please refresh and try again.");
-   }
-  };
-  prepare();
+   }catch(_){}
+   if(attempt<200){window.setTimeout(function(){awaitLoginApi(attempt+1);},50);return;}
+   closeLogin(false);toast('The Sifaka sign-in window did not load. Please refresh and try again.');
+  }
+  awaitLoginApi(0);
  };
  frame.src='/?chessLoginPopup=1&chessAction=login';
 }
-function closeLogin(signedIn){if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}var layer=$("loginLayer");layer.classList.remove("open");layer.hidden=true;try{$("loginFrame").onload=null;$("loginFrame").src="about:blank";}catch(_){}if(signedIn){connect().catch(function(err){toast(err.message);});}else{postAfterLogin=false;}}
-async function lookupOwnProfile(pk){if(!safeHex(pk))return null;await loadProfiles([pk]);var item=profileCache.get(pk);return item&&item.profile||null;}
+function closeLogin(signedIn){loginPopupToken++;if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}var layer=$("loginLayer");layer.classList.remove("open");layer.hidden=true;try{$("loginFrame").onload=null;$("loginFrame").src="about:blank";}catch(_){}if(signedIn){connect().catch(function(err){toast(err.message);});}else{postAfterLogin=false;}}
+async function lookupOwnProfile(pk){
+ if(!safeHex(pk))return null;
+ await loadProfiles([pk]);
+ var item=profileCache.get(pk),profile=item&&item.profile||null;
+ // If a leaderboard batch had already marked this key as attempted, wait for its
+ // result before returning the cache entry. loadProfiles serializes concurrent work.
+ if(!profile||!profileHasPicture(profile)||!profileHasName(profile)){
+  item=profileCache.get(pk);profile=item&&item.profile||null;
+  if(!profile||!profileHasPicture(profile)||!profileHasName(profile)){
+   await loadProfiles([pk],true,3000);
+   item=profileCache.get(pk);profile=item&&item.profile||null;
+  }
+ }
+ return profile||null;
+}
+function scheduleOwnProfileHydration(pk,syncVersion,attempt){
+ if(attempt>2||syncVersion!==identitySyncVersion||signerPk!==pk)return;
+ window.setTimeout(async function(){
+  if(syncVersion!==identitySyncVersion||signerPk!==pk)return;
+  var cached=profileCache.get(pk),cachedProfile=cached&&cached.profile||{};
+  if(!profileHasPicture(cachedProfile)||!profileHasName(cachedProfile)){
+   try{await loadProfiles([pk],true,attempt===0?2600:3200);}catch(_){}
+  }
+  if(syncVersion!==identitySyncVersion||signerPk!==pk)return;
+  var latest=profileCache.get(pk),next=mergeProfileData(latest&&latest.profile||{},signerProfile,pk);
+  var before=JSON.stringify([signerProfile.name,signerProfile.display_name,signerProfile.picture,signerProfile.image,signerProfile.avatar,signerProfile.nip05]);
+  var after=JSON.stringify([next.name,next.display_name,next.picture,next.image,next.avatar,next.nip05]);
+  if(before!==after){
+   signerProfile=next;signerVerified=false;updateIdentity();
+   if(signerProfile.nip05){
+    verifyNip05(signerProfile).then(function(valid){
+     if(syncVersion!==identitySyncVersion||signerPk!==pk)return;
+     signerVerified=!!valid;updateIdentity();
+    }).catch(function(){});
+   }
+  }
+  if(!profileHasPicture(signerProfile)||!profileHasName(signerProfile))scheduleOwnProfileHydration(pk,syncVersion,attempt+1);
+ },attempt===0?1400:attempt===1?5000:10000);
+}
 async function applyAccountProfile(pk,syncVersion){
  pk=safeHex(pk);
  if(!pk||syncVersion!==identitySyncVersion)return false;
@@ -963,6 +1011,7 @@ async function applyAccountProfile(pk,syncVersion){
    updateIdentity();
   });
  }
+ if(!profileHasPicture(signerProfile)||!profileHasName(signerProfile))scheduleOwnProfileHydration(pk,syncVersion,0);
  return true;
 }
 async function connect(silent){
