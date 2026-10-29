@@ -257,7 +257,64 @@ function currentRelayList(extra){let candidates=(Array.isArray(extra)?extra:[ext
 function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
 function installSigner(frame,expected){try{const context=frame&&frame.__SIFAKA_CONTEXT,user=context&&typeof context.getUser==='function'?context.getUser():null;if(!user||!HEX.test(String(user.pubkey||''))||typeof context.signEvent!=='function')return '';const pk=String(user.pubkey).toLowerCase();if(expected&&expected!==pk)return '';window.sifakaConnect4Signer={getPublicKey:async()=>{const u=context.getUser();return u&&String(u.pubkey||'').toLowerCase()===pk?pk:''},signEvent:async ev=>{const u=context.getUser();if(!u||String(u.pubkey||'').toLowerCase()!==pk)throw new Error('The active Sifaka account changed. Reconnect Connect Four.');const signed=await context.signEvent(Number(ev.kind),String(ev.content||''),Array.isArray(ev.tags)?ev.tags:[],{createdAt:Number(ev.created_at)||Math.floor(Date.now()/1000)});if(!signed||!signed.id||!signed.sig)throw new Error('Sifaka did not return a signed event.');return signed}};return pk}catch(_){return ''}}
-function connectLocalSigner(){if(signerBridgePromise)return signerBridgePromise;signerBridgePromise=new Promise(resolve=>{const frame=$('signerBridge');if(!frame){resolve('');return}let ended=false;const done=v=>{if(ended)return;ended=true;signerBridgePromise=null;resolve(v||'')};try{if(!String(frame.src||'').includes('sifakaChessSignerBridge=1'))frame.src='/?sifakaChessSignerBridge=1'}catch(_){done('');return}const start=Date.now(),check=()=>{const pk=installSigner(frame.contentWindow,'');if(pk){done(pk);return}if(Date.now()-start>8000){done('');return}setTimeout(check,120)};setTimeout(check,100)});return signerBridgePromise}
+
+let sharedLoginPending=false;
+function sharedSifakaContext(){
+ const contexts=[];
+ try{contexts.push(window.__SIFAKA_CONTEXT)}catch(_){}
+ try{if(window.parent&&window.parent!==window)contexts.push(window.parent.__SIFAKA_CONTEXT)}catch(_){}
+ try{if(window.top&&window.top!==window&&window.top!==window.parent)contexts.push(window.top.__SIFAKA_CONTEXT)}catch(_){}
+ for(const ctx of contexts){if(ctx&&typeof ctx.getUser==='function'&&typeof ctx.signEvent==='function')return ctx}
+ return null;
+}
+function installSharedSifakaSigner(){
+ const ctx=sharedSifakaContext();
+ if(!ctx)return '';
+ return installSigner({__SIFAKA_CONTEXT:ctx},'');
+}
+function reportGameConnectError(error){
+ const message=String(error&&error.message||error||'Could not connect to Nostr.');
+ if(typeof say==='function')say(message);else if(typeof toast==='function')toast(message);
+}
+function openSharedSiteLogin(){
+ const ctx=sharedSifakaContext();
+ if(!ctx||window.parent===window||typeof ctx.openLogin!=='function')return false;
+ let user=null;try{user=ctx.getUser()}catch(_){}
+ if(user&&user.pubkey)return false;
+ try{ctx.openLogin()}catch(_){return false}
+ if(!sharedLoginPending){
+  sharedLoginPending=true;
+  const started=Date.now();
+  const poll=function(){
+   const live=sharedSifakaContext();
+   let current=null;try{current=live&&live.getUser()}catch(_){}
+   if(current&&current.pubkey&&installSigner({__SIFAKA_CONTEXT:live},'')){
+    sharedLoginPending=false;
+    connect().catch(reportGameConnectError);
+    return;
+   }
+   if(Date.now()-started<180000){window.setTimeout(poll,250);return}
+   sharedLoginPending=false;
+  };
+  window.setTimeout(poll,250);
+ }
+ return true;
+}
+function handleGameLoginClick(){
+ const ctx=sharedSifakaContext();
+ let user=null;try{user=ctx&&ctx.getUser()}catch(_){}
+ if(user&&user.pubkey){connect().catch(reportGameConnectError);return}
+ if(ctx&&window.parent!==window&&openSharedSiteLogin())return;
+ const app=window.sifakaConnect4Signer;
+ const ext=window.nostr;
+ if((app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function')||
+    (ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function')){
+  connect().catch(reportGameConnectError);
+  return;
+ }
+ openLogin();
+}
+function connectLocalSigner(){const sharedPk=installSharedSifakaSigner();if(sharedPk)return Promise.resolve(sharedPk);if(signerBridgePromise)return signerBridgePromise;signerBridgePromise=new Promise(resolve=>{const frame=$('signerBridge');if(!frame){resolve('');return}let ended=false;const done=v=>{if(ended)return;ended=true;signerBridgePromise=null;resolve(v||'')};try{if(!String(frame.src||'').includes('sifakaChessSignerBridge=1'))frame.src='/?sifakaChessSignerBridge=1'}catch(_){done('');return}const start=Date.now(),check=()=>{const livePk=installSharedSifakaSigner();if(livePk){done(livePk);return}const pk=installSigner(frame.contentWindow,'');if(pk){done(pk);return}if(Date.now()-start>8000){done('');return}setTimeout(check,120)};setTimeout(check,100)});return signerBridgePromise}
 async function getSignerKey(){const app=window.sifakaConnect4Signer;if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{const pk=String(await app.getPublicKey()||'').toLowerCase();if(HEX.test(pk))return pk}catch(_){}}const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){try{const pk=String(await ext.getPublicKey()||'').toLowerCase();if(HEX.test(pk))return pk}catch(_){}}try{const pk=await connectLocalSigner();if(HEX.test(pk))return pk}catch(_){}return ''}
 async function signEvent(event){const pk=String(event.pubkey||await getSignerKey()||'').toLowerCase();if(!HEX.test(pk))throw new Error('Connect a Sifaka account or Nostr signer first.');const request=Object.assign({},event,{pubkey:pk});const app=window.sifakaConnect4Signer;if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{if(String(await app.getPublicKey()||'').toLowerCase()===pk){const ev=await app.signEvent(request);if(ev&&ev.id&&ev.sig&&String(ev.pubkey||'').toLowerCase()===pk)return ev}}catch(e){if(!window.nostr)throw e}}const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){if(String(await ext.getPublicKey()||'').toLowerCase()===pk){const ev=await ext.signEvent(request);if(ev&&ev.id&&ev.sig&&String(ev.pubkey||'').toLowerCase()===pk)return ev}}throw new Error('No signer could sign this event for the active account.')}
 async function signRelayAuth(url,challenge){const pk=await getSignerKey();if(!pk)throw new Error('No signer for relay authentication.');return signEvent({kind:22242,pubkey:pk,created_at:Math.floor(Date.now()/1000),tags:[['relay',url],['challenge',challenge]],content:''})}
@@ -441,10 +498,10 @@ async function connect(){
  }
 }
 async function updateIdentity(){if(signerPk){const result=await lookupProfile(signerPk);signerProfile=result&&result.profile||{};signerVerified=!!(result&&result.verified);$('connectBtn').textContent='Nostr connected · '+(signerProfile.display_name||signerProfile.name||shortPk(signerPk))}else $('connectBtn').textContent='Login with Nostr';if(window.sifakaGameHeaderSyncIdentity)window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified)}
-function showLogin(){const layer=$('loginLayer'),frame=$('loginFrame');if(layer.classList.contains('open'))return;layer.hidden=false;layer.classList.add('open');let attempt=0;frame.onload=function(){const prepare=()=>{let doc,win;try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){}if(!doc||!win||!doc.head||!doc.body){if(attempt++<120)setTimeout(prepare,60);return}try{if(win.nostr===undefined&&window.nostr&&typeof window.nostr.getPublicKey==='function')Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr});const ctx=win.__SIFAKA_CONTEXT,user=ctx&&ctx.getUser&&ctx.getUser();if(user&&user.pubkey&&ctx.signEvent){installSigner(win,'');closeLogin(true);return}const modal=doc.getElementById('loginModal');if(modal&&typeof win.openLogin==='function'){let style=doc.getElementById('connect4LoginStyle');if(!style){style=doc.createElement('style');style.id='connect4LoginStyle';doc.head.appendChild(style)}style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';if(!modal.classList.contains('open'))win.openLogin();if(!modal.classList.contains('open')){if(attempt++<120)setTimeout(prepare,60);return}const Observer=win.MutationObserver;if(Observer){if(loginPopupObserver)loginPopupObserver.disconnect();loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open')){const authCtx=win.__SIFAKA_CONTEXT,authUser=authCtx&&typeof authCtx.getUser==='function'?authCtx.getUser():null,signed=!!(authUser&&authUser.pubkey&&authCtx&&typeof authCtx.signEvent==='function');if(signed)installSigner(win,'');closeLogin(signed)}});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']})}return}}catch(_){}if(attempt++<120)setTimeout(prepare,60);else toast('The Sifaka sign-in form did not load.')}};frame.src='/?chessLoginPopup=1&chessAction=login'}
+function showLogin(){if(openSharedSiteLogin())return;const layer=$('loginLayer'),frame=$('loginFrame');if(layer.classList.contains('open'))return;layer.hidden=false;layer.classList.add('open');let attempt=0;frame.onload=function(){const prepare=()=>{let doc,win;try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){}if(!doc||!win||!doc.head||!doc.body){if(attempt++<120)setTimeout(prepare,60);return}try{if(win.nostr===undefined&&window.nostr&&typeof window.nostr.getPublicKey==='function')Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr});const ctx=win.__SIFAKA_CONTEXT,user=ctx&&ctx.getUser&&ctx.getUser();if(user&&user.pubkey&&ctx.signEvent){installSigner(win,'');closeLogin(true);return}const modal=doc.getElementById('loginModal');if(modal&&typeof win.openLogin==='function'){let style=doc.getElementById('connect4LoginStyle');if(!style){style=doc.createElement('style');style.id='connect4LoginStyle';doc.head.appendChild(style)}style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';if(!modal.classList.contains('open'))win.openLogin();if(!modal.classList.contains('open')){if(attempt++<120)setTimeout(prepare,60);return}const Observer=win.MutationObserver;if(Observer){if(loginPopupObserver)loginPopupObserver.disconnect();loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open')){const authCtx=win.__SIFAKA_CONTEXT,authUser=authCtx&&typeof authCtx.getUser==='function'?authCtx.getUser():null,signed=!!(authUser&&authUser.pubkey&&authCtx&&typeof authCtx.signEvent==='function');if(signed)installSigner(win,'');closeLogin(signed)}});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']})}return}}catch(_){}if(attempt++<120)setTimeout(prepare,60);else toast('The Sifaka sign-in form did not load.')}};frame.src='/?chessLoginPopup=1&chessAction=login'}
 function closeLogin(signedIn=false){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}if(signedIn===true)connect().catch(()=>{});else pendingShared=null}
 function openLogin(){showLogin()}
-function bind(){ $('connectBtn').addEventListener('click',()=>connect().catch(e=>toast(e.message)));$('closeLoginBtn').addEventListener('click',closeLogin);$('loginLayer').addEventListener('click',e=>{if(e.target===$('loginLayer'))closeLogin()});$('localBtn').addEventListener('click',openSetup);$('newGameBtn').addEventListener('click',openSetup);
+function bind(){ $('connectBtn').addEventListener('click',handleGameLoginClick);$('closeLoginBtn').addEventListener('click',closeLogin);$('loginLayer').addEventListener('click',e=>{if(e.target===$('loginLayer'))closeLogin()});$('localBtn').addEventListener('click',openSetup);$('newGameBtn').addEventListener('click',openSetup);
 $('gameOverAgainBtn').addEventListener('click',()=>{closeOverlay('gameOverOverlay');if(local&&localModeChosen)setLocal(engineMode,engineLevel);else openSetup();});$('gameOverModeBtn').addEventListener('click',()=>{closeOverlay('gameOverOverlay');openSetup();});$('lobbyBtn').addEventListener('click',()=>openLobby('open'));$('setupAi').addEventListener('click',()=>setupStep('engine'));$('setupHumanChoice').addEventListener('click',()=>setupStep('human'));$('setupBack').addEventListener('click',()=>setupStep('opponents'));$('setupDifficulty').addEventListener('click',e=>{const b=e.target.closest('[data-ai-level]');if(b){closeOverlay('setupOverlay');setLocal(true,Number(b.dataset.aiLevel))}});$('setupLocal').addEventListener('click',()=>{closeOverlay('setupOverlay');setLocal(false)});$('setupPublic').addEventListener('click',()=>{closeOverlay('setupOverlay');createOnline(false).catch(e=>toast(e.message))});$('setupPrivate').addEventListener('click',()=>{closeOverlay('setupOverlay');createOnline(true).catch(e=>toast(e.message))});$('setupJoin').addEventListener('click',()=>{closeOverlay('setupOverlay');openLobby('open')});$('lobbyCreatePublic').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(false).catch(e=>toast(e.message))});$('lobbyCreatePrivate').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(true).catch(e=>toast(e.message))});$('shareBtn').addEventListener('click',showShare);$('copyInviteBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('inviteUrl').value);toast('Match link copied.')}catch(_){$('inviteUrl').focus();$('inviteUrl').select();toast('Select and copy the complete link.')}});$('shareCloseBtn').addEventListener('click',()=>closeOverlay('shareOverlay'));$('shareInvitePlayerBtn').addEventListener('click',()=>{closeOverlay('shareOverlay');openInviteSearch()});$('invitePlayerBtn').addEventListener('click',openInviteSearch);$('joinMatchBtn').addEventListener('click',()=>{if(game)joinOnline(game,game.secret).catch(e=>toast(e.message));else if(pendingShared)fetchGame(pendingShared.id,pendingShared.relay,pendingShared.secret).then(g=>g&&joinOnline(g,pendingShared.secret)).catch(e=>toast(e.message))});$('forfeitBtn').addEventListener('click',()=>forfeitGame().catch(e=>toast(e.message)));$('retryPublishBtn').addEventListener('click',()=>retryPublish().catch(e=>toast(e.message)));$('undoBtn').addEventListener('click',undoLocal);$('flipBtn').addEventListener('click',()=>{flipped=!flipped;renderBoard()});$('sendChatBtn').addEventListener('click',()=>sendChat().catch(e=>toast(e.message)));$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat().catch(err=>toast(err.message))}});$('refreshLobbyBtn').addEventListener('click',refreshLobby);$('lobbyTabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){lobbyTab=b.dataset.tab;$('lobbyTabs').querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));refreshLobby()}});$('inviteSearchBtn').addEventListener('click',searchInvite);$('inviteSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter')searchInvite()});$('inviteSourceTabs').addEventListener('click',e=>{const b=e.target.closest('[data-source]');if(b){inviteSource=b.dataset.source;$('inviteSourceTabs').querySelectorAll('[data-source]').forEach(x=>x.classList.toggle('active',x===b));searchInvite()}});document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>closeOverlay(b.dataset.close)));document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)closeOverlay(o.id)}))}
 async function init(){bind();local=true;localModeChosen=false;engineMode=false;moves=[];stateBoard=emptyBoard();turn='r';winning=[];terminalText='';busy=false;relayPending=false;updatePlayers();renderBoard();say('Choose an opponent to start.');if(!new URLSearchParams(location.search).get('game'))openSetup();connectLocalSigner().then(pk=>{if(pk&&!signerPk){signerPk=pk;updateIdentity();updatePlayers()}}).catch(()=>{});await loadSharedFromUrl()}
 init().catch(e=>toast(e.message));
@@ -581,6 +638,20 @@ function stopMedia(root){if(!root)return;var media=[];try{if(root.nodeType===1&&
 stopMedia(document);document.addEventListener("play",function(e){var el=e.target;if(el&&/^(VIDEO|AUDIO)$/.test(el.tagName)){try{el.pause()}catch(_){}}},true);
 if(typeof MutationObserver!=="undefined"&&document.documentElement){var observer=new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){stopMedia(n)})})});observer.observe(document.documentElement,{childList:true,subtree:true})}
 try{if(document.pictureInPictureElement&&document.exitPictureInPicture){var exit=document.exitPictureInPicture();if(exit&&exit.catch)exit.catch(function(){})}}catch(_){}
+})();
+</script>
+<script id="sifaka-game-auth-session-sync">
+(function(){
+ 'use strict';
+ try{
+  var saved=JSON.parse(localStorage.getItem('nostrflux_auth_session_v1')||'null');
+  var pubkey=String(saved&&saved.pubkey||'').toLowerCase();
+  var mode=String(saved&&saved.authMode||'');
+  if(!/^[0-9a-f]{64}$/.test(pubkey)||['local','remote','nip07'].indexOf(mode)<0)return;
+  if(typeof window.sifakaGameHeaderSyncIdentity!=='function')return;
+  var name=pubkey.slice(0,10)+'…'+pubkey.slice(-6);
+  window.sifakaGameHeaderSyncIdentity(pubkey,{name:name,display_name:name},false);
+ }catch(_){}
 })();
 </script>
 </body></html>
