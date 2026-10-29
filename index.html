@@ -2600,8 +2600,8 @@ body.sifaka-games-modal-open{overflow:hidden}
     document.body.classList.remove('sifaka-games-modal-open');
     if(previousFocus && typeof previousFocus.focus==='function') previousFocus.focus();
   };
-  window.sifakaPrepareForChessNavigation=async function(){
-    window.__sifakaChessNavigationInProgress=true;
+  window.sifakaPrepareForGameNavigation=async function(){
+    window.__sifakaGameNavigationInProgress=true;
     try{
       document.querySelectorAll('video,audio').forEach(function(media){
         try{
@@ -2616,8 +2616,8 @@ body.sifaka-games-modal-open{overflow:hidden}
           media.load();
         }catch(_){}
       });
-      // Chess is a standalone game page. Stop every embedded frame, not only
-      // known video hosts: stream/player wrappers can proxy media under other URLs.
+      // Games are standalone pages. Stop all embeds and player wrappers so no
+      // stream can remain active behind the game after same-tab navigation.
       document.querySelectorAll('iframe').forEach(function(frame){
         try{frame.src='about:blank';frame.removeAttribute('srcdoc')}catch(_){}
       });
@@ -2626,22 +2626,24 @@ body.sifaka-games-modal-open{overflow:hidden}
       }
     }catch(_){}
   };
-  // Cover every same-page entry point to Chess, not only the current Games card.
-  // Stop live media before navigating so streams, captured tracks, and PiP cannot
-  // continue playing behind the Chess page.
+  // Keep the old public hook name for compatibility with existing chess links.
+  window.sifakaPrepareForChessNavigation=window.sifakaPrepareForGameNavigation;
+  // Cover all same-tab links to standalone game pages, including links outside
+  // the Games modal. Preserve modified clicks and links intentionally opening tabs.
   document.addEventListener('click',function(event){
     if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     var anchor=event.target&&event.target.closest?event.target.closest('a[href]'):null;
-    if(!anchor||String(anchor.target||'').toLowerCase()==='_blank')return;
+    if(!anchor||String(anchor.target||'').toLowerCase()==='_blank'||anchor.hasAttribute('download'))return;
     var target;
     try{target=new URL(anchor.href,window.location.href)}catch(_){return}
-    var path=target.pathname;while(path.length>1&&path.endsWith('/'))path=path.slice(0,-1);if(target.origin!==window.location.origin||path!=='/games/chess')return;
-    if(typeof window.sifakaPrepareForChessNavigation!=='function')return;
+    var path=target.pathname;while(path.length>1&&path.endsWith('/'))path=path.slice(0,-1);
+    if(target.origin!==window.location.origin||!/^\/games\/(?:chess|checkers|connect4|chinese-checkers|tetris)$/.test(path))return;
+    if(typeof window.sifakaPrepareForGameNavigation!=='function')return;
     event.preventDefault();
-    window.sifakaPrepareForChessNavigation().then(function(){window.location.assign(target.href)},function(){window.location.assign(target.href)});
+    window.sifakaPrepareForGameNavigation().then(function(){window.location.assign(target.href)},function(){window.location.assign(target.href)});
   });
   window.addEventListener('pagehide',function(){
-    if(!window.__sifakaChessNavigationInProgress)return;
+    if(!window.__sifakaGameNavigationInProgress)return;
     document.querySelectorAll('video,audio').forEach(function(media){
       try{
         media.pause();media.autoplay=false;
@@ -2654,8 +2656,6 @@ body.sifaka-games-modal-open{overflow:hidden}
         media.load();
       }catch(_){}
     });
-    // The previous page is leaving for Chess; blank every frame so unrecognized
-    // embed/player hosts cannot keep video or audio alive after navigation.
     document.querySelectorAll('iframe').forEach(function(frame){
       try{frame.src='about:blank';frame.removeAttribute('srcdoc')}catch(_){}
     });
