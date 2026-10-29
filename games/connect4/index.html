@@ -258,7 +258,10 @@ function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
 function installSigner(frame,expected){try{const context=frame&&frame.__SIFAKA_CONTEXT,user=context&&typeof context.getUser==='function'?context.getUser():null;if(!user||!HEX.test(String(user.pubkey||''))||typeof context.signEvent!=='function')return '';const pk=String(user.pubkey).toLowerCase();if(expected&&expected!==pk)return '';window.sifakaConnect4Signer={getPublicKey:async()=>{const u=context.getUser();return u&&String(u.pubkey||'').toLowerCase()===pk?pk:''},signEvent:async ev=>{const u=context.getUser();if(!u||String(u.pubkey||'').toLowerCase()!==pk)throw new Error('The active Sifaka account changed. Reconnect Connect Four.');const signed=await context.signEvent(Number(ev.kind),String(ev.content||''),Array.isArray(ev.tags)?ev.tags:[],{createdAt:Number(ev.created_at)||Math.floor(Date.now()/1000)});if(!signed||!signed.id||!signed.sig)throw new Error('Sifaka did not return a signed event.');return signed}};return pk}catch(_){return ''}}
 
-let sharedLoginPending=false;
+function reportGameConnectError(error){
+ const message=String(error&&error.message||error||'Could not connect to Nostr.');
+ if(typeof say==='function')say(message);else if(typeof toast==='function')toast(message);
+}
 function sharedSifakaContext(){
  const contexts=[];
  try{contexts.push(window.__SIFAKA_CONTEXT)}catch(_){}
@@ -272,39 +275,10 @@ function installSharedSifakaSigner(){
  if(!ctx)return '';
  return installSigner({__SIFAKA_CONTEXT:ctx},'');
 }
-function reportGameConnectError(error){
- const message=String(error&&error.message||error||'Could not connect to Nostr.');
- if(typeof say==='function')say(message);else if(typeof toast==='function')toast(message);
-}
-function openSharedSiteLogin(){
- const ctx=sharedSifakaContext();
- if(!ctx||window.parent===window||typeof ctx.openLogin!=='function')return false;
- let user=null;try{user=ctx.getUser()}catch(_){}
- if(user&&user.pubkey)return false;
- try{ctx.openLogin()}catch(_){return false}
- if(!sharedLoginPending){
-  sharedLoginPending=true;
-  const started=Date.now();
-  const poll=function(){
-   const live=sharedSifakaContext();
-   let current=null;try{current=live&&live.getUser()}catch(_){}
-   if(current&&current.pubkey&&installSigner({__SIFAKA_CONTEXT:live},'')){
-    sharedLoginPending=false;
-    connect().catch(reportGameConnectError);
-    return;
-   }
-   if(Date.now()-started<180000){window.setTimeout(poll,250);return}
-   sharedLoginPending=false;
-  };
-  window.setTimeout(poll,250);
- }
- return true;
-}
 function handleGameLoginClick(){
  const ctx=sharedSifakaContext();
  let user=null;try{user=ctx&&ctx.getUser()}catch(_){}
- if(user&&user.pubkey){connect().catch(reportGameConnectError);return}
- if(ctx&&window.parent!==window&&openSharedSiteLogin())return;
+ if(user&&user.pubkey){connect().catch(reportGameConnectError);return;}
  const app=window.sifakaConnect4Signer;
  const ext=window.nostr;
  if((app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function')||
@@ -498,7 +472,7 @@ async function connect(){
  }
 }
 async function updateIdentity(){if(signerPk){const result=await lookupProfile(signerPk);signerProfile=result&&result.profile||{};signerVerified=!!(result&&result.verified);$('connectBtn').textContent='Nostr connected · '+(signerProfile.display_name||signerProfile.name||shortPk(signerPk))}else $('connectBtn').textContent='Login with Nostr';if(window.sifakaGameHeaderSyncIdentity)window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified)}
-function showLogin(){if(openSharedSiteLogin())return;const layer=$('loginLayer'),frame=$('loginFrame');if(layer.classList.contains('open'))return;layer.hidden=false;layer.classList.add('open');let attempt=0;frame.onload=function(){const prepare=()=>{let doc,win;try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){}if(!doc||!win||!doc.head||!doc.body){if(attempt++<120)setTimeout(prepare,60);return}try{if(win.nostr===undefined&&window.nostr&&typeof window.nostr.getPublicKey==='function')Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr});const ctx=win.__SIFAKA_CONTEXT,user=ctx&&ctx.getUser&&ctx.getUser();if(user&&user.pubkey&&ctx.signEvent){installSigner(win,'');closeLogin(true);return}const modal=doc.getElementById('loginModal');if(modal&&typeof win.openLogin==='function'){let style=doc.getElementById('connect4LoginStyle');if(!style){style=doc.createElement('style');style.id='connect4LoginStyle';doc.head.appendChild(style)}style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';if(!modal.classList.contains('open'))win.openLogin();if(!modal.classList.contains('open')){if(attempt++<120)setTimeout(prepare,60);return}const Observer=win.MutationObserver;if(Observer){if(loginPopupObserver)loginPopupObserver.disconnect();loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open')){const authCtx=win.__SIFAKA_CONTEXT,authUser=authCtx&&typeof authCtx.getUser==='function'?authCtx.getUser():null,signed=!!(authUser&&authUser.pubkey&&authCtx&&typeof authCtx.signEvent==='function');if(signed)installSigner(win,'');closeLogin(signed)}});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']})}return}}catch(_){}if(attempt++<120)setTimeout(prepare,60);else toast('The Sifaka sign-in form did not load.')}};frame.src='/?chessLoginPopup=1&chessAction=login'}
+function showLogin(){const layer=$('loginLayer'),frame=$('loginFrame');if(layer.classList.contains('open'))return;layer.hidden=false;layer.classList.add('open');let attempt=0;frame.onload=function(){const prepare=()=>{let doc,win;try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){}if(!doc||!win||!doc.head||!doc.body){if(attempt++<120)setTimeout(prepare,60);return}try{if(win.nostr===undefined&&window.nostr&&typeof window.nostr.getPublicKey==='function')Object.defineProperty(win,'nostr',{configurable:true,value:window.nostr});const ctx=win.__SIFAKA_CONTEXT,user=ctx&&ctx.getUser&&ctx.getUser();if(user&&user.pubkey&&ctx.signEvent){installSigner(win,'');closeLogin(true);return}const modal=doc.getElementById('loginModal');if(modal&&typeof win.openLogin==='function'){let style=doc.getElementById('connect4LoginStyle');if(!style){style=doc.createElement('style');style.id='connect4LoginStyle';doc.head.appendChild(style)}style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';if(!modal.classList.contains('open'))win.openLogin();if(!modal.classList.contains('open')){if(attempt++<120)setTimeout(prepare,60);return}const Observer=win.MutationObserver;if(Observer){if(loginPopupObserver)loginPopupObserver.disconnect();loginPopupObserver=new Observer(()=>{if(!modal.classList.contains('open')){const authCtx=win.__SIFAKA_CONTEXT,authUser=authCtx&&typeof authCtx.getUser==='function'?authCtx.getUser():null,signed=!!(authUser&&authUser.pubkey&&authCtx&&typeof authCtx.signEvent==='function');if(signed)installSigner(win,'');closeLogin(signed)}});loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']})}return}}catch(_){}if(attempt++<120)setTimeout(prepare,60);else toast('The Sifaka sign-in form did not load.')}};frame.src='/?chessLoginPopup=1&chessAction=login'}
 function closeLogin(signedIn=false){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}if(signedIn===true)connect().catch(()=>{});else pendingShared=null}
 function openLogin(){showLogin()}
 function bind(){ $('connectBtn').addEventListener('click',handleGameLoginClick);$('closeLoginBtn').addEventListener('click',closeLogin);$('loginLayer').addEventListener('click',e=>{if(e.target===$('loginLayer'))closeLogin()});$('localBtn').addEventListener('click',openSetup);$('newGameBtn').addEventListener('click',openSetup);
