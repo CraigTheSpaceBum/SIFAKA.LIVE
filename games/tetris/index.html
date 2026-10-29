@@ -448,7 +448,7 @@ button{font:inherit}
 "use strict";
 var $=function(id){return document.getElementById(id);};
 var HEX=/^[0-9a-f]{64}$/i, SIG=/^[0-9a-f]{128}$/i, SCORE_TAG="sifaka-tetris-score";
-var DEFAULT_RELAYS=["wss://nos.lol","wss://relay.damus.io","wss://relay.primal.net","wss://relay.nostr.band"];
+var DEFAULT_RELAYS=["wss://relay.damus.io","wss://nos.lol","wss://relay.snort.social","wss://nostr.wine","wss://relay.primal.net","wss://relay.nostr.band","wss://relay.nostr.net","wss://www.nostr.ltd","wss://relayable.org","wss://nostr.fmt.wiz.biz","wss://offchain.pub","wss://nostr.mom","wss://nostr21.com","wss://purplepag.es","wss://profiles.nostr1.com","wss://relay.nostr.com","wss://nostr.bitcoiner.social"];
 var LOCAL_KEY="sifaka_tetris_best_v1",PENDING_KEY="sifaka_tetris_pending_v1",SCORE_CACHE_KEY="sifaka_tetris_verified_score_events_v1",PROFILE_CACHE_KEY="sifaka_tetris_verified_profile_events_v1";
 var signerPk="",signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,loginPopupToken=0,postAfterLogin=false,toastTimer=null,identitySyncVersion=0;
 var profileCache=new Map(),profileLoadPromise=null,nip05Cache=new Map(),verifiedEventCache=new Map(),nostrToolsPromise=null;
