@@ -231,7 +231,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{
 (function(){
 'use strict';
 const $=id=>document.getElementById(id),HEX=/^[0-9a-f]{64}$/i,APP='sifaka-connect4',PUBLIC_KIND=1,PRIVATE_KIND=30079,CHAT_KIND=1;
-const DEFAULT_RELAYS=['wss://nos.lol','wss://relay.damus.io','wss://relay.primal.net','wss://relay.nostr.band'];
+const DEFAULT_RELAYS=['wss://relay.damus.io','wss://nos.lol','wss://relay.snort.social','wss://nostr.wine','wss://relay.primal.net','wss://relay.nostr.band','wss://relay.nostr.net','wss://www.nostr.ltd','wss://relayable.org','wss://nostr.fmt.wiz.biz','wss://offchain.pub','wss://nostr.mom','wss://nostr21.com','wss://purplepag.es','wss://profiles.nostr1.com','wss://relay.nostr.com','wss://nostr.bitcoiner.social'];
 const SEARCH_RELAYS=['wss://relay.nostr.band','wss://search.nos.today'];
 let signerPk='',signerProfile={},signerVerified=false,identitySyncVersion=0,signerBridgePromise=null,loginPopupObserver=null,game=null,local=true,localModeChosen=false,engineMode=false,engineLevel=2,moves=[],aiTimer=null,aiRequestId=0,flipped=false,busy=false,relayPending=false,selectedCol=-1,gameSockets=[],socketGeneration=0,reconnectTimer=null,publishChain=Promise.resolve(),chatSeen=new Set(),lobbyTab='open',lobbyBusy=false,inviteSource='all',inviteRequest=0,profileCache=new Map(),verifiedCache=new Map(),pendingShared=null,toastTimer=null;
 const other=c=>c==='r'?'y':'r',colorName=c=>c==='r'?'Red':'Yellow',shortPk=pk=>HEX.test(String(pk||''))?String(pk).slice(0,8)+'…'+String(pk).slice(-6):'Unknown player';
@@ -270,7 +270,7 @@ function currentRelayList(extra){
  }
  const blocked=new Set(main.blocked),out=[];
  candidates.forEach(u=>{u=String(u||'').trim();if(!/^wss:\/\//i.test(u)||blocked.has(u.toLowerCase())||out.includes(u))return;out.push(u)});
- return main.configured?out:out.slice(0,6);
+ return out;
 }
 function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
