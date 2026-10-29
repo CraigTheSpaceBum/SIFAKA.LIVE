@@ -2637,7 +2637,7 @@ body.sifaka-games-modal-open{overflow:hidden}
     var target;
     try{target=new URL(anchor.href,window.location.href)}catch(_){return}
     var path=target.pathname;while(path.length>1&&path.endsWith('/'))path=path.slice(0,-1);
-    if(target.origin!==window.location.origin||!/^\\/games\\/(?:chess|checkers|connect4|chinese-checkers|tetris)$/.test(path))return;
+    if(target.origin!==window.location.origin||!/^\/games\/(?:chess|checkers|connect4|chinese-checkers|tetris)$/.test(path))return;
     if(typeof window.sifakaPrepareForGameNavigation!=='function')return;
     event.preventDefault();
     window.sifakaPrepareForGameNavigation().then(function(){window.location.assign(target.href)},function(){window.location.assign(target.href)});
