@@ -55,7 +55,7 @@ button{font:inherit}
 .clear-flash{position:absolute;z-index:4;top:12%;left:0;right:0;pointer-events:none;text-align:center;color:#fff1b8;font:800 clamp(18px,4vw,29px)/1.2 "DM Sans",sans-serif;letter-spacing:.1em;text-transform:uppercase;text-shadow:0 2px 3px #140d26,0 0 14px rgba(246,211,101,.95),0 0 32px rgba(167,139,250,.75);opacity:0;transform:translateY(8px) scale(.92)}.clear-flash.show{animation:clearCelebrate 1.05s cubic-bezier(.2,.8,.2,1) both}@keyframes clearCelebrate{0%{opacity:0;transform:translateY(8px) scale(.84)}15%{opacity:1;transform:translateY(0) scale(1.06)}65%{opacity:1;transform:translateY(-3px) scale(1)}100%{opacity:0;transform:translateY(-12px) scale(.98)}}
 .panel{box-shadow:0 16px 44px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.025)}
 .board-wrap{box-shadow:0 18px 48px rgba(0,0,0,.45),0 0 32px rgba(139,92,246,.13),inset 0 0 25px rgba(139,92,246,.035)}
-.board-wrap{position:relative;width:100%;max-width:400px;margin:auto;border:1px solid rgba(214,178,100,.38);border-radius:12px;overflow:hidden;background:#0a0911;box-shadow:0 18px 48px rgba(0,0,0,.45),0 0 30px rgba(139,92,246,.08)}
+.board-wrap{position:relative;width:100%;max-width:480px;margin:auto;border:1px solid rgba(214,178,100,.38);border-radius:12px;overflow:hidden;background:#0a0911;box-shadow:0 18px 48px rgba(0,0,0,.45),0 0 30px rgba(139,92,246,.08)}
 #gameCanvas{display:block;width:100%;height:auto;aspect-ratio:1/2;image-rendering:pixelated;touch-action:manipulation}
 #gameCanvas:focus-visible{outline:2px solid var(--purple);outline-offset:3px}
 .game-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(5,4,12,.78);backdrop-filter:blur(5px);text-align:center}
@@ -85,6 +85,14 @@ button{font:inherit}
 .post-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:13px}
 .post-status{margin-top:9px;min-height:16px;color:var(--mut);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 .post-status.good{color:var(--good)}.post-status.bad{color:var(--bad)}
+.stats-panel{padding:0;margin-bottom:14px}
+.stats-panel .stats-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:0;padding:13px 13px 8px}
+.stats-panel .stat{padding:9px 8px;background:rgba(255,255,255,.035)}
+.stats-panel .stat small{font-size:8px}
+.stats-panel .stat strong{font-size:18px;line-height:1.15}
+.stats-panel .level-progress{margin:0 13px 13px;padding:9px 10px}
+.stats-panel .level-progress-label{font-size:9px}
+.right-rail{display:flex;flex-direction:column;gap:0;min-width:0}
 .scoreboard{padding:0}
 .scoreboard .panel-head{padding:15px 16px}
 .scoreboard-list{padding:5px 10px 12px}
@@ -307,14 +315,6 @@ button{font:inherit}
       <div class="panel-head"><strong>PLAYFIELD</strong><span class="subtle" id="gameState" aria-live="polite">Ready when you are</span></div>
       <div class="game-layout">
         <div>
-          <div class="stats-grid">
-            <div class="stat primary-stat"><small>Score</small><strong id="scoreValue">0</strong></div>
-            <div class="stat"><small>Best · this device</small><strong id="bestValue">0</strong></div>
-            <div class="stat"><small>Lines</small><strong id="linesValue">0</strong></div>
-            <div class="stat"><small>Level</small><strong id="levelValue">1</strong></div>
-            <div class="stat"><small>Combo</small><strong id="comboValue">—</strong></div>
-          </div>
-          <div class="level-progress"><div class="level-progress-label"><span>Progress to next level</span><strong id="levelProgressLabel">0 / 10 lines</strong></div><div class="level-track"><span id="levelProgressFill"></span></div></div>
           <div class="board-wrap">
             <canvas id="gameCanvas" width="300" height="600" tabindex="0" role="img" aria-label="Tetris board. Use arrow keys to move and rotate, Space to hard drop, C to hold, and P to pause."></canvas>
             <div class="clear-flash" id="clearFlash" aria-live="polite"></div>
@@ -346,7 +346,18 @@ button{font:inherit}
       </div>
       <div class="game-footer"><span>Playfield: <strong>10 × 20</strong></span><span>Personal best is saved locally</span></div>
     </section>
-    <aside>
+    <aside class="right-rail">
+      <section class="panel stats-panel" aria-label="Tetris run statistics">
+        <div class="panel-head"><strong>RUN STATS</strong><span class="subtle">Current run</span></div>
+        <div class="stats-grid">
+          <div class="stat primary-stat"><small>Score</small><strong id="scoreValue">0</strong></div>
+          <div class="stat"><small>Best · this device</small><strong id="bestValue">0</strong></div>
+          <div class="stat"><small>Lines</small><strong id="linesValue">0</strong></div>
+          <div class="stat"><small>Level</small><strong id="levelValue">1</strong></div>
+          <div class="stat"><small>Combo</small><strong id="comboValue">—</strong></div>
+        </div>
+        <div class="level-progress"><div class="level-progress-label"><span>Progress to next level</span><strong id="levelProgressLabel">0 / 10 lines</strong></div><div class="level-track"><span id="levelProgressFill"></span></div></div>
+      </section>
       <section class="panel scoreboard">
         <div class="panel-head"><div><strong>NOSTR HIGH SCORES</strong><div class="subtle" style="margin-top:4px" id="boardStatus">Loading verified scores…</div></div><button class="btn" id="refreshBoardBtn" type="button" aria-label="Refresh Nostr leaderboard">↻</button></div>
         <div class="scoreboard-list" id="leaderboardList" aria-live="polite"><div class="score-empty"><strong>Checking Nostr relays…</strong>Only valid signed score events will be shown.</div></div>
