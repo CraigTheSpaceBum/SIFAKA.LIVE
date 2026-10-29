@@ -26,6 +26,7 @@
 <style>
 :root{color-scheme:dark;--bg:#0a0810;--ink:#f5f1ff;--mut:#aaa0bc;--gold:#d6b264;--gold2:#f2dca0;--glass:rgba(19,15,31,.8);--line:rgba(214,178,100,.24);--purple:#a78bfa;--good:#6ee7b7;--bad:#fb7185}
 *{box-sizing:border-box}
+.tetris-visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 html{min-height:100%;background:var(--bg,#0a0810)}
 body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 10% 0%,rgba(116,70,181,.17),transparent 38%),radial-gradient(ellipse at 90% 30%,rgba(52,90,145,.1),transparent 34%),var(--bg,#0a0810);color:var(--ink,#f5f1ff);font-family:"DM Sans",system-ui,sans-serif}
 button{font:inherit}
@@ -327,7 +328,7 @@ button{font:inherit}
   
   <div class="layout">
     <section class="panel" aria-label="Tetris game">
-      <div class="panel-head"><strong>PLAYFIELD</strong><span class="subtle" id="gameState" aria-live="polite">Ready when you are</span></div>
+      <span id="gameState" class="tetris-visually-hidden" aria-live="polite">Ready when you are</span>
       <div class="game-layout">
         <div>
           <div class="board-wrap">
@@ -502,7 +503,21 @@ var TETRIS_BECH32_CHARS="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 function tetrisNpub(hex){hex=safeHex(hex);if(!hex)return "Nostr player";var bytes=hex.match(/../g).map(function(x){return parseInt(x,16)}),acc=0,bits=0,data=[];for(var i=0;i<bytes.length;i++){acc=(acc<<8|bytes[i])&0xfff;bits+=8;while(bits>=5){bits-=5;data.push(acc>>bits&31)}}if(bits)data.push(acc<<5-bits&31);var hrp="npub",generators=[0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3],expanded=[...[...hrp].map(function(c){return c.charCodeAt()>>5}),0,...[...hrp].map(function(c){return c.charCodeAt()&31}),...data,0,0,0,0,0,0],check=1;for(var j=0;j<expanded.length;j++){var top=check>>25;check=(check&0x1ffffff)<<5^expanded[j];for(var k=0;k<5;k++)if((top>>k)&1)check^=generators[k]}check^=1;return hrp+"1"+[...data,...[0,1,2,3,4,5].map(function(n){return check>>5*(5-n)&31})].map(function(n){return TETRIS_BECH32_CHARS[n]}).join("");}
 function shortNpub(npub){npub=String(npub||"");return npub.length>19?npub.slice(0,9)+"...."+npub.slice(-6):npub;}
 function profileDisplayName(profile,pk){var p=profile||{};var name=String(p.display_name||p.displayName||p.name||"").trim();return name||"anonymous";}
-function avatarNode(profile,pk,verified){var outer=document.createElement("div");outer.className="profile-avatar"+(verified?" nip05-verified":"");outer.setAttribute("aria-label",profileDisplayName(profile,pk)+" profile picture"+(verified?", verified NIP-05":""));var pic=String(profile&&profile.picture||"").trim();var safePicture="";try{var url=new URL(pic,location.href);if(url.protocol==="https:"&&url.hostname)safePicture=url.href;}catch(_){}if(safePicture){var img=document.createElement("img");img.src=safePicture;img.alt="";img.loading="lazy";img.decoding="async";img.referrerPolicy="no-referrer";img.onerror=function(){outer.textContent=profileDisplayName(profile,pk).charAt(0).toUpperCase()||"♟";};outer.appendChild(img);}else outer.textContent=profileDisplayName(profile,pk).charAt(0).toUpperCase()||"♟";return outer;}
+function avatarNode(profile,pk,verified){
+ var outer=document.createElement("div");
+ outer.className="profile-avatar"+(verified?" nip05-verified":"");
+ outer.setAttribute("aria-label",profileDisplayName(profile,pk)+" profile picture"+(verified?", verified NIP-05":""));
+ var pic=String(profile&&profile.picture||"").trim(),safePicture="";
+ try{var url=new URL(pic,location.href);if(url.protocol==="https:"&&url.hostname)safePicture=url.href;}catch(_){}
+ // Keep the grid column but show no letter, glyph, border, or placeholder if
+ // metadata has no usable picture.
+ if(!safePicture){outer.style.visibility="hidden";return outer;}
+ var img=document.createElement("img");
+ img.src=safePicture;img.alt="";img.loading="eager";img.decoding="async";
+ img.onerror=function(){outer.replaceChildren();outer.style.visibility="hidden";};
+ outer.appendChild(img);
+ return outer;
+}
 async function loadProfiles(pubkeys,forceRefresh){
  var keys=Array.from(new Set(pubkeys.map(safeHex).filter(Boolean)));
  var activePk=safeHex(signerPk);
@@ -510,7 +525,15 @@ async function loadProfiles(pubkeys,forceRefresh){
   var activeProfile=Object.assign({pubkey:activePk,name:"",display_name:"",displayName:"",picture:"",nip05:""},signerProfile,{pubkey:activePk});
   profileCache.set(activePk,{profile:activeProfile,verified:!!signerVerified,created_at:Date.now()});
  }
- var missing=keys.filter(function(pk){return forceRefresh||!profileCache.has(pk);});
+ var missing=keys.filter(function(pk){
+  if(forceRefresh)return true;
+  var item=profileCache.get(pk);
+  if(!item)return true;
+  var profile=item.profile||{};
+  // The shared session can provide only a partial profile; refresh it from kind:0
+  // rather than treating the incomplete cached entry as authoritative.
+  return !Number(item.created_at)||Number(item.created_at)>Math.floor(Date.now()/1000)+60||!String(profile.picture||"").trim();
+ });
  if(!missing.length)return;
  try{
   var events=await queryRelays({kinds:[0],authors:missing,limit:Math.min(200,missing.length*10)},null,1600);
@@ -603,7 +626,15 @@ function renderLeaderboard(){
 }
 function updatePostControls(preserveStatus){var btn=$("postScoreBtn"),status=$("postStatus"),posting=btn.dataset.posting==="1",posted=!!(pendingScore&&pendingScore.postedEventId);btn.disabled=!gameOver||!pendingScore||posting||posted;if(posted)btn.textContent="✓ Score posted";else btn.textContent="♧ Post score to Nostr";if(preserveStatus)return;if(posted){status.className="post-status good";status.textContent="This run has already been published to Nostr. You can start a new game."; }else if(gameOver&&pendingScore){status.className="post-status";status.textContent="Post your final score to Nostr, or start a new game. Signing in is only required if you choose to post."; }else{status.className="post-status";status.textContent="Score submission becomes available after game over.";}}
 function restorePendingScoreState(){if(!pendingScore)return;score=pendingScore.score;lines=pendingScore.lines;level=pendingScore.level;gameOver=true;started=false;paused=false;combo=-1;localBest=Math.max(localBest,score);saveLocalBest();$("startOverlay").hidden=true;$("pauseOverlay").hidden=true;$("overOverlay").hidden=false;$("gameState").textContent="Game over";$("startBtn").textContent="▶ Play again";$("pauseBtn").disabled=true;$("pauseBtn").textContent="Ⅱ Pause";$("overSummary").textContent="Final score: "+numberFmt(score)+" points · "+lines+" lines · Level "+level;updatePostControls();}
-function updateIdentity(){if(signerPk){var p=signerProfile||{};$("identityLabel").textContent=p.display_name||p.displayName||p.name||shortPk(signerPk);$("connectBtn").textContent="Nostr connected";}else{$("identityLabel").textContent="Not connected";$("connectBtn").textContent="Login with Nostr";}if(window.sifakaGameHeaderSyncIdentity)window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified);}
+function updateIdentity(){
+ try{
+  if(signerPk){var p=signerProfile||{};$("identityLabel").textContent=p.display_name||p.displayName||p.name||shortPk(signerPk);$("connectBtn").textContent="Nostr connected";}
+  else{$("identityLabel").textContent="Not connected";$("connectBtn").textContent="Login with Nostr";}
+ }catch(err){console.warn("Tetris account label update failed:",err);}
+ // The shared header is presentation only. It must not prevent auth setup or game startup.
+ try{if(typeof window.sifakaGameHeaderSyncIdentity==="function")window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified);}
+ catch(err){console.warn("Tetris shared account header sync failed:",err);}
+}
 function installSigner(frame,expected){
  try{
   var context=frame&&frame.__SIFAKA_CONTEXT,user=context&&typeof context.getUser==="function"?context.getUser():null;
@@ -656,19 +687,20 @@ function hasSavedSifakaAuthSession(){
 function handleGameLoginClick(){
  const ctx=sharedSifakaContext();
  let user=null;try{user=ctx&&ctx.getUser()}catch(_){}
- if(ctx&&user&&user.pubkey&&typeof ctx.signEvent==='function'){
+ if(ctx&&user&&user.pubkey&&typeof ctx.signEvent==="function"){
   installSharedSifakaSigner();
-  connect().catch(reportGameConnectError);
+  connect().then(function(ok){if(!ok)openLogin();}).catch(function(err){reportGameConnectError(err);openLogin();});
   return;
  }
- const app=window.sifakaTetrisSigner;
- const ext=window.nostr;
- if((app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function')||
-    (ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function')||
+ const app=window.sifakaTetrisSigner,ext=window.nostr;
+ if((app&&typeof app.getPublicKey==="function"&&typeof app.signEvent==="function")||
+    (ext&&typeof ext.getPublicKey==="function"&&typeof ext.signEvent==="function")||
     hasSavedSifakaAuthSession()){
-  connect().catch(reportGameConnectError);
+  connect().then(function(ok){if(!ok)openLogin();}).catch(function(err){reportGameConnectError(err);openLogin();});
   return;
  }
+ // The shared app sign-in dialog is the fallback for guests, just like other
+ // Sifaka pages. Never leave a failed signer probe without opening it.
  openLogin();
 }
 function connectLocalSigner(){const sharedPk=installSharedSifakaSigner();if(sharedPk)return Promise.resolve(sharedPk);if(signerBridgePromise)return signerBridgePromise;signerBridgePromise=new Promise(function(resolve){var frame=$("signerBridge"),ended=false;function done(v){if(ended)return;ended=true;signerBridgePromise=null;resolve(v||"");}if(!frame){done("");return;}try{if(!String(frame.src||"").includes("sifakaChessSignerBridge=1"))frame.src="/?sifakaChessSignerBridge=1";}catch(_){done("");return;}var start=Date.now();function check(){var livePk=installSharedSifakaSigner();if(livePk){done(livePk);return}var pk=installSigner(frame.contentWindow,"");if(pk){done(pk);return;}if(Date.now()-start>8000){done("");return;}setTimeout(check,120);}setTimeout(check,100);});return signerBridgePromise;}
@@ -812,7 +844,16 @@ function drawMini(canvas,type){var ctx=canvas.getContext("2d");ctx.clearRect(0,0
 function drawPreview(){fillNextQueue();var canvas=$("nextCanvas"),ctx=canvas.getContext("2d");ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle="rgba(0,0,0,.12)";ctx.fillRect(0,0,canvas.width,canvas.height);for(var i=0;i<3;i++){var type=nextQueue[i];if(!type)continue;var m=SHAPES[type],coords=[];for(var y=0;y<m.length;y++)for(var x=0;x<m[y].length;x++)if(m[y][x])coords.push([x,y]);var minX=Math.min.apply(null,coords.map(function(c){return c[0];})),maxX=Math.max.apply(null,coords.map(function(c){return c[0];})),minY=Math.min.apply(null,coords.map(function(c){return c[1];})),maxY=Math.max.apply(null,coords.map(function(c){return c[1];})),cell=16,tw=(maxX-minX+1)*cell,th=(maxY-minY+1)*cell,ox=(canvas.width-tw)/2,oy=i*79+(78-th)/2;coords.forEach(function(c){drawCell(ctx,ox+(c[0]-minX)*cell,oy+(c[1]-minY)*cell,cell,COLORS[type]);});if(i<2){ctx.strokeStyle="rgba(255,255,255,.07)";ctx.beginPath();ctx.moveTo(11,(i+1)*79);ctx.lineTo(canvas.width-11,(i+1)*79);ctx.stroke();}}drawMini($("holdCanvas"),holdType);}
 function onStart(){startGame();}
 $("startBtn").addEventListener("click",onStart);$("overlayStartBtn").addEventListener("click",onStart);$("restartBtn").addEventListener("click",onStart);$("playAgainBtn").addEventListener("click",onStart);$("pauseBtn").addEventListener("click",pauseGame);$("resumeBtn").addEventListener("click",pauseGame);$("postScoreBtn").addEventListener("click",postPendingScore);$("connectBtn").addEventListener("click",handleGameLoginClick);$("closeLoginBtn").addEventListener("click",function(){closeLogin(false);});$("loginLayer").addEventListener("click",function(e){if(e.target===$("loginLayer"))closeLogin(false);});$("refreshBoardBtn").addEventListener("click",loadLeaderboard);$("rotateBtn").addEventListener("click",function(){rotatePiece(1);});$("holdBtn").addEventListener("click",holdPiece);$("dropBtn").addEventListener("click",hardDrop);$("muteBtn").addEventListener("click",toggleSound);$("leftBtn").addEventListener("click",function(){movePiece(-1);});$("rightBtn").addEventListener("click",function(){movePiece(1);});$("downBtn").addEventListener("click",function(){stepDown(true);drawAll();});$("mobileRotateBtn").addEventListener("click",function(){rotatePiece(1);});$("mobileHardDropBtn").addEventListener("click",hardDrop);window.addEventListener("keydown",handleKey,true);$("gameCanvas").addEventListener("pointerdown",function(){if(started&&!paused){try{$("gameCanvas").focus({preventScroll:true});}catch(_){$("gameCanvas").focus();}}});window.addEventListener("blur",function(){if(started&&!paused)pauseGame();});document.addEventListener("visibilitychange",function(){if(document.hidden&&started&&!paused)pauseGame();});window.addEventListener("pagehide",function(){if(raf)cancelAnimationFrame(raf);});
-$("bestValue").textContent=numberFmt(localBest);restorePendingScoreState();updateStats();drawPreview();drawAll();updatePostControls();updateIdentity();updateSoundButton();loadLeaderboard();
+$("bestValue").textContent=numberFmt(localBest);
+// Start online scores before optional account-header hydration. A navbar issue must
+// never strand the board on its static "Checking Nostr relays…" placeholder.
+loadLeaderboard();
+try{restorePendingScoreState();}catch(err){console.warn("Tetris pending score restore failed:",err);}
+try{updateStats();}catch(err){console.warn("Tetris stats initialization failed:",err);}
+try{drawPreview();drawAll();}catch(err){console.warn("Tetris board initialization failed:",err);}
+try{updatePostControls();}catch(err){console.warn("Tetris score controls initialization failed:",err);}
+try{updateIdentity();}catch(err){console.warn("Tetris initial account sync failed:",err);}
+try{updateSoundButton();}catch(err){console.warn("Tetris sound control initialization failed:",err);}
 window.sifakaTetrisRefreshAccount=function(){
  return connectLocalSigner().then(async function(pk){
   if(!safeHex(pk))return "";
