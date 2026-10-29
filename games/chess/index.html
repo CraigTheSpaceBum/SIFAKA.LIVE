@@ -961,7 +961,27 @@ let netGame=null,gameSockets=[],pendingChessAction=null,pendingNostrGame=null,ne
 function chessAwait(promise,timeoutMs,message){let timer;return Promise.race([Promise.resolve(promise),new Promise(function(_,reject){timer=setTimeout(function(){reject(new Error(message))},timeoutMs)})]).finally(function(){clearTimeout(timer)})}
 function closeGameSockets(){gameSocketGeneration++;if(gameReconnectTimer){clearTimeout(gameReconnectTimer);gameReconnectTimer=null}gameSockets.forEach(function(w){try{if(w._sifakaSub&&w.readyState===1)w.send(JSON.stringify(['CLOSE',w._sifakaSub]));w.close()}catch(_){}});gameSockets=[]}
 function leaveNostrGame(){closeGameSockets();netGame=null;pendingNostrGame=null;netPublishChain=Promise.resolve()}
-function networkRelays(extra){const candidates=[extra].concat(String((typeof CF!=='undefined'&&CF.rel)||'').split(/\s+/),RL,['wss://relay.primal.net','wss://relay.nostr.band']);const out=[];candidates.forEach(function(u){u=String(u||'').trim();if(/^wss?:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,8)}
+function readSifakaMainRelayConfig(){
+ try{
+  var raw=localStorage.getItem("nostrflux_settings_v1");
+  if(!raw)return{configured:false,relays:[],blocked:[]};
+  var settings=JSON.parse(raw);
+  if(!settings||typeof settings!=="object"||!Array.isArray(settings.relays))return{configured:false,relays:[],blocked:[]};
+  var buckets=settings.relayBuckets&&typeof settings.relayBuckets==="object"?settings.relayBuckets:{};
+  return{configured:true,relays:settings.relays.map(function(x){return typeof x==="string"?x:x&&x.url||"";}),blocked:Array.isArray(buckets.blocked)?buckets.blocked.map(function(x){return String(x||"").trim().toLowerCase();}):[]};
+ }catch(_){return{configured:false,relays:[],blocked:[]};}
+}
+function networkRelays(extra){
+ const main=readSifakaMainRelayConfig();
+ const candidates=[extra];
+ if(main.configured)candidates.push.apply(candidates,main.relays);
+ candidates.push.apply(candidates,String((typeof CF!=='undefined'&&CF.rel)||'').split(/\s+/));
+ candidates.push.apply(candidates,Array.isArray(RL)?RL:[RL]);
+ if(!main.configured)candidates.push('wss://relay.primal.net','wss://relay.nostr.band');
+ const blocked=new Set(main.blocked),out=[];
+ candidates.forEach(function(u){u=String(u||'').trim();if(!/^wss?:\/\//i.test(u)||blocked.has(u.toLowerCase())||out.includes(u))return;out.push(u)});
+ return main.configured?out:out.slice(0,8);
+}
 function preferredGameRelay(){return networkRelays()[0]||'wss://relay.damus.io'}
 function pgnHeaders(content){const h={};String(content||'').replace(/^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm,function(_,k,v){h[k]=v;return ''});return h}
 function pgnMoveTokens(content){return String(content||'').replace(/^\s*\[[^\]]*\]\s*$/gm,' ').replace(/\{[^}]*\}/g,' ').replace(/;[^\r\n]*/g,' ').replace(/\([^)]*\)/g,' ').replace(/\$\d+/g,' ').split(/\s+/).map(function(t){return t.replace(/^\d+\.(?:\.\.)?/,'').replace(/[!?]+$/g,'')}).filter(function(t){return !!t&&!/^(1-0|0-1|1\/2-1\/2|\*)$/.test(t)&&!/^e\.p\.?$/i.test(t)})}
