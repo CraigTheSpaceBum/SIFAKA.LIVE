@@ -2701,6 +2701,7 @@ body.sifaka-games-modal-open{overflow:hidden}
   if(a==='login')return typeof window.openLogin==='function';
   if(a==='go-live')return typeof window.openGoLive==='function';
   if(a==='signout')return typeof window.signOut==='function';
+  if(a==='profile')return typeof window.showProfile==='function';
   if(a!=='navigate')return true;
   var routeGlobal={
    home:'showPage',podcastRadio:'showPage',feed:'showPage',faq:'showPage',messages:'showPage',
@@ -2716,6 +2717,7 @@ body.sifaka-games-modal-open{overflow:hidden}
  function runRequestedAction(attempt){
   var p=new URLSearchParams(location.search),a=p.get('chessAction')||'',page=p.get('page')||'';
   if(!a)return;
+  var profileArgs=a==='profile'?{name:p.get('profileName')||'anonymous',picture:p.get('profilePicture')||'',npub:p.get('profileNpub')||'',nip05:p.get('profileNip05')||''}:null;
   // This inline bridge runs during HTML parsing, before the deferred app bundle has
   // finished init() and exposed the real site actions. Retry without consuming the
   // requested route until the required handler actually exists.
@@ -2725,10 +2727,12 @@ body.sifaka-games-modal-open{overflow:hidden}
    return;
   }
   p.delete('chessAction');p.delete('page');
+  if(a==='profile'){p.delete('profileName');p.delete('profilePicture');p.delete('profileNpub');p.delete('profileNip05');}
   try{history.replaceState({},'',location.pathname+(p.toString()?'?'+p.toString():'')+location.hash);}catch(_){}
   if(a==='login'){window.openLogin();return;}
   if(a==='go-live'){window.openGoLive();return;}
   if(a==='signout'){try{localStorage.removeItem('sifaka_chess_pubkey')}catch(_){}window.signOut();return;}
+  if(a==='profile'){window.showProfile(profileArgs.name,profileArgs.picture,profileArgs.npub,profileArgs.nip05);return;}
   if(a==='navigate'){
    var routes={
     home:function(){window.showPage('home')},
