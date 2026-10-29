@@ -898,7 +898,13 @@ document.addEventListener("click",function(event){
  if(popup&&!popup.hidden&&!popup.contains(event.target)&&event.target!==button)closeControlsPopup();
 });
 window.addEventListener("keydown",function(event){if(event.key==="Escape"&&!$("controlsPopup").hidden)closeControlsPopup();});
-window.addEventListener("resize",function(){if(!$("controlsPopup").hidden)toggleControlsPopup();});
+window.addEventListener("resize",function(){
+ var popup=$("controlsPopup"),button=$("controlsBtn");
+ if(!popup||popup.hidden||!button)return;
+ var rect=button.getBoundingClientRect(),width=Math.min(310,window.innerWidth-24);
+ popup.style.left=Math.max(12,Math.min(window.innerWidth-width-12,rect.left))+"px";
+ popup.style.bottom=Math.max(12,window.innerHeight-rect.top+8)+"px";
+});
 $("rotateBtn").addEventListener("click",function(){rotatePiece(1);});$("holdBtn").addEventListener("click",holdPiece);$("dropBtn").addEventListener("click",hardDrop);$("muteBtn").addEventListener("click",toggleSound);$("leftBtn").addEventListener("click",function(){movePiece(-1);});$("rightBtn").addEventListener("click",function(){movePiece(1);});$("downBtn").addEventListener("click",function(){stepDown(true);drawAll();});$("mobileRotateBtn").addEventListener("click",function(){rotatePiece(1);});$("mobileHardDropBtn").addEventListener("click",hardDrop);window.addEventListener("keydown",handleKey,true);$("gameCanvas").addEventListener("pointerdown",function(){if(started&&!paused){try{$("gameCanvas").focus({preventScroll:true});}catch(_){$("gameCanvas").focus();}}});window.addEventListener("blur",function(){if(started&&!paused)pauseGame();});document.addEventListener("visibilitychange",function(){if(document.hidden&&started&&!paused)pauseGame();});window.addEventListener("pagehide",function(){if(raf)cancelAnimationFrame(raf);});
 $("bestValue").textContent=numberFmt(localBest);
 // Start online scores before optional account-header hydration. A navbar issue must
