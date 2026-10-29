@@ -567,11 +567,12 @@ async function loadLeaderboard(){
   // Query long enough for a normal relay handshake/response. The old 1.1-second
   // cutoff often expired before slow relays returned any high-score events.
   var scoreFilter=[{kinds:[1],"#t":[SCORE_TAG,"tetris"],limit:1000},{kinds:[1],"#game":["tetris"],limit:1000},{kinds:[1],"#alt":["Sifaka Tetris high score"],limit:1000}];
-  var scoreQuery=queryRelays(scoreFilter,null,3800);
+  // Score events may be published to standard public relays outside the currently selected site/profile relay list. Include the public fallback set as well as configured relays so discovery does not silently omit players.
+  var scoreQuery=queryRelays(scoreFilter,DEFAULT_RELAYS,3800);
   var results=await Promise.all([getNostrTools(),scoreQuery]);
   var events=results[1];
   // Retry once with a longer window when every relay timed out or returned empty.
-  if(!events.length)events=await queryRelays(scoreFilter,null,5200);
+  if(!events.length)events=await queryRelays(scoreFilter,DEFAULT_RELAYS,5200);
   var cachedEvents=loadCachedScoreEvents();
   cachedEvents.forEach(function(ev){if(!events.some(function(found){return String(found.id)===String(ev.id);}))events.push(ev);});
   publishedScoreEvents.forEach(function(ev,id){if(!events.some(function(found){return String(found.id)===id;}))events.push(ev);});
@@ -596,7 +597,7 @@ async function loadLeaderboard(){
   var deleteIds=valid.map(function(e){return e.id;});
   var deleted=new Set();
   if(deleteIds.length){
-   var deletions=await queryRelays({kinds:[5],"#e":deleteIds,limit:200},null,1800);
+   var deletions=await queryRelays({kinds:[5],"#e":deleteIds,limit:200},DEFAULT_RELAYS,1800);
    for(var j=0;j<deletions.length;j++){
     var del=deletions[j];
     if(!(await verifyNostrEvent(del)))continue;
