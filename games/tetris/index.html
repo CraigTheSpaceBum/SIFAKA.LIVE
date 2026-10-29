@@ -516,7 +516,7 @@ async function loadLeaderboard(){
  $("leaderboardList").innerHTML='<div class="score-empty"><strong>Verifying signed scores…</strong>Invalid events are excluded.</div>';
  try{
   // Start relay retrieval while the signature-verification library initializes.
-  var scoreQuery=queryRelays({kinds:[1],"#t":[SCORE_TAG],limit:100},null,2200);
+  var scoreQuery=queryRelays({kinds:[1],"#t":[SCORE_TAG],limit:100},null,1100);
   var results=await Promise.all([getNostrTools(),scoreQuery]);
   var events=results[1];
   publishedScoreEvents.forEach(function(ev,id){if(!events.some(function(found){return String(found.id)===id;}))events.push(ev);});
@@ -532,7 +532,7 @@ async function loadLeaderboard(){
   var deleteIds=valid.map(function(e){return e.id;});
   var deleted=new Set();
   if(deleteIds.length){
-   var deletions=await queryRelays({kinds:[5],"#e":deleteIds,limit:200},null,1400);
+   var deletions=await queryRelays({kinds:[5],"#e":deleteIds,limit:200},null,700);
    for(var j=0;j<deletions.length;j++){
     var del=deletions[j];
     if(!(await verifyNostrEvent(del)))continue;
@@ -575,20 +575,14 @@ function tetrisNpub(hex){hex=safeHex(hex);if(!hex)return "Nostr player";var byte
 function shortNpub(npub){npub=String(npub||"");return npub.length>19?npub.slice(0,9)+"...."+npub.slice(-6):npub;}
 function profileDisplayName(profile,pk){var p=profile||{};var name=String(p.display_name||p.displayName||p.name||"").trim();return name||"anonymous";}
 function avatarNode(profile,pk,verified){
- var outer=document.createElement("div");
- outer.className="profile-avatar"+(verified?" nip05-verified":"");
- outer.setAttribute("aria-label",profileDisplayName(profile,pk)+" profile picture"+(verified?", verified NIP-05":""));
- var pic=String(profile&&profile.picture||"").trim(),safePicture="";
- try{var url=new URL(pic,location.href);if(url.protocol==="https:"&&url.hostname)safePicture=url.href;}catch(_){}
- // Keep the grid column but show no letter, glyph, border, or placeholder if
- // metadata has no usable picture.
- if(!safePicture){outer.style.visibility="hidden";return outer;}
- var img=document.createElement("img");
- img.src=safePicture;img.alt="";img.loading="eager";img.decoding="async";
- img.onerror=function(){outer.replaceChildren();outer.style.visibility="hidden";};
- outer.appendChild(img);
- return outer;
+ var outer=document.createElement("div");outer.className="profile-avatar"+(verified?" nip05-verified":"");outer.setAttribute("aria-label",profileDisplayName(profile,pk)+" profile picture"+(verified?", verified NIP-05":""));
+ var pic=String(profile&&(profile.picture||profile.image||profile.avatar)||"").trim(),safePicture="";
+ try{var url=new URL(pic,location.href);if((url.protocol==="https:"||url.protocol==="http:")&&url.hostname)safePicture=url.href;}catch(_){}
+ var initial=String(profileDisplayName(profile,pk)||"S").trim().charAt(0).toUpperCase()||"S";
+ if(!safePicture){outer.textContent=initial;return outer;}
+ var img=document.createElement("img");img.src=safePicture;img.alt="";img.loading="eager";img.decoding="async";img.onerror=function(){if(img.parentNode)outer.replaceChildren(document.createTextNode(initial));};outer.appendChild(img);return outer;
 }
+
 async function loadProfiles(pubkeys,forceRefresh){
  var keys=Array.from(new Set(pubkeys.map(safeHex).filter(Boolean)));
  var activePk=safeHex(signerPk);
@@ -632,7 +626,7 @@ async function loadProfiles(pubkeys,forceRefresh){
  });
  if(!missing.length)return;
  try{
-  var events=await queryRelays({kinds:[0],authors:missing,limit:Math.min(200,missing.length*10)},null,1600);
+  var events=await queryRelays({kinds:[0],authors:missing,limit:Math.min(200,missing.length*10)},null,900);
   var chosen=new Map();
   for(var i=0;i<events.length;i++){
    var ev=events[i];

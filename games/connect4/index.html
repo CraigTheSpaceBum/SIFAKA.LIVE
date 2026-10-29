@@ -110,8 +110,13 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{
     var src=safePicture(picture);
     if(src){
       var img=document.createElement('img');
-      img.src=src;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
+      img.src=src;img.alt='';img.loading='eager';img.decoding='async';
       img.style.cssText='width:100%;height:100%;object-fit:cover;display:block';
+      img.onerror=function(){
+        if(!img.parentNode)return;
+        el.replaceChildren();
+        el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';
+      };
       el.appendChild(img);
     }else{
       el.textContent=String(name||'S').trim().charAt(0).toUpperCase()||'S';
@@ -132,8 +137,8 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{
     if(shownName)shownName.textContent=name;
     var sub=document.getElementById('pdSub');
     if(sub)sub.textContent=nip||key||'Nostr account';
-    setAvatar(document.getElementById('navAvatar'),name,p.picture,valid);
-    setAvatar(document.getElementById('pdAvLg'),name,p.picture,valid);
+    setAvatar(document.getElementById('navAvatar'),name,p.picture||p.image||p.avatar,valid);
+    setAvatar(document.getElementById('pdAvLg'),name,p.picture||p.image||p.avatar,valid);
     ['navNip05Badge','pdBadge'].forEach(function(id){
       var badge=document.getElementById(id);
       if(badge){badge.textContent='';badge.style.display='none';}
@@ -237,7 +242,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{
 const $=id=>document.getElementById(id),HEX=/^[0-9a-f]{64}$/i,APP='sifaka-connect4',PUBLIC_KIND=1,PRIVATE_KIND=30079,CHAT_KIND=1;
 const DEFAULT_RELAYS=['wss://nos.lol','wss://relay.damus.io','wss://relay.primal.net','wss://relay.nostr.band'];
 const SEARCH_RELAYS=['wss://relay.nostr.band','wss://search.nos.today'];
-let signerPk='',signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,game=null,local=true,localModeChosen=false,engineMode=false,engineLevel=2,moves=[],aiTimer=null,aiRequestId=0,flipped=false,busy=false,relayPending=false,selectedCol=-1,gameSockets=[],socketGeneration=0,reconnectTimer=null,publishChain=Promise.resolve(),chatSeen=new Set(),lobbyTab='open',lobbyBusy=false,inviteSource='all',inviteRequest=0,profileCache=new Map(),verifiedCache=new Map(),pendingShared=null,toastTimer=null;
+let signerPk='',signerProfile={},signerVerified=false,identitySyncVersion=0,signerBridgePromise=null,loginPopupObserver=null,game=null,local=true,localModeChosen=false,engineMode=false,engineLevel=2,moves=[],aiTimer=null,aiRequestId=0,flipped=false,busy=false,relayPending=false,selectedCol=-1,gameSockets=[],socketGeneration=0,reconnectTimer=null,publishChain=Promise.resolve(),chatSeen=new Set(),lobbyTab='open',lobbyBusy=false,inviteSource='all',inviteRequest=0,profileCache=new Map(),verifiedCache=new Map(),pendingShared=null,toastTimer=null;
 const other=c=>c==='r'?'y':'r',colorName=c=>c==='r'?'Red':'Yellow',shortPk=pk=>HEX.test(String(pk||''))?String(pk).slice(0,8)+'…'+String(pk).slice(-6):'Unknown player';
 function emptyBoard(){return Array(42).fill('')}
 function idx(r,c){return r*7+c}
@@ -256,13 +261,15 @@ function savedRecent(){try{const rows=JSON.parse(localStorage.getItem('sifaka_co
 function currentRelayList(extra){let candidates=(Array.isArray(extra)?extra:[extra]).concat([]);try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}if(signerPk){const saved=JSON.parse(localStorage.getItem('sifaka_checkers_relays_'+signerPk)||'[]');if(Array.isArray(saved))candidates=candidates.concat(saved)}}catch(_){}candidates=candidates.concat(DEFAULT_RELAYS);const out=[];candidates.forEach(u=>{u=String(u||'').trim();if(/^wss:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,6)}
 function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
+function profileValue(profile,keys){profile=profile&&typeof profile==="object"?profile:{};for(var i=0;i<keys.length;i++){var v=profile[keys[i]];if(v!==undefined&&v!==null&&String(v).trim()!=="")return v;}return "";}
+function mergeProfileData(primary,fallback,pk){primary=primary&&typeof primary==="object"?primary:{};fallback=fallback&&typeof fallback==="object"?fallback:{};var merged=Object.assign({},fallback,primary),choose=function(keys){return profileValue(primary,keys)||profileValue(fallback,keys)||"";};merged.pubkey=String(pk||primary.pubkey||fallback.pubkey||"").toLowerCase();merged.name=choose(["name"]);merged.display_name=choose(["display_name","displayName","name"]);merged.displayName=merged.display_name;merged.picture=choose(["picture","image","avatar"]);merged.image=choose(["image","picture","avatar"]);merged.banner=choose(["banner","cover"]);merged.nip05=choose(["nip05"]);["about","website","lud16","lud06"].forEach(function(k){merged[k]=choose([k]);});return merged;}
 function installSigner(frame,expected){
  try{
   const context=frame&&frame.__SIFAKA_CONTEXT,user=context&&typeof context.getUser==='function'?context.getUser():null;
   if(!user||!HEX.test(String(user.pubkey||''))||typeof context.signEvent!=='function')return '';
   const pk=String(user.pubkey).toLowerCase();if(expected&&expected!==pk)return '';
   if(signerPk!==pk){signerPk=pk;signerProfile={};signerVerified=false;}
-  if(user.profile&&typeof user.profile==='object')signerProfile=Object.assign({},signerProfile||{},user.profile);
+  if(user.profile&&typeof user.profile==='object')signerProfile=mergeProfileData(user.profile,signerProfile,pk);
   window.sifakaConnect4Signer={
    getPublicKey:async()=>{const u=context.getUser();return u&&String(u.pubkey||'').toLowerCase()===pk?pk:''},
    signEvent:async ev=>{const u=context.getUser();if(!u||String(u.pubkey||'').toLowerCase()!==pk)throw new Error('The active Sifaka account changed. Reconnect Connect Four.');const signed=await context.signEvent(Number(ev.kind),String(ev.content||''),Array.isArray(ev.tags)?ev.tags:[],{createdAt:Number(ev.created_at)||Math.floor(Date.now()/1000)});if(!signed||!signed.id||!signed.sig)throw new Error('Sifaka did not return a signed event.');return signed}
@@ -283,11 +290,7 @@ function sharedSifakaContext(){
  for(const ctx of contexts){if(ctx&&typeof ctx.getUser==='function'&&typeof ctx.signEvent==='function')return ctx}
  return null;
 }
-function installSharedSifakaSigner(){
- const ctx=sharedSifakaContext();
- if(!ctx)return '';
- return installSigner({__SIFAKA_CONTEXT:ctx},'');
-}
+function installSharedSifakaSigner(expected){const ctx=sharedSifakaContext();if(!ctx)return '';const key=HEX.test(String(expected||'').toLowerCase())?String(expected).toLowerCase():'';return installSigner({__SIFAKA_CONTEXT:ctx},key);}
 function hasSavedSifakaAuthSession(){
  try{
   const saved=JSON.parse(localStorage.getItem('nostrflux_auth_session_v1')||'null');
@@ -312,8 +315,14 @@ function handleGameLoginClick(){
  }
  showLogin();
 }
-function connectLocalSigner(){const sharedPk=installSharedSifakaSigner();if(sharedPk)return Promise.resolve(sharedPk);if(signerBridgePromise)return signerBridgePromise;signerBridgePromise=new Promise(resolve=>{const frame=$('signerBridge');if(!frame){resolve('');return}let ended=false;const done=v=>{if(ended)return;ended=true;signerBridgePromise=null;resolve(v||'')};try{if(!String(frame.src||'').includes('sifakaChessSignerBridge=1'))frame.src='/?sifakaChessSignerBridge=1'}catch(_){done('');return}const start=Date.now(),check=()=>{const livePk=installSharedSifakaSigner();if(livePk){done(livePk);return}const pk=installSigner(frame.contentWindow,'');if(pk){done(pk);return}if(Date.now()-start>8000){done('');return}setTimeout(check,120)};setTimeout(check,100)});return signerBridgePromise}
-async function getSignerKey(){const app=window.sifakaConnect4Signer;if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{const pk=String(await app.getPublicKey()||'').toLowerCase();if(HEX.test(pk))return pk}catch(_){}}if(hasSavedSifakaAuthSession()){try{const pk=await connectLocalSigner();if(HEX.test(pk))return pk}catch(_){}}const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){try{const pk=String(await ext.getPublicKey()||'').toLowerCase();if(HEX.test(pk))return pk}catch(_){}}try{const pk=await connectLocalSigner();if(HEX.test(pk))return pk}catch(_){}return ''}
+function connectLocalSigner(expected){
+ const expectedPk=HEX.test(String(expected||'').toLowerCase())?String(expected).toLowerCase():'';
+ const sharedPk=installSharedSifakaSigner(expectedPk);if(sharedPk)return Promise.resolve(sharedPk);
+ if(signerBridgePromise)return signerBridgePromise.then(function(v){const pk=String(v||'').toLowerCase();return !expectedPk||pk===expectedPk?pk:connectLocalSigner(expectedPk)});
+ signerBridgePromise=new Promise(function(resolve){const frame=$('signerBridge');if(!frame){resolve('');return;}let ended=false;const done=v=>{if(ended)return;ended=true;signerBridgePromise=null;resolve(v||'')};try{if(!String(frame.src||'').includes('sifakaChessSignerBridge=1'))frame.src='/?sifakaChessSignerBridge=1'}catch(_){done('');return;}const start=Date.now(),check=()=>{const live=installSharedSifakaSigner(expectedPk);if(live){done(live);return;}const pk=installSigner(frame.contentWindow,expectedPk);if(pk){done(pk);return;}if(Date.now()-start>=8000){done('');return;}setTimeout(check,120)};setTimeout(check,100)});
+ return signerBridgePromise.then(function(v){const pk=String(v||'').toLowerCase();return !expectedPk||pk===expectedPk?pk:connectLocalSigner(expectedPk)});
+}
+async function getSignerKey(expectedPk){const expected=String(expectedPk||'').toLowerCase();if(HEX.test(expected)){const pk=String(await connectLocalSigner(expected)||'').toLowerCase();return pk===expected?pk:'';}const app=window.sifakaConnect4Signer;if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{const pk=String(await app.getPublicKey()||'').toLowerCase();if(HEX.test(pk))return pk}catch(_){}}if(hasSavedSifakaAuthSession()){try{const pk=await connectLocalSigner();if(HEX.test(pk))return pk}catch(_){}}const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){try{const pk=String(await ext.getPublicKey()||'').toLowerCase();if(HEX.test(pk))return pk}catch(_){}}try{const pk=await connectLocalSigner();if(HEX.test(pk))return pk}catch(_){}return ''}
 async function signEvent(event){const pk=String(event.pubkey||await getSignerKey()||'').toLowerCase();if(!HEX.test(pk))throw new Error('Connect a Sifaka account or Nostr signer first.');const request=Object.assign({},event,{pubkey:pk});const app=window.sifakaConnect4Signer;if(app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function'){try{if(String(await app.getPublicKey()||'').toLowerCase()===pk){const ev=await app.signEvent(request);if(ev&&ev.id&&ev.sig&&String(ev.pubkey||'').toLowerCase()===pk)return ev}}catch(e){if(!window.nostr)throw e}}const ext=window.nostr;if(ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function'){if(String(await ext.getPublicKey()||'').toLowerCase()===pk){const ev=await ext.signEvent(request);if(ev&&ev.id&&ev.sig&&String(ev.pubkey||'').toLowerCase()===pk)return ev}}throw new Error('No signer could sign this event for the active account.')}
 async function signRelayAuth(url,challenge){const pk=await getSignerKey();if(!pk)throw new Error('No signer for relay authentication.');return signEvent({kind:22242,pubkey:pk,created_at:Math.floor(Date.now()/1000),tags:[['relay',url],['challenge',challenge]],content:''})}
 function sendEventToRelay(url,ev){return new Promise(resolve=>{let ws,done=false,timer,authAttempts=0,authEventId='',sent=false;const finish=(ok,reason)=>{if(done)return;done=true;clearTimeout(timer);try{if(ws&&ws.readyState===1)ws.close()}catch(_){}resolve({ok:!!ok,url:url,reason:String(reason||'')})};timer=setTimeout(()=>finish(false,'Relay connection or acknowledgement timed out.'),10500);try{ws=new WebSocket(url);ws.onopen=()=>{try{ws.send(JSON.stringify(['EVENT',ev]));sent=true}catch(e){finish(false,e.message)}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='AUTH'){if(authAttempts++){finish(false,'Relay requested authentication more than once.');return}signRelayAuth(url,String(d[1]||'')).then(auth=>{if(done)return;authEventId=auth.id;ws.send(JSON.stringify(['AUTH',auth]))}).catch(err=>finish(false,'Relay authentication failed: '+err.message));return}if(d[0]==='OK'&&authEventId&&d[1]===authEventId){authEventId='';if(d[2]){ws.send(JSON.stringify(['EVENT',ev]));sent=true}else finish(false,String(d[3]||'Relay rejected authentication.'));return}if(d[0]==='OK'&&d[1]===ev.id){if(d[2])finish(true,'');else if(/auth(?:entication)?-required|auth required|must authenticate/i.test(String(d[3]||''))){/* wait for AUTH challenge */}else finish(false,String(d[3]||'Relay rejected the event.'))}}catch(_){}};ws.onerror=()=>finish(false,'Relay WebSocket error.');ws.onclose=()=>{if(!done)finish(false,sent?'Relay closed before confirming the event.':'Relay connection closed.')}}catch(e){finish(false,e.message)}})}
@@ -334,26 +343,21 @@ async function verifyNip05(profile){
 }
 
 async function lookupProfile(pk,force=false){
- pk=String(pk||'').trim().toLowerCase();if(!HEX.test(pk))return null;
- const old=profileCache.get(pk);if(!force&&old&&Date.now()-old.at<120000){if(old.promise)return old.promise;return old.value}
- const promise=(async()=>{
-  const events=await queryRelays({kinds:[0],authors:[pk],limit:20},null,3200);
-  events.sort((a,b)=>Number(b.created_at||0)-Number(a.created_at||0));
-  const best=events.find(ev=>ev&&Number(ev.kind)===0&&String(ev.pubkey||'').toLowerCase()===pk&&typeof ev.content==='string')||null;
-  let p={pubkey:pk,name:shortPk(pk),display_name:'',displayName:'',picture:'',nip05:'',about:''};
-  if(best){try{const d=JSON.parse(best.content||'{}');if(d&&typeof d==='object'&&!Array.isArray(d)){p=Object.assign(p,d,{pubkey:pk});p.display_name=String(d.display_name||d.displayName||'');p.displayName=String(d.displayName||d.display_name||'');p.name=String(d.name||'');p.picture=String(d.picture||'');p.nip05=String(d.nip05||'');p.about=String(d.about||'')}}catch(_){p.name=shortPk(pk);p.display_name='';p.displayName='';p.picture='';p.nip05='';p.about=''}}
-  const verified=p.nip05?await verifyNip05(Object.assign({},p,{pubkey:pk})):false;
-  return {pubkey:pk,profile:p,event:best,verified}
- })();
- profileCache.set(pk,{at:Date.now(),promise});
- try{const value=await promise;profileCache.set(pk,{at:Date.now(),value});return value}catch(e){if(profileCache.get(pk)&&profileCache.get(pk).promise===promise)profileCache.delete(pk);throw e}
+ pk=String(pk||'').trim().toLowerCase();if(!HEX.test(pk))return null;const old=profileCache.get(pk);if(!force&&old&&Date.now()-old.at<120000){if(old.promise)return old.promise;return old.value}
+ const promise=(async()=>{const events=await queryRelays({kinds:[0],authors:[pk],limit:12},null,1400);events.sort((a,b)=>Number(b.created_at||0)-Number(a.created_at||0));const best=events.find(ev=>ev&&Number(ev.kind)===0&&String(ev.pubkey||'').toLowerCase()===pk&&typeof ev.content==='string')||null;
+ let profile={pubkey:pk,name:shortPk(pk),display_name:'',displayName:'',picture:'',image:'',avatar:'',nip05:'',about:''};if(best){try{const d=JSON.parse(best.content||'{}');if(d&&typeof d==='object'&&!Array.isArray(d))profile=mergeProfileData(d,profile,pk)}catch(_){}}
+ const value={pubkey:pk,profile:profile,event:best,verified:false};profileCache.set(pk,{at:Date.now(),value});
+ if(profile.nip05)verifyNip05(Object.assign({},profile,{pubkey:pk})).then(function(valid){const row=profileCache.get(pk);if(!row||row.value!==value)return;value.verified=!!valid;if(signerPk===pk){signerProfile=mergeProfileData(profile,signerProfile,pk);signerVerified=!!valid;updateIdentity()}if(game&&(String(game.red||'').toLowerCase()===pk||String(game.yellow||'').toLowerCase()===pk))updatePlayers()}).catch(function(){});
+ return value})();
+ profileCache.set(pk,{at:Date.now(),promise:promise});try{const value=await promise;profileCache.set(pk,{at:Date.now(),value});return value}catch(e){if(profileCache.get(pk)&&profileCache.get(pk).promise===promise)profileCache.delete(pk);throw e}
 }
+
 async function setPlayer(which,pk,label){
  const avatar=$(which+'Avatar'),name=$(which+'Name'),identity=$(which+'Identity');avatar.classList.remove('verified');
  if(!pk){avatar.removeAttribute('src');avatar.textContent=which==='red'?'🔴':'🟡';name.textContent=label||colorName(which==='red'?'r':'y');identity.textContent=label==='Sifaka AI'?(['','Novice','Adept','Master'][engineLevel]+' difficulty'):label==='Waiting for opponent'?'Waiting for opponent':'Local player';return}
  const normalized=String(pk).toLowerCase(),result=await lookupProfile(normalized),p=result&&result.profile||{pubkey:normalized},nm=String(p.display_name||p.displayName||p.name||shortPk(normalized)).trim()||shortPk(normalized),verified=!!(result&&result.verified);
  name.textContent=nm;identity.textContent=verified&&p.nip05?String(p.nip05):p.nip05?'Unverified: '+String(p.nip05):shortPk(normalized);avatar.removeAttribute('src');avatar.textContent=which==='red'?'🔴':'🟡';
- if(p.picture&&/^https?:\/\//i.test(String(p.picture))){const img=document.createElement('img');img.src=String(p.picture);img.alt='';img.referrerPolicy='no-referrer';img.loading='lazy';img.addEventListener('error',()=>{avatar.removeAttribute('src');avatar.textContent=String(nm[0]||'S').toUpperCase()},{once:true});avatar.replaceChildren(img)}
+ if((p.picture||p.image||p.avatar)&&/^https?:\/\//i.test(String(p.picture||p.image||p.avatar))){const img=document.createElement('img');img.src=String(p.picture||p.image||p.avatar);img.alt='';img.loading='eager';img.decoding='async';img.addEventListener('error',()=>{avatar.removeAttribute('src');avatar.textContent=String(nm[0]||'S').toUpperCase()},{once:true});avatar.replaceChildren(img)}
  avatar.classList.toggle('verified',verified&&!!p.nip05)
 }
 
@@ -485,34 +489,17 @@ async function refreshIncomingInvites(){const root=$('incomingInvites');root.rep
 function openInviteSearch(){if(!game){toast('Create a game first, then invite another player.');openOverlay('setupOverlay');return}if(game.yellow){toast('This match already has an opponent.');return}$('inviteSearchInput').value='';$('inviteSearchStatus').textContent=signerPk?'Search by display name, npub, public key, NIP-05, or follows.':'Connect Nostr before searching profiles.';$('inviteResults').replaceChildren();openOverlay('inviteOverlay')}
 async function receiveChat(ev){if(!game||ev.kind!==CHAT_KIND||!ev.id||chatSeen.has(ev.id)||!isTag(ev,'t',APP+'-chat')||!isTag(ev,'d',game.id))return;const author=String(ev.pubkey||'').toLowerCase();if(author!==game.red&&author!==game.yellow)return;let message=String(ev.content||'');if(game.private){const data=await decryptPayload(message,game.secret,game.id);if(!data||data.type!=='chat'||typeof data.message!=='string')return;message=data.message}message=message.trim().slice(0,800);if(!message)return;chatSeen.add(ev.id);if(author===signerPk)return;const p=await lookupProfile(author);addChat(String(p&&p.profile&&(p.profile.display_name||p.profile.name)||shortPk(author)),message)}
 async function sendChat(){const input=$('chatInput'),message=input.value.trim();if(!message)return;if(local){addChat('Local player',message);input.value='';return}if(!game||!game.yellow){toast('Wait for an opponent to join before using game chat.');return}const pk=await getSignerKey();if(!pk||pk!==game.myPk||(pk!==game.red&&pk!==game.yellow))throw new Error('Reconnect the Nostr account that joined this match.');let content=message;if(game.private)content=await encryptPayload({app:APP,version:1,id:game.id,type:'chat',message:message},game.secret,game.id);const ev=await signEvent({kind:CHAT_KIND,pubkey:pk,created_at:Math.floor(Date.now()/1000),tags:[['t',APP+'-chat'],['d',game.id],['p',pk===game.red?game.yellow:game.red]],content:content});const sent=await publishEvent(ev,game.relay);if(!sent.ok)throw new Error('No relay confirmed the chat message.');chatSeen.add(ev.id);addChat('You',message);input.value=''}
-async function connect(silent=false){
- const previousPk=signerPk;
- const pk=await getSignerKey();
- if(!pk){if(silent)return false;openLogin();toast('Sign in to Sifaka.Live or connect a Nostr signer.');return false}
- const accountProfile=signerPk===pk?Object.assign({},signerProfile||{}):(previousPk===pk?Object.assign({},signerProfile||{}):{});
- const wasVerified=signerPk===pk&&signerVerified;
- signerPk=pk;
- const result=await lookupProfile(pk);
- signerProfile=Object.assign({},result&&result.profile||{},accountProfile);
- signerVerified=!!(result&&result.verified)||!!wasVerified;
- $('connectBtn').textContent='Nostr connected · '+(signerProfile.display_name||signerProfile.name||shortPk(pk));$('connectBtn').title=signerProfile.nip05||pk;
- await updateIdentity();await updatePlayers();await refreshIncomingInvites();if(!silent)toast('Connected to Nostr. Game updates will be signed with this identity.');
- if(pendingShared){
-  const p=pendingShared;pendingShared=null;
-  try{const g=await fetchGame(p.id,p.relay,p.secret);if(!g)throw new Error('The shared game could not be found on the selected relays.');await joinOnline(g,p.secret)}
-  catch(e){toast('Could not resume the Connect Four invitation: '+String(e&&e.message||e))}
- }
- return true;
+async function connect(silent=false,expectedPk=''){
+ const version=++identitySyncVersion,expected=String(expectedPk||'').toLowerCase(),previousPk=signerPk,pk=await getSignerKey(expected);
+ if(version!==identitySyncVersion)return false;if(!pk||(HEX.test(expected)&&pk!==expected)){if(silent)return false;showLogin();toast('Sign in to Sifaka.Live or connect a Nostr signer.');return false}
+ const prior=signerPk===pk?Object.assign({},signerProfile||{}):(previousPk===pk?Object.assign({},signerProfile||{}):{}),wasVerified=signerPk===pk&&signerVerified;signerPk=pk;
+ const result=await lookupProfile(pk);if(version!==identitySyncVersion||signerPk!==pk)return false;signerProfile=mergeProfileData(result&&result.profile||{},prior,pk);signerVerified=!!(result&&result.verified)||!!wasVerified;
+ $('connectBtn').textContent='Nostr connected · '+(signerProfile.display_name||signerProfile.name||shortPk(pk));$('connectBtn').title=signerProfile.nip05||pk;await updateIdentity();if(version!==identitySyncVersion||signerPk!==pk)return false;
+ await updatePlayers();await refreshIncomingInvites();if(!silent)toast('Connected to Nostr. Game updates will be signed with this identity.');
+ if(pendingShared){const p=pendingShared;pendingShared=null;try{const g=await fetchGame(p.id,p.relay,p.secret);if(!g)throw new Error('The shared game could not be found on the selected relays.');await joinOnline(g,p.secret)}catch(e){toast('Could not resume the Connect Four invitation: '+String(e&&e.message||e))}}return true;
 }
-async function updateIdentity(){if(signerPk){const pk=signerPk,accountProfile=Object.assign({},signerProfile||{}),wasVerified=!!signerVerified;const result=await lookupProfile(pk);if(signerPk!==pk)return;signerProfile=Object.assign({},result&&result.profile||{},accountProfile);signerVerified=!!(result&&result.verified)||wasVerified;$('connectBtn').textContent='Nostr connected · '+(signerProfile.display_name||signerProfile.name||shortPk(pk))}else $('connectBtn').textContent='Login with Nostr';if(window.sifakaGameHeaderSyncIdentity)window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified)}
-window.sifakaGameRestoreSession=function(expectedPk){
- const expected=String(expectedPk||'').toLowerCase();
- return Promise.resolve(connectLocalSigner()).then(function(pk){
-  pk=String(pk||'').toLowerCase();
-  if(!expected||pk!==expected)return false;
-  return connect(true);
- }).catch(function(){return false;});
-};
+async function updateIdentity(){if(signerPk){const pk=signerPk,prior=Object.assign({},signerProfile||{}),verified=!!signerVerified,result=await lookupProfile(pk);if(signerPk!==pk)return;signerProfile=mergeProfileData(result&&result.profile||{},prior,pk);signerVerified=!!(result&&result.verified)||verified;$('connectBtn').textContent='Nostr connected · '+(signerProfile.display_name||signerProfile.name||shortPk(pk))}else $('connectBtn').textContent='Login with Nostr';if(window.sifakaGameHeaderSyncIdentity)window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified)}
+window.sifakaGameRestoreSession=function(expectedPk){const expected=String(expectedPk||'').toLowerCase();if(!HEX.test(expected))return Promise.resolve(false);const version=++identitySyncVersion;return connectLocalSigner(expected).then(function(pk){pk=String(pk||'').toLowerCase();if(version!==identitySyncVersion||pk!==expected)return false;return connect(true,expected)}).catch(function(){return false})};
 function showLogin(){
  const layer=$('loginLayer'),frame=$('loginFrame');
  if(!layer||!frame||!layer.hidden&&layer.classList.contains('open'))return;
