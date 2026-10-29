@@ -432,7 +432,16 @@ function installSharedSifakaSigner(){
 function handleGameLoginClick(){
  const ctx=sharedSifakaContext();
  let user=null;try{user=ctx&&ctx.getUser()}catch(_){}
- if(user&&user.pubkey){connect().catch(reportGameConnectError);return;}
+ if(ctx){
+  if(user&&user.pubkey){
+   installSharedSifakaSigner();
+   connect().catch(reportGameConnectError);
+  }else{
+   // Do not try a potentially stale bridge signer when the owning Sifaka session is signed out.
+   openLogin();
+  }
+  return;
+ }
  const app=window.sifakaCheckersMainSigner;
  const ext=window.nostr;
  if((app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function')||
