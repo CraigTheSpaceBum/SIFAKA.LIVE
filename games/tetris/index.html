@@ -447,7 +447,7 @@ button{font:inherit}
 var $=function(id){return document.getElementById(id);};
 var HEX=/^[0-9a-f]{64}$/i, SIG=/^[0-9a-f]{128}$/i, SCORE_TAG="sifaka-tetris-score";
 var DEFAULT_RELAYS=["wss://nos.lol","wss://relay.damus.io","wss://relay.primal.net","wss://relay.nostr.band"];
-var LOCAL_KEY="sifaka_tetris_best_v1",PENDING_KEY="sifaka_tetris_pending_v1";
+var LOCAL_KEY="sifaka_tetris_best_v1",PENDING_KEY="sifaka_tetris_pending_v1",SCORE_CACHE_KEY="sifaka_tetris_verified_score_events_v1";
 var signerPk="",signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,loginPopupToken=0,postAfterLogin=false,toastTimer=null,identitySyncVersion=0;
 var profileCache=new Map(),profileLoadPromise=null,nip05Cache=new Map(),verifiedEventCache=new Map(),nostrToolsPromise=null;
 var board=[],piece=null,nextQueue=[],holdType=null,canHold=true,bag=[],score=0,lines=0,level=1,combo=-1,backToBack=false,lockElapsed=0,lockResets=0,dropCounter=0,lastTime=0,raf=0,started=false,paused=false,gameOver=false,localBest=loadLocalBest(),pendingScore=loadPendingScore(),leaderboardBusy=false,leaderboardRefreshRequested=false,publishedScoreEvents=new Map(),leaderboardSnapshot=[],soundEnabled=loadSoundSetting(),audioContext=null,flashTimer=0;
@@ -511,17 +511,37 @@ async function verifyNostrEvent(ev){if(!ev||typeof ev!=="object"||!HEX.test(Stri
 function tagsNamed(ev,name){return Array.isArray(ev.tags)?ev.tags.filter(function(t){return Array.isArray(t)&&t[0]===name;}):[];}
 function firstTag(ev,name){var t=tagsNamed(ev,name)[0];return t&&t.length>1?String(t[1]):"";}
 function parseScoreEvent(ev){if(!ev||ev.kind!==1||!safeHex(ev.pubkey)||firstTag(ev,"t")!==SCORE_TAG||firstTag(ev,"game")!=="tetris"||firstTag(ev,"alt")!=="Sifaka Tetris high score"||!Number.isSafeInteger(Number(ev.created_at))||Number(ev.created_at)<0||Number(ev.created_at)>Math.floor(Date.now()/1000)+600)return null;var scoreRaw=firstTag(ev,"score"),linesRaw=firstTag(ev,"lines"),levelRaw=firstTag(ev,"level");if(!/^(0|[1-9][0-9]*)$/.test(scoreRaw)||!/^(0|[1-9][0-9]*)$/.test(linesRaw)||!/^[1-9][0-9]*$/.test(levelRaw))return null;var sc=Number(scoreRaw),ln=Number(linesRaw),lv=Number(levelRaw);if(!Number.isSafeInteger(sc)||sc<0||sc>100000000||!Number.isSafeInteger(ln)||ln<0||ln>1000000||!Number.isSafeInteger(lv)||lv<1||lv>100000)return null;var content=String(ev.content||"");if(content.indexOf("Sifaka Tetris high score:")!==0||content.indexOf(String(sc)+" points")<0||content.indexOf("Level "+lv)<0||content.indexOf(ln+" lines")<0)return null;return{event:ev,pubkey:String(ev.pubkey).toLowerCase(),score:sc,lines:ln,level:lv,created_at:Number(ev.created_at),id:String(ev.id)};}
+function loadCachedScoreEvents(){
+ try{
+  var cached=JSON.parse(localStorage.getItem(SCORE_CACHE_KEY)||"[]");
+  return Array.isArray(cached)?cached.filter(function(ev){return ev&&typeof ev==="object"&&HEX.test(String(ev.id||""))&&ev.kind===1&&Array.isArray(ev.tags)&&typeof ev.content==="string";}).slice(0,400):[];
+ }catch(_){return [];}
+}
+function saveCachedScoreEvents(rows){
+ try{
+  var best=new Map();
+  rows.forEach(function(row){var old=best.get(row.pubkey);if(!old||row.score>old.score||(row.score===old.score&&row.created_at<old.created_at))best.set(row.pubkey,row);});
+  var cached=Array.from(best.values()).sort(function(a,b){return b.score-a.score||a.created_at-b.created_at;}).slice(0,300).map(function(row){return row.event;});
+  localStorage.setItem(SCORE_CACHE_KEY,JSON.stringify(cached));
+ }catch(err){console.warn("Tetris could not save its verified score cache:",err);}
+}
 async function loadLeaderboard(){
  if(leaderboardBusy){leaderboardRefreshRequested=true;return;}
  leaderboardBusy=true;leaderboardRefreshRequested=false;
  $("refreshBoardBtn").disabled=true;
  $("boardStatus").textContent="Searching Nostr relays and verifying scores…";
- $("leaderboardList").innerHTML='<div class="score-empty"><strong>Verifying signed scores…</strong>Invalid events are excluded.</div>';
+ if(!leaderboardSnapshot.length)$("leaderboardList").innerHTML='<div class="score-empty"><strong>Verifying signed scores…</strong>Invalid events are excluded.</div>';
  try{
-  // Start relay retrieval while the signature-verification library initializes.
-  var scoreQuery=queryRelays({kinds:[1],"#t":[SCORE_TAG],limit:100},null,1100);
+  // Query long enough for a normal relay handshake/response. The old 1.1-second
+  // cutoff often expired before slow relays returned any high-score events.
+  var scoreFilter={kinds:[1],"#t":[SCORE_TAG],limit:300};
+  var scoreQuery=queryRelays(scoreFilter,null,3800);
   var results=await Promise.all([getNostrTools(),scoreQuery]);
   var events=results[1];
+  // Retry once with a longer window when every relay timed out or returned empty.
+  if(!events.length)events=await queryRelays(scoreFilter,null,5200);
+  var cachedEvents=loadCachedScoreEvents();
+  cachedEvents.forEach(function(ev){if(!events.some(function(found){return String(found.id)===String(ev.id);}))events.push(ev);});
   publishedScoreEvents.forEach(function(ev,id){if(!events.some(function(found){return String(found.id)===id;}))events.push(ev);});
   var valid=[];
   for(var i=0;i<events.length;i++){
@@ -532,10 +552,18 @@ async function loadLeaderboard(){
   }
   // Preserve deletion checks, but cap this secondary relay wait so a slow relay
   // cannot keep an otherwise usable leaderboard blank for several more seconds.
+  var hadVerifiedCandidates=valid.length>0;
+  // If this refresh returned no valid score events at all, do not discard a
+  // leaderboard that was already signature-verified on this page.
+  if(!hadVerifiedCandidates&&leaderboardSnapshot.length){
+   $("boardStatus").textContent="Relays did not return verifiable scores; showing the last verified results. Try refreshing again shortly.";
+   renderLeaderboard();
+   return;
+  }
   var deleteIds=valid.map(function(e){return e.id;});
   var deleted=new Set();
   if(deleteIds.length){
-   var deletions=await queryRelays({kinds:[5],"#e":deleteIds,limit:200},null,700);
+   var deletions=await queryRelays({kinds:[5],"#e":deleteIds,limit:200},null,1800);
    for(var j=0;j<deletions.length;j++){
     var del=deletions[j];
     if(!(await verifyNostrEvent(del)))continue;
@@ -547,6 +575,9 @@ async function loadLeaderboard(){
    }
   }
   valid=valid.filter(function(e){return !deleted.has(e.id);});
+  // Only signature-verified, undeleted events enter persistent cache. Cached events
+  // are signature-checked again every load, and deletion results purge removed scores.
+  saveCachedScoreEvents(valid);
   var bestByAuthor=new Map();
   valid.forEach(function(row){
    var prev=bestByAuthor.get(row.pubkey);
