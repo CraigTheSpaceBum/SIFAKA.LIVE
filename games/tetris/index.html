@@ -79,6 +79,10 @@ button{font:inherit}
 .mobile-controls .btn{min-height:44px;padding:7px 3px;font-size:11px;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .game-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);color:var(--mut);font-size:11px}
 .game-footer strong{color:var(--gold2);font-weight:600}
+.game-footer-actions{margin-left:auto;gap:7px;align-items:center}
+.game-footer-actions .btn{min-height:36px;padding:8px 11px;font-size:11px}
+@media(max-width:760px){.game-footer{align-items:flex-start}.game-footer-actions{width:100%;margin-left:0;justify-content:flex-start}.game-footer-actions .btn{flex:1;min-width:0}}
+@media(max-width:470px){.game-footer-actions{gap:5px}.game-footer-actions .btn{padding:8px 6px;font-size:10px}}
 .side-panel{padding:16px;margin-bottom:14px}
 .side-panel h2{margin:0 0 6px;font-size:15px;letter-spacing:-.01em}
 .side-panel p{margin:0;color:var(--mut);font-size:12px;line-height:1.55}
@@ -306,10 +310,7 @@ button{font:inherit}
   <button class="game-nav-popup-close" id="gameNavPopupClose" type="button" aria-label="Close Go Live window">×</button>
 </div>
 <main class="page">
-  <section class="headline">
-    <div><div class="eyebrow">SIFAKA GAMES / 04</div><h1>TETRIS<span style="color:var(--gold)">.</span></h1><p>Classic falling blocks. Play without an account, save your best score on this device, and sign a high score to publish it to Nostr. Invalid or deleted score events are excluded from the public board.</p></div>
-    <div class="headline-actions"><button class="btn gold" id="startBtn" type="button">▶ Start game</button><button class="btn" id="pauseBtn" type="button" disabled>Ⅱ Pause</button><button class="btn" id="restartBtn" type="button">↻ New game</button></div>
-  </section>
+  
   <div class="layout">
     <section class="panel" aria-label="Tetris game">
       <div class="panel-head"><strong>PLAYFIELD</strong><span class="subtle" id="gameState" aria-live="polite">Ready when you are</span></div>
@@ -344,7 +345,14 @@ button{font:inherit}
       <div class="mobile-controls" aria-label="Touch controls">
         <button class="btn" id="leftBtn" type="button">← Move</button><button class="btn" id="downBtn" type="button">↓ Drop</button><button class="btn" id="rightBtn" type="button">Move →</button><button class="btn" id="mobileRotateBtn" type="button">⟳ Rotate</button><button class="btn" id="mobileHardDropBtn" type="button">⬇ Drop</button>
       </div>
-      <div class="game-footer"><span>Playfield: <strong>10 × 20</strong></span><span>Personal best is saved locally</span></div>
+      <div class="game-footer">
+        <span>Playfield: <strong>10 × 20</strong></span>
+        <div class="headline-actions game-footer-actions" aria-label="Game controls">
+          <button class="btn gold" id="startBtn" type="button">▶ Start game</button>
+          <button class="btn" id="pauseBtn" type="button" disabled>Ⅱ Pause</button>
+          <button class="btn" id="restartBtn" type="button">↻ New game</button>
+        </div>
+      </div>
     </section>
     <aside class="right-rail">
       <section class="panel stats-panel" aria-label="Tetris run statistics">
@@ -426,7 +434,32 @@ function renderLeaderboard(){var list=$("leaderboardList");list.textContent="";i
 function updatePostControls(preserveStatus){var btn=$("postScoreBtn"),status=$("postStatus"),posting=btn.dataset.posting==="1",posted=!!(pendingScore&&pendingScore.postedEventId);btn.disabled=!gameOver||!pendingScore||posting||posted;if(posted)btn.textContent="✓ Score posted";else btn.textContent="♧ Post score to Nostr";if(preserveStatus)return;if(posted){status.className="post-status good";status.textContent="This run has already been published to Nostr. You can start a new game."; }else if(gameOver&&pendingScore){status.className="post-status";status.textContent="Post your final score to Nostr, or start a new game. Signing in is only required if you choose to post."; }else{status.className="post-status";status.textContent="Score submission becomes available after game over.";}}
 function restorePendingScoreState(){if(!pendingScore)return;score=pendingScore.score;lines=pendingScore.lines;level=pendingScore.level;gameOver=true;started=false;paused=false;combo=-1;localBest=Math.max(localBest,score);saveLocalBest();$("startOverlay").hidden=true;$("pauseOverlay").hidden=true;$("overOverlay").hidden=false;$("gameState").textContent="Game over";$("startBtn").textContent="▶ Play again";$("pauseBtn").disabled=true;$("pauseBtn").textContent="Ⅱ Pause";$("overSummary").textContent="Final score: "+numberFmt(score)+" points · "+lines+" lines · Level "+level;updatePostControls();}
 function updateIdentity(){if(signerPk){var p=signerProfile||{};$("identityLabel").textContent=p.display_name||p.displayName||p.name||shortPk(signerPk);$("connectBtn").textContent="Nostr connected";}else{$("identityLabel").textContent="Not connected";$("connectBtn").textContent="Login with Nostr";}if(window.sifakaGameHeaderSyncIdentity)window.sifakaGameHeaderSyncIdentity(signerPk,signerProfile,signerVerified);}
-function installSigner(frame,expected){try{var context=frame&&frame.__SIFAKA_CONTEXT,user=context&&typeof context.getUser==="function"?context.getUser():null;if(!user||!safeHex(user.pubkey)||typeof context.signEvent!=="function")return"";var pk=String(user.pubkey).toLowerCase();if(expected&&expected!==pk)return"";window.sifakaTetrisSigner={getPublicKey:async function(){var u=context.getUser();return u&&String(u.pubkey||"").toLowerCase()===pk?pk:"";},signEvent:async function(ev){var u=context.getUser();if(!u||String(u.pubkey||"").toLowerCase()!==pk)throw new Error("The active Sifaka account changed. Reconnect Tetris.");var signed=await context.signEvent(Number(ev.kind),String(ev.content||""),Array.isArray(ev.tags)?ev.tags:[],{createdAt:Number(ev.created_at)||Math.floor(Date.now()/1000)});if(!signed||!signed.id||!signed.sig)throw new Error("Sifaka did not return a signed event.");return signed;}};return pk;}catch(_){return"";}}
+function installSigner(frame,expected){
+ try{
+  var context=frame&&frame.__SIFAKA_CONTEXT,user=context&&typeof context.getUser==="function"?context.getUser():null;
+  if(!user||!safeHex(user.pubkey)||typeof context.signEvent!=="function")return"";
+  var pk=String(user.pubkey).toLowerCase();
+  if(expected&&expected!==pk)return"";
+  if(user.profile&&typeof user.profile==="object"&&!signerPk){
+   signerPk=pk;signerProfile=user.profile;signerVerified=false;updateIdentity();
+  }
+  window.sifakaTetrisSigner={
+   getPublicKey:async function(){var u=context.getUser();return u&&String(u.pubkey||"").toLowerCase()===pk?pk:"";},
+   signEvent:async function(ev){
+    var u=context.getUser();
+    if(!u||String(u.pubkey||"").toLowerCase()!==pk)throw new Error("The active Sifaka account changed. Reconnect Tetris.");
+    var request={pubkey:pk,kind:Number(ev.kind),created_at:Number(ev.created_at)||Math.floor(Date.now()/1000),tags:Array.isArray(ev.tags)?ev.tags:[],content:String(ev.content||"")};
+    var response=await context.signEvent(request.kind,request.content,request.tags,{createdAt:request.created_at});
+    if(!response||!response.id||!response.sig)throw new Error("Sifaka did not return a signed event.");
+    // Some remote NIP-46 signers return only id/sig (and optionally pubkey).
+    // Fill absent fields from the exact request; any returned fields still win
+    // and must pass the normal event hash/signature verification downstream.
+    return Object.assign({},request,response);
+   }
+  };
+  return pk;
+ }catch(_){return"";}
+}
 
 function reportGameConnectError(error){
  const message=String(error&&error.message||error||'Could not connect to Nostr.');
@@ -550,7 +583,38 @@ function openLogin(){
 function closeLogin(signedIn){if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}var layer=$("loginLayer");layer.classList.remove("open");layer.hidden=true;try{$("loginFrame").onload=null;$("loginFrame").src="about:blank";}catch(_){}if(signedIn){connect().catch(function(err){toast(err.message);});}else{postAfterLogin=false;}}
 async function lookupOwnProfile(pk){if(!safeHex(pk))return null;await loadProfiles([pk]);var item=profileCache.get(pk);return item&&item.profile||null;}
 async function connect(){var pk=await getSignerKey();if(!safeHex(pk)){openLogin();toast("Sign in or connect a Nostr signer to publish your score. Playing does not require an account.");return false;}signerPk=pk;var profile=await lookupOwnProfile(pk);signerProfile=profile||{};signerVerified=false;updateIdentity();if(signerProfile.nip05){verifyNip05(signerProfile).then(function(valid){signerVerified=!!valid;updateIdentity();}).catch(function(){signerVerified=false;updateIdentity();});}toast("Connected as "+(signerProfile.display_name||signerProfile.name||shortPk(pk))+".");if(postAfterLogin){postAfterLogin=false;if(pendingScore)postPendingScore();}return true;}
-async function postPendingScore(){if(!gameOver||!pendingScore){toast("Finish a run before posting a score.");return;}if(pendingScore.postedEventId){toast("This run has already been posted to Nostr.");return;}if($("postScoreBtn").dataset.posting==="1")return;var pk=await getSignerKey();if(!safeHex(pk)){postAfterLogin=true;openLogin();toast("Sign in to post your score. Your score will not be published until you complete sign-in.");return;}signerPk=pk;$("postScoreBtn").dataset.posting="1";$("postScoreBtn").disabled=true;$("postStatus").className="post-status";$("postStatus").textContent="Preparing and signing your score…";try{await getNostrTools();var now=Math.floor(Date.now()/1000),run=pendingScore;var content="Sifaka Tetris high score: "+String(run.score)+" points · Level "+run.level+" · "+run.lines+" lines.";var tags=[["t",SCORE_TAG],["game","tetris"],["score",String(run.score)],["lines",String(run.lines)],["level",String(run.level)],["alt","Sifaka Tetris high score"]];var signed=await signEvent({kind:1,created_at:now,tags:tags,content:content,pubkey:pk});if(!signed||!safeHex(signed.pubkey)||String(signed.pubkey).toLowerCase()!==pk||signed.kind!==1||signed.content!==content||JSON.stringify(signed.tags)!==JSON.stringify(tags)||Number(signed.created_at)!==now||!HEX.test(String(signed.id||""))||!SIG.test(String(signed.sig||""))||!(await verifyNostrEvent(signed)))throw new Error("The signer returned an event that did not match the score or failed signature verification.");var sent=await publishEvent(signed);if(!sent.ok)throw new Error(sent.error||"No Nostr relay confirmed your score.");publishedScoreEvents.set(String(signed.id),signed);pendingScore.postedEventId=signed.id;pendingScore.postedAt=now;pendingScore.postedRelay=sent.relay;persistPendingScore();$("postStatus").className="post-status good";$("postStatus").textContent="Score published and accepted by "+sent.relay+" at "+formatEventTime(signed.created_at)+". The public board will update as relays propagate it.";toast("Tetris score posted to Nostr.");loadLeaderboard();}catch(err){$("postStatus").className="post-status bad";$("postStatus").textContent="Could not post score: "+String(err&&err.message||"check the signer and relay connection.");toast("Score not posted. "+String(err&&err.message||"Check your connection."));}finally{$("postScoreBtn").dataset.posting="";updatePostControls(true);}}
+async function postPendingScore(){
+ if(!gameOver||!pendingScore){toast("Finish a run before posting a score.");return;}
+ if(pendingScore.postedEventId){toast("This run has already been posted to Nostr.");return;}
+ if($("postScoreBtn").dataset.posting==="1")return;
+ var pk=await getSignerKey();
+ if(!safeHex(pk)){postAfterLogin=true;openLogin();toast("Sign in to post your score. Your score will not be published until you complete sign-in.");return;}
+ signerPk=pk;$("postScoreBtn").dataset.posting="1";$("postScoreBtn").disabled=true;
+ $("postStatus").className="post-status";$("postStatus").textContent="Preparing and signing your score…";
+ try{
+  await getNostrTools();
+  var now=Math.floor(Date.now()/1000),run=pendingScore;
+  var content="Sifaka Tetris high score: "+String(run.score)+" points · Level "+run.level+" · "+run.lines+" lines.";
+  var tags=[["t",SCORE_TAG],["game","tetris"],["score",String(run.score)],["lines",String(run.lines)],["level",String(run.level)],["alt","Sifaka Tetris high score"]];
+  var signed=await signEvent({kind:1,created_at:now,tags:tags,content:content,pubkey:pk});
+  var parsed=signed&&parseScoreEvent(signed);
+  var matchesRun=!!(parsed&&parsed.pubkey===pk&&parsed.score===Number(run.score)&&parsed.lines===Number(run.lines)&&parsed.level===Number(run.level)&&signed.content===content);
+  if(!signed||!safeHex(signed.pubkey)||String(signed.pubkey).toLowerCase()!==pk||signed.kind!==1||!matchesRun||!HEX.test(String(signed.id||""))||!SIG.test(String(signed.sig||""))||!(await verifyNostrEvent(signed))){
+   throw new Error("The signer returned an event that did not match this score or failed signature verification. Reconnect the same Nostr account and retry.");
+  }
+  var sent=await publishEvent(signed);
+  if(!sent.ok)throw new Error(sent.error||"No Nostr relay confirmed your score.");
+  publishedScoreEvents.set(String(signed.id),signed);
+  pendingScore.postedEventId=signed.id;pendingScore.postedAt=Number(signed.created_at)||now;pendingScore.postedRelay=sent.relay;persistPendingScore();
+  $("postStatus").className="post-status good";
+  $("postStatus").textContent="Score published and accepted by "+sent.relay+" at "+formatEventTime(signed.created_at)+". The public board will update as relays propagate it.";
+  toast("Tetris score posted to Nostr.");loadLeaderboard();
+ }catch(err){
+  $("postStatus").className="post-status bad";
+  $("postStatus").textContent="Could not post score: "+String(err&&err.message||"check the signer and relay connection.");
+  toast("Score not posted. "+String(err&&err.message||"Check your connection."));
+ }finally{$("postScoreBtn").dataset.posting="";updatePostControls(true);}
+}
 async function sendEventToRelay(url,ev){return new Promise(function(resolve){var ws,done=false,timer=null;function finish(ok,reason){if(done)return;done=true;if(timer)clearTimeout(timer);try{if(ws)ws.close();}catch(_){}resolve({ok:!!ok,relay:url,error:reason||""});}timer=setTimeout(function(){finish(false,"Timed out waiting for relay confirmation.");},6500);try{ws=new WebSocket(url);ws.onopen=function(){try{ws.send(JSON.stringify(["EVENT",ev]));}catch(err){finish(false,String(err&&err.message||err));}};ws.onmessage=function(msg){try{var d=JSON.parse(msg.data);if(d[0]==="OK"&&d[1]===ev.id){if(d[2])finish(true,"");else finish(false,String(d[3]||"Relay rejected the event."));}}catch(_){} };ws.onerror=function(){finish(false,"WebSocket error.");};ws.onclose=function(){if(!done)finish(false,"Relay closed before confirming the event.");};}catch(err){finish(false,String(err&&err.message||err));}});}
 async function publishEvent(ev){var relays=currentRelayList();if(!relays.length)return{ok:false,error:"No Nostr relay URLs are configured."};var results=await Promise.all(relays.map(function(url){return sendEventToRelay(url,ev).catch(function(err){return{ok:false,relay:url,error:String(err&&err.message||err)};});}));var accepted=results.find(function(result){return result&&result.ok;});if(accepted)return accepted;return{ok:false,error:"No configured Nostr relay confirmed the event. "+results.filter(Boolean).slice(0,4).map(function(r){return r.relay+": "+r.error;}).join(" | ")};}
 function updateStats(){ $("scoreValue").textContent=numberFmt(score);$("bestValue").textContent=numberFmt(localBest);$("linesValue").textContent=numberFmt(lines);$("levelValue").textContent=String(level);$("comboValue").textContent=combo>0?"x"+combo:"—";var into=lines%10;$("levelProgressLabel").textContent=into+" / 10 lines";$("levelProgressFill").style.width=(into*10)+"%";}
@@ -580,7 +644,20 @@ function drawPreview(){fillNextQueue();var canvas=$("nextCanvas"),ctx=canvas.get
 function onStart(){startGame();}
 $("startBtn").addEventListener("click",onStart);$("overlayStartBtn").addEventListener("click",onStart);$("restartBtn").addEventListener("click",onStart);$("playAgainBtn").addEventListener("click",onStart);$("pauseBtn").addEventListener("click",pauseGame);$("resumeBtn").addEventListener("click",pauseGame);$("postScoreBtn").addEventListener("click",postPendingScore);$("connectBtn").addEventListener("click",handleGameLoginClick);$("closeLoginBtn").addEventListener("click",function(){closeLogin(false);});$("loginLayer").addEventListener("click",function(e){if(e.target===$("loginLayer"))closeLogin(false);});$("refreshBoardBtn").addEventListener("click",loadLeaderboard);$("rotateBtn").addEventListener("click",function(){rotatePiece(1);});$("holdBtn").addEventListener("click",holdPiece);$("dropBtn").addEventListener("click",hardDrop);$("muteBtn").addEventListener("click",toggleSound);$("leftBtn").addEventListener("click",function(){movePiece(-1);});$("rightBtn").addEventListener("click",function(){movePiece(1);});$("downBtn").addEventListener("click",function(){stepDown(true);drawAll();});$("mobileRotateBtn").addEventListener("click",function(){rotatePiece(1);});$("mobileHardDropBtn").addEventListener("click",hardDrop);window.addEventListener("keydown",handleKey,true);$("gameCanvas").addEventListener("pointerdown",function(){if(started&&!paused){try{$("gameCanvas").focus({preventScroll:true});}catch(_){$("gameCanvas").focus();}}});window.addEventListener("blur",function(){if(started&&!paused)pauseGame();});document.addEventListener("visibilitychange",function(){if(document.hidden&&started&&!paused)pauseGame();});window.addEventListener("pagehide",function(){if(raf)cancelAnimationFrame(raf);});
 $("bestValue").textContent=numberFmt(localBest);restorePendingScoreState();updateStats();drawPreview();drawAll();updatePostControls();updateIdentity();updateSoundButton();loadLeaderboard();
-connectLocalSigner().then(async function(pk){if(safeHex(pk)){signerPk=pk;var profile=await lookupOwnProfile(pk);signerProfile=profile||{};signerVerified=false;updateIdentity();if(signerProfile.nip05){verifyNip05(signerProfile).then(function(valid){signerVerified=!!valid;updateIdentity();}).catch(function(){signerVerified=false;updateIdentity();});}}}).catch(function(){});
+window.sifakaTetrisRefreshAccount=function(){
+ return connectLocalSigner().then(async function(pk){
+  if(!safeHex(pk))return "";
+  signerPk=pk;
+  var profile=await lookupOwnProfile(pk);
+  if(signerPk!==pk)return "";
+  if(profile&&typeof profile==="object"&&Object.keys(profile).length)signerProfile=profile;
+  signerVerified=false;updateIdentity();
+  if(signerProfile.nip05){
+   verifyNip05(signerProfile).then(function(valid){if(signerPk!==pk)return;signerVerified=!!valid;updateIdentity();}).catch(function(){if(signerPk!==pk)return;signerVerified=false;updateIdentity();});
+  }
+  return pk;
+ }).catch(function(){return "";});
+};
 })();
 </script>
 
@@ -715,16 +792,11 @@ try{if(document.pictureInPictureElement&&document.exitPictureInPicture){var exit
 })();
 </script>
 <script id="sifaka-game-auth-session-sync">
-(function(){
- 'use strict';
+(function(){'use strict';
  try{
-  var saved=JSON.parse(localStorage.getItem('nostrflux_auth_session_v1')||'null');
-  var pubkey=String(saved&&saved.pubkey||'').toLowerCase();
-  var mode=String(saved&&saved.authMode||'');
-  if(!/^[0-9a-f]{64}$/.test(pubkey)||['local','remote','nip07'].indexOf(mode)<0)return;
-  if(typeof window.sifakaGameHeaderSyncIdentity!=='function')return;
-  var name=pubkey.slice(0,10)+'…'+pubkey.slice(-6);
-  window.sifakaGameHeaderSyncIdentity(pubkey,{name:name,display_name:name},false);
+  // Hydrate the actual shared Sifaka profile after the navbar identity API loads.
+  // Do not replace it with a placeholder made only from the stored public key.
+  if(typeof window.sifakaTetrisRefreshAccount==='function')window.sifakaTetrisRefreshAccount();
  }catch(_){}
 })();
 </script>
