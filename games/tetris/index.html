@@ -256,7 +256,34 @@ button{font:inherit}
   };
 })();
 </script>
-<style id="sifaka-game-shared-nav-layout">body{padding-top:68px!important}.game-nav-popup{position:fixed;inset:0;z-index:20000;background:transparent}.game-nav-popup[hidden]{display:none!important}.game-nav-popup-frame{display:block;width:100%;height:100%;border:0;background:transparent}.game-nav-popup-close{position:absolute;top:12px;right:14px;z-index:20002;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:rgba(16,12,24,.94);color:#fff;font:700 26px/1 sans-serif;cursor:pointer;box-shadow:0 5px 20px rgba(0,0,0,.45)}.game-nav-popup-close:hover{border-color:var(--accent);color:var(--accent)}@media(max-width:700px){body{padding-top:56px!important}}</style>
+<style id="sifaka-game-shared-nav-layout">body{padding-top:68px!important}.game-nav-popup{position:fixed;inset:0;z-index:20000;background:transparent}.game-nav-popup[hidden]{display:none!important}.game-nav-popup-frame{display:block;width:100%;height:100%;border:0;background:transparent}.game-nav-popup-close{position:absolute;top:12px;right:14px;z-index:20002;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:rgba(16,12,24,.94);color:#fff;font:700 26px/1 sans-serif;cursor:pointer;box-shadow:0 5px 20px rgba(0,0,0,.45)}.game-nav-popup-close:hover{border-color:var(--accent);color:var(--accent)}@media(max-width:700px){body{padding-top:56px!important}}
+/* Desktop-only viewport fit: keep the board, previews and footer within the
+   visible area below the shared 68px site header. Mobile sizing is unchanged. */
+@media(min-width:761px){
+ .page{padding-top:8px;padding-bottom:12px}
+ .layout{gap:14px;align-items:start}
+ .game-layout{grid-template-columns:minmax(0,1fr) 125px;gap:12px;padding:10px 12px;align-items:start}
+ .game-layout>div:first-child{display:flex;align-items:flex-start;justify-content:center;min-width:0}
+ .board-wrap{width:min(100%,36vh);max-width:560px;margin:0 auto}
+ .quick-controls{display:none}
+ .game-footer{padding:8px 12px;gap:8px}
+ .game-footer-actions .btn{min-height:34px;padding:7px 9px}
+ .game-footer-tools{display:flex;align-items:center;gap:7px;flex:0 0 auto}
+ .game-footer-tools .btn{min-height:34px;padding:7px 10px}
+ .stats-panel .stats-grid{padding-top:10px;padding-bottom:7px}
+ .stats-panel .level-progress{margin-bottom:10px}
+}
+.game-footer-tools{display:flex;align-items:center;gap:7px}
+.game-footer-tools .btn{min-height:36px;padding:8px 11px}
+.controls-popover[hidden]{display:none!important}
+.controls-popover{position:fixed;z-index:10000;width:min(310px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;padding:13px 14px 14px;border:1px solid rgba(167,139,250,.58);border-radius:14px;background:rgba(13,9,22,.98);box-shadow:0 18px 55px rgba(0,0,0,.62),0 0 22px rgba(139,92,246,.16);backdrop-filter:blur(16px)}
+.controls-popover-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;padding-bottom:9px;border-bottom:1px solid rgba(255,255,255,.09)}
+.controls-popover-head strong{font-size:12px;letter-spacing:.04em}
+.controls-close{width:34px;min-width:34px;min-height:34px;padding:0;font-size:20px}
+.controls-popover .key-help{font-size:12px;line-height:1.9}
+.controls-popover .key-help b{display:inline-block;min-width:70px}
+@media(max-width:760px){.game-footer-tools{width:100%}.game-footer-tools .btn{flex:1}.controls-popover .key-help{font-size:11px}}
+</style>
 </head>
 <body>
 <nav class="game-site-nav" id="gameSiteNav">
@@ -348,20 +375,22 @@ button{font:inherit}
         <aside class="side-stack" aria-label="Piece preview and controls">
           <div class="preview-box next-preview"><small>NEXT 3</small><canvas id="nextCanvas" width="120" height="240" aria-label="Next three Tetris pieces"></canvas></div>
           <div class="preview-box"><small>HOLD · C</small><canvas id="holdCanvas" width="120" height="120" aria-label="Held Tetris piece"></canvas></div>
-          <div class="quick-controls">
+          <div class="quick-controls" aria-label="Piece controls">
             <button class="btn" id="rotateBtn" type="button" aria-label="Rotate piece">⟳ Rotate</button>
             <button class="btn" id="holdBtn" type="button">⇄ Hold</button>
             <button class="btn" id="dropBtn" type="button">⬇ Hard drop</button>
-            <button class="btn" id="muteBtn" type="button">♫ Sound: On</button>
           </div>
-          <div class="key-help" id="keyHelp"><b>← / →</b> Move<br><b>↓</b> Soft drop · +1<br><b>↑ / X</b> Rotate<br><b>Z</b> Rotate back<br><b>Space</b> Hard drop · +2/cell<br><b>C</b> Hold once per piece<br><b>P / Esc</b> Pause<br><b>7-BAG</b> All pieces in each set</div>
+          
         </aside>
       </div>
       <div class="mobile-controls" aria-label="Touch controls">
         <button class="btn" id="leftBtn" type="button">← Move</button><button class="btn" id="downBtn" type="button">↓ Drop</button><button class="btn" id="rightBtn" type="button">Move →</button><button class="btn" id="mobileRotateBtn" type="button">⟳ Rotate</button><button class="btn" id="mobileHardDropBtn" type="button">⬇ Drop</button>
       </div>
       <div class="game-footer">
-        <span>Playfield: <strong>10 × 20</strong></span>
+        <div class="game-footer-tools" aria-label="Audio and help controls">
+          <button class="btn" id="muteBtn" type="button">♫ Sound: On</button>
+          <button class="btn" id="controlsBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="controlsPopup">Controls</button>
+        </div>
         <div class="headline-actions game-footer-actions" aria-label="Game controls">
           <button class="btn gold" id="startBtn" type="button">▶ Start game</button>
           <button class="btn" id="pauseBtn" type="button" disabled>Ⅱ Pause</button>
@@ -371,7 +400,7 @@ button{font:inherit}
     </section>
     <aside class="right-rail">
       <section class="panel stats-panel" aria-label="Tetris run statistics">
-        <div class="panel-head"><strong>RUN STATS</strong><span class="subtle">Current run</span></div>
+        
         <div class="stats-grid">
           <div class="stat primary-stat"><small>Score</small><strong id="scoreValue">0</strong></div>
           <div class="stat"><small>Best · this device</small><strong id="bestValue">0</strong></div>
@@ -390,6 +419,10 @@ button{font:inherit}
   </div>
   <p class="tetris-footer">Sifaka Tetris · Built into the Sifaka.Live game room · The online board is assembled from score events found on the configured Nostr relays; relay availability may affect which scores are visible.</p>
 </main>
+<div class="controls-popover" id="controlsPopup" role="dialog" aria-modal="false" aria-label="Tetris keyboard controls" hidden>
+  <div class="controls-popover-head"><strong>Keyboard controls</strong><button type="button" id="closeControlsBtn" class="btn controls-close" aria-label="Close controls">×</button></div>
+  <div class="key-help" id="keyHelp"><b>← / →</b> Move<br><b>↓</b> Soft drop · +1<br><b>↑ / X</b> Rotate<br><b>Z</b> Rotate back<br><b>Space</b> Hard drop · +2/cell<br><b>C</b> Hold once per piece<br><b>P / Esc</b> Pause<br><b>7-BAG</b> All pieces in each set</div>
+</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div id="loginLayer" hidden role="dialog" aria-modal="true" aria-label="Connect to Nostr">
   <section class="login-dialog"><button class="btn login-close" id="closeLoginBtn" style="position:absolute;right:8px;top:8px;z-index:2;min-width:44px;min-height:44px" type="button" aria-label="Close sign-in">×</button><iframe class="login-frame" id="loginFrame" title="Sifaka sign-in" src="about:blank"></iframe></section>
@@ -843,7 +876,30 @@ function drawAll(){var canvas=$("gameCanvas"),ctx=canvas.getContext("2d"),w=300,
 function drawMini(canvas,type){var ctx=canvas.getContext("2d");ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle="rgba(0,0,0,.12)";ctx.fillRect(0,0,canvas.width,canvas.height);if(!type)return;var m=SHAPES[type],coords=[];for(var y=0;y<m.length;y++)for(var x=0;x<m[y].length;x++)if(m[y][x])coords.push([x,y]);if(!coords.length)return;var minX=Math.min.apply(null,coords.map(function(c){return c[0];})),maxX=Math.max.apply(null,coords.map(function(c){return c[0];})),minY=Math.min.apply(null,coords.map(function(c){return c[1];})),maxY=Math.max.apply(null,coords.map(function(c){return c[1];})),cell=22,tw=(maxX-minX+1)*cell,th=(maxY-minY+1)*cell,ox=(canvas.width-tw)/2,oy=(canvas.height-th)/2;coords.forEach(function(c){drawCell(ctx,ox+(c[0]-minX)*cell,oy+(c[1]-minY)*cell,cell,COLORS[type]);});}
 function drawPreview(){fillNextQueue();var canvas=$("nextCanvas"),ctx=canvas.getContext("2d");ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle="rgba(0,0,0,.12)";ctx.fillRect(0,0,canvas.width,canvas.height);for(var i=0;i<3;i++){var type=nextQueue[i];if(!type)continue;var m=SHAPES[type],coords=[];for(var y=0;y<m.length;y++)for(var x=0;x<m[y].length;x++)if(m[y][x])coords.push([x,y]);var minX=Math.min.apply(null,coords.map(function(c){return c[0];})),maxX=Math.max.apply(null,coords.map(function(c){return c[0];})),minY=Math.min.apply(null,coords.map(function(c){return c[1];})),maxY=Math.max.apply(null,coords.map(function(c){return c[1];})),cell=16,tw=(maxX-minX+1)*cell,th=(maxY-minY+1)*cell,ox=(canvas.width-tw)/2,oy=i*79+(78-th)/2;coords.forEach(function(c){drawCell(ctx,ox+(c[0]-minX)*cell,oy+(c[1]-minY)*cell,cell,COLORS[type]);});if(i<2){ctx.strokeStyle="rgba(255,255,255,.07)";ctx.beginPath();ctx.moveTo(11,(i+1)*79);ctx.lineTo(canvas.width-11,(i+1)*79);ctx.stroke();}}drawMini($("holdCanvas"),holdType);}
 function onStart(){startGame();}
-$("startBtn").addEventListener("click",onStart);$("overlayStartBtn").addEventListener("click",onStart);$("restartBtn").addEventListener("click",onStart);$("playAgainBtn").addEventListener("click",onStart);$("pauseBtn").addEventListener("click",pauseGame);$("resumeBtn").addEventListener("click",pauseGame);$("postScoreBtn").addEventListener("click",postPendingScore);$("connectBtn").addEventListener("click",handleGameLoginClick);$("closeLoginBtn").addEventListener("click",function(){closeLogin(false);});$("loginLayer").addEventListener("click",function(e){if(e.target===$("loginLayer"))closeLogin(false);});$("refreshBoardBtn").addEventListener("click",loadLeaderboard);$("rotateBtn").addEventListener("click",function(){rotatePiece(1);});$("holdBtn").addEventListener("click",holdPiece);$("dropBtn").addEventListener("click",hardDrop);$("muteBtn").addEventListener("click",toggleSound);$("leftBtn").addEventListener("click",function(){movePiece(-1);});$("rightBtn").addEventListener("click",function(){movePiece(1);});$("downBtn").addEventListener("click",function(){stepDown(true);drawAll();});$("mobileRotateBtn").addEventListener("click",function(){rotatePiece(1);});$("mobileHardDropBtn").addEventListener("click",hardDrop);window.addEventListener("keydown",handleKey,true);$("gameCanvas").addEventListener("pointerdown",function(){if(started&&!paused){try{$("gameCanvas").focus({preventScroll:true});}catch(_){$("gameCanvas").focus();}}});window.addEventListener("blur",function(){if(started&&!paused)pauseGame();});document.addEventListener("visibilitychange",function(){if(document.hidden&&started&&!paused)pauseGame();});window.addEventListener("pagehide",function(){if(raf)cancelAnimationFrame(raf);});
+$("startBtn").addEventListener("click",onStart);$("overlayStartBtn").addEventListener("click",onStart);$("restartBtn").addEventListener("click",onStart);$("playAgainBtn").addEventListener("click",onStart);$("pauseBtn").addEventListener("click",pauseGame);$("resumeBtn").addEventListener("click",pauseGame);$("postScoreBtn").addEventListener("click",postPendingScore);$("connectBtn").addEventListener("click",handleGameLoginClick);$("closeLoginBtn").addEventListener("click",function(){closeLogin(false);});$("loginLayer").addEventListener("click",function(e){if(e.target===$("loginLayer"))closeLogin(false);});$("refreshBoardBtn").addEventListener("click",loadLeaderboard);
+function closeControlsPopup(){
+ var popup=$("controlsPopup"),button=$("controlsBtn");
+ if(popup)popup.hidden=true;
+ if(button)button.setAttribute("aria-expanded","false");
+}
+function toggleControlsPopup(){
+ var popup=$("controlsPopup"),button=$("controlsBtn");
+ if(!popup||!button)return;
+ if(!popup.hidden){closeControlsPopup();return;}
+ var rect=button.getBoundingClientRect(),width=Math.min(310,window.innerWidth-24);
+ popup.style.left=Math.max(12,Math.min(window.innerWidth-width-12,rect.left))+"px";
+ popup.style.bottom=Math.max(12,window.innerHeight-rect.top+8)+"px";
+ popup.hidden=false;button.setAttribute("aria-expanded","true");
+}
+$("controlsBtn").addEventListener("click",function(event){event.stopPropagation();toggleControlsPopup();});
+$("closeControlsBtn").addEventListener("click",closeControlsPopup);
+document.addEventListener("click",function(event){
+ var popup=$("controlsPopup"),button=$("controlsBtn");
+ if(popup&&!popup.hidden&&!popup.contains(event.target)&&event.target!==button)closeControlsPopup();
+});
+window.addEventListener("keydown",function(event){if(event.key==="Escape"&&!$("controlsPopup").hidden)closeControlsPopup();});
+window.addEventListener("resize",function(){if(!$("controlsPopup").hidden)toggleControlsPopup();});
+$("rotateBtn").addEventListener("click",function(){rotatePiece(1);});$("holdBtn").addEventListener("click",holdPiece);$("dropBtn").addEventListener("click",hardDrop);$("muteBtn").addEventListener("click",toggleSound);$("leftBtn").addEventListener("click",function(){movePiece(-1);});$("rightBtn").addEventListener("click",function(){movePiece(1);});$("downBtn").addEventListener("click",function(){stepDown(true);drawAll();});$("mobileRotateBtn").addEventListener("click",function(){rotatePiece(1);});$("mobileHardDropBtn").addEventListener("click",hardDrop);window.addEventListener("keydown",handleKey,true);$("gameCanvas").addEventListener("pointerdown",function(){if(started&&!paused){try{$("gameCanvas").focus({preventScroll:true});}catch(_){$("gameCanvas").focus();}}});window.addEventListener("blur",function(){if(started&&!paused)pauseGame();});document.addEventListener("visibilitychange",function(){if(document.hidden&&started&&!paused)pauseGame();});window.addEventListener("pagehide",function(){if(raf)cancelAnimationFrame(raf);});
 $("bestValue").textContent=numberFmt(localBest);
 // Start online scores before optional account-header hydration. A navbar issue must
 // never strand the board on its static "Checking Nostr relays…" placeholder.
