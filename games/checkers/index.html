@@ -400,7 +400,30 @@ function completeTurn(path){
 }
 function resetLocal(vsEngine=false,level=2){leaveGame();local=true;engineMode=!!vsEngine;engineLevel=Math.max(1,Math.min(3,Number(level)||2));turns=[];state=newBoard();terminal=null;selected=-1;selectedPath=[];pathCandidates=[];busy=false;$('redName').textContent=engineMode?'You':(signerProfile.display_name||signerProfile.name||'Red');$('redIdentity').textContent=signerPk?shortPk(signerPk):'Local player';$('blackName').textContent=engineMode?'Sifaka Checkers Engine':'Black';$('blackIdentity').textContent=engineMode?ENGINE_NAMES[engineLevel]+' difficulty':'Local player';$('chatStatus').textContent='· local only';$('chatLog').replaceChildren();addChatSystem(engineMode?'Single-player game started. You are Red; the Checkers engine is Black ('+ENGINE_NAMES[engineLevel]+').':'Local two-player game started. Red moves first.');renderBoard()}
 function shortPk(pk){return pk&&pk.length===64?pk.slice(0,8)+'…'+pk.slice(-6):String(pk||'Not connected')}
-function currentRelayList(extra){let candidates=(Array.isArray(extra)?extra:[extra]).concat(accountRelayUrls);try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}if(signerPk){const saved=JSON.parse(localStorage.getItem('sifaka_checkers_relays_'+signerPk)||'[]');if(Array.isArray(saved))candidates=candidates.concat(saved)}}catch(_){}candidates=candidates.concat(DEFAULT_RELAYS);const out=[];candidates.forEach(u=>{u=String(u||'').trim();if(/^wss:\/\//i.test(u)&&!out.includes(u))out.push(u)});return out.slice(0,8)}
+function readSifakaMainRelayConfig(){
+ try{
+  var raw=localStorage.getItem("nostrflux_settings_v1");
+  if(!raw)return{configured:false,relays:[],blocked:[]};
+  var settings=JSON.parse(raw);
+  if(!settings||typeof settings!=="object"||!Array.isArray(settings.relays))return{configured:false,relays:[],blocked:[]};
+  var buckets=settings.relayBuckets&&typeof settings.relayBuckets==="object"?settings.relayBuckets:{};
+  return{configured:true,relays:settings.relays.map(function(x){return typeof x==="string"?x:x&&x.url||"";}),blocked:Array.isArray(buckets.blocked)?buckets.blocked.map(function(x){return String(x||"").trim().toLowerCase();}):[]};
+ }catch(_){return{configured:false,relays:[],blocked:[]};}
+}
+function currentRelayList(extra){
+ const main=readSifakaMainRelayConfig();
+ let candidates=(Array.isArray(extra)?extra:extra?[extra]:[]);
+ if(main.configured)candidates=candidates.concat(main.relays);
+ candidates=candidates.concat(accountRelayUrls);
+ if(signerPk){try{const saved=JSON.parse(localStorage.getItem('sifaka_checkers_relays_'+signerPk)||'[]');if(Array.isArray(saved))candidates=candidates.concat(saved)}catch(_){}}
+ if(!main.configured){
+  try{const raw=localStorage.getItem('sifaka_relays');if(raw){const data=JSON.parse(raw);if(Array.isArray(data))candidates=candidates.concat(data.map(x=>typeof x==='string'?x:x&&x.url||''))}}catch(_){}
+  candidates=candidates.concat(DEFAULT_RELAYS);
+ }
+ const blocked=new Set(main.blocked),out=[];
+ candidates.forEach(u=>{u=String(u||'').trim();if(!/^wss:\/\//i.test(u)||blocked.has(u.toLowerCase())||out.includes(u))return;out.push(u)});
+ return main.configured?out:out.slice(0,8);
+}
 function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
 function storedKey(){try{for(const k of ['sifaka_chess_pubkey','sifaka_pubkey','nostr_pubkey','pubkey']){const v=String(localStorage.getItem(k)||'').toLowerCase();if(HEX.test(v))return v}}catch(_){}return ''}
@@ -535,7 +558,7 @@ function requestEvents(url,filter,ms=4800){
  });
 }
 async function queryRelays(filter,extra,waitMs=5300){const relays=currentRelayList(extra);const results=await Promise.all(relays.map(url=>requestEvents(url,filter,waitMs).catch(()=>[])));const map=new Map();results.flat().forEach(ev=>{if(ev&&ev.id)map.set(ev.id,ev)});return [...map.values()]}
-async function discoverAccountRelays(pk){if(!HEX.test(String(pk||'')))return;try{const saved=JSON.parse(localStorage.getItem('sifaka_checkers_relays_'+pk)||'[]');if(Array.isArray(saved))accountRelayUrls=saved.filter(u=>/^wss:\/\//i.test(String(u||'')))}catch(_){}const chunks=await Promise.all(DEFAULT_RELAYS.map(url=>requestEvents(url,{kinds:[10002],authors:[pk],limit:10},3600).catch(()=>[])));const events=chunks.flat().filter(e=>e&&e.kind===10002&&String(e.pubkey||'').toLowerCase()===pk).sort((a,b)=>Number(b.created_at||0)-Number(a.created_at||0));if(!events.length)return;const tags=events[0].tags||[],rank=t=>t[2]==='write'?0:t[2]==='read'?2:1,urls=tags.filter(t=>t[0]==='r'&&/^wss:\/\//i.test(String(t[1]||''))).sort((a,b)=>rank(a)-rank(b)).map(t=>String(t[1]).trim()),unique=[];urls.forEach(u=>{if(!unique.includes(u))unique.push(u)});if(unique.length){accountRelayUrls=unique.slice(0,12);try{localStorage.setItem('sifaka_checkers_relays_'+pk,JSON.stringify(accountRelayUrls))}catch(_){}}}
+async function discoverAccountRelays(pk){if(!HEX.test(String(pk||'')))return;try{const saved=JSON.parse(localStorage.getItem('sifaka_checkers_relays_'+pk)||'[]');if(Array.isArray(saved))accountRelayUrls=saved.filter(u=>/^wss:\/\//i.test(String(u||'')))}catch(_){}const chunks=await Promise.all(currentRelayList().map(url=>requestEvents(url,{kinds:[10002],authors:[pk],limit:10},3600).catch(()=>[])));const events=chunks.flat().filter(e=>e&&e.kind===10002&&String(e.pubkey||'').toLowerCase()===pk).sort((a,b)=>Number(b.created_at||0)-Number(a.created_at||0));if(!events.length)return;const tags=events[0].tags||[],rank=t=>t[2]==='write'?0:t[2]==='read'?2:1,urls=tags.filter(t=>t[0]==='r'&&/^wss:\/\//i.test(String(t[1]||''))).sort((a,b)=>rank(a)-rank(b)).map(t=>String(t[1]).trim()),unique=[];urls.forEach(u=>{if(!unique.includes(u))unique.push(u)});if(unique.length){accountRelayUrls=unique.slice(0,12);try{localStorage.setItem('sifaka_checkers_relays_'+pk,JSON.stringify(accountRelayUrls))}catch(_){}}}
 function rememberSigner(pk){if(signerPk!==pk){signerProfile={};signerVerified=false;}signerPk=pk;if(HEX.test(pk)&&relayDiscoveryFor!==pk){relayDiscoveryFor=pk;discoverAccountRelays(pk).catch(()=>{})}return pk}
 function bytesToB64(bytes){let s='';bytes.forEach(b=>s+=String.fromCharCode(b));return btoa(s)}
 function b64ToBytes(s){const v=atob(s);return Uint8Array.from(v,c=>c.charCodeAt(0))}
