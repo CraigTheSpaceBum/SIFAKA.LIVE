@@ -445,7 +445,7 @@ var $=function(id){return document.getElementById(id);};
 var HEX=/^[0-9a-f]{64}$/i, SIG=/^[0-9a-f]{128}$/i, SCORE_TAG="sifaka-tetris-score";
 var DEFAULT_RELAYS=["wss://nos.lol","wss://relay.damus.io","wss://relay.primal.net","wss://relay.nostr.band"];
 var LOCAL_KEY="sifaka_tetris_best_v1",PENDING_KEY="sifaka_tetris_pending_v1";
-var signerPk="",signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,postAfterLogin=false,toastTimer=null;
+var signerPk="",signerProfile={},signerVerified=false,signerBridgePromise=null,loginPopupObserver=null,postAfterLogin=false,toastTimer=null,identitySyncVersion=0;
 var profileCache=new Map(),nip05Cache=new Map(),verifiedEventCache=new Map(),nostrToolsPromise=null;
 var board=[],piece=null,nextQueue=[],holdType=null,canHold=true,bag=[],score=0,lines=0,level=1,combo=-1,backToBack=false,lockElapsed=0,lockResets=0,dropCounter=0,lastTime=0,raf=0,started=false,paused=false,gameOver=false,localBest=loadLocalBest(),pendingScore=loadPendingScore(),leaderboardBusy=false,leaderboardRefreshRequested=false,publishedScoreEvents=new Map(),leaderboardSnapshot=[],soundEnabled=loadSoundSetting(),audioContext=null,flashTimer=0;
 var LOCK_DELAY=500,MAX_LOCK_RESETS=15;
@@ -593,19 +593,43 @@ async function loadProfiles(pubkeys,forceRefresh){
  var keys=Array.from(new Set(pubkeys.map(safeHex).filter(Boolean)));
  var activePk=safeHex(signerPk);
  if(activePk&&keys.indexOf(activePk)!==-1&&signerProfile&&typeof signerProfile==="object"&&Object.keys(signerProfile).length){
-  var activeProfile=Object.assign({pubkey:activePk,name:"",display_name:"",displayName:"",picture:"",nip05:""},signerProfile,{pubkey:activePk});
-  profileCache.set(activePk,{profile:activeProfile,verified:!!signerVerified,created_at:Date.now()});
+  var activeItem=profileCache.get(activePk);
+  // Keep a relay-fetched kind:0 profile authoritative. Session metadata is only
+  // a fallback; do not overwrite a good relay result with it on every lookup.
+  if(!activeItem||activeItem.source!=="relay"){
+   var activeProfile=mergeProfileData(signerProfile,activeItem&&activeItem.profile,activePk);
+   profileCache.set(activePk,{
+    profile:activeProfile,
+    verified:!!signerVerified,
+    created_at:Number(activeItem&&activeItem.created_at)||0,
+    fetched_at:Number(activeItem&&activeItem.fetched_at)||0,
+    source:"session"
+   });
+  }
  }
+ // Seed missing keys before starting network work. This prevents concurrent
+ // leaderboard and account hydration calls from opening duplicate relay queries.
+ keys.forEach(function(pk){
+  if(!profileCache.has(pk))profileCache.set(pk,{
+   profile:{pubkey:pk,name:"",display_name:"",displayName:"",picture:"",nip05:""},
+   verified:false,created_at:0,fetched_at:0,source:"empty"
+  });
+ });
+ var nowMs=Date.now(),nowSeconds=Math.floor(nowMs/1000);
  var missing=keys.filter(function(pk){
   if(forceRefresh)return true;
   var item=profileCache.get(pk);
   if(!item)return true;
-  var profile=item.profile||{};
-  // The shared session can provide only a partial profile; refresh it from kind:0
-  // rather than treating the incomplete cached entry as authoritative.
-  return !Number(item.created_at)||Number(item.created_at)>Math.floor(Date.now()/1000)+60||!String(profile.picture||"").trim();
+  var age=nowMs-Number(item.fetched_at||0);
+  // fetched_at uses milliseconds; created_at remains the Nostr event timestamp
+  // in seconds. Session/empty entries retry at most once per minute if relays fail.
+  if(item.source==="session"||item.source==="empty")return !Number(item.fetched_at)||age>=60000;
+  return !Number(item.created_at)||Number(item.created_at)>nowSeconds+60||age>=600000;
  });
- if(!missing.length)return;
+ missing.forEach(function(pk){
+  var item=profileCache.get(pk);
+  if(item)item.fetched_at=nowMs;
+ });
  try{
   var events=await queryRelays({kinds:[0],authors:missing,limit:Math.min(200,missing.length*10)},null,1600);
   var chosen=new Map();
@@ -634,7 +658,7 @@ async function loadProfiles(pubkeys,forceRefresh){
    base.displayName=String(base.displayName||"").trim();
    base.picture=String(base.picture||"").trim();
    base.nip05=String(base.nip05||"").trim();
-   profileCache.set(pk,{profile:base,verified:false,created_at:Number(event.created_at)||0});
+   profileCache.set(pk,{profile:base,verified:false,created_at:Number(event.created_at)||0,fetched_at:Date.now(),source:"relay"});
   });
   if(leaderboardSnapshot.length)renderLeaderboard();
   var candidates=keys.map(function(pk){var item=profileCache.get(pk);return item&&item.profile;}).filter(function(p){return p&&p.nip05;});
@@ -744,10 +768,10 @@ function sharedSifakaContext(){
  for(const ctx of contexts){if(ctx&&typeof ctx.getUser==='function'&&typeof ctx.signEvent==='function')return ctx}
  return null;
 }
-function installSharedSifakaSigner(){
+function installSharedSifakaSigner(expected){
  const ctx=sharedSifakaContext();
  if(!ctx)return '';
- return installSigner({__SIFAKA_CONTEXT:ctx},'');
+ return installSigner({__SIFAKA_CONTEXT:ctx},safeHex(expected)||'');
 }
 function hasSavedSifakaAuthSession(){
  try{
@@ -774,7 +798,29 @@ function handleGameLoginClick(){
  // Sifaka pages. Never leave a failed signer probe without opening it.
  openLogin();
 }
-function connectLocalSigner(){const sharedPk=installSharedSifakaSigner();if(sharedPk)return Promise.resolve(sharedPk);if(signerBridgePromise)return signerBridgePromise;signerBridgePromise=new Promise(function(resolve){var frame=$("signerBridge"),ended=false;function done(v){if(ended)return;ended=true;signerBridgePromise=null;resolve(v||"");}if(!frame){done("");return;}try{if(!String(frame.src||"").includes("sifakaChessSignerBridge=1"))frame.src="/?sifakaChessSignerBridge=1";}catch(_){done("");return;}var start=Date.now();function check(){var livePk=installSharedSifakaSigner();if(livePk){done(livePk);return}var pk=installSigner(frame.contentWindow,"");if(pk){done(pk);return;}if(Date.now()-start>8000){done("");return;}setTimeout(check,120);}setTimeout(check,100);});return signerBridgePromise;}
+function connectLocalSigner(expected){
+ const expectedPk=safeHex(expected);
+ const sharedPk=installSharedSifakaSigner(expectedPk);
+ if(sharedPk)return Promise.resolve(sharedPk);
+ if(signerBridgePromise)return signerBridgePromise.then(function(pk){pk=safeHex(pk);return !expectedPk||pk===expectedPk?pk:"";});
+ signerBridgePromise=new Promise(function(resolve){
+  var frame=$("signerBridge"),ended=false;
+  function done(v){if(ended)return;ended=true;signerBridgePromise=null;resolve(v||"");}
+  if(!frame){done("");return;}
+  try{if(!String(frame.src||"").includes("sifakaChessSignerBridge=1"))frame.src="/?sifakaChessSignerBridge=1";}catch(_){done("");return;}
+  var start=Date.now();
+  function check(){
+   var livePk=installSharedSifakaSigner(expectedPk);
+   if(livePk){done(livePk);return;}
+   var pk=installSigner(frame.contentWindow,expectedPk);
+   if(pk){done(pk);return;}
+   if(Date.now()-start>8000){done("");return;}
+   setTimeout(check,120);
+  }
+  setTimeout(check,100);
+ });
+ return signerBridgePromise.then(function(pk){pk=safeHex(pk);return !expectedPk||pk===expectedPk?pk:"";});
+}
 async function getSignerKey(){var app=window.sifakaTetrisSigner;if(app&&typeof app.getPublicKey==="function"&&typeof app.signEvent==="function"){try{var pk=String(await app.getPublicKey()||"").toLowerCase();if(safeHex(pk))return pk;}catch(_){}}if(hasSavedSifakaAuthSession()){try{var localPk=await connectLocalSigner();if(safeHex(localPk))return localPk;}catch(_){}}var ext=window.nostr;if(ext&&typeof ext.getPublicKey==="function"&&typeof ext.signEvent==="function"){try{var epk=String(await ext.getPublicKey()||"").toLowerCase();if(safeHex(epk))return epk;}catch(_){}}try{var localPk2=await connectLocalSigner();if(safeHex(localPk2))return localPk2;}catch(_){}return"";}
 async function signEvent(event){var pk=String(event.pubkey||await getSignerKey()||"").toLowerCase();if(!safeHex(pk))throw new Error("Connect a Sifaka account or Nostr signer first.");var request=Object.assign({},event,{pubkey:pk}),failures=[];var app=window.sifakaTetrisSigner;if(app&&typeof app.getPublicKey==="function"&&typeof app.signEvent==="function"){try{if(String(await app.getPublicKey()||"").toLowerCase()===pk){var a=await app.signEvent(request);if(a&&a.id&&a.sig&&String(a.pubkey||"").toLowerCase()===pk)return a;}}catch(e){failures.push(e);}}var ext=window.nostr;if(ext&&typeof ext.getPublicKey==="function"&&typeof ext.signEvent==="function"){try{if(String(await ext.getPublicKey()||"").toLowerCase()===pk){var ev=await ext.signEvent(request);if(ev&&ev.id&&ev.sig&&String(ev.pubkey||"").toLowerCase()===pk)return ev;}}catch(e){failures.push(e);}}throw new Error("Could not sign with the active account"+(failures.length?": "+String(failures[failures.length-1].message||"signing was declined"):"; no compatible signer was found")+".");}
 function openLogin(){
@@ -854,7 +900,51 @@ function openLogin(){
 }
 function closeLogin(signedIn){if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}var layer=$("loginLayer");layer.classList.remove("open");layer.hidden=true;try{$("loginFrame").onload=null;$("loginFrame").src="about:blank";}catch(_){}if(signedIn){connect().catch(function(err){toast(err.message);});}else{postAfterLogin=false;}}
 async function lookupOwnProfile(pk){if(!safeHex(pk))return null;await loadProfiles([pk]);var item=profileCache.get(pk);return item&&item.profile||null;}
-async function connect(silent){var previousPk=signerPk;var pk=await getSignerKey();if(!safeHex(pk)){if(silent)return false;openLogin();toast("Sign in or connect a Nostr signer to publish your score. Playing does not require an account.");return false;}var accountProfile=(signerPk===pk||previousPk===pk)?Object.assign({},signerProfile||{}):{};var identityChanged=signerPk!==pk;signerPk=pk;if(identityChanged)loadLeaderboard();var profile=await lookupOwnProfile(pk);signerProfile=mergeProfileData(profile,accountProfile,pk);signerVerified=false;updateIdentity();if(signerProfile.nip05){verifyNip05(signerProfile).then(function(valid){signerVerified=!!valid;updateIdentity();}).catch(function(){signerVerified=false;updateIdentity();});}if(!silent)toast("Connected as "+(signerProfile.display_name||signerProfile.name||shortPk(pk))+".");if(postAfterLogin){postAfterLogin=false;if(pendingScore)postPendingScore();}return true;}
+async function applyAccountProfile(pk,syncVersion){
+ pk=safeHex(pk);
+ if(!pk||syncVersion!==identitySyncVersion)return false;
+ var accountProfile=signerPk===pk?Object.assign({},signerProfile||{}):{};
+ var identityChanged=signerPk!==pk;
+ signerPk=pk;
+ if(identityChanged){
+  signerProfile={};
+  signerVerified=false;
+  loadLeaderboard();
+ }
+ var profile=await lookupOwnProfile(pk);
+ // A slow relay/profile response from an older account must never repaint the header.
+ if(syncVersion!==identitySyncVersion||signerPk!==pk)return false;
+ signerProfile=mergeProfileData(profile,accountProfile,pk);
+ signerVerified=false;
+ updateIdentity();
+ if(signerProfile.nip05){
+  verifyNip05(signerProfile).then(function(valid){
+   if(syncVersion!==identitySyncVersion||signerPk!==pk)return;
+   signerVerified=!!valid;
+   updateIdentity();
+  }).catch(function(){
+   if(syncVersion!==identitySyncVersion||signerPk!==pk)return;
+   signerVerified=false;
+   updateIdentity();
+  });
+ }
+ return true;
+}
+async function connect(silent){
+ var syncVersion=++identitySyncVersion;
+ var pk=await getSignerKey();
+ if(syncVersion!==identitySyncVersion)return false;
+ if(!safeHex(pk)){
+  if(silent)return false;
+  openLogin();
+  toast("Sign in or connect a Nostr signer to publish your score. Playing does not require an account.");
+  return false;
+ }
+ if(!await applyAccountProfile(pk,syncVersion))return false;
+ if(!silent)toast("Connected as "+(signerProfile.display_name||signerProfile.name||shortPk(pk))+".");
+ if(postAfterLogin){postAfterLogin=false;if(pendingScore)postPendingScore();}
+ return true;
+}
 async function postPendingScore(){
  if(!gameOver||!pendingScore){toast("Finish a run before posting a score.");return;}
  if(pendingScore.postedEventId){toast("This run has already been posted to Nostr.");return;}
@@ -955,22 +1045,23 @@ try{updatePostControls();}catch(err){console.warn("Tetris score controls initial
 try{updateIdentity();}catch(err){console.warn("Tetris initial account sync failed:",err);}
 try{updateSoundButton();}catch(err){console.warn("Tetris sound control initialization failed:",err);}
 window.sifakaTetrisRefreshAccount=function(){
+ var syncVersion=++identitySyncVersion;
  return connectLocalSigner().then(async function(pk){
-  if(!safeHex(pk))return "";
-  var identityChanged=signerPk!==pk;
-  signerPk=pk;
-  // A cold page load can start before the saved signer is restored. Re-run the
-  // leaderboard when the account changes so its account-specific relay list is used.
-  if(identityChanged)loadLeaderboard();
-  var profile=await lookupOwnProfile(pk);
-  if(signerPk!==pk)return "";
-  if(profile&&typeof profile==="object"&&Object.keys(profile).length)signerProfile=mergeProfileData(profile,signerProfile,pk);
-  signerVerified=false;updateIdentity();
-  if(signerProfile.nip05){
-   verifyNip05(signerProfile).then(function(valid){if(signerPk!==pk)return;signerVerified=!!valid;updateIdentity();}).catch(function(){if(signerPk!==pk)return;signerVerified=false;updateIdentity();});
-  }
-  return pk;
+  if(syncVersion!==identitySyncVersion)return "";
+  pk=safeHex(pk);
+  if(!pk)return "";
+  return await applyAccountProfile(pk,syncVersion)?pk:"";
  }).catch(function(){return "";});
+};
+window.sifakaGameRestoreSession=function(expectedPk){
+ var expected=safeHex(expectedPk);
+ if(!expected)return Promise.resolve(false);
+ var syncVersion=++identitySyncVersion;
+ return connectLocalSigner(expected).then(async function(pk){
+  pk=safeHex(pk);
+  if(syncVersion!==identitySyncVersion||pk!==expected)return false;
+  return await applyAccountProfile(pk,syncVersion);
+ }).catch(function(){return false;});
 };
 })();
 </script>
@@ -1106,11 +1197,27 @@ try{if(document.pictureInPictureElement&&document.exitPictureInPicture){var exit
 })();
 </script>
 <script id="sifaka-game-auth-session-sync">
-(function(){'use strict';
+(function(){
+ 'use strict';
  try{
-  // Hydrate the actual shared Sifaka profile after the navbar identity API loads.
-  // Do not replace it with a placeholder made only from the stored public key.
-  if(typeof window.sifakaTetrisRefreshAccount==='function')window.sifakaTetrisRefreshAccount();
+  var saved=JSON.parse(localStorage.getItem('nostrflux_auth_session_v1')||'null');
+  var expectedPk=String(saved&&saved.pubkey||'').toLowerCase();
+  var mode=String(saved&&saved.authMode||'');
+  var valid= /^[0-9a-f]{64}$/.test(expectedPk)&&['local','remote','nip07'].indexOf(mode)>=0;
+  // Match the other game pages: restore only a confirmed saved session, and
+  // require the bridge to return that exact account before hydrating its profile.
+  if(valid&&typeof window.sifakaGameRestoreSession==='function'){
+   window.sifakaGameRestoreSession(expectedPk);
+   return;
+  }
+  // If this page is embedded with a live Sifaka context already available, use it
+  // directly. Do not create a hidden copy of the main site for a guest page load.
+  var ctx=typeof sharedSifakaContext==='function'?sharedSifakaContext():null;
+  var user=null;
+  try{user=ctx&&typeof ctx.getUser==='function'?ctx.getUser():null;}catch(_){}
+  if(ctx&&user&&safeHex(user.pubkey)&&typeof ctx.signEvent==='function'&&typeof window.sifakaTetrisRefreshAccount==='function'){
+   window.sifakaTetrisRefreshAccount();
+  }
  }catch(_){}
 })();
 </script>
