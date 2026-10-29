@@ -630,6 +630,7 @@ async function loadProfiles(pubkeys,forceRefresh){
   var item=profileCache.get(pk);
   if(item)item.fetched_at=nowMs;
  });
+ if(!missing.length)return;
  try{
   var events=await queryRelays({kinds:[0],authors:missing,limit:Math.min(200,missing.length*10)},null,1600);
   var chosen=new Map();
