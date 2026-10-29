@@ -971,16 +971,17 @@ function readSifakaMainRelayConfig(){
   return{configured:true,relays:settings.relays.map(function(x){return typeof x==="string"?x:x&&x.url||"";}),blocked:Array.isArray(buckets.blocked)?buckets.blocked.map(function(x){return String(x||"").trim().toLowerCase();}):[]};
  }catch(_){return{configured:false,relays:[],blocked:[]};}
 }
+window.sifakaReadMainRelayConfig=readSifakaMainRelayConfig;
 function networkRelays(extra){
  const main=readSifakaMainRelayConfig();
  const candidates=[extra];
  if(main.configured)candidates.push.apply(candidates,main.relays);
  candidates.push.apply(candidates,String((typeof CF!=='undefined'&&CF.rel)||'').split(/\s+/));
  candidates.push.apply(candidates,Array.isArray(RL)?RL:[RL]);
- if(!main.configured)candidates.push('wss://relay.primal.net','wss://relay.nostr.band');
+ if(!main.configured)candidates.push('wss://relay.damus.io','wss://nos.lol','wss://relay.snort.social','wss://nostr.wine','wss://relay.primal.net','wss://relay.nostr.band','wss://relay.nostr.net','wss://www.nostr.ltd','wss://relayable.org','wss://nostr.fmt.wiz.biz','wss://offchain.pub','wss://nostr.mom','wss://nostr21.com','wss://purplepag.es','wss://profiles.nostr1.com','wss://relay.nostr.com','wss://nostr.bitcoiner.social');
  const blocked=new Set(main.blocked),out=[];
  candidates.forEach(function(u){u=String(u||'').trim();if(!/^wss?:\/\//i.test(u)||blocked.has(u.toLowerCase())||out.includes(u))return;out.push(u)});
- return main.configured?out:out.slice(0,8);
+ return out;
 }
 function preferredGameRelay(){return networkRelays()[0]||'wss://relay.damus.io'}
 function pgnHeaders(content){const h={};String(content||'').replace(/^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm,function(_,k,v){h[k]=v;return ''});return h}
@@ -1807,7 +1808,7 @@ $('meS').textContent='Tap to connect Nostr';[$('me').closest('.card'),$('opponen
 init();rebuild();draw();mode(true);showGameSetup();requestAnimationFrame(loop);requestAnimationFrame(function(){requestAnimationFrame(function(){const loader=$('chessPageLoader');if(loader){loader.classList.add('off');setTimeout(function(){loader.remove()},420)}})});const incomingChessParams=new URLSearchParams(location.search),incomingChessGame=incomingChessParams.get('game'),incomingChessRelay=incomingChessParams.get('relay');if(incomingChessGame){setTimeout(function(){fetchChessInvite(incomingChessGame,incomingChessRelay||'')},80)}
 </script><!-- Sifaka Chess 0.9.8: shared profile styling and safe in-page auth/modals. --><script id="sifaka-chess-nav-profile">(function(){
 'use strict';
-const $=id=>document.getElementById(id),STORE='sifaka_chess_pubkey',RELAYS=['wss://relay.damus.io','wss://nos.lol','wss://relay.primal.net'],HEX=/^[0-9a-f]{64}$/i;
+const $=id=>document.getElementById(id),STORE='sifaka_chess_pubkey',RELAYS=['wss://relay.damus.io','wss://nos.lol','wss://relay.snort.social','wss://nostr.wine','wss://relay.primal.net','wss://relay.nostr.band','wss://relay.nostr.net','wss://www.nostr.ltd','wss://relayable.org','wss://nostr.fmt.wiz.biz','wss://offchain.pub','wss://nostr.mom','wss://nostr21.com','wss://purplepag.es','wss://profiles.nostr1.com','wss://relay.nostr.com','wss://nostr.bitcoiner.social'],HEX=/^[0-9a-f]{64}$/i;
 let active='',requestId=0,fullNpub='',verified=false;const profileLookupCache=new Map();
 const loggedIn=$('navLoggedIn'),loggedOut=$('navLoggedOut'),login=$('chessNavLoginBtn'),dropdown=$('profileDropdown'),pill=$('navUserPill'),search=$('siteSearchInput'),results=$('searchResults');
 const navBar=$('chessSiteNav');
@@ -2019,9 +2020,12 @@ function setIdentity(pk,p,isVerified){
  avatar($('meAvatar'),{...p,name},pk,verified);applyChessProfileBanner($('meAvatar'),p);const meSub=$('meS'),hasVerifiedNip05=!!(verified&&p.nip05);meSub.textContent=hasVerifiedNip05?String(p.nip05):short(fullNpub,13,7);meSub.title=hasVerifiedNip05?'NIP-05 verified: '+String(p.nip05):'Nostr public key: '+fullNpub;meSub.classList.toggle('nip05-valid',hasVerifiedNip05);
 }
 function fetchProfile(pk){return new Promise(resolve=>{
+  const main=typeof window.sifakaReadMainRelayConfig==='function'?window.sifakaReadMainRelayConfig():{configured:false,relays:[],blocked:[]};
+  const blocked=new Set(main.blocked||[]),profileRelays=main.configured?(main.relays||[]).filter(url=>/^wss:\/\//i.test(String(url||''))&&!blocked.has(String(url||'').trim().toLowerCase())):RELAYS;
+  if(!profileRelays.length){resolve(null);return;}
  let done=0,best=null,settled=false;const watchdog=setTimeout(()=>{if(!settled){settled=true;resolve(best);}},4300);
- RELAYS.forEach((url,i)=>{let ws,closed=false;const sub='sifaka-chess-profile-'+Date.now().toString(36)+'-'+i;
- const finish=()=>{if(closed)return;closed=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close();}}catch(_){}done++;if(done>=RELAYS.length&&!settled){settled=true;clearTimeout(watchdog);resolve(best);}};
+ profileRelays.forEach((url,i)=>{let ws,closed=false;const sub='sifaka-chess-profile-'+Date.now().toString(36)+'-'+i;
+ const finish=()=>{if(closed)return;closed=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(['CLOSE',sub]));ws.close();}}catch(_){}done++;if(done>=profileRelays.length&&!settled){settled=true;clearTimeout(watchdog);resolve(best);}};
  const timer=setTimeout(finish,3700);
  try{ws=new WebSocket(url);ws.onopen=()=>{try{ws.send(JSON.stringify(['REQ',sub,{kinds:[0],authors:[pk],limit:10}]))}catch(_){finish();}};
  ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d[0]==='EVENT'&&d[1]===sub&&d[2]&&d[2].kind===0&&d[2].pubkey===pk&&(!best||Number(d[2].created_at)>Number(best.created_at)))best=d[2];if(d[0]==='EOSE'&&d[1]===sub)finish();}catch(_){}};
