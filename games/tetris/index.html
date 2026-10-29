@@ -593,21 +593,41 @@ async function loadLeaderboard(){
    if(!(await verifyNostrEvent(ev)))continue;
    valid.push(entry);
   }
-  // Some relays mishandle OR-style tagged filters, and some score events can
-  // be indexed inconsistently. If the normal score filters produce no verified
-  // candidates, do one broad kind-1 discovery pass and validate locally. This
-  // fallback is only used for an empty/invalid result, not on normal loads.
-  if(!valid.length){
+  // Some relays mishandle multi-filter REQs or index only some tag fields.
+  // If we have fewer than ten distinct players, retry each supported score marker
+  // in its own REQ so one poorly handled filter cannot hide the rest of the board.
+  function verifiedPlayerCount(rows){return new Set(rows.map(function(row){return row.pubkey;})).size;}
+  if(verifiedPlayerCount(valid)<10){
    var knownIds=new Set(events.map(function(ev){return String(ev&&ev.id||"");}));
-   var broadEvents=await queryRelays({kinds:[1],limit:1000},DEFAULT_RELAYS,4500);
-   for(var bi=0;bi<broadEvents.length;bi++){
-    var broad=broadEvents[bi];
-    if(!broad||knownIds.has(String(broad.id||"")))continue;
-    knownIds.add(String(broad.id||""));
-    events.push(broad);
-    var broadEntry=parseScoreEvent(broad);
-    if(!broadEntry||!(await verifyNostrEvent(broad)))continue;
-    valid.push(broadEntry);
+   var targetedResults=await Promise.all([
+    queryRelays({kinds:[1],"#t":[SCORE_TAG],limit:1000},DEFAULT_RELAYS,4500),
+    queryRelays({kinds:[1],"#t":["tetris"],limit:1000},DEFAULT_RELAYS,4500),
+    queryRelays({kinds:[1],"#game":["tetris"],limit:1000},DEFAULT_RELAYS,4500),
+    queryRelays({kinds:[1],"#alt":["Sifaka Tetris high score"],limit:1000},DEFAULT_RELAYS,4500)
+   ]);
+   var targetedEvents=targetedResults.flat();
+   for(var bi=0;bi<targetedEvents.length;bi++){
+    var candidate=targetedEvents[bi];
+    if(!candidate||knownIds.has(String(candidate.id||"")))continue;
+    knownIds.add(String(candidate.id||""));
+    events.push(candidate);
+    var candidateEntry=parseScoreEvent(candidate);
+    if(!candidateEntry||!(await verifyNostrEvent(candidate)))continue;
+    valid.push(candidateEntry);
+   }
+   // If targeted tag searches still yield fewer than ten players, supplement
+   // from recent kind-1 events and locally validate the score schema/signature.
+   if(verifiedPlayerCount(valid)<10){
+    var broadEvents=await queryRelays({kinds:[1],limit:1000},DEFAULT_RELAYS,4500);
+    for(var bj=0;bj<broadEvents.length;bj++){
+     var broad=broadEvents[bj];
+     if(!broad||knownIds.has(String(broad.id||"")))continue;
+     knownIds.add(String(broad.id||""));
+     events.push(broad);
+     var broadEntry=parseScoreEvent(broad);
+     if(!broadEntry||!(await verifyNostrEvent(broad)))continue;
+     valid.push(broadEntry);
+    }
    }
   }
   // Preserve deletion checks, but cap this secondary relay wait so a slow relay
