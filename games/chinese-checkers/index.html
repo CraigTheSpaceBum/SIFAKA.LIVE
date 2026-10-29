@@ -274,7 +274,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 (function(){
 'use strict';
 const $=id=>document.getElementById(id),HEX=/^[0-9a-f]{64}$/i,APP='sifaka-chinese-checkers',PUB_KIND=30078,PRIV_KIND=30079,CHAT_KIND=1;
-const DEFAULT_RELAYS=['wss://nos.lol','wss://relay.damus.io','wss://relay.primal.net'];
+const DEFAULT_RELAYS=['wss://relay.damus.io','wss://nos.lol','wss://relay.snort.social','wss://nostr.wine','wss://relay.primal.net','wss://relay.nostr.band','wss://relay.nostr.net','wss://www.nostr.ltd','wss://relayable.org','wss://nostr.fmt.wiz.biz','wss://offchain.pub','wss://nostr.mom','wss://nostr21.com','wss://purplepag.es','wss://profiles.nostr1.com','wss://relay.nostr.com','wss://nostr.bitcoiner.social'];
 let selectedPlayerCount=2,signerPk='',signerProfile={},signerVerified=false,identitySyncVersion=0,signerBridgePromise=null,loginPopupObserver=null,pendingOnlineAction=null,game=null,local=true,engineMode=false,engineLevel=2,engineTimer=null,engineRequestId=0,flipped=false,selected=-1,selectedPath=[],pathCandidates=[],busy=false,turns=[],state=null,terminal=null,gameSockets=[],reconnectTimer=null,publishChain=Promise.resolve(),seenChat=new Set(),lobbyTab='open',lobbyBusy=false,pendingInvite=null,toastTimer=null,inviteSearchRequest=0,accountRelayUrls=[],relayDiscoveryFor='';const playerVersions={},ENGINE_NAMES=['','Novice','Adept','Master'];
 
 function say(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3200)}
@@ -597,7 +597,7 @@ function currentRelayList(extra){
  }
  const blocked=new Set(main.blocked),out=[];
  candidates.forEach(u=>{u=String(u||'').trim();if(!/^wss:\/\//i.test(u)||blocked.has(u.toLowerCase())||out.includes(u))return;out.push(u)});
- return main.configured?out:out.slice(0,8);
+ return out;
 }
 function preferredRelay(){return currentRelayList()[0]||DEFAULT_RELAYS[0]}
 function timeout(p,ms,msg){let timer;return Promise.race([Promise.resolve(p),new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(msg)),ms))]).finally(()=>clearTimeout(timer))}
