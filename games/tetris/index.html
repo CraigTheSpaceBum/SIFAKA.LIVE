@@ -505,7 +505,37 @@ function mergeProfileData(primary,fallback,pk){
  });
  return merged;
 }
-function currentRelayList(extra){var list=Array.isArray(extra)?extra.slice():extra?[extra]:[];try{var raw=localStorage.getItem("sifaka_relays");if(raw){var parsed=JSON.parse(raw);if(Array.isArray(parsed))list=list.concat(parsed.map(function(x){return typeof x==="string"?x:x&&x.url||"";}));}if(signerPk){var own=JSON.parse(localStorage.getItem("sifaka_tetris_relays_"+signerPk)||"[]");if(Array.isArray(own))list=list.concat(own);}}catch(_){}list=list.concat(DEFAULT_RELAYS);var out=[];list.forEach(function(url){url=String(url||"").trim();if(/^wss:\/\//i.test(url)&&!out.includes(url))out.push(url);});return out;}
+function readSifakaMainRelayConfig(){
+ try{
+  var raw=localStorage.getItem("nostrflux_settings_v1");
+  if(!raw)return{configured:false,relays:[],blocked:[]};
+  var settings=JSON.parse(raw);
+  if(!settings||typeof settings!=="object"||!Array.isArray(settings.relays))return{configured:false,relays:[],blocked:[]};
+  var buckets=settings.relayBuckets&&typeof settings.relayBuckets==="object"?settings.relayBuckets:{};
+  return{configured:true,relays:settings.relays.map(function(x){return typeof x==="string"?x:x&&x.url||"";}),blocked:Array.isArray(buckets.blocked)?buckets.blocked.map(function(x){return String(x||"").trim().toLowerCase();}):[]};
+ }catch(_){return{configured:false,relays:[],blocked:[]};}
+}
+function currentRelayList(extra){
+ var main=readSifakaMainRelayConfig(),list=Array.isArray(extra)?extra.slice():extra?[extra]:[];
+ if(main.configured){
+  list=list.concat(main.relays);
+  if(signerPk){try{var own=JSON.parse(localStorage.getItem("sifaka_tetris_relays_"+signerPk)||"[]");if(Array.isArray(own))list=list.concat(own);}catch(_){}}
+ }else{
+  try{
+   var raw=localStorage.getItem("sifaka_relays");
+   if(raw){var parsed=JSON.parse(raw);if(Array.isArray(parsed))list=list.concat(parsed.map(function(x){return typeof x==="string"?x:x&&x.url||"";}));}
+   if(signerPk){var saved=JSON.parse(localStorage.getItem("sifaka_tetris_relays_"+signerPk)||"[]");if(Array.isArray(saved))list=list.concat(saved);}
+  }catch(_){}
+  list=list.concat(DEFAULT_RELAYS);
+ }
+ var blocked=new Set(main.blocked),out=[];
+ list.forEach(function(url){
+  url=String(url||"").trim();
+  if(!/^wss:\/\//i.test(url)||blocked.has(url.toLowerCase())||out.includes(url))return;
+  out.push(url);
+ });
+ return out;
+}
 function requestEvents(url,filter,waitMs){return new Promise(function(resolve){var ws=null,done=false,timer=null,events=new Map(),sub="sifaka-tetris-"+Math.random().toString(36).slice(2,11);function finish(){if(done)return;done=true;clearTimeout(timer);try{if(ws&&ws.readyState===1){ws.send(JSON.stringify(["CLOSE",sub]));ws.close();}}catch(_){}resolve(Array.from(events.values()));}timer=setTimeout(finish,waitMs||3000);try{ws=new WebSocket(url);ws.onopen=function(){try{var filters=Array.isArray(filter)?filter:[filter];ws.send(JSON.stringify(["REQ",sub].concat(filters)));}catch(_){finish();}};ws.onmessage=function(msg){try{var d=JSON.parse(msg.data);if(d[0]==="EVENT"&&d[1]===sub&&d[2]&&d[2].id)events.set(String(d[2].id),d[2]);if(d[0]==="EOSE"&&d[1]===sub)finish();if(d[0]==="CLOSED"&&d[1]===sub)finish();}catch(_){}};ws.onerror=finish;ws.onclose=function(){if(!done)finish();};}catch(_){finish();}});}
 async function queryRelays(filter,extra,waitMs){var relays=currentRelayList(extra);var results=await Promise.all(relays.map(function(url){return requestEvents(url,filter,waitMs||2800).catch(function(){return[];});}));var merged=new Map();results.flat().forEach(function(ev){if(!ev||!ev.id)return;var key;try{key=JSON.stringify([String(ev.id),String(ev.pubkey||""),Number(ev.created_at),Number(ev.kind),ev.tags,ev.content,String(ev.sig||"")]);}catch(_){key=String(ev.id)+"|"+String(ev.sig||"");}merged.set(key,ev);});return Array.from(merged.values());}
 async function getNostrTools(){if(!nostrToolsPromise){nostrToolsPromise=Promise.race([import("https://esm.sh/nostr-tools@2.17.0?bundle"),new Promise(function(_,reject){setTimeout(function(){reject(new Error("Timed out loading Nostr signature verification."));},10000);})]).catch(function(err){nostrToolsPromise=null;throw err;});}return nostrToolsPromise;}
