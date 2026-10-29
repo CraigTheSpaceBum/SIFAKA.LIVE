@@ -751,7 +751,7 @@ function openLogin(){
 }
 function closeLogin(signedIn){if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}var layer=$("loginLayer");layer.classList.remove("open");layer.hidden=true;try{$("loginFrame").onload=null;$("loginFrame").src="about:blank";}catch(_){}if(signedIn){connect().catch(function(err){toast(err.message);});}else{postAfterLogin=false;}}
 async function lookupOwnProfile(pk){if(!safeHex(pk))return null;await loadProfiles([pk]);var item=profileCache.get(pk);return item&&item.profile||null;}
-async function connect(silent){var previousPk=signerPk;var pk=await getSignerKey();if(!safeHex(pk)){if(silent)return false;openLogin();toast("Sign in or connect a Nostr signer to publish your score. Playing does not require an account.");return false;}var accountProfile=(signerPk===pk||previousPk===pk)?Object.assign({},signerProfile||{}):{};signerPk=pk;var profile=await lookupOwnProfile(pk);signerProfile=Object.assign({},profile||{},accountProfile);signerVerified=false;updateIdentity();if(signerProfile.nip05){verifyNip05(signerProfile).then(function(valid){signerVerified=!!valid;updateIdentity();}).catch(function(){signerVerified=false;updateIdentity();});}if(!silent)toast("Connected as "+(signerProfile.display_name||signerProfile.name||shortPk(pk))+".");if(postAfterLogin){postAfterLogin=false;if(pendingScore)postPendingScore();}return true;}
+async function connect(silent){var previousPk=signerPk;var pk=await getSignerKey();if(!safeHex(pk)){if(silent)return false;openLogin();toast("Sign in or connect a Nostr signer to publish your score. Playing does not require an account.");return false;}var accountProfile=(signerPk===pk||previousPk===pk)?Object.assign({},signerProfile||{}):{};var identityChanged=signerPk!==pk;signerPk=pk;if(identityChanged)loadLeaderboard();var profile=await lookupOwnProfile(pk);signerProfile=Object.assign({},profile||{},accountProfile);signerVerified=false;updateIdentity();if(signerProfile.nip05){verifyNip05(signerProfile).then(function(valid){signerVerified=!!valid;updateIdentity();}).catch(function(){signerVerified=false;updateIdentity();});}if(!silent)toast("Connected as "+(signerProfile.display_name||signerProfile.name||shortPk(pk))+".");if(postAfterLogin){postAfterLogin=false;if(pendingScore)postPendingScore();}return true;}
 async function postPendingScore(){
  if(!gameOver||!pendingScore){toast("Finish a run before posting a score.");return;}
  if(pendingScore.postedEventId){toast("This run has already been posted to Nostr.");return;}
@@ -816,7 +816,11 @@ $("bestValue").textContent=numberFmt(localBest);restorePendingScoreState();updat
 window.sifakaTetrisRefreshAccount=function(){
  return connectLocalSigner().then(async function(pk){
   if(!safeHex(pk))return "";
+  var identityChanged=signerPk!==pk;
   signerPk=pk;
+  // A cold page load can start before the saved signer is restored. Re-run the
+  // leaderboard when the account changes so its account-specific relay list is used.
+  if(identityChanged)loadLeaderboard();
   var profile=await lookupOwnProfile(pk);
   if(signerPk!==pk)return "";
   if(profile&&typeof profile==="object"&&Object.keys(profile).length)signerProfile=Object.assign({},profile,signerProfile||{});
