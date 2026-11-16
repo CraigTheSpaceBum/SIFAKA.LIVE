@@ -136,6 +136,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 })();
 </script>
 <style id="sifaka-game-shared-nav-layout">body{padding-top:68px!important}.game-nav-popup{position:fixed;inset:0;z-index:20000;background:transparent}.game-nav-popup[hidden]{display:none!important}.game-nav-popup-frame{display:block;width:100%;height:100%;border:0;background:transparent}.game-nav-popup-close{position:absolute;top:12px;right:14px;z-index:20002;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:rgba(16,12,24,.94);color:#fff;font:700 26px/1 sans-serif;cursor:pointer;box-shadow:0 5px 20px rgba(0,0,0,.45)}.game-nav-popup-close:hover{border-color:var(--accent);color:var(--accent)}@media(max-width:700px){body{padding-top:56px!important}}</style>
+<link rel="stylesheet" href="../../styles/game-login-popup.css?v=20261116">
 </head>
 <body>
 <nav class="game-site-nav" id="gameSiteNav">
@@ -949,7 +950,7 @@ function openLogin(){
     // Live Now page visible in this game's sign-in frame while its API loads.
     let style=doc.getElementById('sifakaGameLoginIsolationStyle');
     if(!style){style=doc.createElement('style');style.id='sifakaGameLoginIsolationStyle';doc.head.appendChild(style)}
-    style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal):not(#onboardingModal){display:none!important;visibility:hidden!important}body>#loginModal,body>#onboardingModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open,body>#onboardingModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal,#onboardingModal .settings-modal,#onboardingModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+    style.textContent='body>:not(#loginModal):not(#onboardingModal){display:none!important;visibility:hidden!important}';
     if(!observerReady){
      if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}
      const Observer=win.MutationObserver;
@@ -1162,7 +1163,14 @@ try{if(document.pictureInPictureElement&&document.exitPictureInPicture){var exit
   var mode=String(saved&&saved.authMode||'');
   if(!/^[0-9a-f]{64}$/.test(expectedPk)||['local','remote','nip07'].indexOf(mode)<0)return;
   if(typeof window.sifakaGameRestoreSession!=='function')return;
-  window.sifakaGameRestoreSession(expectedPk);
+    if(typeof window.sifakaGameHeaderSyncIdentity==='function'){
+   window.sifakaGameHeaderSyncIdentity(expectedPk,{},false);
+  }
+  Promise.resolve(window.sifakaGameRestoreSession(expectedPk)).then(function(ok){
+   if(!ok&&typeof window.sifakaGameHeaderSyncIdentity==='function')window.sifakaGameHeaderSyncIdentity('',{},false);
+  }).catch(function(){
+   if(typeof window.sifakaGameHeaderSyncIdentity==='function')window.sifakaGameHeaderSyncIdentity('',{},false);
+  });
  }catch(_){}
 })();
 </script>

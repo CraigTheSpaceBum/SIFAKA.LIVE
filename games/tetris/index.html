@@ -299,6 +299,7 @@ button{font:inherit}
 .controls-popover .key-help b{display:inline-block;min-width:70px}
 @media(max-width:760px){.game-footer-tools{width:100%}.game-footer-tools .btn{flex:1}.controls-popover .key-help{font-size:11px}}
 </style>
+<link rel="stylesheet" href="../../styles/game-login-popup.css?v=20261116">
 </head>
 <body>
 <nav class="game-site-nav" id="gameSiteNav">
@@ -1058,13 +1059,11 @@ function handleGameLoginClick(){
  }
  const app=window.sifakaTetrisSigner,ext=window.nostr;
  if((app&&typeof app.getPublicKey==="function"&&typeof app.signEvent==="function")||
-    (ext&&typeof ext.getPublicKey==="function"&&typeof ext.signEvent==="function")){
+    (ext&&typeof ext.getPublicKey==="function"&&typeof ext.signEvent==="function")||
+    hasSavedSifakaAuthSession()){
   connect().then(function(ok){if(!ok)openLogin();}).catch(function(err){reportGameConnectError(err);openLogin();});
   return;
  }
- // A saved localStorage session alone does not prove the hidden signer bridge is
- // ready. Show the real Sifaka login modal immediately instead of waiting up to
- // eight seconds for a stale bridge probe to fail.
  openLogin();
 }
 function connectLocalSigner(expected){
@@ -1108,7 +1107,7 @@ function openLogin(){
   if(!isolate){isolate=doc.createElement('style');isolate.id='sifakaGameLoginIsolationStyle';doc.head.appendChild(isolate);}
   function setIsolation(modal,onboarding){
     try{if(modal&&modal.parentNode!==doc.body)doc.body.appendChild(modal);if(onboarding&&onboarding.parentNode!==doc.body)doc.body.appendChild(onboarding);Array.prototype.forEach.call(doc.body.children,function(child){if(child!==modal&&child!==onboarding){try{child.style.setProperty("display","none","important");child.style.setProperty("visibility","hidden","important");}catch(_){}}});}catch(_){}
-    isolate.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal):not(#onboardingModal){display:none!important;visibility:hidden!important}body>#loginModal,body>#onboardingModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open,body>#onboardingModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal,#onboardingModal .settings-modal,#onboardingModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+    isolate.textContent='body>:not(#loginModal):not(#onboardingModal){display:none!important;visibility:hidden!important}';
   }
   function currentUser(){
    let ctx=null,user=null;
@@ -1514,7 +1513,14 @@ try{if(document.pictureInPictureElement&&document.exitPictureInPicture){var exit
   // Match the other game pages: restore only a confirmed saved session, and
   // require the bridge to return that exact account before hydrating its profile.
   if(valid&&typeof window.sifakaGameRestoreSession==='function'){
-   window.sifakaGameRestoreSession(expectedPk);
+     if(typeof window.sifakaGameHeaderSyncIdentity==='function'){
+   window.sifakaGameHeaderSyncIdentity(expectedPk,{},false);
+  }
+  Promise.resolve(window.sifakaGameRestoreSession(expectedPk)).then(function(ok){
+   if(!ok&&typeof window.sifakaGameHeaderSyncIdentity==='function')window.sifakaGameHeaderSyncIdentity('',{},false);
+  }).catch(function(){
+   if(typeof window.sifakaGameHeaderSyncIdentity==='function')window.sifakaGameHeaderSyncIdentity('',{},false);
+  });
    return;
   }
   // If this page is embedded with a live Sifaka context already available, use it

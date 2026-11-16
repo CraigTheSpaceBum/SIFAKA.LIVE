@@ -1,0 +1,55 @@
+/* Sifaka's main app owns the login and onboarding dialog design. A full-viewport frame keeps its modal width and responsive breakpoints identical on game pages. */
+#loginLayer {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483646 !important;
+  display: none !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+}
+#loginLayer.open { display: block !important; }
+#loginLayer[hidden] { display: none !important; }
+#loginLayer iframe#loginFrame {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100vw !important;
+  width: 100dvw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#loginLayer .login-dialog {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 100vw !important;
+  width: 100dvw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+#loginLayer .login-dialog-head,
+#loginLayer button {
+  display: none !important;
+}
