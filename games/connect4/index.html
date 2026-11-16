@@ -142,7 +142,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{
 })();
 </script>
 <style id="sifaka-game-shared-nav-layout">body{padding-top:68px!important}.game-nav-popup{position:fixed;inset:0;z-index:20000;background:transparent}.game-nav-popup[hidden]{display:none!important}.game-nav-popup-frame{display:block;width:100%;height:100%;border:0;background:transparent}.game-nav-popup-close{position:absolute;top:12px;right:14px;z-index:20002;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:rgba(16,12,24,.94);color:#fff;font:700 26px/1 sans-serif;cursor:pointer;box-shadow:0 5px 20px rgba(0,0,0,.45)}.game-nav-popup-close:hover{border-color:var(--accent);color:var(--accent)}@media(max-width:700px){body{padding-top:56px!important}}</style>
-<link rel="stylesheet" href="../../styles/game-login-popup.css?v=20261116">
+<link rel="stylesheet" href="../../styles/game-login-popup.css?v=20261116b">
 </head>
 <body>
 <nav class="game-site-nav" id="gameSiteNav">
@@ -519,7 +519,7 @@ window.sifakaGameRestoreSession=function(expectedPk){const expected=String(expec
 function showLogin(){
  const layer=$('loginLayer'),frame=$('loginFrame');
  if(!layer||!frame||!layer.hidden&&layer.classList.contains('open'))return;
- layer.hidden=false;
+ layer.classList.remove('login-ready');layer.hidden=false;
  layer.classList.add('open');
  frame.onload=function(){
   let attempt=0,observerReady=false;
@@ -528,7 +528,7 @@ function showLogin(){
    try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){}
    if(!doc||!win||!doc.head||!doc.body){
     if(attempt++<160){setTimeout(prepare,50);return}
-    toast("The Sifaka sign-in window did not load. Please retry.");
+    closeLogin(false);toast("The Sifaka sign-in window did not load. Please retry.");
     return;
    }
    try{
@@ -546,7 +546,7 @@ function showLogin(){
     const onboarding=doc.getElementById('onboardingModal');
     if(!modal){
      if(attempt++<160){setTimeout(prepare,50);return}
-     toast("The Sifaka sign-in form could not be found. Please refresh and try again.");
+     closeLogin(false);toast("The Sifaka sign-in form could not be found. Please refresh and try again.");
      return;
     }
     try{if(modal.parentNode!==doc.body)doc.body.appendChild(modal);if(onboarding&&onboarding.parentNode!==doc.body)doc.body.appendChild(onboarding);Array.prototype.forEach.call(doc.body.children,function(child){if(child!==modal&&child!==onboarding){try{child.style.setProperty('display','none','important');child.style.setProperty('visibility','hidden','important')}catch(_){}}});}catch(_){}
@@ -584,17 +584,18 @@ function showLogin(){
       modal.classList.add('open');
      }
     }
-    try{doc.querySelectorAll('video,audio').forEach(function(el){try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(function(t){try{t.stop()}catch(_){}});el.removeAttribute('src');el.querySelectorAll('source').forEach(function(x){x.removeAttribute('src')});el.load()}catch(_){}})}catch(_){}
+    if(modal.classList.contains('open')||(onboarding&&onboarding.classList.contains('open')))layer.classList.add('login-ready');
+     try{doc.querySelectorAll('video,audio').forEach(function(el){try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(function(t){try{t.stop()}catch(_){}});el.removeAttribute('src');el.querySelectorAll('source').forEach(function(x){x.removeAttribute('src')});el.load()}catch(_){}})}catch(_){}
    }catch(err){
     if(attempt++<160){setTimeout(prepare,50);return}
-    toast("Could not prepare sign-in. Please refresh and try again.");
+    closeLogin(false);toast("Could not prepare sign-in. Please refresh and try again.");
    }
   };
   prepare();
  };
  frame.src='/?chessLoginPopup=1&chessAction=login';
 }
-function closeLogin(signedIn=false){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}if(signedIn===true)connect().catch(()=>{});else pendingShared=null}
+function closeLogin(signedIn=false){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open','login-ready');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}if(signedIn===true)connect().catch(()=>{});else pendingShared=null}
 function openLogin(){showLogin()}
 function bind(){ $('connectBtn').addEventListener('click',handleGameLoginClick);$('closeLoginBtn').addEventListener('click',closeLogin);$('loginLayer').addEventListener('click',e=>{if(e.target===$('loginLayer'))closeLogin()});$('localBtn').addEventListener('click',openSetup);$('newGameBtn').addEventListener('click',openSetup);
 $('gameOverAgainBtn').addEventListener('click',()=>{closeOverlay('gameOverOverlay');if(local&&localModeChosen)setLocal(engineMode,engineLevel);else openSetup();});$('gameOverModeBtn').addEventListener('click',()=>{closeOverlay('gameOverOverlay');openSetup();});$('lobbyBtn').addEventListener('click',()=>openLobby('open'));$('setupAi').addEventListener('click',()=>setupStep('engine'));$('setupHumanChoice').addEventListener('click',()=>setupStep('human'));$('setupBack').addEventListener('click',()=>setupStep('opponents'));$('setupDifficulty').addEventListener('click',e=>{const b=e.target.closest('[data-ai-level]');if(b){closeOverlay('setupOverlay');setLocal(true,Number(b.dataset.aiLevel))}});$('setupLocal').addEventListener('click',()=>{closeOverlay('setupOverlay');setLocal(false)});$('setupPublic').addEventListener('click',()=>{closeOverlay('setupOverlay');createOnline(false).catch(e=>toast(e.message))});$('setupPrivate').addEventListener('click',()=>{closeOverlay('setupOverlay');createOnline(true).catch(e=>toast(e.message))});$('setupJoin').addEventListener('click',()=>{closeOverlay('setupOverlay');openLobby('open')});$('lobbyCreatePublic').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(false).catch(e=>toast(e.message))});$('lobbyCreatePrivate').addEventListener('click',()=>{closeOverlay('lobbyOverlay');createOnline(true).catch(e=>toast(e.message))});$('shareBtn').addEventListener('click',showShare);$('copyInviteBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('inviteUrl').value);toast('Match link copied.')}catch(_){$('inviteUrl').focus();$('inviteUrl').select();toast('Select and copy the complete link.')}});$('shareCloseBtn').addEventListener('click',()=>closeOverlay('shareOverlay'));$('shareInvitePlayerBtn').addEventListener('click',()=>{closeOverlay('shareOverlay');openInviteSearch()});$('invitePlayerBtn').addEventListener('click',openInviteSearch);$('joinMatchBtn').addEventListener('click',()=>{if(game)joinOnline(game,game.secret).catch(e=>toast(e.message));else if(pendingShared)fetchGame(pendingShared.id,pendingShared.relay,pendingShared.secret).then(g=>g&&joinOnline(g,pendingShared.secret)).catch(e=>toast(e.message))});$('forfeitBtn').addEventListener('click',()=>forfeitGame().catch(e=>toast(e.message)));$('retryPublishBtn').addEventListener('click',()=>retryPublish().catch(e=>toast(e.message)));$('undoBtn').addEventListener('click',undoLocal);$('flipBtn').addEventListener('click',()=>{flipped=!flipped;renderBoard()});$('sendChatBtn').addEventListener('click',()=>sendChat().catch(e=>toast(e.message)));$('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat().catch(err=>toast(err.message))}});$('refreshLobbyBtn').addEventListener('click',refreshLobby);$('lobbyTabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){lobbyTab=b.dataset.tab;$('lobbyTabs').querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));refreshLobby()}});$('inviteSearchBtn').addEventListener('click',searchInvite);$('inviteSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter')searchInvite()});$('inviteSourceTabs').addEventListener('click',e=>{const b=e.target.closest('[data-source]');if(b){inviteSource=b.dataset.source;$('inviteSourceTabs').querySelectorAll('[data-source]').forEach(x=>x.classList.toggle('active',x===b));searchInvite()}});document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>closeOverlay(b.dataset.close)));document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)closeOverlay(o.id)}))}
