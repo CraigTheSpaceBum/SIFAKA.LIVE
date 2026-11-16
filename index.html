@@ -154,6 +154,7 @@ body.sifaka-games-modal-open{overflow:hidden}
 @media(max-width:520px){#sifakaGamesOverlay{padding:12px;align-items:center}#sifakaGamesDialog{padding:22px 17px;border-radius:19px}#sifakaGamesDialog .sifaka-game-card{gap:11px;padding:12px}#sifakaGamesDialog .sifaka-game-icon{width:48px;height:48px;flex-basis:48px;font-size:30px}#sifakaGamesDialog .sifaka-game-launch{font-size:11px}}
 @media(prefers-reduced-motion:reduce){#sifakaGamesOverlay,#sifakaGamesDialog .sifaka-game-card{transition:none}}
 </style>
+  <link rel="stylesheet" href="./styles/live-stream-aspect.css?v=20261116">
 </head>
 <body>
 <div id="appBootScreen" class="app-boot-screen" role="status" aria-live="polite" aria-label="Loading Sifaka Live"><div class="app-boot-card"><div class="app-boot-logo-wrap"><img src="./logo.webp" alt="Sifaka Live" class="app-boot-logo" width="72" height="72" fetchpriority="high" decoding="async"><span class="app-boot-live">LIVE</span></div><div class="app-boot-title">SIFAKA LIVE</div><div class="app-boot-subtitle" id="appBootStatus">Connecting to Nostr relays...</div><div class="app-boot-spinner" aria-hidden="true"></div><div class="app-boot-hint">Loading your Nostr experience</div></div></div>
@@ -2809,6 +2810,7 @@ body.sifaka-games-modal-open{overflow:hidden}
 })();
 </script>
 
+  <script src="./scripts/live-stream-aspect.js?v=20261116"></script>
 </body>
 </html>
 
