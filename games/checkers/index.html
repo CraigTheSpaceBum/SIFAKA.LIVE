@@ -136,7 +136,7 @@ button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity
 })();
 </script>
 <style id="sifaka-game-shared-nav-layout">body{padding-top:68px!important}.game-nav-popup{position:fixed;inset:0;z-index:20000;background:transparent}.game-nav-popup[hidden]{display:none!important}.game-nav-popup-frame{display:block;width:100%;height:100%;border:0;background:transparent}.game-nav-popup-close{position:absolute;top:12px;right:14px;z-index:20002;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:rgba(16,12,24,.94);color:#fff;font:700 26px/1 sans-serif;cursor:pointer;box-shadow:0 5px 20px rgba(0,0,0,.45)}.game-nav-popup-close:hover{border-color:var(--accent);color:var(--accent)}@media(max-width:700px){body{padding-top:56px!important}}</style>
-<link rel="stylesheet" href="../../styles/game-login-popup.css?v=20261116">
+<link rel="stylesheet" href="../../styles/game-login-popup.css?v=20261116b">
 </head>
 <body>
 <nav class="game-site-nav" id="gameSiteNav">
@@ -915,7 +915,7 @@ window.sifakaGameRestoreSession=function(expectedPk){const expected=String(expec
 function openLogin(){
  const layer=$('loginLayer'),frame=$('loginFrame');
  if(!layer||!frame||!layer.hidden&&layer.classList.contains('open'))return;
- layer.hidden=false;
+ layer.classList.remove('login-ready');layer.hidden=false;
  layer.classList.add('open');
  frame.onload=function(){
   let attempt=0,observerReady=false;
@@ -924,7 +924,7 @@ function openLogin(){
    try{doc=frame.contentDocument;win=frame.contentWindow}catch(_){}
    if(!doc||!win||!doc.head||!doc.body){
     if(attempt++<160){setTimeout(prepare,50);return}
-    say("The Sifaka sign-in window did not load. Please retry.");
+    closeLogin(false);say("The Sifaka sign-in window did not load. Please retry.");
     return;
    }
    try{
@@ -942,7 +942,7 @@ function openLogin(){
     const onboarding=doc.getElementById('onboardingModal');
     if(!modal){
      if(attempt++<160){setTimeout(prepare,50);return}
-     say("The Sifaka sign-in form could not be found. Please refresh and try again.");
+     closeLogin(false);say("The Sifaka sign-in form could not be found. Please refresh and try again.");
      return;
     }
     try{if(modal.parentNode!==doc.body)doc.body.appendChild(modal);if(onboarding&&onboarding.parentNode!==doc.body)doc.body.appendChild(onboarding);Array.prototype.forEach.call(doc.body.children,function(child){if(child!==modal&&child!==onboarding){try{child.style.setProperty('display','none','important');child.style.setProperty('visibility','hidden','important')}catch(_){}}});}catch(_){}
@@ -980,17 +980,18 @@ function openLogin(){
       modal.classList.add('open');
      }
     }
-    try{doc.querySelectorAll('video,audio').forEach(function(el){try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(function(t){try{t.stop()}catch(_){}});el.removeAttribute('src');el.querySelectorAll('source').forEach(function(x){x.removeAttribute('src')});el.load()}catch(_){}})}catch(_){}
+    if(modal.classList.contains('open')||(onboarding&&onboarding.classList.contains('open')))layer.classList.add('login-ready');
+     try{doc.querySelectorAll('video,audio').forEach(function(el){try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(function(t){try{t.stop()}catch(_){}});el.removeAttribute('src');el.querySelectorAll('source').forEach(function(x){x.removeAttribute('src')});el.load()}catch(_){}})}catch(_){}
    }catch(err){
     if(attempt++<160){setTimeout(prepare,50);return}
-    say("Could not prepare sign-in. Please refresh and try again.");
+    closeLogin(false);say("Could not prepare sign-in. Please refresh and try again.");
    }
   };
   prepare();
  };
  frame.src='/?chessLoginPopup=1&chessAction=login';
 }
-function closeLogin(signedIn=false){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}if(signedIn===true)connect().catch(()=>{});else pendingOnlineAction=null}
+function closeLogin(signedIn=false){if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}const layer=$('loginLayer');layer.classList.remove('open','login-ready');layer.hidden=true;try{$('loginFrame').onload=null;$('loginFrame').src='about:blank'}catch(_){}if(signedIn===true)connect().catch(()=>{});else pendingOnlineAction=null}
 function setupStep(step){const first=step==='opponents';$('setupOpponents').classList.toggle('hidden',!first);$('setupDifficulty').classList.toggle('hidden',step!=='engine');$('setupHumanOptions').classList.toggle('hidden',step!=='human');$('setupBack').classList.toggle('hidden',first);$('setupHelp').textContent=first?'Choose whether to play against the engine or another person. Human games can be local or synchronized through Nostr.':step==='engine'?'Choose the Checkers engine difficulty. You play Red; the engine plays Black.':'Choose local play or create/join a match over Nostr.'}function openSetup(){setupStep('opponents');openOverlay('setupOverlay')}
  function bindEvents(){
  $('connectBtn').addEventListener('click',handleGameLoginClick);
