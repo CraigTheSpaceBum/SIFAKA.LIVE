@@ -1,0 +1,13 @@
+/* Keep existing layouts for standard streams. Resize only live ultrawide frames to their decoded source ratio. */
+#videoPage .player-wrap.sifaka-ultrawide-stream,
+.profile-live-player.sifaka-ultrawide-stream,
+.hero-player.sifaka-ultrawide-stream,
+.mini-player.sifaka-ultrawide-stream {
+  aspect-ratio: var(--sifaka-live-aspect-ratio) !important;
+}
+
+@media (min-width: 1201px) {
+  #videoPage .video-layout.sifaka-ultrawide-stream {
+    max-width: none;
+  }
+}
