@@ -299,7 +299,7 @@ button{font:inherit}
 .controls-popover .key-help b{display:inline-block;min-width:70px}
 @media(max-width:760px){.game-footer-tools{width:100%}.game-footer-tools .btn{flex:1}.controls-popover .key-help{font-size:11px}}
 </style>
-<link rel="stylesheet" href="../../styles/game-login-popup.css?v=20261116">
+<link rel="stylesheet" href="../../styles/game-login-popup.css?v=20261116b">
 </head>
 <body>
 <nav class="game-site-nav" id="gameSiteNav">
@@ -1096,7 +1096,7 @@ function openLogin(){
  if(!layer||!frame||(!layer.hidden&&layer.classList.contains('open')))return;
  const token=++loginPopupToken;
  if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null;}
- layer.hidden=false;
+ layer.classList.remove('login-ready');layer.hidden=false;
  layer.classList.add('open');
  frame.onload=function(){
   if(token!==loginPopupToken||layer.hidden)return;
@@ -1154,6 +1154,7 @@ function openLogin(){
       if(attempt<30){window.setTimeout(function(){awaitLoginApi(attempt+1);},50);return;}
       closeLogin(false);toast('The Sifaka login modal did not open. Please try again.');return;
      }
+     if(modal.classList.contains('open')||(onboarding&&onboarding.classList.contains('open')))layer.classList.add('login-ready');
      try{doc.querySelectorAll('video,audio').forEach(function(el){try{el.autoplay=false;el.pause();if(el.srcObject&&el.srcObject.getTracks)el.srcObject.getTracks().forEach(function(t){try{t.stop()}catch(_){}});el.removeAttribute('src');el.querySelectorAll('source').forEach(function(x){x.removeAttribute('src')});el.load()}catch(_){}})}catch(_){}
      return;
     }
@@ -1165,7 +1166,7 @@ function openLogin(){
  };
  frame.src='/?chessLoginPopup=1&chessAction=login';
 }
-function closeLogin(signedIn){loginPopupToken++;if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}var layer=$("loginLayer");layer.classList.remove("open");layer.hidden=true;try{$("loginFrame").onload=null;$("loginFrame").src="about:blank";}catch(_){}if(signedIn){connect().catch(function(err){toast(err.message);});}else{postAfterLogin=false;}}
+function closeLogin(signedIn){loginPopupToken++;if(loginPopupObserver){try{loginPopupObserver.disconnect();}catch(_){}loginPopupObserver=null;}var layer=$("loginLayer");layer.classList.remove("open","login-ready");layer.hidden=true;try{$("loginFrame").onload=null;$("loginFrame").src="about:blank";}catch(_){}if(signedIn){connect().catch(function(err){toast(err.message);});}else{postAfterLogin=false;}}
 async function lookupOwnProfile(pk){
  if(!safeHex(pk))return null;
  await loadProfiles([pk]);
