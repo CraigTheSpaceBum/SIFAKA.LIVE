@@ -633,7 +633,7 @@ function handleGameLoginClick(){
  let user=null;try{user=ctx&&ctx.getUser()}catch(_){}
  if(ctx&&user&&user.pubkey&&typeof ctx.signEvent==='function'){
   installSharedSifakaSigner();
-  connect().catch(reportGameConnectError);
+  connect().then(function(ok){if(!ok)openLogin()}).catch(function(err){reportGameConnectError(err);openLogin()});
   return;
  }
  const app=window.sifakaCheckersMainSigner;
@@ -641,7 +641,7 @@ function handleGameLoginClick(){
  if((app&&typeof app.getPublicKey==='function'&&typeof app.signEvent==='function')||
     (ext&&typeof ext.getPublicKey==='function'&&typeof ext.signEvent==='function')||
     hasSavedSifakaAuthSession()){
-  connect().catch(reportGameConnectError);
+  connect().then(function(ok){if(!ok)openLogin()}).catch(function(err){reportGameConnectError(err);openLogin()});
   return;
  }
  openLogin();
