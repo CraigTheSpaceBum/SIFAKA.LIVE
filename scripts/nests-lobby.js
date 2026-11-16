@@ -2420,7 +2420,6 @@
       modal.classList.remove('is-live-room');
       throw err;
     }
-  }
 
     })().finally(function() {
       activeRoomJoinPromise = null;

@@ -1201,23 +1201,24 @@ function openLogin(){
      return;
     }
     const modal=doc.getElementById('loginModal');
+    const onboarding=doc.getElementById('onboardingModal');
     if(!modal){
      if(attempt++<160){setTimeout(prepare,50);return}
      say("The Sifaka sign-in form could not be found. Please refresh and try again.");
      return;
     }
-    try{if(modal.parentNode!==doc.body)doc.body.appendChild(modal);Array.prototype.forEach.call(doc.body.children,function(child){if(child!==modal){try{child.style.setProperty('display','none','important');child.style.setProperty('visibility','hidden','important')}catch(_){}}});}catch(_){}
+    try{if(modal.parentNode!==doc.body)doc.body.appendChild(modal);if(onboarding&&onboarding.parentNode!==doc.body)doc.body.appendChild(onboarding);Array.prototype.forEach.call(doc.body.children,function(child){if(child!==modal&&child!==onboarding){try{child.style.setProperty('display','none','important');child.style.setProperty('visibility','hidden','important')}catch(_){}}});}catch(_){}
     // Isolate the real site's login modal immediately. Never leave the whole
     // Live Now page visible in this game's sign-in frame while its API loads.
     let style=doc.getElementById('sifakaGameLoginIsolationStyle');
     if(!style){style=doc.createElement('style');style.id='sifakaGameLoginIsolationStyle';doc.head.appendChild(style)}
-    style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal){display:none!important;visibility:hidden!important}body>#loginModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
+    style.textContent='html,body{margin:0!important;width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;background:transparent!important}body>:not(#loginModal):not(#onboardingModal){display:none!important;visibility:hidden!important}body>#loginModal,body>#onboardingModal{display:none!important;position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-height:none!important;z-index:2147483647!important;box-sizing:border-box!important;margin:0!important;padding:12px!important;align-items:center!important;justify-content:center!important;overflow:auto!important;background:rgba(5,3,10,.82)!important;backdrop-filter:blur(8px)!important}body>#loginModal.open,body>#onboardingModal.open{display:flex!important}#loginModal .login-modal,#loginModal .modal,#onboardingModal .settings-modal,#onboardingModal .modal{max-height:calc(100vh - 24px)!important;max-height:calc(100dvh - 24px)!important;overflow:auto!important;margin:auto!important}';
     if(!observerReady){
      if(loginPopupObserver){try{loginPopupObserver.disconnect()}catch(_){}loginPopupObserver=null}
      const Observer=win.MutationObserver;
      if(Observer){
       loginPopupObserver=new Observer(function(){
-       if(!modal.classList.contains('open')){
+       if(!modal.classList.contains('open')&&!(onboarding&&onboarding.classList.contains('open'))){
         let authCtx=null,authUser=null,signed=false;
         try{authCtx=win.__SIFAKA_CONTEXT;authUser=authCtx&&typeof authCtx.getUser==='function'?authCtx.getUser():null;signed=!!(authUser&&authUser.pubkey&&authCtx&&typeof authCtx.signEvent==='function')}catch(_){}
         if(signed)installSigner(win,'');
@@ -1225,6 +1226,7 @@ function openLogin(){
        }
       });
       loginPopupObserver.observe(modal,{attributes:true,attributeFilter:['class']});
+      if(onboarding)loginPopupObserver.observe(onboarding,{attributes:true,attributeFilter:['class']});
      }
      observerReady=true;
     }
