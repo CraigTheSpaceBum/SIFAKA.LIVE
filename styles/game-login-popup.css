@@ -53,3 +53,26 @@
 #loginLayer button {
   display: none !important;
 }
+
+
+/* Keep the game visible while the shared dialog initializes inside its frame. */
+#loginLayer {
+  background: rgba(4, 3, 10, .62) !important;
+  backdrop-filter: blur(8px) !important;
+  transition: background .12s ease, backdrop-filter .12s ease;
+}
+#loginLayer.login-ready {
+  background: transparent !important;
+  backdrop-filter: none !important;
+}
+#loginLayer iframe#loginFrame {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity .12s ease;
+}
+#loginLayer.login-ready iframe#loginFrame {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
