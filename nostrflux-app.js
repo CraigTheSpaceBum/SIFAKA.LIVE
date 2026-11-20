@@ -21066,7 +21066,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       // A relay may return an older kind:0 event that has no banner or NIP-05.
       // Check the remaining configured relays in that case instead of treating
       // any result from the preferred relays as the complete profile.
+      // A kind:0 event without a usable name is not enough for a tagged
+      // profile mention. Check the remaining configured relays so a stale or
+      // incomplete profile on a preferred relay cannot hide the display name.
+      const hasDisplayName = (profile) => !!String(
+        profile && (profile.display_name || profile.username) || ''
+      ).trim();
       const primaryNeedsRelayFallback = !primaryProfile
+        || !hasDisplayName(primaryProfile)
         || (checkProfileFallback && (
           !isLikelyUrl(primaryProfile.banner || '')
           || !normalizeNip05Value(primaryProfile.nip05 || '')
@@ -21093,7 +21100,10 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         const fallbackProfile = parseProfile(fallback);
         const fallbackHasBannerAndNip05 = isLikelyUrl(fallbackProfile.banner || '')
           && !!normalizeNip05Value(fallbackProfile.nip05 || '');
+        const primaryHasDisplayName = hasDisplayName(primaryProfile);
+        const fallbackHasDisplayName = hasDisplayName(fallbackProfile);
         if (fallbackCreatedAt > primaryCreatedAt
+          || (!primaryHasDisplayName && fallbackHasDisplayName)
           || (fallbackCreatedAt === primaryCreatedAt && !primaryHasBannerAndNip05 && fallbackHasBannerAndNip05)) {
           return fallback;
         }
