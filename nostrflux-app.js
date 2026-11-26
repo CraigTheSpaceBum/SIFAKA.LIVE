@@ -10880,8 +10880,14 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   }
 
   function livePresenceCount() {
-    const current = state.livePresenceStreamAddress ? state.streamsByAddress.get(state.livePresenceStreamAddress) : null;
-    return activeLivePresenceEntries(current).length;
+    const cutoff = Date.now() - LIVE_PRESENCE_TTL_MS;
+    for (const [pubkey, seenAt] of state.livePresenceByPubkey.entries()) {
+      if (!Number.isFinite(Number(seenAt)) || Number(seenAt) < cutoff || Number(seenAt) > Date.now() + 120000) {
+        state.livePresenceByPubkey.delete(pubkey);
+        state.livePresenceDetailsByPubkey.delete(pubkey);
+      }
+    }
+    return state.livePresenceByPubkey.size;
   }
 
   function renderLivePresenceRoster(stream) {
