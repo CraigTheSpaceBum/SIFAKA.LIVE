@@ -60,7 +60,7 @@
     document.documentElement.setAttribute('data-theme', theme);
   })();
 </script>
-<link rel="stylesheet" href="./styles/app.css?v=0.9.26">
+<link rel="stylesheet" href="./styles/app.css?v=live-presence-roster-20261126">
 <link rel="stylesheet" href="./styles/themes.css?v=0.9.6">
 <link rel="stylesheet" href="./styles/site-navigation.css?v=0.9.15">
 <link rel="stylesheet" href="./styles/daily-theme-polish.css?v=20261014">
@@ -2307,12 +2307,20 @@ body.sifaka-games-modal-open{overflow:hidden}
         <div class="cmsg"><div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name cp">bitlover</span></div><div class="c-text">streaming from your own server is based</div></div><div class="chat-msg-actions"><button class="cma-btn" title="Reply"></button><button class="cma-btn like-cma" title="Like"></button><button class="cma-btn zap-cma" title="Zap"></button><button class="cma-btn" title="Share"></button></div></div>
         <div class="cmsg zap-ev"><div class="c-av"></div><div class="c-body"><div class="c-name-row"><span class="c-name cz">ZAP - 5,000 sats</span></div><div class="c-text">encore!</div></div></div>
       </div>
-      <div class="viewers-panel" id="viewersPanel">
-        <div style="font-size:.71rem;color:var(--muted);font-family:'DM Mono',monospace;padding:.18rem .38rem;">2,105 watching</div>
-        <div class="vr" onclick="showProfile('fiatjaf','','npub1zl3...gz4','fiatjaf@nostr.com')"><div class="v-av"></div><div><div class="v-name">fiatjaf <span class="c-nip05"></span></div><div class="v-npub">fiatjaf@nostr.com</div></div><span class="v-badge vb-z">top</span></div>
-        <div class="vr"><div class="v-av"></div><div><div class="v-name">satsoshi99</div><div class="v-npub">npub1def...uvw</div></div></div>
-        <div class="vr" onclick="showProfile('relayrunner','','npub1ghi...rst','relay@nostr.run')"><div class="v-av"></div><div><div class="v-name">relayrunner <span class="c-nip05"></span></div><div class="v-npub">relay@nostr.run</div></div></div>
-        <div class="vr"><div class="v-av"></div><div><div class="v-name">nostrdev</div><div class="v-npub">npub1jkl...opq</div></div><span class="v-badge vb-l">live</span></div>
+      <div class="viewers-panel" id="viewersPanel" aria-label="Nostr accounts watching">
+        <div class="viewer-presence-header">
+          <div class="viewer-presence-heading">
+            <strong id="livePresenceHeading">Nostr accounts watching</strong>
+            <span id="livePresenceCount">0</span>
+          </div>
+          <label class="viewer-presence-share" title="Let other viewers see which client you use">
+            <input id="livePresenceShareClient" type="checkbox" checked>
+            <span>Share client</span>
+          </label>
+        </div>
+        <div class="viewer-presence-roster" id="livePresenceRoster" aria-live="polite">
+          <div class="viewer-presence-empty">Open a live stream to see its Nostr viewers.</div>
+        </div>
       </div>
       <div class="chat-bottom">
         <div class="chat-iw">
@@ -2541,7 +2549,7 @@ body.sifaka-games-modal-open{overflow:hidden}
 <script src="./scripts/gif-provider.js?v=4ea8fcf" defer></script>
 <script src="./scripts/widgets-builder.js?v=4ea8fcf" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
-<script src="./nostrflux-app.js?v=0.9.16" defer></script>
+<script src="./nostrflux-app.js?v=live-presence-roster-20261126" defer></script>
 <script src="scripts/nests-lobby.js?v=nest-room-join-syntax-20261115" defer></script>
 
 <div id="sifakaGamesOverlay" aria-hidden="true">
