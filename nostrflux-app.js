@@ -26646,6 +26646,8 @@ function renderProfileFeed(pubkey) {
       const widgets = qs('#widgetsPage');
       const faq = qs('#faqPage');
       setActiveViewerAddress('');
+      stopViewerPresence();
+      stopLivePresenceTracker();
       stopChatSubscription();
       if (home) home.classList.remove('active');
       if (video) video.style.display = 'none';
