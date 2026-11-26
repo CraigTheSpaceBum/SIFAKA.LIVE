@@ -11030,6 +11030,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   function refreshLivePresenceCount(stream) {
     if (!stream || state.livePresenceStreamAddress !== stream.address) return;
     renderLivePresenceRoster(stream);
+    refreshParticipantDependentUi();
     if (!isLivePresenceOwner(stream)) return;
     const count = livePresenceCount();
     if (count === state.livePresenceLastPublishedCount) return;
@@ -15553,6 +15554,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   /* ---- Clear hero HLS ---- */
   function clearHeroPlayback() {
+    const previousHeroAddress = state.activeHeroViewerAddress || state.featuredCurrentAddress;
+    if (!state.activeViewerAddress && previousHeroAddress && state.livePresenceStreamAddress === previousHeroAddress) {
+      const previousStream = state.streamsByAddress.get(previousHeroAddress);
+      if (!isLivePresenceOwner(previousStream)) stopLivePresenceTracker();
+    }
     state.heroPlaybackToken++;
     if (state.heroAudioCleanup) {
       try { state.heroAudioCleanup(); } catch (_) {}
@@ -15684,6 +15690,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const onHeroPlayable = () => {
       if (token !== state.heroPlaybackToken) return;
       setActiveHeroViewerAddress(stream.address);
+      startLivePresenceTracker(stream);
       startViewerPresence(stream.address);
       markStreamPlaybackOnline(stream.address);
       if (ovEl) ovEl.style.display = 'none';
@@ -15692,8 +15699,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         scheduleHeroAudioRetries();
       }
     };
-    video.addEventListener('canplay', onHeroPlayable);
     video.addEventListener('playing', onHeroPlayable);
+    video.addEventListener('pause', () => stopViewerPresence(stream.address));
+    video.addEventListener('ended', () => stopViewerPresence(stream.address));
 
     // A click/tap anywhere after autoplay begins should immediately retry audio.
     const unlockHeroAudio = (event) => {
@@ -16169,7 +16177,7 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
         markStreamPlaybackOnline(address);
       }
     };
-    video.addEventListener('playing', markPlayable, { once: true });
+    video.addEventListener('playing', markPlayable);
     video.addEventListener('pause', () => stopViewerPresence(address));
     video.addEventListener('ended', () => stopViewerPresence(address));
 
