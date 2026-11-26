@@ -587,6 +587,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     livePresenceSubId: null,
     livePresenceStreamAddress: '',
     livePresenceByPubkey: new Map(),
+    livePresenceDetailsByPubkey: new Map(),
+    livePresenceShareClient: true,
     livePresencePublishTimer: null,
     livePresenceLastPublishedCount: -1,
     relayPingMsByUrl: new Map(),
@@ -10796,12 +10798,9 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function effectiveParticipants(stream) {
     if (!stream) return 0;
-    const base = Number(stream.participants || 0) || 0;
-    const watchingBoost = (
-      (state.activeViewerAddress && stream.address === state.activeViewerAddress)
-      || (state.activeHeroViewerAddress && stream.address === state.activeHeroViewerAddress)
-    ) ? 1 : 0;
-    return Math.max(0, base + watchingBoost);
+    const publishedCount = Math.max(0, Number(stream.participants || 0) || 0);
+    const presenceCount = state.livePresenceStreamAddress === stream.address ? livePresenceCount() : 0;
+    return Math.max(publishedCount, presenceCount);
   }
 
   function refreshParticipantDependentUi() {
@@ -10850,19 +10849,127 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
   const LIVE_PRESENCE_INTERVAL_MS = 30 * 1000;
   const LIVE_PRESENCE_COUNT_INTERVAL_MS = 15 * 1000;
 
-  function stopViewerPresence() {
-    if (state.viewerPresenceTimer) {
-      clearInterval(state.viewerPresenceTimer);
-      state.viewerPresenceTimer = null;
-    }
+  function stopViewerPresence(address) {
+    if (address && state.viewerPresenceAddress !== String(address).trim()) return;
+    if (state.viewerPresenceTimer) { clearInterval(state.viewerPresenceTimer); state.viewerPresenceTimer = null; }
     state.viewerPresenceAddress = '';
+  }
+
+  function isLivePresenceOwner(stream) {
+    return !!(stream && state.user && normalizePubkeyHex(state.user.pubkey) &&
+      normalizePubkeyHex(state.user.pubkey) === normalizePubkeyHex(stream.pubkey));
+  }
+
+  function livePresenceClientFromEvent(ev) {
+    const value = firstTagValue(ev && ev.tags, 'client') || '';
+    return String(value).trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 64);
+  }
+
+  function activeLivePresenceEntries(stream) {
+    if (!stream || state.livePresenceStreamAddress !== stream.address) return [];
+    const cutoff = Date.now() - LIVE_PRESENCE_TTL_MS;
+    for (const [pubkey, seenAt] of state.livePresenceByPubkey.entries()) {
+      if (!Number.isFinite(Number(seenAt)) || Number(seenAt) < cutoff || Number(seenAt) > Date.now() + 120000) {
+        state.livePresenceByPubkey.delete(pubkey);
+        state.livePresenceDetailsByPubkey.delete(pubkey);
+      }
+    }
+    return Array.from(state.livePresenceByPubkey.entries())
+      .filter(([, seenAt]) => Number(seenAt) >= cutoff)
+      .sort((a, b) => Number(b[1]) - Number(a[1]));
+  }
+
+  function livePresenceCount() {
+    const current = state.livePresenceStreamAddress ? state.streamsByAddress.get(state.livePresenceStreamAddress) : null;
+    return activeLivePresenceEntries(current).length;
+  }
+
+  function renderLivePresenceRoster(stream) {
+    const roster = qs('#livePresenceRoster');
+    if (!roster) return;
+    const heading = qs('#livePresenceHeading');
+    const count = qs('#livePresenceCount');
+    const entries = activeLivePresenceEntries(stream);
+    if (heading) heading.textContent = 'Nostr accounts watching';
+    if (count) count.textContent = entries.length.toLocaleString();
+    roster.replaceChildren();
+
+    if (!entries.length) {
+      const empty = document.createElement('div');
+      empty.className = 'viewer-presence-empty';
+      empty.textContent = stream && state.livePresenceStreamAddress === stream.address
+        ? 'No active Nostr presence has been reported yet.'
+        : 'Open a live stream to see its Nostr viewers.';
+      roster.appendChild(empty);
+      return;
+    }
+
+    entries.forEach(([pubkey]) => {
+      const profile = profileFor(pubkey) || {};
+      const displayName = String(profile.display_name || profile.name || (pubkey.slice(0, 8) + '…' + pubkey.slice(-4)));
+      const detail = state.livePresenceDetailsByPubkey.get(pubkey) || {};
+      const client = String(detail.client || '').trim();
+      const row = document.createElement('div');
+      row.className = 'vr viewer-presence-row';
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-label', 'Open Nostr profile for ' + displayName);
+
+      const avatar = document.createElement('div');
+      avatar.className = 'v-av';
+      const picture = sanitizeMediaUrl(profile.picture || '');
+      if (picture) {
+        const image = document.createElement('img');
+        image.src = picture; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+        avatar.appendChild(image);
+      } else {
+        avatar.textContent = displayName.slice(0, 1).toUpperCase() || 'N';
+      }
+
+      const copy = document.createElement('div');
+      copy.className = 'v-copy';
+      const name = document.createElement('div');
+      name.className = 'v-name'; name.textContent = displayName;
+      const identity = document.createElement('div');
+      identity.className = 'v-npub';
+      identity.textContent = shortNpubForDisplay(pubkey) || (pubkey.slice(0, 8) + '…' + pubkey.slice(-4));
+      const clientLabel = document.createElement('div');
+      clientLabel.className = 'v-client';
+      clientLabel.textContent = client ? 'Watching from ' + client : 'Client not disclosed';
+      copy.append(name, identity, clientLabel);
+      row.append(avatar, copy);
+
+      const openProfile = () => showProfileByPubkey(pubkey);
+      row.addEventListener('click', openProfile);
+      row.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProfile(); }
+      });
+      roster.appendChild(row);
+
+      if (!profile.__hydrated && !state.profileFetchInflightByPubkey.has(pubkey)) {
+        fetchProfileIfNeeded(pubkey, { timeoutMs: 2800 }).then(() => {
+          if (state.livePresenceStreamAddress === stream.address) renderLivePresenceRoster(stream);
+        }).catch(() => {});
+      }
+    });
   }
 
   async function publishViewerPresence(address) {
     const key = String(address || '').trim();
     if (!key || !state.user || !state.pool) return;
     try {
-      await signAndPublish(KIND_LIVE_PRESENCE, '', [['a', key, '', 'root']]);
+      const tags = [['a', key, '', 'root']];
+      if (state.livePresenceShareClient !== false) tags.push(['client', 'Sifaka.Live']);
+      const signed = await signAndPublish(KIND_LIVE_PRESENCE, '', tags);
+      const pubkey = normalizePubkeyHex(state.user.pubkey);
+      const seenAt = Number(signed && signed.created_at || Math.floor(Date.now() / 1000)) * 1000;
+      if (pubkey && state.livePresenceStreamAddress === key) {
+        state.livePresenceByPubkey.set(pubkey, seenAt);
+        state.livePresenceDetailsByPubkey.set(pubkey, { client: state.livePresenceShareClient !== false ? 'Sifaka.Live' : '', seenAt });
+        const stream = state.streamsByAddress.get(key);
+        renderLivePresenceRoster(stream);
+        if (stream && isLivePresenceOwner(stream)) refreshLivePresenceCount(stream);
+      }
     } catch (_) {
       // Presence is best-effort; playback must never depend on it.
     }
@@ -10872,72 +10979,43 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     const key = String(address || '').trim();
     if (!key || !state.user) return;
     if (state.viewerPresenceAddress === key && state.viewerPresenceTimer) return;
-
     stopViewerPresence();
     state.viewerPresenceAddress = key;
     publishViewerPresence(key).catch(() => {});
     state.viewerPresenceTimer = setInterval(() => {
-      if (!state.user || state.viewerPresenceAddress !== key) {
-        stopViewerPresence();
-        return;
-      }
+      if (!state.user || state.viewerPresenceAddress !== key) { stopViewerPresence(); return; }
       publishViewerPresence(key).catch(() => {});
     }, LIVE_PRESENCE_INTERVAL_MS);
   }
 
   function stopLivePresenceTracker() {
-    if (state.livePresenceSubId && state.pool) {
-      try { state.pool.unsubscribe(state.livePresenceSubId); } catch (_) {}
-    }
+    if (state.livePresenceSubId && state.pool) { try { state.pool.unsubscribe(state.livePresenceSubId); } catch (_) {} }
     state.livePresenceSubId = null;
     state.livePresenceStreamAddress = '';
     state.livePresenceByPubkey.clear();
-    if (state.livePresencePublishTimer) {
-      clearInterval(state.livePresencePublishTimer);
-      state.livePresencePublishTimer = null;
-    }
+    state.livePresenceDetailsByPubkey.clear();
+    if (state.livePresencePublishTimer) { clearInterval(state.livePresencePublishTimer); state.livePresencePublishTimer = null; }
     state.livePresenceLastPublishedCount = -1;
-  }
-
-  function livePresenceCount() {
-    const cutoff = Date.now() - LIVE_PRESENCE_TTL_MS;
-    let count = 0;
-    for (const [pubkey, seenAt] of state.livePresenceByPubkey.entries()) {
-      if (Number(seenAt || 0) >= cutoff) count += 1;
-      else state.livePresenceByPubkey.delete(pubkey);
-    }
-    return count;
+    renderLivePresenceRoster(null);
   }
 
   async function publishCurrentParticipants(stream, count) {
-    if (!stream || normalizeStreamStatus(stream.status) !== 'live') return;
-    if (!state.user || normalizePubkeyHex(state.user.pubkey) !== normalizePubkeyHex(stream.pubkey)) return;
-
+    if (!stream || normalizeStreamStatus(stream.status) !== 'live' || !isLivePresenceOwner(stream)) return;
     const rawTags = stream.raw && Array.isArray(stream.raw.tags) ? stream.raw.tags : [];
     const activeCutoff = Date.now() - LIVE_PRESENCE_TTL_MS;
     const activeParticipants = [];
     for (const [pubkey, seenAt] of state.livePresenceByPubkey.entries()) {
-      if (Number(seenAt || 0) >= activeCutoff && normalizePubkeyHex(pubkey)) {
-        activeParticipants.push(normalizePubkeyHex(pubkey));
-      }
+      if (Number(seenAt || 0) >= activeCutoff && normalizePubkeyHex(pubkey)) activeParticipants.push(normalizePubkeyHex(pubkey));
     }
-
-    const tags = rawTags
-      .filter((tag) => {
-        if (!Array.isArray(tag)) return false;
-        const type = String(tag[0] || '').toLowerCase();
-        // Rebuild these two live-participant fields from the current presence set.
-        if (type === 'current_participants') return false;
-        if (type === 'p' && String(tag[3] || '').toLowerCase() === 'participant') return false;
-        return true;
-      })
-      .map((tag) => [...tag]);
-
-    activeParticipants.forEach((pubkey) => {
-      tags.push(['p', pubkey, '', 'Participant']);
-    });
+    const tags = rawTags.filter((tag) => {
+      if (!Array.isArray(tag)) return false;
+      const type = String(tag[0] || '').toLowerCase();
+      if (type === 'current_participants') return false;
+      if (type === 'p' && String(tag[3] || '').toLowerCase() === 'participant') return false;
+      return true;
+    }).map((tag) => [...tag]);
+    activeParticipants.forEach((pubkey) => tags.push(['p', pubkey, '', 'Participant']));
     tags.push(['current_participants', String(Math.max(0, Number(count) || 0))]);
-
     try {
       const ev = await signAndPublish(KIND_LIVE_EVENT, String(stream.summary || ''), tags);
       const updated = parseLiveEvent(ev);
@@ -10951,48 +11029,41 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
 
   function refreshLivePresenceCount(stream) {
     if (!stream || state.livePresenceStreamAddress !== stream.address) return;
+    renderLivePresenceRoster(stream);
+    if (!isLivePresenceOwner(stream)) return;
     const count = livePresenceCount();
-    const current = state.streamsByAddress.get(stream.address) || stream;
     if (count === state.livePresenceLastPublishedCount) return;
+    const current = state.streamsByAddress.get(stream.address) || stream;
     publishCurrentParticipants(current, count).catch(() => {});
   }
 
   function startLivePresenceTracker(stream) {
-    if (!stream || normalizeStreamStatus(stream.status) !== 'live' || !state.pool || !state.user) {
-      stopLivePresenceTracker();
-      return;
-    }
-    if (normalizePubkeyHex(state.user.pubkey) !== normalizePubkeyHex(stream.pubkey)) {
-      stopLivePresenceTracker();
-      return;
-    }
-
+    if (!stream || normalizeStreamStatus(stream.status) !== 'live' || !state.pool) { stopLivePresenceTracker(); return; }
     const address = String(stream.address || '').trim();
     if (!address) return;
-    if (state.livePresenceStreamAddress === address && state.livePresenceSubId) return;
-
+    if (state.livePresenceStreamAddress === address && state.livePresenceSubId) {
+      renderLivePresenceRoster(stream);
+      return;
+    }
     stopLivePresenceTracker();
     state.livePresenceStreamAddress = address;
-
     state.livePresenceSubId = state.pool.subscribe(
-      [{ kinds: [KIND_LIVE_PRESENCE], '#a': [address], limit: 1000 }],
+      [{ kinds: [KIND_LIVE_PRESENCE], '#a': [address], since: Math.floor((Date.now() - LIVE_PRESENCE_TTL_MS) / 1000), limit: 1000 }],
       {
         event: (ev) => {
           const pubkey = normalizePubkeyHex(ev && ev.pubkey);
-          if (!pubkey) return;
-          const eventAddress = firstTagValue(ev && ev.tags, 'a') || '';
-          if (eventAddress !== address) return;
-          state.livePresenceByPubkey.set(pubkey, Number(ev.created_at || 0) * 1000);
+          if (!pubkey || (firstTagValue(ev && ev.tags, 'a') || '') !== address) return;
+          const seenAt = Number(ev.created_at || 0) * 1000;
+          if (!Number.isFinite(seenAt) || seenAt < Date.now() - LIVE_PRESENCE_TTL_MS || seenAt > Date.now() + 120000) return;
+          state.livePresenceByPubkey.set(pubkey, seenAt);
+          state.livePresenceDetailsByPubkey.set(pubkey, { client: livePresenceClientFromEvent(ev), seenAt });
+          renderLivePresenceRoster(stream);
           refreshLivePresenceCount(stream);
         },
         eose: () => refreshLivePresenceCount(stream)
       }
     );
-
-    state.livePresencePublishTimer = setInterval(() => {
-      refreshLivePresenceCount(stream);
-    }, LIVE_PRESENCE_COUNT_INTERVAL_MS);
-
+    state.livePresencePublishTimer = setInterval(() => refreshLivePresenceCount(stream), LIVE_PRESENCE_COUNT_INTERVAL_MS);
     refreshLivePresenceCount(stream);
   }
 
@@ -15315,6 +15386,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     audio.addEventListener('timeupdate', updateProgress);
     audio.addEventListener('play', () => updatePlayButton(true));
     audio.addEventListener('pause', () => updatePlayButton(false));
+    audio.addEventListener('pause', () => stopViewerPresence(address));
+    audio.addEventListener('ended', () => stopViewerPresence(address));
     audio.addEventListener('playing', () => {
       status.textContent = '';
       startViewerPresence(address);
@@ -16097,7 +16170,8 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
       }
     };
     video.addEventListener('playing', markPlayable, { once: true });
-    video.addEventListener('canplay', markPlayable, { once: true });
+    video.addEventListener('pause', () => stopViewerPresence(address));
+    video.addEventListener('ended', () => stopViewerPresence(address));
 
     playerBg.innerHTML = '';
     playerBg.appendChild(video);
@@ -25961,6 +26035,19 @@ function renderProfileFeed(pubkey) {
       });
     }
 
+    const shareClientToggle = qs('#livePresenceShareClient');
+    if (shareClientToggle) {
+      try {
+        state.livePresenceShareClient = localStorage.getItem('sifaka_live_presence_share_client_v1') !== 'false';
+      } catch (_) { state.livePresenceShareClient = true; }
+      shareClientToggle.checked = state.livePresenceShareClient !== false;
+      shareClientToggle.addEventListener('change', () => {
+        state.livePresenceShareClient = !!shareClientToggle.checked;
+        try { localStorage.setItem('sifaka_live_presence_share_client_v1', state.livePresenceShareClient ? 'true' : 'false'); } catch (_) {}
+        if (state.viewerPresenceAddress) publishViewerPresence(state.viewerPresenceAddress).catch(() => {});
+      });
+    }
+
     const sendBtn = qs('.chat-send-btn');
     if (sendBtn) sendBtn.addEventListener('click', sendChatMessage);
     const chatInput = qs('.chat-inp');
@@ -26494,6 +26581,7 @@ function renderProfileFeed(pubkey) {
       setActiveViewerAddress(selected ? selected.address : '');
       stopViewerPresence();
       stopLivePresenceTracker();
+      if (selected && normalizeStreamStatus(selected.status) === 'live') startLivePresenceTracker(selected);
       if (selected && routeMode !== 'skip') syncTheaterRoute(selected, routeMode);
       if (home) home.classList.remove('active');
       if (video) video.style.display = 'block';
