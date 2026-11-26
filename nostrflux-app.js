@@ -10800,7 +10800,11 @@ const THEATER_REACTION_LIVE_SUB_LOOKBACK_SEC = 60 * 5;
     if (!stream) return 0;
     const publishedCount = Math.max(0, Number(stream.participants || 0) || 0);
     const presenceCount = state.livePresenceStreamAddress === stream.address ? livePresenceCount() : 0;
-    return Math.max(publishedCount, presenceCount);
+    const localAnonymousViewer = !state.user && (
+      (state.activeViewerAddress && stream.address === state.activeViewerAddress) ||
+      (state.activeHeroViewerAddress && stream.address === state.activeHeroViewerAddress)
+    ) ? 1 : 0;
+    return Math.max(publishedCount, presenceCount + localAnonymousViewer);
   }
 
   function refreshParticipantDependentUi() {
